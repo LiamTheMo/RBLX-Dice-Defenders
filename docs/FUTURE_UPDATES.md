@@ -13,7 +13,7 @@
 | Update | Candidate version | Headline | New game content | Competitive impact |
 |---|---|---|---|---|
 | **1** | v1.10 | **The Shattered Isles** | World 2, new Wave-100 stage, special dice and world materials | New path modifiers and deck meta |
-| **2** | v1.20 | **Anomaly Trials** | Stationary-board PvE challenge gauntlet | New PvE seasonal leaderboards |
+| **2** | v1.20 | **Treasure Defense** | Protect a shared vault across 30 waves, choose Secure or Greed every five waves, and earn capped rewards | Weekly solo/duo vault-defense leaderboards |
 | **3** | v1.30 | **Dice Duel Arena** | 1v1 / 2v2 PvP, rank, cosmetic rewards | Ranked PvP ladder |
 | **4** | v1.40 | **Guilds & Raids** | 4-player raid bosses and guild projects | Guild raid rankings |
 | **5** | v1.50 | **Starfall Ascension** | Mastery, Mythic pathways, new special dice | More viable endgame builds |
@@ -46,54 +46,75 @@ Updates 4–8 are flexible. Evaluate retention, monetization fairness and balanc
 **Deliverables:** World 2 map/environment, new mobs + boss references, five special dice card images and **five separate exploded 3D modeling reference sheets**, new map HUD effects, material/crafting tables, shop and chest tables with displayed odds, tutorials for map mutators.
 **Acceptance:** Wave 100 clear is achievable without the new Legendary; Wave 2 enemy pathing and all new dice procs work solo and duo; World 1 remains relevant and no special dice is a paywall.
 
-## Update 2: Anomaly Trials — stationary-board PvE challenge mode
-**Core premise:** a repeatable solo/duo challenge gauntlet where every dice stays on its normal 5×3 board, enemies travel the established defense path, and the strategic puzzle changes through **announced board rules, enemy mutators, and between-round boons**. This must not become a moving-character, escort or room-navigation mode. The player never physically moves around a dungeon and dice never walk between areas.
+## Update 2: Treasure Defense — protect the vault, choose your risk
+**Objective:** introduce a distinct, replayable PvE mode where players retain their stationary 5×3 dice boards but defend **recoverable treasure** instead of traditional lives. This mode centers on **vault theft, risk-versus-reward choices, and efficient defense**, rather than simply completing 100 waves or surviving indefinitely. All values below are **initial tuning proposals**, not tested final numbers.
 
-### Reference and differentiation
-Random Dice: Defense (111%) demonstrates stationary dice summoning, merging, leveling and defending waves, with solo, co-op raids and special challenges such as Mirror Mode. This update draws from the **stationary-board challenge format**, but Anomaly Trials' rules, modifiers, names, enemy behavior, UX and art are original. Sources (reviewed 2026-11-06):
-- https://play.google.com/store/apps/details?id=com.percent.royaldice
-- https://apps.apple.com/ca/app/random-dice-defense/id1462877149
+### Mode rules and match structure
+- Queue **solo or duo** (two-player primary). Every player brings their normal five-dice deck and keeps their own fixed **5-column × 3-row, 15-slot board**. Dice never walk, escort objects, leave the board or move around the map except through existing merge/ability mechanics.
+- A shared **vault at the end of a single readable enemy path** starts with **1,000 Vault Treasure**. This is a **match-only score resource**, not persistent Gold: it must never be deposited directly into a player's wallet.
+- **30 escalating waves** over an initial target of **8–12 minutes**, with boss encounters at waves 10, 20 and 30. Wave clears advance automatically after a brief break; shared match Energy from kills funds dice summons and match upgrades as in campaign. Existing wave difficulty formula applies with a Treasure Defense mode multiplier and validated player-count scaling.
+- Monsters that escape steal a defined amount of **Vault Treasure** instead of removing lives. The vault cannot drop below zero. **Vault at zero = defeat**, while defeating the final boss and clearing wave 30 with treasure remaining = full clear. Partial-run payout scales with completed waves and protected treasure but is capped against deliberate early-fail farming.
+- Both players defend the same route and treasure; server credits each enemy kill once and grants individual match Energy via the usual cooperation rules. Do not make total vault treasure or reward proportional to number of participants.
 
-### Session structure
-- Queue **solo or duo**, preserving the existing 15-cell board per player, deck of five dice, merge rules, Energy and shared lives. No separate movement controls.
-- **Three trials × 10 waves** (30 total), target **12–18 minutes** subject to playtesting. Each 10-wave trial has one mutator pair (board rule + enemy modifier); a boss or elite capstone ends waves 10, 20 and 30.
-- At matchmaking, players see the full three-trial sequence, allowing informed deck building. The **weekly seed** determines the same modifiers and boss families for everyone in that mode/party-size category, so rankings are fair. Optionally offer a casual random-seed queue with non-ranked rewards.
-- **Board state carries forward intact** after waves 10 and 20: existing dice, pips and placements remain. There is no "carry a selected die" rule and no room transition. Energy persists with a soft cap of 150 (tuning value); players choose a temporary boon and have 10 seconds to prepare.
-- Mutators never forcibly merge or delete valuable dice. When a cell is disabled for a trial, it becomes **dormant** (its die is retained but cannot attack/merge until restored); UI previews this before the trial starts. At least nine functional cells remain and mutators cannot hard-lock all copies of a required die.
-- At each intermission, choose **one of three temporary boons**; in duo, each player selects independently while both share the next trial's mutators. Boons expire at the end of the run, cannot be purchased for Gems or Robux, and must have stacking caps and readable icons.
-- Failure occurs when shared lives reach zero. Reward partial clearing based on completed trials, not exploit-prone raw kills.
+### Theft and enemy roster
+| Enemy | Initial theft on breach | Mechanic / intended counter |
+|---|---:|---|
+| **Thief** | 15 | Fast, fragile; rewards fast targeting and slows |
+| **Treasure Goblin** | 25 | Carries a visible bonus-token icon; killing it grants a small **match-only vault-restoration token**, never unlimited persistent currency |
+| **Armored Bandit** | 60 | Slow armored target; encourages pierce / armor-break / sustained DPS |
+| **Mimic** | 40 total if all pieces breach | Splits into two smaller enemies upon defeat; each piece steals 20; avoids double-counting theft when split |
+| **Vaultbreaker Boss** | 150 | Three telegraphed vulnerability phases, substantial pressure near exit; boss defeat contributes score and a one-time recovery bonus |
 
-### Trial modifier pool (proposals)
-| Modifier | Rule | Strategic impact / safeguards |
-|---|---|---|
-| **Star Alignment** | 7★ dice gain +20% ability output but -15% basic damage | Encourages high-pip specialization without unconditional DPS |
-| **Twin Pips** | Attacks get +12% damage for each adjacent ally with same pip, capped +24% | Rewards placement/alignment |
-| **Dormant Tiles** | Two previewed board cells stop attacking for this trial | Planning and merge timing; restore afterward |
-| **Merge Surge** | Each completed merge grants 5 Energy, max 40 per wave | Encourages tempo merging without infinite loops |
-| **Heavy Current** | Enemies have +25% HP but -12% movement speed | Encourages high-impact/boss builds |
-| **Quickstep** | Runners move +20% faster, but take +10% status damage | Tests control and damage-over-time |
-| **Resonant Rows** | Dice sharing a row with different types gain +5% attack speed per distinct type, capped +20% | Rewards mixed formations |
-| **Shield Cycle** | Every eighth enemy carries a shield that must be hit three times; shield hits are capped per attack volley | Elevates rapid/multi-hit decks |
+Additional bosses can be reskins/mechanic variants at waves 10/20/30. Enemies killed before breach cause no vault theft. Any restoration token is awarded **only once per server-spawned enemy ID**, and tokens from split summons do not recursively generate more tokens. Telegraph thief, bandit and boss theft values on tap/hover.
 
-**Modifier exclusions:** no blind disabling of all stars, hard uncounterable immunity, permanent theft of dice, invisible enemy paths, randomized monetized buffs, or ambiguous scoring. Choose modifier combinations from a vetted compatibility matrix.
+### Core special feature: Vault Greed
+At the end of **waves 5, 10, 15, 20 and 25**, after enemy cleanup, prompt players to choose a mode for the **next five-wave block**:
+- **Secure:** no extra enemy threat or added reward multiplier; bank current risk level for this choice. Existing acquired bonus score is preserved; no new Greed modifier.
+- **Greed:** increases upcoming enemy threat by **20% for that five-wave block** and adds a **15% bonus to the potential final score/reward factor** for choosing that block. A selected Greed block does **not** apply its enemy buff to the rest of the match, preventing a late irreversible difficulty spike; choosing Greed repeatedly compounds its *end-of-run reward bonus*, with a hard cap.
+- Solo chooses directly; Duo votes independently with a visible **10-second** timer and **Secure wins ties or missing votes**. The safe default prevents one teammate from forcing risk onto another.
+- Threat modifier applies to the **server-generated enemy threat budget** for the block (health/count/special mix), not both HP and count independently at +20% (which would inadvertently exceed the target). Difficulty remains bounded by enemy concurrency/performance limits.
+- **Proposed cap:** at most five Greed decisions; reward factor `G(n)=min(1+0.15n,1.75)`. Secure decisions do not remove prior bonus; final rewards require surviving full blocks so leaving immediately after selection earns no extra payout.
+- UI announces next Greed block's modifiers, expected theft risk, existing bonus and capped potential reward before choice. It must never display the risk bonus as guaranteed Gold.
 
-### Boon pool (eight initial choices)
-**Overcharge:** +15% damage for next trial; **Quick Hands:** +12% attack speed; **Bounty:** +12% Energy from kills (capped); **Stabilizer:** dormant dice gain 50% of normal passive aura effect; **Echo Merge:** first three merges per wave refund 8 Energy; **Momentum:** damage +1% per cleared wave in trial, max +10%; **Bulwark:** prevent first two normal breaches of next trial (boss breach not prevented); **Foresight:** preview next two summon types, without allowing client selection. No lasting ownership, leaderboard advantage from purchase, or unbounded stacking.
+### Scoring and reward economy
+Keep three strictly separate ledgers:
+1. **Vault Treasure** (1,000 starting, stolen/restored during this match): gameplay health/score resource, never persistent wallet balance.
+2. **Match Energy** (from killed monsters and wave stipends): buys summons and in-match upgrades, resets at run end.
+3. **Persistent Gold / Gems / materials**: granted only through a server-validated end-of-run reward transaction, with no direct conversion from Vault Treasure.
 
-### Boss, score and rewards
-- Wave 10: **Anomaly Sentinel** teaches the current modifier; wave 20: **Fracture Knight** tests board recovery; wave 30: **Paradox Core** shifts vulnerability between short telegraphed phases. Bosses follow ordinary path/breach rules, and their mechanics must not relocate dice.
-- Completion score = cleared waves (primary), remaining lives (secondary), then finish time (tertiary). Weekly **Solo** and **Duo** leaderboards are separate; casual queue excluded. All scores are server-validated against seed, modifier list, player count and run ID.
-- Rewards: **Anomaly Fragments** for deterministic crafting of cosmetic board effects or utility materials, Gold, capped Gems from weekly milestones, profile challenge badges. Provide partial rewards per completed 10-wave trial, first-clear weekly milestone and daily diminishing returns so repeated farming does not overwhelm campaign economy.
-- Mutators are **rules**, not new rarities. Future updates can add challenge combinations, world skins and new enemy types without requiring a different map or moving dice.
+**Example formula (provisional, independently tuneable):**
+- `V = clamp(vaultRemaining / 1000,0,1)`
+- `C = clamp(wavesCleared / 30,0,1)`
+- `G = min(1 + 0.15 * completedGreedBlocks,1.75)`
+- `CompletionFactor = 0.25 + 0.75*C`
+- `GoldReward = floor(BaseGold * CompletionFactor * (0.20 + 0.80*V) * G)`
+- Only count **fully survived Greed blocks**. On defeat, cap `GoldReward` to a non-clear partial-reward ceiling. `BaseGold`, difficulty bands and daily diminishing returns need economy simulation; this is **not** a promise of 1:1 conversion from protected treasure.
 
-### UX and art contract
-- Pre-run three-rule preview with 5-dice deck and enemy-counter guidance; in-match mini timeline for trials 1–3; fixed board and path view; clear dormant-cell treatment, active mutator icons with tap tooltips, 10-second boon selection between trials.
-- Generate **all new UI assets through ChatGPT image generation**, except owned existing assets that can be modified cleanly. Every new dice added later still requires its own original icon and one large, clean, blown-up 3D modeling breakdown under ART_PIPELINE.md.
-- A low-end phone may hide detailed projectile VFX, **never** damage/speed/score truth.
+Materials earned at boss milestones are escrowed, with run-end award and once-only claim IDs. Gems come from **capped first-clear/weekly challenges**, not unlimited repeat runs. Additional chest rolls for 3+ completed Greed blocks must disclose odds, pity and eligibility, and use an earnable route. Keep paid and free rewards mechanically fair.
 
-**Production scope:** one fixed trial map using established lane/board systems; 8 mutators, vetted compatibility table, 8 boons, 3 boss variants, one weekly seeded schedule, separate solo/duo rankings, rewards and tutorials. Avoid procedural room generation, escort pathfinding, spatial player movement, and additional full maps.
+**Example:** finishing with 750 of 1,000 treasure protected, all 30 waves, and two successfully completed Greed blocks produces `GoldReward ≈ BaseGold × 1 × 0.80 × 1.30 = 1.04 × BaseGold` before daily caps. This is a reward factor, *not* 750 persistent Gold.
 
-**Acceptance:** all 30 waves playable with stationary dice; deterministic weekly seeds produce equivalent challenges; no mutator creates unavoidable full-board disablement; valid solo and duo non-premium decks can clear; 12–18 minute target playtested; leaderboard score is verifiable; same-day retries do not duplicate weekly milestone prizes; mobile board and modifier warnings stay legible.
+### Leaderboards and replayability
+- Distinct **weekly Solo** and **weekly Duo** rankings; weekly season rotation resets a leaderboard, not profiles or owned dice.
+- Score uses **successful wave 30 clear** as a prerequisite for ranked placement (proposed anti-farming gate), then **protected vault remaining**, **number of completed Greed blocks**, and **completion time** in that order. **Alternative for testing:** rank by a normalized composite score that rewards Greed enough to discourage only ever selecting Secure. Choose one transparent formula after simulations. Never place a failed run ahead of a complete one.
+- A single server-signed run ID and stored profile/party/weekly seed protects against duplicated score submissions; kills count once and players cannot claim chest rewards twice. Paid purchases grant no competitive score advantage.
+- Replay hooks: weekly enemy variants, special thief events, rotating vault cosmetics, Greed challenges and weekly missions. New maps may introduce different theft mechanics without changing stationary board controls.
+
+### UI and art
+- Lobby mode card: duration estimate, solo/duo, expected reward types, weekly leaderboard and stage unlock requirement (proposed: World 1 Wave 30).
+- Match HUD: clearly labeled **Vault Treasure** bar, waves 1–30, theft warning icons, upcoming bosses, Greed/Secure vote panel, earned reward *projection* (not wallet balance), match Energy, summon/merge controls, and normal stationary 5×3 player board. Keep battle path visible.
+- Enemy theft value should be visible via one tap. Large boss warning must not cover the board. On phones, 44px minimum interactive targets, no clipped text, clean frames and accessible color-independent status icons.
+- All new UI visuals must be **generated using ChatGPT image generation**, unless owned existing assets can be modified cleanly. If new dice are added later, generate each dice's original UI portrait and a large clean exploded **3D modeling breakdown sheet** following [ART_PIPELINE.md](ART_PIPELINE.md). Never splice unrelated existing graphics.
+
+### Technical implementation and balancing safeguards
+- Server alone mutates vault value, theft, enemy ID/kill credit, wave counters, Greed votes, rewards and leaderboard records. Make a breach and split-enemy resolution atomic so each enemy steals at most once.
+- Monster-kill rewards must not enable infinite restoration or Gold gain; spawned minions and duplicate deaths may be excluded from restoration. Set maximum enemies and pooled VFX limits for mobile.
+- Tune solo and duo separately with **same target completion rate at equivalent attainable deck investment**, rather than doubling enemy HP mechanically.
+- Verify risk increase is multiplicative only once on the enemy threat budget and is applied to the next five waves only. Greed reward cap and anti-AFK protections must pass economy tests.
+
+**Production scope:** one existing-path-derived treasure map with vault endpoint; 30 wave definitions; five theft-aware enemy types and 3 boss appearances/variants; Secure/Greed voting and threat-budget modifiers; reward ledger and theft resolution; solo/duo weekly leaderboards; loot/crafting integrations; generated UI assets and tutorial.
+
+**Acceptance criteria:** stationary boards and existing merge rules unchanged; vault theft/restoration is deterministic and server-authoritative; zero vault ends run; fully clearing wave 30 with vault > 0 wins; no Gold/Energy/Vault ledger conflation; solo/duo Greed voting cannot be forced by one player; partial rewards never outperform full clears through deliberate losses; every offered reward is achievable without Robux; leaderboard anti-cheat and once-only receipt/reward tests pass; low-end mobile text and controls readable; duration and win rates verified through playtesting.
 
 ## Update 3: Dice Duel Arena — PvP with rewards and leaderboard
 **Goal:** competitive gameplay that doesn't invalidate the cooperative foundation.
@@ -158,7 +179,7 @@ Random Dice: Defense (111%) demonstrates stationary dice summoning, merging, lev
 
 ## Items to decide after MVP playtesting
 - Whether new World 2 should add 5 dice at once or launch with 3 and deliver 2 through events.
-- Whether Anomaly Trials unlock after World 1 or World 2, and whether weekly difficulty tiers need separate matchmaking/leaderboards.
+- Whether Treasure Defense unlocks at World 1 Wave 30 or after a first world clear; tune the vault's starting treasure, thief theft values, Greed score incentives and weekly ranking tie-breakers through simulations.
 - Whether PvP is best with player-sent mobs or mirrored survival-only tiebreaks; prototype both before locking ranked.
 - How competitive seasons reset rank without excessively punishing inactive skilled players.
 - Whether four-player raids can maintain low-end phone frame rate, or should use simplified VFX.
