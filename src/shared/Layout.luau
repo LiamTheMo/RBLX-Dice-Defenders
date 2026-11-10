@@ -24,10 +24,11 @@ function Layout.CellPosition(i: number): Vector3
 end
 
 Layout.Waypoints = table.freeze({
-	Vector3.new(-40, Y, -19),
-	Vector3.new(22, Y, -19),
-	Vector3.new(22, Y, 19),
-	Vector3.new(-10, Y, 19),
+	-- Hugs the board (1.8-stud gap to the 7-stud strip) so phones can frame it larger.
+	Vector3.new(-28, Y, -14),
+	Vector3.new(20, Y, -14),
+	Vector3.new(20, Y, 14),
+	Vector3.new(-28, Y, 14),
 })
 
 -- cumulative[i] = path distance of waypoint i.
@@ -57,8 +58,9 @@ end
 
 -- Fixed top-down-ish view framing the path and the board.
 Layout.Camera = table.freeze({
-	Position = Vector3.new(-9, 85, 38),
-	LookAt = Vector3.new(-9, 0, 0),
+	-- Fitted so path, board and boss clear the HUD at 1235x739, 844x390 and 667x375.
+	Position = Vector3.new(2, 50.5, 11.6),
+	LookAt = Vector3.new(2, 0, -1),
 	FieldOfView = 55,
 })
 

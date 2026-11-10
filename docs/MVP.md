@@ -13,7 +13,8 @@
 - **Combat:** dice auto-attack, and every die targets the alive enemy **closest to the exit** (greatest path distance) anywhere on the path; there is no range limit (playtest feedback). `hitDamage = max(1, floor(base * pip^0.85 * perk))`. Perks: Pebble ×1.05 vs Grunt; Hammer ×1.12 vs armored; Longshot ×0.9 vs Boss; Needle every 6th hit of that die instance +8 flat; Twinshot two shots at ×0.7 each (second goes to the next-closest-to-exit alive enemy, else the same target). Cooldown does not bank while idle; max 2 attacks per die per tick.
 - **Reward** at match end (Won or Lost; not on abort): Gold `50 + 3*wavesCompleted`, exactly once per run id. Also BestWave, RunsPlayed, TrialCleared.
 - **Speeds (*tune*):** Grunt 6, Runner 9, Brute 4, Boss 3 studs/s.
-- **Dice visuals:** white cube with near-black pips on the top face in standard 1–6 layouts; 7 is one large gold star; type colour shown off the top face.
+- **Dice visuals:** white cube with dark type-tinted pips on the top face in standard 1–6 layouts; 7 is one large gold star; type colour also on a band around the lower sides. Selected die lifts with a yellow outline; valid merge partners get a white outline.
+- **Framing:** the path hugs the board and the camera is fitted so path, board and boss clear the HUD at 1235×739, 844×390 and 667×375 (dice ≈ 65 px desktop, ≈ 34 px phone).
 
 ## Layout (Rojo, same tree as the owner's other projects)
 `default.project.json`: `src/shared` → ReplicatedStorage.Shared, `src/server` → ServerScriptService.Server, `src/client` → StarterPlayerScripts.Client, `Players.CharacterAutoLoads = false`.

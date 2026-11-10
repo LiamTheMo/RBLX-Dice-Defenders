@@ -184,7 +184,7 @@ local function build()
 	-- Bottom centre: toast above the hint.
 	ui.ToastFrame = panel({
 		AnchorPoint = Vector2.new(0.5, 1),
-		Position = UDim2.new(0.5, 0, 1, -48),
+		Position = UDim2.new(0.5, 0, 1, -56),
 		Size = UDim2.new(0.34, 0, 0, 34),
 		Visible = false,
 		ZIndex = 3,
@@ -192,15 +192,15 @@ local function build()
 	make("UISizeConstraint", { MinSize = Vector2.new(200, 34), MaxSize = Vector2.new(420, 44) }, ui.ToastFrame)
 	ui.Toast = label({ Size = UDim2.fromScale(1, 1), ZIndex = 4 }, ui.ToastFrame, 22)
 
-	ui.Hint = label({
+	ui.Hint = panel({
 		AnchorPoint = Vector2.new(0.5, 1),
 		Position = UDim2.new(0.5, 0, 1, -10),
-		Size = UDim2.new(0.34, 0, 0, 26),
-		Text = "Tap a die, then a matching die to merge",
-		TextTransparency = 0.15,
+		Size = UDim2.new(0.34, 0, 0, 30),
 		Visible = false,
-	}, gui, 20)
-	make("UISizeConstraint", { MinSize = Vector2.new(260, 26), MaxSize = Vector2.new(520, 30) }, ui.Hint)
+	}, gui)
+	make("UISizeConstraint", { MinSize = Vector2.new(260, 30), MaxSize = Vector2.new(520, 36) }, ui.Hint)
+	make("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) }, ui.Hint)
+	label({ Size = UDim2.fromScale(1, 1), Text = "Tap a die, then a matching die to merge" }, ui.Hint, 20)
 
 	-- Result panel (Ended).
 	ui.Result = panel({
