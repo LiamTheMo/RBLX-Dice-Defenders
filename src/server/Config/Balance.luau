@@ -2,14 +2,13 @@
 local Balance = {}
 
 Balance.BoardCells = 15 -- 5 x 3, row-major
-Balance.StartEnergy = 20
+Balance.StartEnergy = 43 -- exactly four summons: 10 + 10 + 11 + 12
 Balance.StartLives = 20
 Balance.Waves = 10
 Balance.BossWave = 10
 Balance.MaxAlive = 90
 Balance.FirstWaveDelay = 4 -- seconds after Start
 Balance.WaveGap = 4 -- seconds after a wave is cleared
-Balance.BaseRange = 20 -- studs
 Balance.MaxAttacksPerTick = 2
 Balance.MaxStep = 0.25 -- largest dt Match.Step simulates at once
 Balance.TickHz = 10

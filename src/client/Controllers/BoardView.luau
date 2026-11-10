@@ -17,7 +17,7 @@ local SELECT_COLOR = Color3.fromRGB(255, 220, 60)
 local PARTNER_COLOR = Color3.fromRGB(80, 220, 230)
 
 local pads = {} -- cell -> Part
-local dice = {} -- cell -> { part, accent, label, key }
+local dice = {} -- cell -> { part, accent, pips, star, key }
 local board = {} -- latest Board from State
 local playing = false
 local selected: number? = nil
@@ -101,35 +101,78 @@ local function buildWorld()
 	rayParams.FilterDescendantsInstances = { padsFolder, diceFolder }
 end
 
+local DIE = 4.4 -- pads are 5.4 studs, cell spacing 6
+local HALF = DIE / 2
+local PIP_D = 1.0
+local FLAT = CFrame.Angles(0, 0, math.rad(90)) -- lays a Cylinder's axis along Y
+local PIP_COLOR = Color3.fromRGB(25, 25, 30)
+-- Standard die faces on the top: offsets (right, back) in studs, up to 6 slots.
+local G = 1.1
+local PIP_LAYOUTS = {
+	{ { 0, 0 } },
+	{ { -G, -G }, { G, G } },
+	{ { -G, -G }, { 0, 0 }, { G, G } },
+	{ { -G, -G }, { G, -G }, { -G, G }, { G, G } },
+	{ { -G, -G }, { G, -G }, { 0, 0 }, { -G, G }, { G, G } },
+	{ { -G, -G }, { G, -G }, { -G, 0 }, { G, 0 }, { -G, G }, { G, G } },
+}
+
 local function makeDie(cell: number)
 	local c = Layout.CellPosition(cell)
 	local body = part(
 		diceFolder,
 		"Die" .. cell,
-		Vector3.new(3.4, 3.4, 3.4),
-		CFrame.new(c.X, 2.1, c.Z),
+		Vector3.new(DIE, DIE, DIE),
+		CFrame.new(c.X, 0.4 + HALF, c.Z),
 		Color3.fromRGB(245, 245, 245)
 	)
 	body.CanQuery = true
 	body:SetAttribute("Cell", cell)
-	local accent =
-		part(body, "Accent", Vector3.new(3.4, 0.4, 3.4), body.CFrame * CFrame.new(0, 1.7, 0), Color3.new(1, 1, 1))
-	accent.CanQuery = false
-	local gui = Instance.new("BillboardGui")
-	gui.Size = UDim2.fromOffset(72, 56)
-	gui.StudsOffset = Vector3.new(0, 3.2, 0)
-	gui.AlwaysOnTop = true
+	-- Type colour: a band around the lower sides, so the top face stays white.
+	local band = part(
+		body,
+		"Band",
+		Vector3.new(DIE + 0.1, 1, DIE + 0.1),
+		body.CFrame * CFrame.new(0, -1.5, 0),
+		Color3.new(1, 1, 1)
+	)
+	band.CanQuery = false
+	local pips = {}
+	for i = 1, 6 do
+		local pip = part(body, "Pip" .. i, Vector3.new(0.1, PIP_D, PIP_D), body.CFrame, PIP_COLOR)
+		pip.Shape = Enum.PartType.Cylinder
+		pip.CanQuery = false
+		pip.Parent = nil
+		pips[i] = pip
+	end
+	local gui = Instance.new("SurfaceGui")
+	gui.Face = Enum.NormalId.Top
+	gui.Enabled = false
 	gui.Parent = body
-	local label = Instance.new("TextLabel")
-	label.Size = UDim2.fromScale(1, 1)
-	label.BackgroundTransparency = 1
-	label.Font = Enum.Font.GothamBlack
-	label.TextScaled = true
-	label.TextColor3 = Color3.fromRGB(30, 30, 40)
-	label.TextStrokeColor3 = Color3.new(1, 1, 1)
-	label.TextStrokeTransparency = 0
-	label.Parent = gui
-	return { part = body, accent = accent, label = label, key = "" }
+	local star = Instance.new("TextLabel")
+	star.Size = UDim2.fromScale(1, 1)
+	star.BackgroundTransparency = 1
+	star.Font = Enum.Font.GothamBlack
+	star.Text = "\u{2605}"
+	star.TextScaled = true
+	star.TextColor3 = Color3.fromRGB(255, 190, 30)
+	star.Parent = gui
+	return { part = body, accent = band, pips = pips, star = gui, key = "" }
+end
+
+-- Pip 1-6: dark discs on the top face; pip 7: one large gold star.
+local function setPips(die, pip: number)
+	local layout = PIP_LAYOUTS[pip]
+	die.star.Enabled = layout == nil
+	for i, disc in die.pips do
+		local slot = layout and layout[i]
+		if slot then
+			disc.CFrame = die.part.CFrame * CFrame.new(slot[1], HALF + 0.05, slot[2]) * FLAT
+			disc.Parent = die.part
+		else
+			disc.Parent = nil
+		end
+	end
 end
 
 local function canMerge(a: number, b: number): boolean
@@ -166,7 +209,7 @@ local function render(snapshot)
 				die.key = parts[i]
 				local style = Display.Dice[entry.T]
 				die.accent.Color = if style then style.Color else Color3.new(1, 1, 1)
-				die.label.Text = Display.PipLabel(entry.P)
+				setPips(die, entry.P)
 			end
 			die.part.Parent = diceFolder
 		elseif die then

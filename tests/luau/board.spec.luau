@@ -5,6 +5,7 @@ local Board = require(Server.Rules.Board)
 local Match = require(Server.Rules.Match)
 local Formulas = require(Server.Rules.Formulas)
 local Dice = require(Server.Config.Dice)
+local Balance = require(Server.Config.Balance)
 
 local NAN, INF = 0 / 0, math.huge
 
@@ -150,12 +151,14 @@ end)
 
 test("summons spend the rising cost; NoEnergy leaves state unchanged; deck types only", function()
 	local state = Match.New(1, Random.new(9), 0)
-	expectEq(state.energy, 20, "start energy")
+	expectEq(state.energy, 43, "start energy")
 	expect(Match.TrySummon(state), "first summon")
-	expectEq(state.energy, 10, "cost 10")
+	expectEq(state.energy, 33, "cost 10")
 	expect(Match.TrySummon(state), "second summon (cost 10)")
+	expect(Match.TrySummon(state), "third summon (cost 11)")
+	expectEq(Match.SummonCost(state), 12, "fourth costs 12")
+	expect(Match.TrySummon(state), "fourth summon")
 	expectEq(state.energy, 0, "spent")
-	expectEq(Match.SummonCost(state), 11, "third costs 11")
 	local before = ser(state.board) .. state.energy .. state.summons
 	local ok, code = Match.TrySummon(state)
 	expect(not ok and code == "NoEnergy", "no energy")
@@ -184,4 +187,18 @@ test("Match.TryMerge validates before rolling; reject leaves everything, includi
 	state.phase = "Ended"
 	local ok2, code2 = Match.TryMerge(state, 1, 2)
 	expect(not ok2 and code2 == "WrongPhase", "not while ended")
+end)
+
+test("start Energy is exactly four summons, then NoEnergy before any kill", function()
+	local total = 0
+	for s = 0, 3 do
+		total += Formulas.SummonCost(s)
+	end
+	expectEq(Balance.StartEnergy, total, "StartEnergy == cost(0..3)")
+	local state = Match.New(1, Random.new(2), 0)
+	for i = 1, 4 do
+		expect(Match.TrySummon(state), "summon " .. i)
+	end
+	local ok, code = Match.TrySummon(state)
+	expect(not ok and code == "NoEnergy", "fifth summon refused")
 end)

@@ -4,15 +4,16 @@
 
 ## Scope
 - **Solo**, one match per server. Owner = first player whose profile loaded; if the owner leaves, the next loaded player becomes owner and the server returns to Lobby. Non-owners get `Phase = "NotOwner"` and every intent is rejected. Set place max players to 1 for production.
-- **Deck** fixed to C01 Pebble, C02 Needle, C03 Hammer, C04 Twinshot, C05 Longshot (stats/perks from DICE_CATALOG.md; Hammer turn speed omitted).
+- **Deck** fixed to C01 Pebble, C02 Needle, C03 Hammer, C04 Twinshot, C05 Longshot (stats/perks from DICE_CATALOG.md; Hammer turn speed omitted; Longshot's +25% range perk is moot under global targeting and awaits a replacement).
 - **Board** 5×3 (cells 1..15, row-major). **Summon:** costs `min(250, max(10, floor(10*1.085^s)))` Energy (`s` = successful summons this match); places a pip-1 die of a random deck type in a random empty cell. **Merge** `from → to`: both occupied, same type, same pip, pip ≤ 6, `from ≠ to`; `from` is cleared, `to` becomes pip+1 with a type re-rolled from the deck. Pip 7 shows as **7★**.
-- **Energy:** start 20; kill Grunt 3 / Runner 3 / Brute 5 / Boss 30; stipend `6 + floor(w/10)` after each cleared wave.
+- **Energy:** start 43 (exactly the first 4 summons: 10+10+11+12; playtest feedback); kill Grunt 3 / Runner 3 / Brute 5 / Boss 30; stipend `6 + floor(w/10)` after each cleared wave.
 - **Waves 1–10.** Count `min(45, 8 + floor(.35*(w-1)))`; spawn interval `clamp(1.6 - .007*w, .35, 1.6)` s; speed multiplier `min(1.6, 1 + .006*(w-1))`; HP `round(80 * (1 + .018*(w-1)) * typeMul * bossMul)` with Grunt 1, Runner .70, Brute 3.0 (armored), Boss 12. Composition for spawn index `i` (1-based): Brute if `w ≥ 5 and i % 5 == 0`, else Runner if `w ≥ 3 and i % 3 == 0`, else Grunt. Wave 10 spawns the **Thorn Warden** boss first, then the normal budget. Max 90 alive (spawns wait, never dropped).
 - **Cadence:** first wave starts 4 s after Start; each next wave 4 s after the previous one is cleared. When the next wave is 10, `BossAt` is set at the start of that prep (4 s warning).
 - **Lives** 20; breach −1, boss −5. **Lost** at lives ≤ 0. **Won** when wave 10 is cleared.
-- **Combat:** dice auto-attack, target **First** (alive enemy with greatest path distance within range). `hitDamage = max(1, floor(base * pip^0.85 * perk))`. Perks: Pebble ×1.05 vs Grunt; Hammer ×1.12 vs armored; Longshot range ×1.25 and ×0.9 vs Boss; Needle every 6th hit of that die instance +8 flat; Twinshot two shots at ×0.7 each (second goes to the next alive in-range enemy in First order, else the same target). Cooldown does not bank while idle; max 2 attacks per die per tick.
+- **Combat:** dice auto-attack, and every die targets the alive enemy **closest to the exit** (greatest path distance) anywhere on the path; there is no range limit (playtest feedback). `hitDamage = max(1, floor(base * pip^0.85 * perk))`. Perks: Pebble ×1.05 vs Grunt; Hammer ×1.12 vs armored; Longshot ×0.9 vs Boss; Needle every 6th hit of that die instance +8 flat; Twinshot two shots at ×0.7 each (second goes to the next-closest-to-exit alive enemy, else the same target). Cooldown does not bank while idle; max 2 attacks per die per tick.
 - **Reward** at match end (Won or Lost; not on abort): Gold `50 + 3*wavesCompleted`, exactly once per run id. Also BestWave, RunsPlayed, TrialCleared.
-- **Speeds/range (*tune*):** Grunt 6, Runner 9, Brute 4, Boss 3 studs/s; base range 20 studs.
+- **Speeds (*tune*):** Grunt 6, Runner 9, Brute 4, Boss 3 studs/s.
+- **Dice visuals:** white cube with near-black pips on the top face in standard 1–6 layouts; 7 is one large gold star; type colour shown off the top face.
 
 ## Layout (Rojo, same tree as the owner's other projects)
 `default.project.json`: `src/shared` → ReplicatedStorage.Shared, `src/server` → ServerScriptService.Server, `src/client` → StarterPlayerScripts.Client, `Players.CharacterAutoLoads = false`.

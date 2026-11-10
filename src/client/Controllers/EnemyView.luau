@@ -105,7 +105,8 @@ local function fire(cell: number, id: number)
 		return
 	end
 	local from = Layout.CellPosition(cell) + Vector3.new(0, 3, 0)
-	local to = e.part.Position
+	-- From the path, not e.part: an enemy spawned in this batch isn't positioned until RenderStepped.
+	local to = Layout.PositionAt(e.speed * (workspace:GetServerTimeNow() - e.spawnAt)) + Vector3.new(0, e.lift, 0)
 	t.part.Size = Vector3.new(0.2, 0.2, (to - from).Magnitude)
 	t.part.CFrame = CFrame.lookAt((from + to) / 2, to)
 	t.part.Parent = tracerFolder

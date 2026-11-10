@@ -45,10 +45,6 @@ function Formulas.RewardGold(wavesCompleted: number): number
 	return Balance.Reward.gold + Balance.Reward.goldPerWave * wavesCompleted
 end
 
-function Formulas.Range(typeId: string): number
-	return Balance.BaseRange * (Dice.Types[typeId].rangeMul or 1)
-end
-
 function Formulas.Period(typeId: string): number
 	return 1 / Dice.Types[typeId].rate
 end

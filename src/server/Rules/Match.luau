@@ -19,12 +19,6 @@ local Match = {}
 
 local RESULTS = { Won = true, Lost = true, Aborted = true, Error = true }
 
-local CELL_X, CELL_Z = {}, {}
-for i = 1, Balance.BoardCells do
-	local p = Layout.CellPosition(i)
-	CELL_X[i], CELL_Z[i] = p.X, p.Z
-end
-
 local function newOut()
 	return { S = {}, H = {}, R = {}, F = {}, Hidx = {}, dirty = false }
 end
@@ -192,28 +186,23 @@ local function damage(state, enemy, amount: number)
 	end
 end
 
-local function attack(state, now: number, ex: { number }, ez: { number })
+local function attack(state, now: number)
 	local enemies = state.enemies
 	for cell = 1, Balance.BoardCells do
 		local die = state.board[cell]
 		if die then
 			local cfg = Dice.Types[die.type]
 			local period = Formulas.Period(die.type)
-			local range = Formulas.Range(die.type)
-			local range2 = range * range
 			local attacks = 0
 			while die.cd <= now and attacks < Balance.MaxAttacksPerTick do
-				-- First: greatest path distance in range; second is the runner-up.
+				-- Global First: the alive enemies closest to the exit, anywhere on the path.
 				local first, second
-				for i, enemy in enemies do
+				for _, enemy in enemies do
 					if enemy.hp > 0 then
-						local dx, dz = ex[i] - CELL_X[cell], ez[i] - CELL_Z[cell]
-						if dx * dx + dz * dz <= range2 then
-							if first == nil or enemy.dist > first.dist then
-								first, second = enemy, first
-							elseif second == nil or enemy.dist > second.dist then
-								second = enemy
-							end
+						if first == nil or enemy.dist > first.dist then
+							first, second = enemy, first
+						elseif second == nil or enemy.dist > second.dist then
+							second = enemy
 						end
 					end
 				end
@@ -277,12 +266,7 @@ function Match.Step(state, now: number)
 	end
 
 	-- Dice attacks.
-	local ex, ez = {}, {}
-	for i, enemy in survivors do
-		local p = Layout.PositionAt(enemy.dist)
-		ex[i], ez[i] = p.X, p.Z
-	end
-	attack(state, now, ex, ez)
+	attack(state, now)
 
 	-- Deaths + kill Energy.
 	local alive = {}

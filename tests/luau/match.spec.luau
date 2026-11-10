@@ -102,8 +102,6 @@ test("perk damage: hitDamage = max(1, floor(base * pip^0.85 * perk)) plus flat",
 	expectEq(Formulas.HitDamage("C02", 1, "Grunt"), 9, "needle plain")
 	expectEq(Formulas.HitDamage("C02", 1, "Grunt", 8), 17, "needle with proc")
 	expectEq(Formulas.HitDamage("C04", 1, "Grunt") >= 1, true, "never below 1")
-	expectEq(Formulas.Range("C01"), 20, "base range")
-	expectEq(Formulas.Range("C05"), 25, "longshot range x1.25")
 end)
 
 test("layout: path length, clamped PositionAt, constant Y, camera, cell grid", function()
@@ -125,34 +123,6 @@ test("layout: path length, clamped PositionAt, constant Y, camera, cell grid", f
 	expect(Layout.CellPosition(1).Z < Layout.CellPosition(11).Z, "row-major rows")
 	expectEq(Layout.CellPosition(8).X, 0, "centre cell on the origin")
 	expectEq(Layout.CellPosition(8).Z, 0, "centre cell on the origin")
-end)
-
-test("layout: most cells reach the path with base range, Longshot reaches more", function()
-	local function reach(cell, range)
-		local c = Layout.CellPosition(cell)
-		local count = 0
-		for d = 0, Layout.PathLength, 1 do
-			local p = Layout.PositionAt(d)
-			local dx, dz = p.X - c.X, p.Z - c.Z
-			if dx * dx + dz * dz <= range * range then
-				count += 1
-			end
-		end
-		return count
-	end
-	local reaching, longer = 0, 0
-	for cell = 1, 15 do
-		local base, long = reach(cell, Formulas.Range("C01")), reach(cell, Formulas.Range("C05"))
-		if base > 0 then
-			reaching += 1
-		end
-		expect(long >= base, "longshot never reaches less, cell " .. cell)
-		if long > base then
-			longer += 1
-		end
-	end
-	expect(reaching >= 10, "cells reaching the path: " .. reaching)
-	expect(longer >= 10, "cells where Longshot reaches more: " .. longer)
 end)
 
 test("display data covers every die and enemy; pip 7 shows as 7 star", function()
@@ -245,19 +215,19 @@ test("kill Energy: Grunt 3, Runner 3, Brute 5, Boss 30", function()
 	end
 end)
 
-test("First targeting: greatest path distance in range wins; out of range is ignored", function()
+test("Global First: the alive enemy closest to the exit is hit, wherever it is", function()
 	local state = newState()
 	openWave(state)
-	place(state, 5, "C01", 1) -- cell 5 at (12, -6)
-	local back = addEnemy(state, "Brute", 5000, 50) -- (10, -19): in range, behind
-	local front = addEnemy(state, "Brute", 5000, 56) -- (16, -19): in range, ahead
-	local far = addEnemy(state, "Brute", 5000, 100) -- (22, 19): out of range of Pebble
+	place(state, 1, "C01", 1) -- cell 1 at (-12, -6), far from the enemies below
+	local back = addEnemy(state, "Brute", 5000, 50)
+	local front = addEnemy(state, "Brute", 5000, 100) -- (22, 19): ~40 studs from the die
+	local mid = addEnemy(state, "Brute", 5000, 56)
 	runFor(state, 0.2)
-	expect(front.hp < front.maxHp, "front-most in range was hit")
-	expectEq(back.hp, back.maxHp, "enemy behind untouched")
-	expectEq(far.hp, far.maxHp, "out-of-range enemy untouched")
+	expect(front.hp < front.maxHp, "closest to the exit was hit despite distance")
+	expectEq(back.hp, back.maxHp, "back untouched")
+	expectEq(mid.hp, mid.maxHp, "middle untouched")
 	local batch = Match.TakeOut(state)
-	expect(#batch.F >= 1 and batch.F[1].Cell == 5 and batch.F[1].Id == front.id, "tracer record")
+	expect(#batch.F >= 1 and batch.F[1].Cell == 1 and batch.F[1].Id == front.id, "tracer record")
 	expect(#batch.H >= 1 and batch.H[1].Id == front.id, "hp record")
 end)
 
@@ -303,13 +273,11 @@ test("cooldown does not bank while idle, and a die fires at most twice per tick"
 	local state = newState()
 	openWave(state)
 	place(state, 5, "C02", 1)
-	local sentinel = addEnemy(state, "Brute", 1e6, 100) -- out of range for a long time
-	runFor(state, 5) -- idle for 5 s
-	expectEq(sentinel.hp, sentinel.maxHp, "nothing in range")
+	runFor(state, 5) -- idle for 5 s with nothing to shoot
 	local target = addEnemy(state, "Brute", 100000, 56)
 	local hp0 = target.hp
 	Match.Step(state, state.lastNow + DT)
-	expect(hp0 - target.hp <= 2 * 17, "idle time did not bank a burst")
+	expect(hp0 - target.hp <= 17, "idle time did not bank a burst")
 end)
 
 test("stipend after each cleared wave; boss warning of at least 3 s; boss spawns first", function()
