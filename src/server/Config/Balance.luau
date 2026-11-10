@@ -21,6 +21,8 @@ Balance.Remotes = table.freeze({
 	Start = table.freeze({ rate = 1, burst = 2 }),
 	Summon = table.freeze({ rate = 5, burst = 8 }),
 	Merge = table.freeze({ rate = 5, burst = 8 }),
+	EquipDeck = table.freeze({ rate = 1, burst = 3 }),
+	ClaimQuest = table.freeze({ rate = 2, burst = 4 }),
 })
 Balance.KickThreshold = 20
 Balance.LogInterval = 5 -- seconds between violation log lines per player

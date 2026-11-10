@@ -23,8 +23,10 @@ local function newOut()
 	return { S = {}, H = {}, R = {}, F = {}, Hidx = {}, dirty = false }
 end
 
-function Match.New(runId: number, rng: any, now: number)
+function Match.New(runId: number, rng: any, now: number, deck: { string })
 	return {
+		deck = table.clone(deck),
+		kills = 0,
 		runId = runId,
 		rng = rng,
 		phase = "Playing",
@@ -89,7 +91,7 @@ function Match.TrySummon(state): (boolean, string?)
 		return false, "BoardFull"
 	end
 	local cell = empty[state.rng:NextInteger(1, #empty)]
-	local typeId = Dice.Deck[state.rng:NextInteger(1, #Dice.Deck)]
+	local typeId = state.deck[state.rng:NextInteger(1, #state.deck)]
 	local ok, code = Economy.TryChange(state, "energy", -cost)
 	if not ok then
 		return false, if code == "Insufficient" then "NoEnergy" else code
@@ -111,7 +113,7 @@ function Match.TryMerge(state, from: any, to: any): (boolean, string?)
 	if not legal then
 		return false, code
 	end
-	local typeId = Dice.Deck[state.rng:NextInteger(1, #Dice.Deck)]
+	local typeId = state.deck[state.rng:NextInteger(1, #state.deck)]
 	local ok, mergeCode = Board.Merge(state.board, from, to, typeId)
 	if not ok then
 		return false, mergeCode
@@ -274,6 +276,7 @@ function Match.Step(state, now: number)
 	for _, enemy in survivors do
 		if enemy.hp <= 0 then
 			Economy.TryChange(state, "energy", Enemies.Kinds[enemy.kind].energy)
+			state.kills += 1
 			table.insert(state.out.R, { Id = enemy.id, Why = "Kill" })
 			state.out.dirty = true
 		else

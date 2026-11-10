@@ -1,4 +1,5 @@
--- Fixed MVP deck (docs/DICE_CATALOG.md Common table). Data-driven perks:
+-- Dice.Deck is the starter deck (docs/DICE_CATALOG.md Common table); a match plays
+-- the profile's own Deck. Data-driven perks:
 --   vsKind[kind]        damage multiplier against one enemy kind
 --   vsArmored           damage multiplier against armored enemies
 --   shots/shotMul       projectiles per attack and per-shot damage multiplier

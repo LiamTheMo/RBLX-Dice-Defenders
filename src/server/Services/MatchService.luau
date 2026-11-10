@@ -7,9 +7,10 @@ local RunService = game:GetService("RunService")
 
 local Balance = require(script.Parent.Parent.Config.Balance)
 local Net = require(script.Parent.Parent.Infrastructure.Net)
-local Economy = require(script.Parent.Parent.Rules.Economy)
+local Deck = require(script.Parent.Parent.Rules.Deck)
 local Formulas = require(script.Parent.Parent.Rules.Formulas)
 local Match = require(script.Parent.Parent.Rules.Match)
+local Quests = require(script.Parent.Parent.Rules.Quests)
 local ProfileService = require(script.Parent.ProfileService)
 
 local MatchService = {}
@@ -20,6 +21,7 @@ local match = nil -- nil = Lobby
 local rewardGold: number? = nil
 local lastTick = 0
 local runRng = Random.new()
+local lastDay = Quests.Day(os.time()) -- UTC day of the last Meta day-change check
 
 local function isOwner(player: Player): boolean
 	return owner == player
@@ -74,6 +76,26 @@ local function push(player: Player)
 	Net.Fire("State", player, snapshot(player))
 end
 
+-- Lobby data for one player, sent to that player only. Arrays only (no sparse keys).
+local function meta(profile)
+	local dice = {}
+	for id, die in profile.Dice do
+		table.insert(dice, { Id = id, Level = die.Level, Copies = die.Copies })
+	end
+	table.sort(dice, function(a, b)
+		return a.Id < b.Id
+	end)
+	local view = Quests.View(profile, os.time())
+	return { Dice = dice, Deck = table.clone(profile.Deck), Quests = view.Quests, DailyResetAt = view.DailyResetAt }
+end
+
+local function pushMeta(player: Player)
+	local profile = ProfileService.Get(player)
+	if profile ~= nil then
+		Net.Fire("Meta", player, meta(profile))
+	end
+end
+
 local function pushAll()
 	for _, player in Players:GetPlayers() do
 		push(player)
@@ -107,7 +129,8 @@ local function settle()
 	if profile == nil then
 		return
 	end
-	local ok, gold = Economy.GrantRunReward(profile, match.runId, match.wavesCompleted, match.result == "Won")
+	local ok, gold =
+		Quests.SettleRun(profile, match.runId, match.wavesCompleted, match.result == "Won", match.kills, os.time())
 	if not ok then
 		warn("[MatchService] Reward refused: " .. tostring(gold))
 		return
@@ -146,6 +169,7 @@ local function onLoaded(player: Player)
 		owner = player
 	end
 	push(player)
+	pushMeta(player)
 end
 
 -- Before the release save: an owner leaving (or shutdown) aborts without reward.
@@ -176,8 +200,11 @@ local function handleStart(player: Player): (boolean, string?)
 	if profile == nil then
 		return false, "NotLoaded"
 	end
+	if not Deck.Check(profile.Dice, profile.Deck) then
+		return false, "BadDeck" -- never swap in a different deck silently
+	end
 	rewardGold = nil
-	match = Match.New(newRunId(profile), Random.new(), workspace:GetServerTimeNow())
+	match = Match.New(newRunId(profile), Random.new(), workspace:GetServerTimeNow(), profile.Deck)
 	flush(true)
 	return true, nil
 end
@@ -200,12 +227,47 @@ local function handleMerge(_, from: number, to: number): (boolean, string?)
 	return ok, code
 end
 
+local function handleEquipDeck(player: Player, ids: any): (boolean, string?)
+	if match and match.phase == "Playing" then
+		return false, "WrongPhase"
+	end
+	local profile = ProfileService.Get(player)
+	if profile == nil then
+		return false, "NotLoaded"
+	end
+	local ok, code = Deck.Equip(profile, ids)
+	if ok then
+		ProfileService.MarkChanged(player) -- Changed pushes Meta
+	end
+	return ok, code
+end
+
+local function handleClaimQuest(player: Player, id: string): (boolean, string?)
+	local profile = ProfileService.Get(player)
+	if profile == nil then
+		return false, "NotLoaded"
+	end
+	local ok, code = Quests.Claim(profile, id, os.time())
+	if ok then
+		ProfileService.MarkChanged(player)
+	end
+	return ok, code
+end
+
 local function tick()
 	local now = workspace:GetServerTimeNow()
 	if now - lastTick < 1 / Balance.TickHz then
 		return
 	end
 	lastTick = now
+	-- Before the match early-out: the lobby needs the new day's quests too.
+	local day = Quests.Day(os.time())
+	if day ~= lastDay then
+		lastDay = day
+		for _, player in order do
+			pushMeta(player)
+		end
+	end
 	if match == nil or match.phase ~= "Playing" then
 		return
 	end
@@ -231,6 +293,8 @@ function MatchService.Init()
 	Net.Handle("Start", handleStart)
 	Net.Handle("Summon", handleSummon)
 	Net.Handle("Merge", handleMerge)
+	Net.Handle("EquipDeck", handleEquipDeck)
+	Net.Handle("ClaimQuest", handleClaimQuest)
 end
 
 function MatchService.Start()
@@ -248,6 +312,10 @@ function MatchService.Start()
 		if table.find(order, player) then
 			onRemoving(player)
 		end
+	end)
+	ProfileService.Changed:Connect(function(player)
+		push(player) -- Gold/stats live in State (a quest claim changes Gold)
+		pushMeta(player)
 	end)
 	RunService.Heartbeat:Connect(tick)
 end

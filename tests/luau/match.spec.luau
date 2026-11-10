@@ -6,6 +6,7 @@ local Match = require(Server.Rules.Match)
 local Board = require(Server.Rules.Board)
 local Formulas = require(Server.Rules.Formulas)
 local Balance = require(Server.Config.Balance)
+local Dice = require(Server.Config.Dice)
 local Enemies = require(Server.Config.Enemies)
 local Layout = require(game:GetService("ReplicatedStorage").Shared.Layout)
 local Display = require(game:GetService("ReplicatedStorage").Shared.Display)
@@ -13,7 +14,7 @@ local Display = require(game:GetService("ReplicatedStorage").Shared.Display)
 local DT = 0.1
 
 local function newState(now)
-	return Match.New(1, Random.new(11), now or 0)
+	return Match.New(1, Random.new(11), now or 0, Dice.Deck)
 end
 
 local function place(state, cell, typeId, pip)
@@ -365,4 +366,41 @@ test("Finish ends once with a valid result; Ended match ignores intents", functi
 	expectEq(state.result, "Aborted", "result kept")
 	local ok, code = Match.TrySummon(state)
 	expect(not ok and code == "WrongPhase", "no summon after end")
+end)
+
+test("summons and merges draw only from the passed deck, which Match copies", function()
+	local deck = { "C03", "C03", "C03", "C03", "C03" }
+	local state = Match.New(1, Random.new(4), 0, deck)
+	expect(state.deck ~= deck, "own copy")
+	deck[1] = "C01" -- caller mutation must not leak in
+	state.energy = 100000
+	for _ = 1, 6 do
+		state.energy = 100000
+		expect(Match.TrySummon(state), "summon")
+	end
+	for _, die in state.board do
+		if die then
+			expectEq(die.type, "C03", "only the deck type")
+		end
+	end
+	local cells = {}
+	for i, die in state.board do
+		if die then
+			table.insert(cells, i)
+		end
+	end
+	expect(Match.TryMerge(state, cells[1], cells[2]), "merge")
+	expectEq(state.board[cells[2]].type, "C03", "merge result from the deck")
+end)
+
+test("kills count only deaths by damage, never breaches", function()
+	local state = newState()
+	openWave(state)
+	place(state, 5, "C03", 7)
+	addEnemy(state, "Grunt", 1, 55)
+	addEnemy(state, "Grunt", 80, Layout.PathLength - 0.1)
+	expectEq(state.kills, 0, "starts at 0")
+	runFor(state, 2)
+	expectEq(state.kills, 1, "one kill, one breach")
+	expectEq(state.lives, 19, "the breach still cost a life")
 end)

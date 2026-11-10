@@ -134,7 +134,7 @@ end)
 
 test("a full board rejects summon without spending Energy or consuming randomness", function()
 	local rng = Random.new(5)
-	local state = Match.New(1, rng, 0)
+	local state = Match.New(1, rng, 0, Dice.Deck)
 	state.energy = 100000
 	for _ = 1, 15 do
 		state.energy = 100000
@@ -150,7 +150,7 @@ test("a full board rejects summon without spending Energy or consuming randomnes
 end)
 
 test("summons spend the rising cost; NoEnergy leaves state unchanged; deck types only", function()
-	local state = Match.New(1, Random.new(9), 0)
+	local state = Match.New(1, Random.new(9), 0, Dice.Deck)
 	expectEq(state.energy, 43, "start energy")
 	expect(Match.TrySummon(state), "first summon")
 	expectEq(state.energy, 33, "cost 10")
@@ -171,7 +171,7 @@ test("summons spend the rising cost; NoEnergy leaves state unchanged; deck types
 end)
 
 test("Match.TryMerge validates before rolling; reject leaves everything, including rng, unchanged", function()
-	local state = Match.New(1, Random.new(3), 0)
+	local state = Match.New(1, Random.new(3), 0, Dice.Deck)
 	place(state.board, 1, "C01", 1)
 	place(state.board, 2, "C02", 1)
 	local before = ser(state.board)
@@ -195,7 +195,7 @@ test("start Energy is exactly four summons, then NoEnergy before any kill", func
 		total += Formulas.SummonCost(s)
 	end
 	expectEq(Balance.StartEnergy, total, "StartEnergy == cost(0..3)")
-	local state = Match.New(1, Random.new(2), 0)
+	local state = Match.New(1, Random.new(2), 0, Dice.Deck)
 	for i = 1, 4 do
 		expect(Match.TrySummon(state), "summon " .. i)
 	end

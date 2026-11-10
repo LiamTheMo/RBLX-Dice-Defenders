@@ -6,6 +6,7 @@
 -- reaching the threshold calls `kick` exactly once. Soft rejections (anything the
 -- ready check or a handler returns) are never counted.
 local Balance = require(script.Parent.Parent.Config.Balance)
+local Deck = require(script.Parent.Parent.Rules.Deck)
 local Validate = require(script.Parent.Parent.Rules.Validate)
 
 local RemoteGuard = {}
@@ -18,6 +19,13 @@ RemoteGuard.MAX_SEQ = 2 ^ 31 - 1
 RemoteGuard.Specs = table.freeze({
 	Start = table.freeze({ argc = 1 }),
 	Summon = table.freeze({ argc = 1 }),
+	EquipDeck = table.freeze({ argc = 2, check = Deck.Shape }),
+	ClaimQuest = table.freeze({
+		argc = 2,
+		check = function(id)
+			return type(id) == "string" and #id >= 1 and #id <= 16
+		end,
+	}),
 	Merge = table.freeze({
 		argc = 3,
 		check = function(from, to)
