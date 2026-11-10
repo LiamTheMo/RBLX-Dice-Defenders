@@ -95,6 +95,7 @@ function Match.TrySummon(state): (boolean, string?)
 		return false, if code == "Insufficient" then "NoEnergy" else code
 	end
 	Board.Summon(state.board, cell, typeId, state.nextDieId)
+	state.board[cell].cd = state.lastNow -- ready now, no catch-up hits from time 0
 	state.nextDieId += 1
 	state.summons += 1
 	state.out.dirty = true

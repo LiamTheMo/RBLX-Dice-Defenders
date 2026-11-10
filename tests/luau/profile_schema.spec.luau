@@ -129,3 +129,14 @@ test("DeepCopy copies nested tables", function()
 	b.x.y = 2
 	expectEq(a.x.y, 1, "independent")
 end)
+
+test("LastRewardRunId keeps any 31-bit run id; larger or fractional values reset to 0", function()
+	expectEq(ProfileSchema.Migrate({ Version = 1, LastRewardRunId = 2e9 }).LastRewardRunId, 2e9, "2e9 kept")
+	expectEq(
+		ProfileSchema.Migrate({ Version = 1, LastRewardRunId = 2 ^ 31 - 1 }).LastRewardRunId,
+		2 ^ 31 - 1,
+		"max kept"
+	)
+	expectEq(ProfileSchema.Migrate({ Version = 1, LastRewardRunId = 2 ^ 31 }).LastRewardRunId, 0, "above max")
+	expectEq(ProfileSchema.Migrate({ Version = 1, LastRewardRunId = 5.5 }).LastRewardRunId, 0, "fractional")
+end)

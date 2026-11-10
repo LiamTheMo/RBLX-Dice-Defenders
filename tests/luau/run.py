@@ -14,7 +14,8 @@ services or the network still needs a Studio playtest.
     python tests/luau/run.py                  # run every *.spec.luau with the `luau` CLI
     python tests/luau/run.py --bundle NAME    # print one spec's bundle (e.g. to run in Studio)
 
-The `luau` CLI is managed by Aftman (aftman.toml). Without it, print a bundle
+The `luau` CLI (tested with 0.746, from github.com/luau-lang/luau releases) must be
+on PATH; Aftman cannot pin it. Without it, print a bundle
 and run it in Studio's command bar or through the Studio MCP.
 """
 import json
@@ -93,7 +94,7 @@ def main() -> int:
 
     luau = shutil.which("luau")
     if luau is None:
-        print("luau CLI not found on PATH (run `aftman install`)", file=sys.stderr)
+        print("luau CLI not found on PATH (download it from github.com/luau-lang/luau releases; tested with 0.746)", file=sys.stderr)
         return 1
     if not specs:
         print("No specs found", file=sys.stderr)

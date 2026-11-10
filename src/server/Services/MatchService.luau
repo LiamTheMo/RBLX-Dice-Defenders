@@ -236,7 +236,13 @@ end
 function MatchService.Start()
 	ProfileService.Loaded:Connect(onLoaded)
 	ProfileService.Removing:Connect(onRemoving)
-	ProfileService.LoadStateChanged:Connect(push)
+	ProfileService.LoadStateChanged:Connect(function(player)
+		-- A lost lease (Failed) ends the owner's match like leaving: no reward, reassign.
+		if ProfileService.LoadState(player) == "Failed" and table.find(order, player) then
+			onRemoving(player)
+		end
+		push(player)
+	end)
 	ProfileService.Left:Connect(function(player)
 		-- A player who failed to load or lost their lease is not in `order` or is dropped here.
 		if table.find(order, player) then

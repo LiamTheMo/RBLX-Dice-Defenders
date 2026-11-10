@@ -40,6 +40,12 @@ for name, kind in Remotes.Kinds do
 	remote.Name = name
 	remote.Parent = folder
 	remotes[name] = remote
+	if kind == "Event" then
+		-- Clients never fire server->client events: count it as a hard violation.
+		remote.OnServerEvent:Connect(function(player)
+			guard:Strike(player, name, "BadRemote")
+		end)
+	end
 end
 
 local function getRemote(name: string, className: string)

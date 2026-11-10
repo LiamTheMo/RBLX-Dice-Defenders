@@ -268,3 +268,18 @@ test("unknown remote is refused; Forget drops all per-player state", function()
 	expectEq(env.guard._players[owner], nil, "state released")
 	expect(env.call(owner, "Start", 1), "seq state reset too")
 end)
+
+test("Strike counts toward the threshold and kicks exactly once", function()
+	local env, owner = make(), {}
+	for i = 1, Balance.KickThreshold - 1 do
+		env.guard:Strike(owner, "State", "BadRemote")
+		expectEq(#env.kicks, 0, "no kick yet at " .. i)
+	end
+	env.guard:Strike(owner, "State", "BadRemote")
+	expectEq(#env.kicks, 1, "kicked at threshold")
+	expectEq(env.kicks[1].reason, "BadRemote", "reason")
+	for _ = 1, 10 do
+		env.guard:Strike(owner, "Enemies", "BadRemote")
+	end
+	expectEq(#env.kicks, 1, "once only")
+end)

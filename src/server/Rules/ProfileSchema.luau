@@ -71,7 +71,7 @@ function ProfileSchema.Migrate(stored: any)
 		BestWave = count(data.BestWave),
 		RunsPlayed = count(data.RunsPlayed),
 		TrialCleared = data.TrialCleared == true,
-		LastRewardRunId = count(data.LastRewardRunId),
+		LastRewardRunId = if Validate.IsInt(data.LastRewardRunId, 0, 2 ^ 31 - 1) then data.LastRewardRunId else 0, -- run ids are 31-bit
 		profileRevision = Validate.IsInt(data.profileRevision, 0, 2 ^ 52) and data.profileRevision or 0,
 	}
 

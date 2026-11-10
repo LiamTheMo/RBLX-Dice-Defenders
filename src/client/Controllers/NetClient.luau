@@ -16,7 +16,10 @@ NetClient.Enemies = Signal.new()
 NetClient.Rejected = Signal.new()
 NetClient.Last = nil
 
-local MIN_INTERVAL = 0.25 -- <= 4 requests per second per intent
+-- Minimum seconds between sends per intent, below the server's token buckets, plus
+-- one request in flight per intent: an honest client can never trip RateLimited.
+local MIN_INTERVAL = { Start = 1.0, Summon = 0.25, Merge = 0.25 }
+local pending = {}
 local seq = 0
 local lastSent = {}
 local functions = {}
@@ -32,12 +35,14 @@ function NetClient.Request(name: string, ...): (boolean, string?)
 		return reject(name, "Network")
 	end
 	local now = os.clock()
-	if lastSent[name] and now - lastSent[name] < MIN_INTERVAL then
+	if pending[name] or (lastSent[name] and now - lastSent[name] < (MIN_INTERVAL[name] or 1)) then
 		return reject(name, "Throttled")
 	end
 	lastSent[name] = now
 	seq += 1
+	pending[name] = true
 	local ok, result, code = pcall(remote.InvokeServer, remote, seq, ...)
+	pending[name] = nil
 	if not ok then
 		return reject(name, "Network")
 	end

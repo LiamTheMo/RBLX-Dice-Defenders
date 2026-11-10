@@ -280,6 +280,21 @@ test("cooldown does not bank while idle, and a die fires at most twice per tick"
 	expect(hp0 - target.hp <= 17, "idle time did not bank a burst")
 end)
 
+test("a summoned die lands exactly one hit in its first tick", function()
+	local state = newState(100)
+	openWave(state)
+	state.lastNow = 100
+	Match.Step(state, 100.1) -- long-running: clock well past 0
+	expect(Match.TrySummon(state), "summon")
+	local die
+	for _, d in state.board do
+		die = die or d or nil
+	end
+	addEnemy(state, "Brute", 100000, 50)
+	Match.Step(state, state.lastNow + DT)
+	expectEq(die.hits, 1, "one hit, no catch-up from cd = 0")
+end)
+
 test("stipend after each cleared wave; boss warning of at least 3 s; boss spawns first", function()
 	local state = newState()
 	for cell = 1, 15 do

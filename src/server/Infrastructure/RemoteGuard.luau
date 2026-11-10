@@ -103,6 +103,11 @@ local function violation(self, owner: any, state, name: string, code: string)
 	return false, code
 end
 
+-- Counts a hard violation outside Call (e.g. a client firing a server->client event).
+function RemoteGuard:Strike(owner: any, name: string, code: string)
+	return violation(self, owner, self:_state(owner), name, code)
+end
+
 -- Runs one request. `handler(owner, ...)` gets the arguments after seq and returns
 -- (ok, code?). Returns (ok, code?). Never throws.
 function RemoteGuard:Call(owner: any, name: string, handler: (any, ...any) -> (boolean, string?), ...)
