@@ -3,11 +3,29 @@
 local Display = {}
 
 Display.Dice = table.freeze({
-	C01 = table.freeze({ Name = "Pebble", Color = Color3.fromHex("#EC407A") }),
-	C02 = table.freeze({ Name = "Needle", Color = Color3.fromHex("#1E88E5") }),
-	C03 = table.freeze({ Name = "Hammer", Color = Color3.fromHex("#FB8C00") }),
-	C04 = table.freeze({ Name = "Twinshot", Color = Color3.fromHex("#8E24AA") }),
-	C05 = table.freeze({ Name = "Longshot", Color = Color3.fromHex("#00A86B") }),
+	C01 = table.freeze({ Name = "Pebble", Rarity = "Common", Color = Color3.fromHex("#EC407A") }),
+	C02 = table.freeze({ Name = "Needle", Rarity = "Common", Color = Color3.fromHex("#1E88E5") }),
+	C03 = table.freeze({ Name = "Hammer", Rarity = "Common", Color = Color3.fromHex("#FB8C00") }),
+	C04 = table.freeze({ Name = "Twinshot", Rarity = "Common", Color = Color3.fromHex("#8E24AA") }),
+	C05 = table.freeze({ Name = "Longshot", Rarity = "Common", Color = Color3.fromHex("#00A86B") }),
+})
+
+-- Catalogue dice with no server config yet: shown as "Not available yet".
+Display.Locked = table.freeze({
+	table.freeze({ Id = "R01", Name = "Frost", Rarity = "Rare" }),
+	table.freeze({ Id = "R02", Name = "Arc", Rarity = "Rare" }),
+	table.freeze({ Id = "R03", Name = "Volley", Rarity = "Rare" }),
+	table.freeze({ Id = "R04", Name = "Venom", Rarity = "Rare" }),
+	table.freeze({ Id = "R05", Name = "Beacon", Rarity = "Rare" }),
+	table.freeze({ Id = "E01", Name = "Emberstorm", Rarity = "Epic" }),
+	table.freeze({ Id = "E02", Name = "Reactor", Rarity = "Epic" }),
+	table.freeze({ Id = "E03", Name = "Mirror", Rarity = "Epic" }),
+	table.freeze({ Id = "E04", Name = "Catalyst", Rarity = "Epic" }),
+	table.freeze({ Id = "E05", Name = "Gravity", Rarity = "Epic" }),
+	table.freeze({ Id = "L01", Name = "Chrono", Rarity = "Legendary" }),
+	table.freeze({ Id = "L02", Name = "Forge", Rarity = "Legendary" }),
+	table.freeze({ Id = "L03", Name = "Prism", Rarity = "Legendary" }),
+	table.freeze({ Id = "M01", Name = "Astral", Rarity = "Mythic" }),
 })
 
 Display.Enemies = table.freeze({
