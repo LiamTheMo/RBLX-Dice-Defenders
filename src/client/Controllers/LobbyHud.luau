@@ -1,4 +1,4 @@
--- Lobby HUD: sprite tiles laid out in design px (1672x941) under one UIScale (no Init/Start).
+-- Lobby HUD: borderless icons, inline counters, XP line and framed dice slots laid out in design px (1672x941) under one UIScale (no Init/Start).
 -- LobbyHud.build(parent, { open = (panel) -> (), toast = (text) -> () }) -> hud; hud:SetGold(n), hud:SetDeck(ids).
 
 local ContentProvider = game:GetService("ContentProvider")
@@ -15,7 +15,8 @@ local STROKE = Color3.fromRGB(9, 14, 24)
 local GOLD_TEXT = Color3.fromRGB(249, 199, 53)
 local GEM_TEXT = Color3.fromRGB(247, 142, 236)
 local DESIGN = Vector2.new(1672, 941)
-local TILE = 108
+local CELL = Vector2.new(124, 114)
+local MARGIN = 20 -- side safe margin
 
 local LobbyHud = {}
 LobbyHud.__index = LobbyHud
@@ -37,69 +38,35 @@ end
 local function text(props, parent)
 	props.BackgroundTransparency = 1
 	props.Font = FONT
+	props.TextXAlignment = Enum.TextXAlignment.Center
+	props.TextYAlignment = Enum.TextYAlignment.Center
 	return make("TextLabel", props, parent)
 end
 
--- One sprite button: transparent hit area (btn) holding the frame art (frame) with icon + label.
--- Hover (mouse only), press (mouse and touch) and Interactable=false swap the frame sprite.
-local function tile(parent, o)
-	local btn = make("ImageButton", {
-		Name = o.Name,
-		BackgroundTransparency = 1,
-		AutoButtonColor = false,
-		Size = UDim2.fromOffset(TILE, TILE),
-		LayoutOrder = o.Order or 0,
-		ZIndex = 2,
-	}, parent)
-	local frame = make("ImageLabel", {
-		Name = "Frame",
-		BackgroundTransparency = 1,
-		Image = Sprites.Frame.Normal,
-		ScaleType = Enum.ScaleType.Fit,
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.5),
-		Size = o.FrameSize or UDim2.fromScale(1, 1),
-	}, btn)
-	local scale = make("UIScale", {}, frame)
-	local icon = make("ImageLabel", {
-		Name = "Icon",
-		BackgroundTransparency = 1,
-		Image = o.Icon or "",
-		ScaleType = Enum.ScaleType.Fit,
-		AnchorPoint = o.IconAnchor or Vector2.new(0.5, 0),
-		Position = o.IconPos or UDim2.fromScale(0.5, 0.1),
-		Size = o.IconSize or UDim2.fromScale(0.6, 0.5),
-	}, frame)
-	if o.Label then
-		local label = text({
-			Name = "Label",
-			Text = o.Label,
-			TextColor3 = UiKit.WHITE,
-			TextSize = 26,
-			AnchorPoint = Vector2.new(0.5, 1),
-			Position = UDim2.new(0.5, 0, 1, -9),
-			Size = UDim2.new(1, -8, 0, 30),
-		}, frame)
-		make("UIStroke", { Color = STROKE, Thickness = 3 }, label)
-	end
+local function outline(label, thickness)
+	make("UIStroke", { Color = STROKE, Thickness = thickness, LineJoinMode = Enum.LineJoinMode.Round }, label)
+end
 
+-- Centre-out stack: every layout centres its children on both axes.
+local function list(parent, direction, padding)
+	make("UIListLayout", {
+		FillDirection = direction,
+		HorizontalAlignment = Enum.HorizontalAlignment.Center,
+		VerticalAlignment = Enum.VerticalAlignment.Center,
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Padding = UDim.new(0, padding),
+	}, parent)
+end
+
+-- Hover (mouse only), press (mouse and touch) and the DebugState attribute ("Hover" | "Pressed", for
+-- captures) call apply("Normal" | "Hover" | "Pressed"). Returns refresh for callers with extra state.
+local function wire(btn, apply)
 	local hover, down = false, false
 	local function refresh()
-		local state = Sprites.Frame.Normal
-		if not btn.Interactable then
-			state = Sprites.Frame.Disabled
-		elseif down then
-			state = Sprites.Frame.Pressed
-		elseif hover then
-			state = Sprites.Frame.Highlighted
-		end
-		frame.Image = state
-		icon.ImageTransparency = if btn.Interactable then 0 else 0.45
-		local label = frame:FindFirstChild("Label")
-		if label then
-			label.TextTransparency = if btn.Interactable then 0 else 0.4
-		end
-		scale.Scale = (btn.Interactable and down and 0.94) or (btn.Interactable and hover and 1.04) or 1
+		local forced = btn:GetAttribute("DebugState")
+		apply(
+			if forced == "Pressed" or down then "Pressed" elseif forced == "Hover" or hover then "Hover" else "Normal"
+		)
 	end
 	local mouseOnly = not UserInputService.TouchEnabled or UserInputService.MouseEnabled
 	btn.MouseEnter:Connect(function()
@@ -118,40 +85,86 @@ local function tile(parent, o)
 		down = false
 		refresh()
 	end)
+	btn:GetAttributeChangedSignal("DebugState"):Connect(refresh)
 	btn:GetPropertyChangedSignal("Interactable"):Connect(refresh)
+	refresh()
+	return refresh
+end
+
+-- Borderless icon + outlined label. The transparent button is the whole touch target; Icon scales.
+local function iconButton(parent, o)
+	local btn = make("ImageButton", {
+		Name = o.Name,
+		BackgroundTransparency = 1,
+		AutoButtonColor = false,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Size = o.Size or UDim2.fromOffset(CELL.X, CELL.Y),
+		LayoutOrder = o.Order or 0,
+		ZIndex = 2,
+	}, parent)
+	local content = make("Frame", { Name = "Content", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) }, btn)
+	list(content, Enum.FillDirection.Vertical, 0)
+	-- Fixed-size holder: the list lays out scaled sizes, so scaling the icon directly would move the label.
+	local holder = make("Frame", {
+		Name = "IconHolder",
+		BackgroundTransparency = 1,
+		Size = o.IconSize or UDim2.fromOffset(88, 78),
+		LayoutOrder = 1,
+	}, content)
+	local icon = make("ImageLabel", {
+		Name = "Icon",
+		BackgroundTransparency = 1,
+		Image = o.Icon,
+		ScaleType = Enum.ScaleType.Fit,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromScale(1, 1),
+	}, holder)
+	local scale = make("UIScale", {}, icon)
+	local label
+	if o.Label then
+		label = text({
+			Name = "Label",
+			Text = o.Label,
+			TextColor3 = UiKit.WHITE,
+			TextSize = 28,
+			Size = UDim2.fromOffset(CELL.X, 30),
+			LayoutOrder = 2,
+		}, content)
+		outline(label, 3)
+	end
+	wire(btn, function(state)
+		local on = btn.Interactable
+		icon.ImageTransparency = if on then 0 else 0.45
+		if label then
+			label.TextTransparency = if on then 0 else 0.4
+		end
+		scale.Scale = if not on then 1 elseif state == "Pressed" then 0.92 elseif state == "Hover" then 1.06 else 1
+	end)
 	btn.Activated:Connect(o.OnClick)
-	return btn, icon
+	return btn
 end
 
 local function counter(parent, order, iconId, str, color)
-	local box = make("Frame", {
-		BackgroundTransparency = 1,
-		AutomaticSize = Enum.AutomaticSize.X,
-		Size = UDim2.fromOffset(0, 46),
-		LayoutOrder = order,
-	}, parent)
-	make("UIListLayout", {
-		FillDirection = Enum.FillDirection.Horizontal,
-		VerticalAlignment = Enum.VerticalAlignment.Center,
-		SortOrder = Enum.SortOrder.LayoutOrder,
-		Padding = UDim.new(0, 8),
-	}, box)
+	local box =
+		make("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(200, 44), LayoutOrder = order }, parent)
+	list(box, Enum.FillDirection.Horizontal, 8)
 	make("ImageLabel", {
 		BackgroundTransparency = 1,
 		Image = iconId,
 		ScaleType = Enum.ScaleType.Fit,
-		Size = UDim2.fromOffset(46, 46),
+		Size = UDim2.fromOffset(44, 44),
 		LayoutOrder = 1,
 	}, box)
 	local label = text({
 		Text = str,
 		TextColor3 = color,
-		TextSize = 40,
+		TextSize = 36,
 		AutomaticSize = Enum.AutomaticSize.X,
-		Size = UDim2.fromOffset(0, 46),
+		Size = UDim2.fromOffset(0, 44),
 		LayoutOrder = 2,
 	}, box)
-	make("UIStroke", { Color = STROKE, Thickness = 3 }, label)
+	outline(label, 3)
 	return label
 end
 
@@ -171,19 +184,26 @@ function LobbyHud.build(parent, cb)
 	local hud = make("Frame", { Name = "Hud", BackgroundTransparency = 1 }, parent)
 	self.Hud = hud
 	local uiScale = make("UIScale", {}, hud)
+	local xpSize -- UITextSizeConstraint of the XP text, set below
 	local function rescale()
 		local size = parent.AbsoluteSize
 		if size.X <= 0 or size.Y <= 0 then
 			return
 		end
 		local s = math.min(size.X / DESIGN.X, size.Y / DESIGN.Y)
-		-- Phone floor: 108-px tiles stay 54 px and labels ~13 px; the regions still clear each other down to 568x276.
+		-- Phone floor: 124x114 cells stay 62x57 and labels ~14 px; the regions still clear each other down to 568x276.
 		if size.Y < 500 then
 			s = math.max(s, 0.5)
 		end
 		s = math.min(s, 1.5)
 		uiScale.Scale = s
 		hud.Size = UDim2.fromScale(1 / s, 1 / s)
+		if xpSize then
+			-- The constraint works in on-screen px (after UIScale): 24 design px (glyphs ~60% of the
+			-- reference's XP text), never under 11 px.
+			xpSize.MinTextSize = 11
+			xpSize.MaxTextSize = math.max(11, math.floor(24 * s + 0.5))
+		end
 	end
 	parent:GetPropertyChangedSignal("AbsoluteSize"):Connect(rescale)
 	rescale()
@@ -191,13 +211,16 @@ function LobbyHud.build(parent, cb)
 	local grid = make("Frame", {
 		Name = "LeftGrid",
 		BackgroundTransparency = 1,
-		AnchorPoint = Vector2.new(0, 0.5),
-		Position = UDim2.new(0, 24, 0.5, 31),
-		Size = UDim2.fromOffset(TILE * 2 + 10, TILE * 3 + 8),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0, MARGIN + CELL.X, 0.5, 0),
+		Size = UDim2.fromOffset(CELL.X * 2, CELL.Y * 3),
 	}, hud)
 	make("UIGridLayout", {
-		CellSize = UDim2.fromOffset(TILE, TILE),
-		CellPadding = UDim2.fromOffset(10, 4),
+		CellSize = UDim2.fromOffset(CELL.X, CELL.Y),
+		CellPadding = UDim2.fromOffset(0, 0),
+		FillDirectionMaxCells = 2,
+		HorizontalAlignment = Enum.HorizontalAlignment.Center,
+		VerticalAlignment = Enum.VerticalAlignment.Center,
 		SortOrder = Enum.SortOrder.LayoutOrder,
 	}, grid)
 	local I = Sprites.Icon
@@ -222,10 +245,10 @@ function LobbyHud.build(parent, cb)
 		{ "Daily", I.Daily, soon("Daily") },
 	}
 	for i, t in left do
-		tile(grid, { Name = t[1], Order = i, Icon = t[2], Label = string.upper(t[1]), OnClick = t[3] })
+		iconButton(grid, { Name = t[1], Order = i, Icon = t[2], Label = string.upper(t[1]), OnClick = t[3] })
 	end
 
-	local quests = tile(hud, {
+	local quests = iconButton(hud, {
 		Name = "Quests",
 		Icon = I.Quests,
 		Label = "QUESTS",
@@ -233,73 +256,91 @@ function LobbyHud.build(parent, cb)
 			open("Quests")
 		end,
 	})
-	quests.AnchorPoint = Vector2.new(1, 0.5)
-	quests.Position = UDim2.new(1, -19, 0.5, 10)
+	quests.Position = UDim2.new(1, -(MARGIN + CELL.X / 2), 0.5, 0)
 
-	-- Frame is 56 design px; the transparent 108 button around it is the touch target.
-	local gear = tile(hud, {
+	-- 88 px hit area, 60 px icon, no label.
+	local gear = iconButton(hud, {
 		Name = "Gear",
-		FrameSize = UDim2.fromOffset(56, 56),
 		Icon = I.Settings,
-		IconAnchor = Vector2.new(0.5, 0.5),
-		IconPos = UDim2.fromScale(0.5, 0.5),
-		IconSize = UDim2.fromScale(0.64, 0.64),
+		IconSize = UDim2.fromOffset(60, 60),
+		Size = UDim2.fromOffset(88, 88),
 		OnClick = soon("Settings"),
 	})
-	gear.AnchorPoint = Vector2.new(1, 0)
-	gear.Position = UDim2.new(1, -10, 0, 4) -- visual: right 36, top 30
+	gear.Position = UDim2.new(1, -60, 0, 60)
 
+	local PROFILE_H = 44 + 24 + 12 + 6 * 2
+	local DECK_H = 110
+	local bottomH = PROFILE_H + DECK_H + 6
 	local bottom = make("Frame", {
 		Name = "Bottom",
 		BackgroundTransparency = 1,
-		AnchorPoint = Vector2.new(0.5, 1),
-		Position = UDim2.new(0.5, 0, 1, -21),
-		Size = UDim2.fromOffset(573, 221),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, 1, -(18 + bottomH / 2)),
+		Size = UDim2.fromOffset(584, bottomH),
 	}, hud)
+	list(bottom, Enum.FillDirection.Vertical, 6)
+
 	-- One hit area over currencies + XP bar opens Profile.
-	make("TextButton", {
+	local profile = make("TextButton", {
 		Name = "ProfileHit",
 		BackgroundTransparency = 1,
 		Text = "",
-		Size = UDim2.new(1, 0, 0, 103),
+		AutoButtonColor = false,
+		Size = UDim2.fromOffset(584, PROFILE_H),
+		LayoutOrder = 1,
 		ZIndex = 1,
-	}, bottom).Activated:Connect(function()
+	}, bottom)
+	profile.Activated:Connect(function()
 		open("Profile")
 	end)
+	list(profile, Enum.FillDirection.Vertical, 6)
 
 	local currencies = make("Frame", {
 		Name = "Currencies",
 		BackgroundTransparency = 1,
-		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.fromScale(0.5, 0),
-		AutomaticSize = Enum.AutomaticSize.X,
-		Size = UDim2.fromOffset(0, 46),
-	}, bottom)
-	make("UIListLayout", {
-		FillDirection = Enum.FillDirection.Horizontal,
-		HorizontalAlignment = Enum.HorizontalAlignment.Center,
-		VerticalAlignment = Enum.VerticalAlignment.Center,
-		SortOrder = Enum.SortOrder.LayoutOrder,
-		Padding = UDim.new(0, 55),
-	}, currencies)
+		Size = UDim2.fromOffset(416, 44), -- two 200 boxes mirrored about the axis; 200 fits "9,999,999"
+		LayoutOrder = 1,
+	}, profile)
+	list(currencies, Enum.FillDirection.Horizontal, 16)
 	self.GoldLabel = counter(currencies, 1, Sprites.Coin, formatGold(0), GOLD_TEXT)
 	-- Placeholder: the server sends no gems yet.
 	self.GemLabel = counter(currencies, 2, Sprites.Gem, "\u{2014}", GEM_TEXT)
 	self.GemLabel:SetAttribute("Placeholder", true)
 
-	local xp = make("ImageLabel", {
+	-- Sits above the bar; TextScaled + the constraint set in rescale keep it >= 11 physical px.
+	local xpText = text({
+		Name = "XpLabel",
+		Text = "LVL \u{2014}", -- Placeholder: no level/XP from the server yet
+		TextColor3 = UiKit.WHITE,
+		TextScaled = true,
+		Size = UDim2.fromOffset(584, 24),
+		LayoutOrder = 2,
+	}, profile)
+	xpSize = make("UITextSizeConstraint", {}, xpText)
+	outline(xpText, 2)
+	xpText:SetAttribute("Placeholder", true)
+	rescale()
+
+	local xp = make("Frame", {
 		Name = "XpBar",
 		BackgroundTransparency = 1,
-		Image = Sprites.XpTrack,
-		ScaleType = Enum.ScaleType.Stretch,
-		Position = UDim2.fromOffset(3, 68),
-		Size = UDim2.fromOffset(567, 35),
-	}, bottom)
+		Size = UDim2.fromOffset(584, 12),
+		LayoutOrder = 3,
+	}, profile)
+	make("ImageLabel", {
+		Name = "Track",
+		BackgroundTransparency = 1,
+		Image = Sprites.XpTrack, -- 1024x47 export, pill caps ~23 px
+		ScaleType = Enum.ScaleType.Slice,
+		SliceCenter = Rect.new(24, 23, 1000, 24),
+		SliceScale = 12 / 47,
+		Size = UDim2.fromScale(1, 1),
+	}, xp)
 	local interior = make("Frame", {
 		Name = "Interior",
 		BackgroundTransparency = 1,
-		Position = UDim2.fromOffset(6, 6),
-		Size = UDim2.new(1, -12, 1, -12),
+		Position = UDim2.fromOffset(2, 2),
+		Size = UDim2.new(1, -4, 1, -4),
 	}, xp)
 	self.XpClip = make("Frame", {
 		Name = "Fill",
@@ -310,45 +351,54 @@ function LobbyHud.build(parent, cb)
 	self.XpClip:SetAttribute("Placeholder", true)
 	make("ImageLabel", {
 		BackgroundTransparency = 1,
-		Image = Sprites.XpFill,
-		ScaleType = Enum.ScaleType.Stretch,
-		Size = UDim2.fromOffset(555, 23), -- full interior so the rounded cap never squashes
+		Image = Sprites.XpFill, -- 1016x32
+		ScaleType = Enum.ScaleType.Slice,
+		SliceCenter = Rect.new(16, 15, 1000, 16),
+		SliceScale = 8 / 32,
+		Size = UDim2.fromOffset(580, 8), -- full interior so the rounded cap never squashes
 	}, self.XpClip)
-	local xpText = text({
-		Name = "Text",
-		Text = "LVL \u{2014}", -- Placeholder: no level/XP from the server yet
-		TextColor3 = UiKit.WHITE,
-		TextSize = 22,
-		Size = UDim2.fromScale(1, 1),
-		ZIndex = 3,
-	}, xp)
-	make("UIStroke", { Color = STROKE, Thickness = 2 }, xpText)
-	xpText:SetAttribute("Placeholder", true)
 
 	local deck = make("Frame", {
 		Name = "DeckBar",
 		BackgroundTransparency = 1,
-		Position = UDim2.fromOffset(0, 113),
-		Size = UDim2.fromOffset(573, TILE),
+		Size = UDim2.fromOffset(584, DECK_H),
+		LayoutOrder = 2,
 	}, bottom)
-	make("UIListLayout", {
-		FillDirection = Enum.FillDirection.Horizontal,
-		HorizontalAlignment = Enum.HorizontalAlignment.Center,
-		SortOrder = Enum.SortOrder.LayoutOrder,
-		Padding = UDim.new(0, 8),
-	}, deck)
+	list(deck, Enum.FillDirection.Horizontal, 6)
 	self.Slots = {}
 	for i = 1, 5 do
-		local _, icon = tile(deck, {
+		local slot = make("ImageButton", {
 			Name = "Slot" .. i,
-			Order = i,
-			IconAnchor = Vector2.new(0.5, 0.5),
-			IconPos = UDim2.fromScale(0.5, 0.5),
-			IconSize = UDim2.fromScale(0.66, 0.66),
-			OnClick = function()
-				open("Deck")
-			end,
-		})
+			BackgroundTransparency = 1,
+			AutoButtonColor = false,
+			Image = F.Normal,
+			ScaleType = Enum.ScaleType.Stretch,
+			Size = UDim2.fromOffset(112, DECK_H),
+			LayoutOrder = i,
+			ZIndex = 2,
+		}, deck)
+		slot:SetAttribute("Empty", true)
+		local icon = make("ImageLabel", {
+			Name = "Icon",
+			BackgroundTransparency = 1,
+			ScaleType = Enum.ScaleType.Fit,
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromOffset(80, 80),
+			Visible = false,
+			ZIndex = 3, -- Lobby gui uses Global ZIndex: must beat the slot's 2 to draw over its frame
+		}, slot)
+		local refresh = wire(slot, function(state)
+			slot.Image = if slot:GetAttribute("Empty")
+				then F.Disabled
+				elseif state == "Pressed" then F.Pressed
+				elseif state == "Hover" then F.Highlighted
+				else F.Normal
+		end)
+		slot:GetAttributeChangedSignal("Empty"):Connect(refresh)
+		slot.Activated:Connect(function()
+			open("Deck")
+		end)
 		self.Slots[i] = icon
 	end
 	return self
@@ -362,6 +412,7 @@ end
 function LobbyHud:SetDeck(ids)
 	for i, icon in self.Slots do
 		local id = ids and ids[i]
+		icon.Parent:SetAttribute("Empty", not id)
 		if not id then
 			icon.Visible = false
 		else
