@@ -9,6 +9,7 @@ local RunService = game:GetService("RunService")
 
 local NetClient = require(script.Parent.NetClient)
 local UiKit = require(script.Parent.UiKit)
+local LobbyHud = require(script.Parent.LobbyHud)
 local Display = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Display"))
 
 local make, panel, label, button = UiKit.make, UiKit.panel, UiKit.label, UiKit.button
@@ -17,7 +18,6 @@ local NAVY, NAVY_LIGHT, WHITE, ORANGE, GREEN, GREY =
 local PALE = Color3.fromRGB(200, 200, 230)
 local GOLD = Color3.fromRGB(255, 215, 90)
 
-local MENU_WIDTH = 180
 local ROW = 48 -- touch row / button height in px (>= 44)
 local TOAST_NAMES = { Start = true, EquipDeck = true, ClaimQuest = true }
 local TOASTS = {
@@ -36,14 +36,13 @@ local TOASTS = {
 }
 local RESULT_TITLES = { Won = "Victory!", Lost = "Defeat", Aborted = "Run Ended", Error = "Something went wrong" }
 local PANELS = { "Play", "Deck", "Collection", "Quests", "Profile" }
-local SOON = { "Shop", "Chests", "Craft", "Leaderboards", "Settings" }
 
 local Lobby = {}
 
 local connections = {}
 local gui, ui
 local toastToken = 0
-local openPanel = "Play"
+local openPanel = nil
 local draft = {} -- unsaved deck edit (client-only UI state)
 local selectedSlot = 1
 local dismissed = false
@@ -104,15 +103,24 @@ local function text(parent, str: string, size: UDim2, pos: UDim2?, maxSize: numb
 	}, parent, maxSize)
 end
 
+local function showPanel(name: string?)
+	openPanel = name
+	for key, p in ui.Panels do
+		p.Frame.Visible = key == name
+	end
+	ui.Hud.Visible = name == nil
+end
+
 -- A panel with a header (title + Close) and a scrolling body.
 local function newPanel(name: string)
 	local frame = panel({
 		Name = name,
-		Position = UDim2.fromOffset(MENU_WIDTH + 12, 0),
-		Size = UDim2.new(1, -(MENU_WIDTH + 12), 1, 0),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.new(1, -24, 1, -24),
 		Visible = false,
 	}, ui.Root)
-	make("UISizeConstraint", { MaxSize = Vector2.new(720, math.huge) }, frame)
+	make("UISizeConstraint", { MaxSize = Vector2.new(720, 600) }, frame)
 	make("UIPadding", {
 		PaddingLeft = UDim.new(0, 8),
 		PaddingRight = UDim.new(0, 8),
@@ -130,10 +138,7 @@ local function newPanel(name: string)
 		frame,
 		PALE,
 		function()
-			openPanel = nil
-			for _, p in ui.Panels do
-				p.Frame.Visible = false
-			end
+			showPanel(nil)
 		end
 	)
 	close.Name = "Close"
@@ -151,13 +156,6 @@ local function newPanel(name: string)
 	make("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 6) }, body)
 	ui.Panels[name] = { Frame = frame, Body = body }
 	return body
-end
-
-local function showPanel(name: string?)
-	openPanel = name
-	for key, p in ui.Panels do
-		p.Frame.Visible = key == name
-	end
 end
 
 local function deckName(id: string): string
@@ -408,6 +406,7 @@ local function renderState(snap)
 	end
 	renderPlay(snap)
 	renderProfile(snap)
+	ui.LobbyHud:SetGold(snap.Gold)
 	renderResult(snap)
 end
 
@@ -416,6 +415,8 @@ local function renderMeta()
 	renderDeck()
 	renderCollection()
 	renderQuests()
+	local meta = NetClient.LastMeta
+	ui.LobbyHud:SetDeck(meta and meta.Deck)
 end
 
 local function tick()
@@ -432,44 +433,14 @@ local function build()
 		Name = "Lobby",
 		ResetOnSpawn = false,
 		DisplayOrder = 6,
-		-- The menu sits top-left, where Roblox's own menu/chat buttons live: stay below them.
+		-- Roblox's own menu/chat buttons sit in the top corners: stay below them.
 		ScreenInsets = Enum.ScreenInsets.CoreUISafeInsets,
 	})
 	ui = { Panels = {} }
-	ui.Root = make("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Visible = false }, gui)
-	make("UIPadding", {
-		PaddingLeft = UDim.new(0, 8),
-		PaddingRight = UDim.new(0, 8),
-		PaddingTop = UDim.new(0, 8),
-		PaddingBottom = UDim.new(0, 8),
-	}, ui.Root)
-
-	-- Left menu column (scrolls when the screen is short).
-	local menu = make("ScrollingFrame", {
-		Name = "Menu",
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		Size = UDim2.new(0, MENU_WIDTH, 1, 0),
-		CanvasSize = UDim2.new(),
-		AutomaticCanvasSize = Enum.AutomaticSize.Y,
-		ScrollBarThickness = 4,
-		ScrollingDirection = Enum.ScrollingDirection.Y,
-	}, ui.Root)
-	make("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 6) }, menu)
-	for i, name in PANELS do
-		button({ Size = UDim2.new(1, -8, 0, ROW), Text = name, LayoutOrder = i }, menu, ORANGE, function()
-			showPanel(name)
-		end)
-	end
-	for i, name in SOON do
-		local soon = panel({
-			Size = UDim2.new(1, -8, 0, ROW),
-			LayoutOrder = 10 + i,
-			BackgroundColor3 = GREY,
-			Active = false,
-		}, menu)
-		label({ Text = name .. "\nComing soon", Size = UDim2.fromScale(1, 1), TextColor3 = PALE }, soon, 20)
-	end
+	ui.Root =
+		make("Frame", { Name = "Root", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Visible = false }, gui)
+	ui.LobbyHud = LobbyHud.build(ui.Root, { open = showPanel, toast = toast })
+	ui.Hud = ui.LobbyHud.Hud
 
 	for _, name in PANELS do
 		newPanel(name)
@@ -519,9 +490,10 @@ local function build()
 	)
 	continue.Name = "Continue"
 
+	-- Top-centre: the bottom of the screen holds the HUD's deck bar.
 	ui.ToastFrame = panel({
-		AnchorPoint = Vector2.new(0.5, 1),
-		Position = UDim2.new(0.5, 0, 1, -10),
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0, 10),
 		Size = UDim2.new(0.5, 0, 0, 40),
 		Visible = false,
 		ZIndex = 30,
