@@ -3,7 +3,7 @@
 Usage: python tools/slice_lobby_hud.py
 Reads Assets/UI/lobby HUD/*.png, writes Assets/UI/lobby HUD/export/<Name>.png
 (names match the keys in src/client/Controllers/Sprites.luau). Needs Pillow + numpy.
-Rects are alpha>=128 bounding boxes measured from the sheets (x, y, w, h).
+Rects are alpha>16 bounding boxes measured from the sheets (x, y, w, h).
 """
 
 from pathlib import Path
@@ -17,28 +17,28 @@ MARGIN = 6  # source px kept around each bbox for the soft edge
 
 # name: (sheet, (x, y, w, h), longest output side)
 SPRITES = {
-    "Frame_Normal": ("shared-frames.png", (40, 136, 464, 453), 256),
-    "Frame_Pressed": ("shared-frames.png", (583, 136, 464, 453), 256),
-    "Frame_Highlighted": ("shared-frames.png", (1126, 136, 464, 453), 256),
-    "Frame_Disabled": ("shared-frames.png", (1669, 136, 464, 453), 256),
-    "Icon_Shop": ("icons.png", (55, 88, 361, 307), 256),
-    "Icon_Roll": ("icons.png", (507, 75, 316, 339), 256),
-    "Icon_Bag": ("icons.png", (918, 72, 358, 335), 256),
-    "Icon_Play": ("icons.png", (1378, 89, 337, 310), 256),
-    "Icon_Codes": ("icons.png", (49, 519, 369, 287), 256),
-    "Icon_Daily": ("icons.png", (500, 488, 329, 336), 256),
-    "Icon_Quests": ("icons.png", (922, 503, 349, 325), 256),
-    "Icon_Settings": ("icons.png", (1373, 493, 348, 340), 256),
-    "Coin": ("currencies-and-dice.png", (448, 168, 271, 276), 128),
-    "Gem": ("currencies-and-dice.png", (811, 173, 283, 261), 128),
-    "Dice_Sun": ("currencies-and-dice.png", (66, 568, 246, 266), 256),
-    "Dice_Ice": ("currencies-and-dice.png", (355, 567, 255, 265), 256),
-    "Dice_Fire": ("currencies-and-dice.png", (645, 567, 248, 266), 256),
-    "Dice_Leaf": ("currencies-and-dice.png", (922, 568, 256, 264), 256),
-    "Dice_Lightning": ("currencies-and-dice.png", (1207, 566, 266, 269), 256),
+    "Frame_Normal": ("shared-frames.png", (42, 134, 464, 454), 256),
+    "Frame_Pressed": ("shared-frames.png", (578, 134, 462, 452), 256),
+    "Frame_Highlighted": ("shared-frames.png", (1120, 134, 464, 454), 256),
+    "Frame_Disabled": ("shared-frames.png", (1658, 134, 466, 454), 256),
+    "Icon_Shop": ("icons.png", (50, 70, 366, 330), 256),
+    "Icon_Roll": ("icons.png", (468, 82, 404, 300), 256),
+    "Icon_Bag": ("icons.png", (920, 58, 376, 350), 256),
+    "Icon_Play": ("icons.png", (1362, 70, 350, 326), 256),
+    "Icon_Codes": ("icons.png", (54, 514, 366, 308), 256),
+    "Icon_Daily": ("icons.png", (500, 482, 330, 358), 256),
+    "Icon_Quests": ("icons.png", (918, 494, 358, 346), 256),
+    "Icon_Settings": ("icons.png", (1370, 494, 344, 342), 256),
+    "Coin": ("Coin.png", (56, 44, 1126, 1140), 128),
+    "Gem": ("Gem.png", (2, 2, 124, 114), 128),
+    "Dice_Sun": ("Dice_Sun.png", (5, 5, 229, 246), 256),
+    "Dice_Ice": ("Dice_Ice.png", (5, 5, 238, 247), 256),
+    "Dice_Fire": ("Dice_Fire.png", (5, 5, 229, 246), 256),
+    "Dice_Leaf": ("Dice_Leaf.png", (5, 5, 239, 247), 256),
+    "Dice_Lightning": ("Dice_Lightning.png", (3, 5, 248, 246), 256),
     # Same scale for both bars so the fill lines up with the track interior.
-    "XpTrack": ("xp-bar.png", (111, 59, 1950, 121), 1024),
-    "XpFill": ("xp-bar.png", (117, 421, 1939, 82), 1018),
+    "XpTrack": ("xp-bar.png", (44, 68, 2084, 84), 1024),
+    "XpFill": ("xp-bar.png", (52, 426, 2068, 54), 1024),
 }
 
 
@@ -78,7 +78,7 @@ def main() -> None:
         crop = Image.fromarray(threshold(np.array(img.crop(box))))
         k = side / max(crop.size)
         if name == "XpFill":  # keep the track's scale, not its own
-            k = 1024 / (1950 + 2 * MARGIN)
+            k = 1024 / (2084 + 2 * MARGIN)
         size = (round(crop.width * k), round(crop.height * k))
         # Pillow premultiplies RGBA when resizing, so bleed afterwards.
         out = Image.fromarray(bleed(np.array(crop.resize(size, Image.LANCZOS))))
