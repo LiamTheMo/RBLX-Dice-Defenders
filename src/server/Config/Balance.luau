@@ -2,7 +2,7 @@
 local Balance = {}
 
 Balance.BoardCells = 15 -- 5 x 3, row-major
-Balance.StartEnergy = 43 -- exactly four summons: 10 + 10 + 11 + 12
+Balance.StartMP = 100 -- exactly four summons: 10 + 20 + 30 + 40
 Balance.StartLives = 20
 Balance.Waves = 10
 Balance.BossWave = 10
@@ -13,7 +13,7 @@ Balance.MaxAttacksPerTick = 2
 Balance.MaxStep = 0.25 -- largest dt Match.Step simulates at once
 Balance.TickHz = 10
 
-Balance.SummonCost = table.freeze({ base = 10, growth = 1.085, min = 10, max = 250 })
+Balance.SummonCost = table.freeze({ base = 10, step = 10 }) -- MP: base + step * summons so far
 Balance.Reward = table.freeze({ gold = 50, goldPerWave = 3 })
 
 -- Net: token buckets per player and remote, and the hard-violation kick.

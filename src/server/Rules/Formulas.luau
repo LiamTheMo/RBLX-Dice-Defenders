@@ -5,10 +5,10 @@ local Enemies = require(script.Parent.Parent.Config.Enemies)
 
 local Formulas = {}
 
--- Energy cost of the next summon after `summons` successful ones.
+-- MP cost of the next summon after `summons` successful ones.
 function Formulas.SummonCost(summons: number): number
 	local c = Balance.SummonCost
-	return math.min(c.max, math.max(c.min, math.floor(c.base * c.growth ^ summons)))
+	return c.base + c.step * summons
 end
 
 function Formulas.WaveCount(w: number): number
@@ -28,7 +28,7 @@ function Formulas.EnemyHp(kind: string, w: number): number
 end
 
 function Formulas.Stipend(w: number): number
-	return 6 + math.floor(w / 10)
+	return 30 + 5 * math.floor(w / 10)
 end
 
 -- Enemy kind of the 1-based spawn index `i` in wave `w` (the boss is queued separately).

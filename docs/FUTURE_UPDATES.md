@@ -52,9 +52,9 @@ Updates 4–8 are flexible. Evaluate retention, monetization fairness and balanc
 ### Mode rules and match structure
 - Queue **solo or duo** (two-player primary). Every player brings their normal five-dice deck and keeps their own fixed **5-column × 3-row, 15-slot board**. Dice never walk, escort objects, leave the board or move around the map except through existing merge/ability mechanics.
 - A shared **vault at the end of a single readable enemy path** starts with **1,000 Vault Treasure**. This is a **match-only score resource**, not persistent Gold: it must never be deposited directly into a player's wallet.
-- **30 escalating waves** over an initial target of **8–12 minutes**, with boss encounters at waves 10, 20 and 30. Wave clears advance automatically after a brief break; shared match Energy from kills funds dice summons and match upgrades as in campaign. Existing wave difficulty formula applies with a Treasure Defense mode multiplier and validated player-count scaling.
+- **30 escalating waves** over an initial target of **8–12 minutes**, with boss encounters at waves 10, 20 and 30. Wave clears advance automatically after a brief break; shared match MP from kills funds dice summons and match upgrades as in campaign. Existing wave difficulty formula applies with a Treasure Defense mode multiplier and validated player-count scaling.
 - Monsters that escape steal a defined amount of **Vault Treasure** instead of removing lives. The vault cannot drop below zero. **Vault at zero = defeat**, while defeating the final boss and clearing wave 30 with treasure remaining = full clear. Partial-run payout scales with completed waves and protected treasure but is capped against deliberate early-fail farming.
-- Both players defend the same route and treasure; server credits each enemy kill once and grants individual match Energy via the usual cooperation rules. Do not make total vault treasure or reward proportional to number of participants.
+- Both players defend the same route and treasure; server credits each enemy kill once and grants individual match MP via the usual cooperation rules. Do not make total vault treasure or reward proportional to number of participants.
 
 ### Theft and enemy roster
 | Enemy | Initial theft on breach | Mechanic / intended counter |
@@ -79,7 +79,7 @@ At the end of **waves 5, 10, 15, 20 and 25**, after enemy cleanup, prompt player
 ### Scoring and reward economy
 Keep three strictly separate ledgers:
 1. **Vault Treasure** (1,000 starting, stolen/restored during this match): gameplay health/score resource, never persistent wallet balance.
-2. **Match Energy** (from killed monsters and wave stipends): buys summons and in-match upgrades, resets at run end.
+2. **Match MP** (from killed monsters and wave stipends): buys summons and in-match upgrades, resets at run end.
 3. **Persistent Gold / Gems / materials**: granted only through a server-validated end-of-run reward transaction, with no direct conversion from Vault Treasure.
 
 **Example formula (provisional, independently tuneable):**
@@ -102,7 +102,7 @@ Materials earned at boss milestones are escrowed, with run-end award and once-on
 
 ### UI and art
 - Lobby mode card: duration estimate, solo/duo, expected reward types, weekly leaderboard and stage unlock requirement (proposed: World 1 Wave 30).
-- Match HUD: clearly labeled **Vault Treasure** bar, waves 1–30, theft warning icons, upcoming bosses, Greed/Secure vote panel, earned reward *projection* (not wallet balance), match Energy, summon/merge controls, and normal stationary 5×3 player board. Keep battle path visible.
+- Match HUD: clearly labeled **Vault Treasure** bar, waves 1–30, theft warning icons, upcoming bosses, Greed/Secure vote panel, earned reward *projection* (not wallet balance), match MP, summon/merge controls, and normal stationary 5×3 player board. Keep battle path visible.
 - Enemy theft value should be visible via one tap. Large boss warning must not cover the board. On phones, 44px minimum interactive targets, no clipped text, clean frames and accessible color-independent status icons.
 - All new UI visuals must be **generated using ChatGPT image generation**, unless owned existing assets can be modified cleanly. If new dice are added later, generate each dice's original UI portrait and a large clean exploded **3D modeling breakdown sheet** following [ART_PIPELINE.md](ART_PIPELINE.md). Never splice unrelated existing graphics.
 
@@ -114,7 +114,7 @@ Materials earned at boss milestones are escrowed, with run-end award and once-on
 
 **Production scope:** one existing-path-derived treasure map with vault endpoint; 30 wave definitions; five theft-aware enemy types and 3 boss appearances/variants; Secure/Greed voting and threat-budget modifiers; reward ledger and theft resolution; solo/duo weekly leaderboards; loot/crafting integrations; generated UI assets and tutorial.
 
-**Acceptance criteria:** stationary boards and existing merge rules unchanged; vault theft/restoration is deterministic and server-authoritative; zero vault ends run; fully clearing wave 30 with vault > 0 wins; no Gold/Energy/Vault ledger conflation; solo/duo Greed voting cannot be forced by one player; partial rewards never outperform full clears through deliberate losses; every offered reward is achievable without Robux; leaderboard anti-cheat and once-only receipt/reward tests pass; low-end mobile text and controls readable; duration and win rates verified through playtesting.
+**Acceptance criteria:** stationary boards and existing merge rules unchanged; vault theft/restoration is deterministic and server-authoritative; zero vault ends run; fully clearing wave 30 with vault > 0 wins; no Gold/MP/Vault ledger conflation; solo/duo Greed voting cannot be forced by one player; partial rewards never outperform full clears through deliberate losses; every offered reward is achievable without Robux; leaderboard anti-cheat and once-only receipt/reward tests pass; low-end mobile text and controls readable; duration and win rates verified through playtesting.
 
 ## Update 3: Dice Duel Arena — PvP with rewards and leaderboard
 **Goal:** competitive gameplay that doesn't invalidate the cooperative foundation.

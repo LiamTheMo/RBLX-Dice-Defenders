@@ -32,19 +32,14 @@ local function place(board, cell, typeId, pip)
 	board[cell].pip = pip or 1
 end
 
-test("summon cost: min(250, max(10, floor(10 * 1.085^s)))", function()
-	local expected = { [0] = 10, 10, 11, 12, 13, 15, 16, 17, 19, 20, 22, 24 }
+test("summon cost: 10, then +10 MP per successful summon", function()
+	local expected = { [0] = 10, 20, 30, 40, 50 }
 	for s, cost in expected do
 		expectEq(Formulas.SummonCost(s), cost, "cost after " .. s .. " summons")
 	end
-	expectEq(Formulas.SummonCost(20), 51, "s=20")
-	expectEq(Formulas.SummonCost(39), 240, "s=39")
-	expectEq(Formulas.SummonCost(40), 250, "capped at 250")
-	local last = 0
-	for s = 0, 300 do
-		local cost = Formulas.SummonCost(s)
-		expect(cost >= last and cost >= 10 and cost <= 250, "monotonic and bounded at " .. s)
-		last = cost
+	expectEq(Formulas.SummonCost(20), 210, "s=20")
+	for s = 1, 300 do
+		expectEq(Formulas.SummonCost(s) - Formulas.SummonCost(s - 1), 10, "step at " .. s)
 	end
 end)
 
@@ -132,37 +127,37 @@ test("pip climbs to 7 through merges, then stops", function()
 	expect(not ok, "7 cannot merge")
 end)
 
-test("a full board rejects summon without spending Energy or consuming randomness", function()
+test("a full board rejects summon without spending MP or consuming randomness", function()
 	local rng = Random.new(5)
 	local state = Match.New(1, rng, 0, Dice.Deck)
-	state.energy = 100000
+	state.mp = 100000
 	for _ = 1, 15 do
-		state.energy = 100000
+		state.mp = 100000
 		expect(Match.TrySummon(state), "summon until full")
 	end
 	expectEq(#Board.EmptyCells(state.board), 0, "board full")
-	local before = ser(state.board) .. state.energy .. state.summons .. state.nextDieId
+	local before = ser(state.board) .. state.mp .. state.summons .. state.nextDieId
 	local rngBefore = rng._state
 	local ok, code = Match.TrySummon(state)
 	expect(not ok and code == "BoardFull", "BoardFull")
-	expectEq(ser(state.board) .. state.energy .. state.summons .. state.nextDieId, before, "state unchanged")
+	expectEq(ser(state.board) .. state.mp .. state.summons .. state.nextDieId, before, "state unchanged")
 	expectEq(rng._state, rngBefore, "rng not consumed")
 end)
 
-test("summons spend the rising cost; NoEnergy leaves state unchanged; deck types only", function()
+test("summons spend the rising cost; NoMP leaves state unchanged; deck types only", function()
 	local state = Match.New(1, Random.new(9), 0, Dice.Deck)
-	expectEq(state.energy, 43, "start energy")
+	expectEq(state.mp, 100, "start mp")
 	expect(Match.TrySummon(state), "first summon")
-	expectEq(state.energy, 33, "cost 10")
-	expect(Match.TrySummon(state), "second summon (cost 10)")
-	expect(Match.TrySummon(state), "third summon (cost 11)")
-	expectEq(Match.SummonCost(state), 12, "fourth costs 12")
+	expectEq(state.mp, 90, "cost 10")
+	expect(Match.TrySummon(state), "second summon (cost 20)")
+	expect(Match.TrySummon(state), "third summon (cost 30)")
+	expectEq(Match.SummonCost(state), 40, "fourth costs 40")
 	expect(Match.TrySummon(state), "fourth summon")
-	expectEq(state.energy, 0, "spent")
-	local before = ser(state.board) .. state.energy .. state.summons
+	expectEq(state.mp, 0, "spent")
+	local before = ser(state.board) .. state.mp .. state.summons
 	local ok, code = Match.TrySummon(state)
-	expect(not ok and code == "NoEnergy", "no energy")
-	expectEq(ser(state.board) .. state.energy .. state.summons, before, "unchanged on reject")
+	expect(not ok and code == "NoMP", "no mp")
+	expectEq(ser(state.board) .. state.mp .. state.summons, before, "unchanged on reject")
 	for _, die in state.board do
 		if die then
 			expect(table.find(Dice.Deck, die.type) ~= nil and die.pip == 1, "deck type pip 1")
@@ -189,16 +184,16 @@ test("Match.TryMerge validates before rolling; reject leaves everything, includi
 	expect(not ok2 and code2 == "WrongPhase", "not while ended")
 end)
 
-test("start Energy is exactly four summons, then NoEnergy before any kill", function()
+test("start MP is exactly four summons, then NoMP before any kill", function()
 	local total = 0
 	for s = 0, 3 do
 		total += Formulas.SummonCost(s)
 	end
-	expectEq(Balance.StartEnergy, total, "StartEnergy == cost(0..3)")
+	expectEq(Balance.StartMP, total, "StartMP == cost(0..3)")
 	local state = Match.New(1, Random.new(2), 0, Dice.Deck)
 	for i = 1, 4 do
 		expect(Match.TrySummon(state), "summon " .. i)
 	end
 	local ok, code = Match.TrySummon(state)
-	expect(not ok and code == "NoEnergy", "fifth summon refused")
+	expect(not ok and code == "NoMP", "fifth summon refused")
 end)

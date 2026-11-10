@@ -1,6 +1,6 @@
 -- Pure match simulation (docs/MVP.md "Tick"). No Roblox services: the caller passes
 -- the clock (`now`) and a Random. Intents (TrySummon/TryMerge) validate fully before
--- mutating. All Energy changes go through Economy.
+-- mutating. All MP changes go through Economy.
 --
 -- Outbox: state.out = { S, H, R, F, dirty }. Match.TakeOut drains it for the
 -- Enemies push; `dirty` flags that the State snapshot changed.
@@ -31,7 +31,7 @@ function Match.New(runId: number, rng: any, now: number, deck: { string })
 		rng = rng,
 		phase = "Playing",
 		result = nil,
-		energy = Balance.StartEnergy,
+		mp = Balance.StartMP,
 		summons = 0,
 		lives = Balance.StartLives,
 		wave = 0,
@@ -77,14 +77,14 @@ end
 
 -- Intents ---------------------------------------------------------------------
 
--- Codes: WrongPhase, NoEnergy, BoardFull.
+-- Codes: WrongPhase, NoMP, BoardFull.
 function Match.TrySummon(state): (boolean, string?)
 	if state.phase ~= "Playing" then
 		return false, "WrongPhase"
 	end
 	local cost = Formulas.SummonCost(state.summons)
-	if state.energy < cost then
-		return false, "NoEnergy"
+	if state.mp < cost then
+		return false, "NoMP"
 	end
 	local empty = Board.EmptyCells(state.board)
 	if #empty == 0 then
@@ -92,9 +92,9 @@ function Match.TrySummon(state): (boolean, string?)
 	end
 	local cell = empty[state.rng:NextInteger(1, #empty)]
 	local typeId = state.deck[state.rng:NextInteger(1, #state.deck)]
-	local ok, code = Economy.TryChange(state, "energy", -cost)
+	local ok, code = Economy.TryChange(state, "mp", -cost)
 	if not ok then
-		return false, if code == "Insufficient" then "NoEnergy" else code
+		return false, if code == "Insufficient" then "NoMP" else code
 	end
 	Board.Summon(state.board, cell, typeId, state.nextDieId)
 	state.board[cell].cd = state.lastNow -- ready now, no catch-up hits from time 0
@@ -233,7 +233,7 @@ local function attack(state, now: number)
 end
 
 -- Advances the match to `now`. Order: wave advance, spawn, move + breach, dice
--- attacks, deaths + kill Energy, wave clear / win.
+-- attacks, deaths + kill MP, wave clear / win.
 function Match.Step(state, now: number)
 	if state.phase ~= "Playing" then
 		return
@@ -271,11 +271,11 @@ function Match.Step(state, now: number)
 	-- Dice attacks.
 	attack(state, now)
 
-	-- Deaths + kill Energy.
+	-- Deaths + kill MP.
 	local alive = {}
 	for _, enemy in survivors do
 		if enemy.hp <= 0 then
-			Economy.TryChange(state, "energy", Enemies.Kinds[enemy.kind].energy)
+			Economy.TryChange(state, "mp", Enemies.Kinds[enemy.kind].mp)
 			state.kills += 1
 			table.insert(state.out.R, { Id = enemy.id, Why = "Kill" })
 			state.out.dirty = true
@@ -293,7 +293,7 @@ function Match.Step(state, now: number)
 			Match.Finish(state, "Won")
 			return
 		end
-		Economy.TryChange(state, "energy", Formulas.Stipend(state.wave))
+		Economy.TryChange(state, "mp", Formulas.Stipend(state.wave))
 		state.waveState = "Prep"
 		state.nextWaveAt = now + Balance.WaveGap
 		if state.wave + 1 == Balance.BossWave then

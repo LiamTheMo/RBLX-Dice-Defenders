@@ -37,7 +37,7 @@ local function snapshot(player: Player)
 		BestWave = profile.BestWave,
 		RunsPlayed = profile.RunsPlayed,
 		TrialCleared = profile.TrialCleared,
-		Energy = 0,
+		MP = 0,
 		SummonCost = Formulas.SummonCost(0),
 		Wave = 0,
 		Lives = 0,
@@ -55,7 +55,7 @@ local function snapshot(player: Player)
 		return out
 	end
 	out.Phase = match.phase
-	out.Energy = match.energy
+	out.MP = match.mp
 	out.SummonCost = Match.SummonCost(match)
 	out.Wave = match.wave
 	out.Lives = match.lives

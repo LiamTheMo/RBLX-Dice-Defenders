@@ -198,11 +198,11 @@ end)
 test("soft rejections are never counted and never kick", function()
 	local env, owner = make(), {}
 	env.handler = function()
-		return false, "NoEnergy"
+		return false, "NoMP"
 	end
 	for i = 1, 60 do
 		local ok, code = env.call(owner, "Summon", i)
-		expect(not ok and code == "NoEnergy", "soft code returned")
+		expect(not ok and code == "NoMP", "soft code returned")
 	end
 	expectEq(env.guard:Violations(owner), 0, "no violations")
 	expectEq(#env.kicks, 0, "no kick")

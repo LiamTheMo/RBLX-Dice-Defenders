@@ -1,4 +1,4 @@
--- Formulas, breach/loss, stipend, boss warning, kill Energy, perk damage, First
+-- Formulas, breach/loss, stipend, boss warning, kill MP, perk damage, First
 -- targeting, layout geometry, and a scripted win.
 
 local Server = game:GetService("ServerScriptService").Server
@@ -71,9 +71,9 @@ test("wave formulas", function()
 	expectEq(Formulas.EnemyHp("Runner", 1), 56, "runner hp 1")
 	expectEq(Formulas.EnemyHp("Brute", 5), 257, "brute hp 5")
 	expectEq(Formulas.EnemyHp("Boss", 10), 1116, "boss hp 10")
-	expectEq(Formulas.Stipend(1), 6, "stipend 1")
-	expectEq(Formulas.Stipend(9), 6, "stipend 9")
-	expectEq(Formulas.Stipend(10), 7, "stipend 10")
+	expectEq(Formulas.Stipend(1), 30, "stipend 1")
+	expectEq(Formulas.Stipend(9), 30, "stipend 9")
+	expectEq(Formulas.Stipend(10), 35, "stipend 10")
 	expectEq(Formulas.RewardGold(0), 50, "reward 0")
 	expectEq(Formulas.RewardGold(10), 80, "reward 10")
 end)
@@ -195,16 +195,16 @@ test("an undefended run is lost after the breaches add up", function()
 	expectEq(state.wavesCompleted, 2, "two waves cleared by breaching before the third finished the run")
 end)
 
-test("kill Energy: Grunt 3, Runner 3, Brute 5, Boss 30", function()
-	for kind, expected in { Grunt = 3, Runner = 3, Brute = 5, Boss = 30 } do
+test("kill MP: Grunt 15, Runner 15, Brute 25, Boss 150", function()
+	for kind, expected in { Grunt = 15, Runner = 15, Brute = 25, Boss = 150 } do
 		local state = newState()
-		state.energy = 0
+		state.mp = 0
 		openWave(state)
 		place(state, 5, "C03", 7) -- Hammer pip 7: one-shots any 1 hp target
 		local enemy = addEnemy(state, kind, 1, 55)
 		runFor(state, 2)
 		expect(enemy.hp <= 0, kind .. " died")
-		expectEq(state.energy, expected, kind .. " kill energy")
+		expectEq(state.mp, expected, kind .. " kill mp")
 		local batch = Match.TakeOut(state)
 		local why
 		for _, r in batch.R do
@@ -301,8 +301,8 @@ test("stipend after each cleared wave; boss warning of at least 3 s; boss spawns
 	for cell = 1, 15 do
 		place(state, cell, if cell % 2 == 0 then "C03" else "C05", 7)
 	end
-	state.energy = 0
-	local energyAfterWave1
+	state.mp = 0
+	local mpAfterWave1
 	local bossAtSeen, bossSeenAt
 	local bossFirst = nil
 	local t = 0
@@ -319,8 +319,8 @@ test("stipend after each cleared wave; boss warning of at least 3 s; boss spawns
 		if state.wave == 10 and bossFirst == nil and #batch.S > 0 then
 			bossFirst = batch.S[1].Kind
 		end
-		if state.wavesCompleted == 1 and energyAfterWave1 == nil then
-			energyAfterWave1 = state.energy
+		if state.wavesCompleted == 1 and mpAfterWave1 == nil then
+			mpAfterWave1 = state.mp
 		end
 	end
 	expectEq(state.phase, "Ended", "ended")
@@ -332,8 +332,8 @@ test("stipend after each cleared wave; boss warning of at least 3 s; boss spawns
 	expectEq(state.bossAt, nil, "warning cleared when the wave started")
 	expectEq(bossFirst, "Boss", "boss spawns first in wave 10")
 	expect(
-		energyAfterWave1 ~= nil and energyAfterWave1 >= 6 + 8 * 3,
-		"wave 1: 8 kills x3 + stipend 6: " .. tostring(energyAfterWave1)
+		mpAfterWave1 ~= nil and mpAfterWave1 >= 30 + 8 * 15,
+		"wave 1: 8 kills x15 + stipend 30: " .. tostring(mpAfterWave1)
 	)
 end)
 
@@ -373,9 +373,9 @@ test("summons and merges draw only from the passed deck, which Match copies", fu
 	local state = Match.New(1, Random.new(4), 0, deck)
 	expect(state.deck ~= deck, "own copy")
 	deck[1] = "C01" -- caller mutation must not leak in
-	state.energy = 100000
+	state.mp = 100000
 	for _ = 1, 6 do
-		state.energy = 100000
+		state.mp = 100000
 		expect(Match.TrySummon(state), "summon")
 	end
 	for _, die in state.board do

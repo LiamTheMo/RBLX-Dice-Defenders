@@ -1,4 +1,4 @@
--- Economy is the only code that changes Energy and Gold.
+-- Economy is the only code that changes MP and Gold.
 
 local Server = game:GetService("ServerScriptService").Server
 local Economy = require(Server.Rules.Economy)
@@ -33,37 +33,37 @@ test("Validate.IsInt rejects non-numbers, NaN, inf, fractions and out-of-range",
 end)
 
 test("TryChange adds and subtracts exactly", function()
-	local state = { energy = 20 }
-	expect(Economy.TryChange(state, "energy", 5), "gain")
-	expectEq(state.energy, 25, "gained")
-	expect(Economy.TryChange(state, "energy", -25), "spend all")
-	expectEq(state.energy, 0, "zero is allowed")
+	local state = { mp = 20 }
+	expect(Economy.TryChange(state, "mp", 5), "gain")
+	expectEq(state.mp, 25, "gained")
+	expect(Economy.TryChange(state, "mp", -25), "spend all")
+	expectEq(state.mp, 0, "zero is allowed")
 	local profile = { Gold = 10 }
 	expect(Economy.TryChange(profile, "Gold", 90), "gold gain")
 	expectEq(profile.Gold, 100, "gold")
 end)
 
 test("TryChange never goes negative", function()
-	local state = { energy = 10 }
-	local ok, code = Economy.TryChange(state, "energy", -11)
+	local state = { mp = 10 }
+	local ok, code = Economy.TryChange(state, "mp", -11)
 	expect(not ok and code == "Insufficient", "overspend rejected")
-	expectEq(state.energy, 10, "unchanged")
+	expectEq(state.mp, 10, "unchanged")
 end)
 
 test("TryChange rejects NaN, inf, fractions, overflow and bad keys, leaving the record alone", function()
-	local state = { energy = 10, summons = 3 }
+	local state = { mp = 10, summons = 3 }
 	local before = snapshot(state)
 	for _, bad in { NAN, INF, -INF, 0.5, -0.5, "5", true, {}, 2e9, -2e9 } do
-		local ok, code = Economy.TryChange(state, "energy", bad)
+		local ok, code = Economy.TryChange(state, "mp", bad)
 		expect(not ok and code == "BadAmount", "rejects delta " .. tostring(bad))
 	end
-	local ok, code = Economy.TryChange(state, "energy", nil)
+	local ok, code = Economy.TryChange(state, "mp", nil)
 	expect(not ok and code == "BadAmount", "rejects nil delta")
-	for _, key in { "summons", "Energy", "gold", 1, true } do
+	for _, key in { "summons", "MP", "gold", 1, true } do
 		local ok2, code2 = Economy.TryChange(state, key, 1)
 		expect(not ok2 and code2 == "BadKey", "rejects key " .. tostring(key))
 	end
-	local ok3, code3 = Economy.TryChange(nil, "energy", 1)
+	local ok3, code3 = Economy.TryChange(nil, "mp", 1)
 	expect(not ok3 and code3 == "BadKey", "rejects nil record")
 	expectEq(snapshot(state), before, "record unchanged")
 
@@ -74,10 +74,10 @@ test("TryChange rejects NaN, inf, fractions, overflow and bad keys, leaving the 
 	expect(Economy.TryChange(rich, "Gold", 1), "exactly 1e9 is allowed")
 
 	for _, corrupt in { NAN, INF, -5, 1.5, "3" } do
-		local bad = { energy = corrupt }
-		local ok5, code5 = Economy.TryChange(bad, "energy", 1)
+		local bad = { mp = corrupt }
+		local ok5, code5 = Economy.TryChange(bad, "mp", 1)
 		expect(not ok5 and code5 == "BadAmount", "corrupt current value " .. tostring(corrupt))
-		expect(bad.energy == corrupt or bad.energy ~= bad.energy, "corrupt value untouched")
+		expect(bad.mp == corrupt or bad.mp ~= bad.mp, "corrupt value untouched")
 	end
 end)
 

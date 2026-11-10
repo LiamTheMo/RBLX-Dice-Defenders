@@ -1,7 +1,7 @@
 -- Match HUD: display only. All state comes from NetClient snapshots; the server decides everything.
 --
 -- Placeholder art that needs generated art later (ART_PIPELINE):
---   * top bar panel + stat cells (9-slice frame), heart / energy / gold / wave icons (currently text glyphs)
+--   * top bar panel + stat cells (9-slice frame), heart / mp / gold / wave icons (currently text glyphs)
 --   * Summon button (chunky illustrated button, normal/pressed/disabled)
 --   * boss banner (Thorn Warden portrait/frame), toast frame, full-screen message backdrop
 -- Layout: HUD lives on the top edge and bottom corners; the centre ~60% stays clear for the 3D board.
@@ -17,7 +17,7 @@ local make, panel, label, button = UiKit.make, UiKit.panel, UiKit.label, UiKit.b
 local NAVY, ORANGE, GREY = UiKit.NAVY, UiKit.ORANGE, UiKit.GREY
 
 local TOASTS = {
-	NoEnergy = "Not enough Energy",
+	NoMP = "Not enough MP",
 	BoardFull = "Board is full",
 	IllegalMerge = "Those dice can't merge",
 }
@@ -76,11 +76,11 @@ local function build()
 
 	local bar = panel({ Size = UDim2.new(1, 0, 0, 48), LayoutOrder = 1 }, top)
 	make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, SortOrder = Enum.SortOrder.LayoutOrder }, bar)
-	for i, name in { "Wave", "Lives", "Energy", "Gold" } do
+	for i, name in { "Wave", "Lives", "MP", "Gold" } do
 		ui[name] = label({ Size = UDim2.fromScale(0.25, 1), LayoutOrder = i, Name = name }, bar, 26)
 	end
 	ui.Lives.TextColor3 = Color3.fromRGB(255, 120, 130)
-	ui.Energy.TextColor3 = Color3.fromRGB(120, 220, 255)
+	ui.MP.TextColor3 = Color3.fromRGB(120, 220, 255)
 	ui.Gold.TextColor3 = Color3.fromRGB(255, 215, 90)
 
 	ui.NextWave = label({ Size = UDim2.new(0.6, 0, 0, 24), LayoutOrder = 2, Visible = false }, top, 22)
@@ -174,15 +174,15 @@ local function render(snap)
 	local playing = phase == "Playing"
 	ui.Wave.Text = ("Wave %d/10"):format(snap.Wave or 0)
 	ui.Lives.Text = "\u{2665} " .. tostring(snap.Lives or 0)
-	ui.Energy.Text = "Energy " .. tostring(snap.Energy or 0)
+	ui.MP.Text = "MP " .. tostring(snap.MP or 0)
 	ui.Gold.Text = "Gold " .. tostring(snap.Gold or 0)
 	ui.Wave.Parent.Visible = playing
 
 	local cost = snap.SummonCost or 0
-	local canSummon = playing and (snap.Energy or 0) >= cost
+	local canSummon = playing and (snap.MP or 0) >= cost
 	ui.Summon.Visible = playing
-	ui.Summon.Text = canSummon and ("Summon\n" .. cost .. " Energy")
-		or (playing and ("Summon\nNeed " .. cost .. " Energy") or "Summon")
+	ui.Summon.Text = canSummon and ("Summon\n" .. cost .. " MP")
+		or (playing and ("Summon\nNeed " .. cost .. " MP") or "Summon")
 	ui.Summon.BackgroundColor3 = canSummon and ORANGE or GREY
 	ui.Summon.TextTransparency = canSummon and 0 or 0.35
 	ui.Summon.BackgroundTransparency = canSummon and 0 or 0.3

@@ -1,4 +1,4 @@
--- The only code that changes Energy or Gold. A rejected change leaves the record
+-- The only code that changes MP or Gold. A rejected change leaves the record
 -- exactly as it was.
 local Formulas = require(script.Parent.Formulas)
 local Validate = require(script.Parent.Validate)
@@ -7,8 +7,8 @@ local Economy = {}
 
 Economy.MAX = Validate.MAX_INT
 
--- Keys this module may change: the match's "energy" and the profile's "Gold".
-local KEYS = { energy = true, Gold = true }
+-- Keys this module may change: the match's "mp" and the profile's "Gold".
+local KEYS = { mp = true, Gold = true }
 
 -- Adds integer `delta` to record[key]. Codes: BadKey, BadAmount (NaN, inf, fraction,
 -- out of range or a corrupt current value), Insufficient (would go negative),
