@@ -1,7 +1,7 @@
--- Lobby (placeholder UI): menu + one panel at a time, shown in Lobby / Ended only.
+-- Lobby: sprite HUD (LobbyHud) + one placeholder panel at a time, shown in Lobby / Ended only.
 -- Reads NetClient.Last / LastMeta and calls NetClient.Request; no game logic here.
 --
--- Placeholder art that needs generated art later (ART_PIPELINE): menu buttons, panel frames,
+-- Placeholder art that needs generated art later (ART_PIPELINE): panel frames,
 -- world / mode cards, die icons (colour squares now), rarity badges, results banner, toast frame.
 
 local Players = game:GetService("Players")
@@ -13,10 +13,16 @@ local LobbyHud = require(script.Parent.LobbyHud)
 local Display = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Display"))
 
 local make, panel, label, button = UiKit.make, UiKit.panel, UiKit.label, UiKit.button
-local NAVY, NAVY_LIGHT, WHITE, ORANGE, GREEN, GREY =
-	UiKit.NAVY, UiKit.NAVY_LIGHT, UiKit.WHITE, UiKit.ORANGE, UiKit.GREEN, UiKit.GREY
-local PALE = Color3.fromRGB(200, 200, 230)
+local NAVY, WHITE, GREEN = UiKit.NAVY, UiKit.WHITE, UiKit.GREEN
 local GOLD = Color3.fromRGB(255, 215, 90)
+-- Panel / toast skin matching the HUD: dark-brown fill, copper outline, white text with a dark outline.
+local BROWN = Color3.fromRGB(58, 30, 23)
+local COPPER = Color3.fromRGB(224, 135, 90)
+local ROW_BROWN = Color3.fromRGB(86, 46, 34)
+local ROW_EDGE = Color3.fromRGB(128, 70, 46) -- dark copper row outline
+local MUTED = Color3.fromRGB(110, 90, 82)
+local CREAM = Color3.fromRGB(242, 226, 205)
+local TEXT_STROKE = Color3.fromRGB(9, 14, 24)
 
 local ROW = 48 -- touch row / button height in px (>= 44)
 local TOAST_NAMES = { Start = true, EquipDeck = true, ClaimQuest = true }
@@ -62,7 +68,8 @@ end
 
 local function setEnabled(btn, enabled: boolean, color: Color3)
 	btn.Active = enabled
-	btn.BackgroundColor3 = enabled and color or GREY
+	btn.BackgroundColor3 = enabled and color or MUTED
+	btn.TextColor3 = enabled and NAVY or CREAM
 	btn.TextTransparency = enabled and 0 or 0.35
 end
 
@@ -86,11 +93,13 @@ local function clear(body)
 end
 
 local function row(body, order: number, height: number?)
-	return panel({
+	local r = panel({
 		Size = UDim2.new(1, -8, 0, height or ROW),
 		LayoutOrder = order,
-		BackgroundColor3 = NAVY_LIGHT,
+		BackgroundColor3 = ROW_BROWN,
 	}, body)
+	r:FindFirstChildOfClass("UIStroke").Color = ROW_EDGE
+	return r
 end
 
 local function text(parent, str: string, size: UDim2, pos: UDim2?, maxSize: number, color: Color3?)
@@ -103,6 +112,16 @@ local function text(parent, str: string, size: UDim2, pos: UDim2?, maxSize: numb
 	}, parent, maxSize)
 end
 
+local function skin(frame)
+	frame.BackgroundColor3 = BROWN
+	frame:FindFirstChildOfClass("UIStroke").Color = COPPER
+	return frame
+end
+
+local function outline(lbl)
+	make("UIStroke", { Color = TEXT_STROKE, Thickness = 2, LineJoinMode = Enum.LineJoinMode.Round }, lbl)
+end
+
 local function showPanel(name: string?)
 	openPanel = name
 	for key, p in ui.Panels do
@@ -113,13 +132,13 @@ end
 
 -- A panel with a header (title + Close) and a scrolling body.
 local function newPanel(name: string)
-	local frame = panel({
+	local frame = skin(panel({
 		Name = name,
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
 		Size = UDim2.new(1, -24, 1, -24),
 		Visible = false,
-	}, ui.Root)
+	}, ui.Root))
 	make("UISizeConstraint", { MaxSize = Vector2.new(720, 600) }, frame)
 	make("UIPadding", {
 		PaddingLeft = UDim.new(0, 8),
@@ -127,7 +146,9 @@ local function newPanel(name: string)
 		PaddingTop = UDim.new(0, 8),
 		PaddingBottom = UDim.new(0, 8),
 	}, frame)
-	label({ Text = name, Size = UDim2.new(1, -110, 0, ROW), TextXAlignment = Enum.TextXAlignment.Left }, frame, 32)
+	outline(
+		label({ Text = name, Size = UDim2.new(1, -110, 0, ROW), TextXAlignment = Enum.TextXAlignment.Left }, frame, 32)
+	)
 	local close = button(
 		{
 			AnchorPoint = Vector2.new(1, 0),
@@ -136,12 +157,15 @@ local function newPanel(name: string)
 			Text = "Close",
 		},
 		frame,
-		PALE,
+		CREAM,
 		function()
 			showPanel(nil)
 		end
 	)
 	close.Name = "Close"
+	close.BackgroundColor3 = COPPER
+	close.TextColor3 = WHITE
+	make("UIStroke", { Color = TEXT_STROKE, Thickness = 2, LineJoinMode = Enum.LineJoinMode.Round }, close)
 	local body = make("ScrollingFrame", {
 		Name = "Body",
 		BackgroundTransparency = 1,
@@ -151,6 +175,7 @@ local function newPanel(name: string)
 		CanvasSize = UDim2.new(),
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		ScrollBarThickness = 6,
+		ScrollBarImageColor3 = COPPER,
 		ScrollingDirection = Enum.ScrollingDirection.Y,
 	}, frame)
 	make("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 6) }, body)
@@ -190,8 +215,8 @@ local function renderPlay(snap)
 	)
 	setEnabled(start, canStart, GREEN)
 	local locked = row(body, 2, 70)
-	locked.BackgroundColor3 = GREY
-	text(locked, "Infinite \u{2014} Coming soon", UDim2.new(1, -16, 1, -8), UDim2.fromOffset(8, 4), 26, PALE)
+	locked.BackgroundColor3 = MUTED
+	text(locked, "Infinite \u{2014} Coming soon", UDim2.new(1, -16, 1, -8), UDim2.fromOffset(8, 4), 26, CREAM)
 end
 
 local function renderDeck()
@@ -214,7 +239,7 @@ local function renderDeck()
 				LayoutOrder = i,
 			},
 			slots,
-			i == selectedSlot and ORANGE or PALE,
+			i == selectedSlot and COPPER or CREAM,
 			function()
 				selectedSlot = i
 				renderDeck()
@@ -257,7 +282,7 @@ local function renderDeck()
 				LayoutOrder = 10 + i,
 			},
 			body,
-			slot and ORANGE or PALE,
+			slot and COPPER or CREAM,
 			function()
 				local other = table.find(draft, die.Id)
 				if other then
@@ -297,14 +322,14 @@ local function renderCollection()
 	for _, die in Display.Locked do
 		order += 1
 		local r = row(body, order)
-		r.BackgroundColor3 = GREY
+		r.BackgroundColor3 = MUTED
 		text(
 			r,
 			("%s  %s \u{2014} Not available yet"):format(die.Name, die.Rarity),
 			UDim2.new(1, -16, 1, -8),
 			UDim2.fromOffset(8, 4),
 			22,
-			PALE
+			CREAM
 		)
 	end
 end
@@ -325,7 +350,7 @@ local function renderQuests()
 	for i, quest in meta.Quests do
 		local r = row(body, i, 72)
 		text(r, quest.Name, UDim2.new(0.5, -8, 0, 28), UDim2.fromOffset(8, 6), 22)
-		local desc = text(r, quest.Desc, UDim2.new(0.5, -8, 0, 28), UDim2.fromOffset(8, 38), 18, PALE)
+		local desc = text(r, quest.Desc, UDim2.new(0.5, -8, 0, 28), UDim2.fromOffset(8, 38), 18, CREAM)
 		if quest.Daily then
 			table.insert(questTimers, { Label = desc, Base = quest.Desc, ResetAt = meta.DailyResetAt })
 			desc.Text = quest.Desc .. " \u{00B7} " .. formatReset(meta.DailyResetAt)
@@ -354,14 +379,14 @@ local function renderQuests()
 					Text = "Claim",
 				},
 				r,
-				ORANGE,
+				COPPER,
 				function()
 					if canClaim then
 						send("ClaimQuest", nil, quest.Id)
 					end
 				end
 			)
-			setEnabled(claim, canClaim, ORANGE)
+			setEnabled(claim, canClaim, COPPER)
 			make("UISizeConstraint", { MinSize = Vector2.new(84, ROW) }, claim)
 		end
 	end
@@ -457,12 +482,12 @@ local function build()
 		Visible = false,
 		ZIndex = 20,
 	}, ui.Root)
-	local card = panel({
+	local card = skin(panel({
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
 		Size = UDim2.fromScale(0.5, 0.8),
 		ZIndex = 21,
-	}, ui.ResultBackdrop)
+	}, ui.ResultBackdrop))
 	make("UISizeConstraint", { MinSize = Vector2.new(280, 240), MaxSize = Vector2.new(400, 300) }, card)
 	make("UIPadding", {
 		PaddingLeft = UDim.new(0, 10),
@@ -479,6 +504,9 @@ local function build()
 	ui.ResultWave = label({ Size = UDim2.new(1, 0, 0, 36), LayoutOrder = 2, ZIndex = 22 }, card, 26)
 	ui.ResultReward =
 		label({ Size = UDim2.new(1, 0, 0, 36), LayoutOrder = 3, ZIndex = 22, TextColor3 = GOLD }, card, 26)
+	outline(ui.ResultTitle)
+	outline(ui.ResultWave)
+	outline(ui.ResultReward)
 	local continue = button(
 		{ Size = UDim2.fromOffset(160, ROW), LayoutOrder = 4, ZIndex = 22, Text = "Continue" },
 		card,
@@ -491,15 +519,16 @@ local function build()
 	continue.Name = "Continue"
 
 	-- Top-centre: the bottom of the screen holds the HUD's deck bar.
-	ui.ToastFrame = panel({
+	ui.ToastFrame = skin(panel({
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.new(0.5, 0, 0, 10),
 		Size = UDim2.new(0.5, 0, 0, 40),
 		Visible = false,
 		ZIndex = 30,
-	}, gui)
+	}, gui))
 	make("UISizeConstraint", { MinSize = Vector2.new(220, 40), MaxSize = Vector2.new(460, 44) }, ui.ToastFrame)
 	ui.Toast = label({ Size = UDim2.fromScale(1, 1), ZIndex = 31 }, ui.ToastFrame, 22)
+	outline(ui.Toast)
 end
 
 function Lobby.Start()
