@@ -56,8 +56,8 @@ local GLOW = {
 -- Sprites ------------------------------------------------------------------------------------------------
 
 -- 9-slice sprites use SliceScale so the rim keeps its design size; others just fit.
-function Parts.skin(inst, name: string, sliceScale: number?)
-	local s = Sprites[name]
+function Parts.skin(inst, name: any, sliceScale: number?)
+	local s = if type(name) == "table" then name else Sprites[name] -- a sprite record skips the BagSprites lookup
 	inst.Image = s and s.Image or ""
 	if s and s.Slice then
 		inst.ScaleType = Enum.ScaleType.Slice
@@ -69,8 +69,8 @@ function Parts.skin(inst, name: string, sliceScale: number?)
 end
 
 -- Fixed-height sliced sprite: the sprite height maps to designH.
-function Parts.skinH(inst, name: string, designH: number)
-	local s = Sprites[name]
+function Parts.skinH(inst, name: any, designH: number)
+	local s = if type(name) == "table" then name else Sprites[name]
 	Parts.skin(inst, name, designH / (s and s.Size.Y > 0 and s.Size.Y or designH))
 end
 
@@ -87,8 +87,8 @@ function Parts.inkBox(name: string, inkW: number, inkH: number, k: number?)
 end
 
 -- ref is a BagSprites key or a raw asset id; nil/"" renders blank.
-function Parts.image(inst, ref: string?)
-	if ref and Sprites[ref] then
+function Parts.image(inst, ref: any)
+	if type(ref) == "table" or (ref and Sprites[ref]) then
 		Parts.skin(inst, ref)
 	else
 		inst.Image = ref or ""

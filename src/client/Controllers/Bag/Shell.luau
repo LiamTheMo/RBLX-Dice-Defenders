@@ -1,6 +1,8 @@
 -- Bag shell: the one window every tab shares (banner, close, tab bar, panel slots) plus Fit(). Visual only.
 -- Design px under one UIScale. Switching tabs never touches anything here except the tab sprites.
 -- Shell.new(parent, { fit = () -> { leftReal, bottomTopReal } }) -> shell (see :methods below).
+-- Optional deps for other menus (defaults = the Bag): name, banner { sprite, full, compact, top, text, textPos,
+-- textSize, textFull, textCompact }, detail (sprite key or record), fullDetail (detail panel as tall as the left one).
 
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
@@ -79,8 +81,10 @@ function Shell.new(parent, deps)
 	self._tab, self._tabs, self._tabButtons = 0, {}, {}
 	self._onTab, self._onClose = {}, {}
 
+	local rootName = deps.name or "Bag"
+	local bn = deps.banner or {}
 	local bag = make("Frame", {
-		Name = "Bag",
+		Name = rootName,
 		BackgroundTransparency = 1,
 		Active = false,
 		Visible = false,
@@ -88,7 +92,7 @@ function Shell.new(parent, deps)
 		ZIndex = Z,
 	}, parent)
 	local scaled = make("Frame", { Name = "Scaled", BackgroundTransparency = 1, ZIndex = Z }, bag)
-	local uiScale = make("UIScale", { Name = "BagScale" }, scaled)
+	local uiScale = make("UIScale", { Name = rootName .. "Scale" }, scaled)
 	local window = make("Frame", {
 		Name = "Window",
 		BackgroundTransparency = 1,
@@ -130,7 +134,7 @@ function Shell.new(parent, deps)
 		BackgroundTransparency = 1,
 		ZIndex = Z + 2,
 	}, content)
-	Parts.skin(detail, "Detail", 0.5)
+	Parts.skin(detail, deps.detail or "Detail", 0.5)
 	local detailSlot = frame("Slot", detail, Z + 3)
 	detailSlot.Size = UDim2.fromScale(1, 1)
 	self.LeftPanel, self.Content, self.Left = leftPanel, content, left
@@ -156,14 +160,14 @@ function Shell.new(parent, deps)
 		AnchorPoint = Vector2.new(0.5, 0),
 		ZIndex = Z + 10,
 	}, window)
-	Parts.skin(banner, "Banner")
+	Parts.skin(banner, bn.sprite or "Banner")
 	local bannerText = Parts.text(banner, {
 		Name = "Text",
-		Text = "BAG",
+		Text = bn.text or "BAG",
 		TextTruncate = Enum.TextTruncate.None,
 		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(354 / 615, 114 / 218), -- ref: BAG ink centre 30 px right of, 7 px above the ribbon centre
-		Size = UDim2.fromScale(254 / 615, 88 / 218),
+		Position = bn.textPos or UDim2.fromScale(354 / 615, 114 / 218), -- ref: BAG ink centre 30 px right of, 7 px above the ribbon centre
+		Size = bn.textSize or UDim2.fromScale(254 / 615, 88 / 218),
 		ZIndex = Z + 11,
 	}, 5)
 	self.Banner = banner
@@ -224,10 +228,8 @@ function Shell.new(parent, deps)
 		local contentH = hf - contentTop - bottomPad
 		-- Left column is one box on every tab: the panel fills it, minus the footer strip when the Dice footer shows
 		-- (compact: the footer overlays the panel bottom).
-		local leftH = if compact
-			then contentH
-			elseif self._footerOn then contentH - FOOTER_H - GAP
-			else contentH - t.detailCut
+		local cut = if deps.fullDetail then 0 else t.detailCut
+		local leftH = if compact then contentH elseif self._footerOn then contentH - FOOTER_H - GAP else contentH - cut
 
 		-- Window centred in the free region.
 		local compH = (t.over + hf) * bs
@@ -254,7 +256,7 @@ function Shell.new(parent, deps)
 			footer.Position = UDim2.fromOffset(5, contentH + 10 - FOOTER_BOX.Y)
 			footer.Size = UDim2.fromOffset(FOOTER_BOX.X, FOOTER_BOX.Y)
 		end
-		local detailH = contentH - t.detailCut
+		local detailH = contentH - cut
 		detail.Position = UDim2.fromOffset(leftW + gap, 0)
 		detail.Size = UDim2.fromOffset(detailW, detailH)
 		detailSlot.Size = UDim2.fromOffset(detailW, detailH - t.detailInset) -- offsets: Parts read slot widths in design px
@@ -263,13 +265,13 @@ function Shell.new(parent, deps)
 		end
 		self.Compact = compact
 
-		banner.Position = UDim2.new(0.5, 0, 0, t.bannerTop)
-		banner.Size = UDim2.fromOffset(t.banner.X, t.banner.Y)
+		local bsz = (if compact then bn.compact else bn.full) or t.banner
+		banner.Position = UDim2.new(0.5, 0, 0, (if compact then nil else bn.top) or t.bannerTop)
+		banner.Size = UDim2.fromOffset(bsz.X, bsz.Y)
 		-- Full: BAG text keeps its screen position (30.7 right of the banner centre, 12.7 above the window top).
-		bannerText.Position = if compact
-			then UDim2.fromScale(354 / 615, 114 / 218)
-			else UDim2.fromOffset(t.banner.X / 2 + 30.7, 77.9)
-		bannerText.TextSize = t.bannerText
+		bannerText.Position = bn.textPos
+			or if compact then UDim2.fromScale(354 / 615, 114 / 218) else UDim2.fromOffset(bsz.X / 2 + 30.7, 77.9)
+		bannerText.TextSize = (if compact then bn.textCompact else bn.textFull) or t.bannerText
 		close.Size = if compact then UDim2.fromOffset(72, 68) else UDim2.fromOffset(84.5, 80) -- visible 74x72 (the sprite shows ~0.87 of its box)
 		close.Position = if compact
 			then UDim2.fromOffset(winW - t.mx - 27, t.my + 5)
@@ -279,11 +281,15 @@ function Shell.new(parent, deps)
 		local barW = winW - 2 * (t.mx + 47)
 		local n = math.max(1, #self._tabs)
 		local fixedW = not compact and n == #TAB_W
+		local equalW = not compact and not fixedW and #self._tabs > 0 -- other tab counts fill the Bag's tab-row span
 		local tabW = math.floor((barW - (n - 1) * t.tabGap) / n)
-		if fixedW then
-			barW = t.tabGap * (n - 1)
+		if fixedW or equalW then
+			barW = t.tabGap * (#TAB_W - 1)
 			for _, w in TAB_W do
 				barW += w
+			end
+			if equalW then
+				tabW = (barW - (n - 1) * t.tabGap) / n
 			end
 		end
 		tabBar.Position = UDim2.new(0.5, 0, 0, t.tabTop + t.my)
