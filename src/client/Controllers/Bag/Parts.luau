@@ -587,18 +587,19 @@ local GRIDS = {
 		cols = 5,
 		rows = 2,
 		aspect = 0.73,
-		gx = 9,
+		gx = 8,
 		gy = 10,
 		side = 22,
 		icon = 0.68,
 		iconY = 0.375,
 		maxW = 139,
-		padL = 18,
+		ratio = 201 / 139, -- card height / width at the reference size: short windows show a partial row, never a squashed card
 	},
-	Items = { cols = 5, rows = 3, aspect = 0.98, gx = 8, gy = 16, side = 20, icon = 0.8, iconY = 0.53 },
+	Items = { cols = 5, rows = 3, aspect = 0.98, gx = 8, gy = 16, side = 20, icon = 0.8, iconY = 0.53, ratio = 1.17 },
 }
 local CARD_M = 5 -- card sprite transparent margin (both sides) at SliceScale 0.5: box = visible card + 5
 local GLOW_X, GLOW_Y = 8, 4 -- the CanvasGroup/scroll window extends this far past the cards so the selected glow is never clipped
+local FULL_L, FULL_R = 19, 29 -- Full grid: card ink area inside the panel; the scrollbar ink sits at W - 19
 local BOT, TOP = 4, 10 -- Full: first row starts TOP below the toolbar; visible rows end BOT above the slot bottom
 local SELECTED_COPPER = { Items = "CardCopperSelectedMaroon" }
 local RARITY_CARD = {
@@ -799,8 +800,12 @@ function Parts.Grid(parent)
 			sel.ZIndex = card.ZIndex + 8 -- transparent middle: the glow draws over the neighbouring cards
 			make("UICorner", { CornerRadius = UDim.new(0, px(14)) }, sel)
 			make("UIStroke", { Color = Color3.fromRGB(252, 205, 10), Thickness = t }, sel)
-			if not compactNow then -- bright core + ~10 px warm glow (ref)
-				local r = px(14)
+			local r = px(14) -- bright core + warm glow (ref ~10 px; phones ~4 px so it stays inside the scroll window)
+			if compactNow then
+				glowRing(sel, 1, 2, Color3.fromRGB(255, 246, 89), 0, r)
+				glowRing(sel, t, 2, Color3.fromRGB(255, 150, 30), 0.45, r)
+				glowRing(sel, t + 2, 2, Color3.fromRGB(255, 130, 30), 0.75, r)
+			else
 				glowRing(sel, 2, 3, Color3.fromRGB(255, 246, 89), 0, r)
 				glowRing(sel, t, 3, Color3.fromRGB(255, 150, 30), 0.45, r)
 				glowRing(sel, t + 3, 3, Color3.fromRGB(255, 140, 30), 0.68, r)
@@ -913,10 +918,9 @@ function Parts.Grid(parent)
 		local gx, gy = if compact then 6 else g.gx, if compact then 6 else g.gy
 		local m = if compact then 0 else CARD_M -- visible card + margin = cell
 		cellM = m
-		-- Items/Materials reserve the scrollbar column so the bar sits clear of the last card column (as on Dice):
-		-- Full keeps cells inside [18, W - 29] (bar at W - 21), Compact inside [side, W - 19] (bar at W - 11).
-		local reserve = if g.padL then 0 elseif compact then 13 else 12
-		local inner = W - 2 * side - reserve
+		-- Every tab reserves the scrollbar column the same way: Full centres the card ink in [FULL_L, W - FULL_R]
+		-- (bar ink at W - 19, so ~10 px clear of the last column); Compact keeps its own side/reserve.
+		local inner = if compact then W - 2 * side - 21 else W - FULL_L - FULL_R
 		local cols = math.min(g.cols, math.max(1, math.floor((inner + gx) / (MIN_CARD_W + gx))))
 		cardW = math.min(if compact then 190 else g.maxW or 190, math.floor((inner - (cols - 1) * gx) / cols))
 		local pt = if compact then 10 else TOP -- compact: 10 px clear of the window top for the selected glow
@@ -926,7 +930,11 @@ function Parts.Grid(parent)
 			local best
 			for n = 1, 4 do
 				local ch = (H - pt - 2 - GLOW_Y - (n - 1) * gy) / n
-				if ch >= 40 and (not best or math.abs(math.log(ch / c0)) < math.abs(math.log(best / c0))) then
+				if
+					ch >= 40
+					and ch >= c0 * 0.85
+					and (not best or math.abs(math.log(ch / c0)) < math.abs(math.log(best / c0)))
+				then
 					best, rows = ch, n
 				end
 			end
@@ -938,20 +946,19 @@ function Parts.Grid(parent)
 			-- Cosmetics panel is taller by the Dice footer (+ gap): size the cards as on the Dice tab
 			local refH = H - (if diceSized then parent:GetAttribute("FooterInset") or 0 else 0)
 			cardH = math.floor((refH - BOT - TOP - m - (g.rows - 1) * gy) / g.rows)
+			local want = math.floor(cardW * g.ratio)
+			if cardH < want then -- short window: keep the card shape, the spare height shows the start of the next row
+				cardH, capped = want, true
+			end
 		end
 		layout.CellSize = UDim2.fromOffset(cardW + m, cardH + m)
 		layout.CellPadding = UDim2.fromOffset(gx - m, gy - m)
 		-- Rows are left-aligned (a lone result sits in column 1); the whole column block is centred by padding.
-		local pad = math.max(0, math.floor((W - (cols * cardW + (cols - 1) * gx)) / 2 - m / 2))
-		if g.padL then -- Dice (and Cosmetics): left-aligned on the reference column 1
-			pad = if compact then pad else g.padL
-		else -- Items/Materials: centred in the width left of the scrollbar column
-			pad = (if compact then side else 18) + math.floor((inner - (cols * cardW + (cols - 1) * gx)) / 2)
-		end
+		local pad = (if compact then side else FULL_L - math.floor(m / 2))
+			+ math.floor((inner - (cols * cardW + (cols - 1) * gx)) / 2)
 		gridPad.PaddingLeft = UDim.new(0, pad + GLOW_X)
-		-- the cells need the full width: only the glow margin is kept on the right (Dice compact keeps its centring pad)
-		gridPad.PaddingRight = UDim.new(0, if compact and g.padL then pad + GLOW_X else GLOW_X)
-		barW = if compact then (if g.padL then math.clamp(pad - 8, 6, 14) else 8) else 12 -- Full: thumb ink 8 px, clear of the cards and inside the rim
+		gridPad.PaddingRight = UDim.new(0, GLOW_X) -- the cells need the full width: only the glow margin is kept on the right
+		barW = if compact then 8 else 12 -- Full: thumb ink 8 px, clear of the cards and inside the rim
 		gridPad.PaddingTop = UDim.new(0, pt)
 		local pitch = cardH + gy
 		rows = rows or math.max(1, math.floor((H - pt - 2 - m + gy) / pitch))
@@ -963,7 +970,7 @@ function Parts.Grid(parent)
 		end
 		fade.Size = UDim2.new(1, 2 * GLOW_X, 0, visibleH + GLOW_Y)
 		track.Size = UDim2.fromOffset(barW, visibleH)
-		track.Position = UDim2.new(1, if compact then -3 else -9, 0, 0)
+		track.Position = UDim2.new(1, if compact then -8 else -9, 0, 0) -- phones: thumb ink ends >= 3 px before the panel rim
 		barSkin(track, "ScrollTrack", barW)
 		barSkin(thumb, "ScrollThumb", barW)
 		updateFade()
@@ -1431,13 +1438,13 @@ function Parts.Detail(parent)
 		if descH > 0 then
 			at(descBox, y, descH)
 			if descBox.Image ~= "" then -- boxed: reference box is 407 px wide, wider than the text column
-				descBox.Size = UDim2.fromOffset(381, descH) -- ref: 11-12 px clear of the panel rim on both sides
+				descBox.Size = UDim2.fromOffset(math.min(381, parent.Size.X.Offset - 34), descH) -- ref: 11-12 px clear of the panel rim on both sides; a narrow panel keeps the same clearance
 			end
 			y += descH + gap
 		end
 		if divH > 0 then
 			at(divider, y, divH)
-			divider.Size = UDim2.fromOffset(if lay.line then 340 else math.floor(w * 0.9), divH)
+			divider.Size = UDim2.fromOffset(if lay.line then math.min(340, w) else math.floor(w * 0.9), divH)
 			y += divH + gap
 		end
 		if extraH > 0 then
