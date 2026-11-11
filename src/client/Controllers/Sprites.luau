@@ -5,33 +5,33 @@
 
 return {
 	Frame = {
-		Normal = "rbxassetid://80393414939954",
-		Pressed = "rbxassetid://118760999098769",
-		Highlighted = "rbxassetid://100534808336717",
-		Disabled = "rbxassetid://131266246742978",
+		Normal = "rbxassetid://92989738398676",
+		Pressed = "rbxassetid://83972505597052",
+		Highlighted = "rbxassetid://114715455425249",
+		Disabled = "rbxassetid://126677670648470",
 	},
 	Icon = {
-		Shop = "rbxassetid://100560956902187",
-		Roll = "rbxassetid://114472853367162",
-		Bag = "rbxassetid://90244048949141",
-		Play = "rbxassetid://113023981750011",
-		Codes = "rbxassetid://79544216881940",
-		Daily = "rbxassetid://118089544403082",
-		Quests = "rbxassetid://85341582897204",
-		Settings = "rbxassetid://77321474703307",
+		Shop = "rbxassetid://136091975378695",
+		Roll = "rbxassetid://88652498791402",
+		Bag = "rbxassetid://109669445687992",
+		Play = "rbxassetid://128965276160933",
+		Codes = "rbxassetid://74109008812258",
+		Daily = "rbxassetid://109962548987845",
+		Quests = "rbxassetid://98989594468537",
+		Settings = "rbxassetid://87526365416350",
 	},
-	Coin = "rbxassetid://75834021973843",
-	Gem = "rbxassetid://86675405032065",
-	XpTrack = "rbxassetid://131522632371494",
-	XpFill = "rbxassetid://86801745416878",
+	Coin = "rbxassetid://77740953491206",
+	Gem = "rbxassetid://78341023899444",
+	XpTrack = "rbxassetid://77898971388959", -- export 431x24
+	XpFill = "rbxassetid://102610878322715", -- export 428x18
 	-- Elemental die art. Only dice listed in DieArt use it; other dice show Icon.Roll tinted
 	-- with their Display colour.
 	Dice = {
-		Sun = "rbxassetid://138145319780314",
-		Ice = "rbxassetid://127027200377323",
-		Fire = "rbxassetid://128462787030188",
-		Leaf = "rbxassetid://84541409461636",
-		Lightning = "rbxassetid://85075259461674",
+		Sun = "rbxassetid://122873795000099",
+		Ice = "rbxassetid://124076903041822",
+		Fire = "rbxassetid://81256788562241",
+		Leaf = "rbxassetid://75319378635825",
+		Lightning = "rbxassetid://71178139321035",
 	},
 	DieArt = {
 		R01 = "Ice", -- Frost
