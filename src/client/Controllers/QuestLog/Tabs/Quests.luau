@@ -208,7 +208,7 @@ function Quests.new(parent)
 			})
 			visual.AnchorPoint = Vector2.new(0.5, 0.5)
 			visual.Position = UDim2.fromScale(0.5, 0.5)
-			visual.Active = false -- the transparent hit button above takes the tap
+			visual.Interactable = false -- the transparent hit button above takes the tap (Active=false still swallows clicks)
 			visual.Selectable = false
 			hit.Activated:Connect(function()
 				if onClaim then

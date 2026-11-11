@@ -100,7 +100,6 @@ function QuestLog.new(parent, deps)
 			textCompact = 20,
 		},
 		detail = Q.DetailPanel,
-		fullDetail = true,
 	})
 	local toolbar = Toolbar.new(shell.Slots.Toolbar)
 	local quests = Quests.new(shell.Slots.Grid)

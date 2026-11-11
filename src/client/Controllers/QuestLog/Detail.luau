@@ -258,7 +258,7 @@ function Detail.new(parent)
 	})
 	visual.AnchorPoint = Vector2.new(0.5, 0.5)
 	visual.Position = UDim2.fromScale(0.5, 0.5)
-	visual.Active = false
+	visual.Interactable = false -- a button still swallows clicks when only Active is false; the hit above takes the tap
 	visual.Selectable = false
 	table.insert(
 		conns,
