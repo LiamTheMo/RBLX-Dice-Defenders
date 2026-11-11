@@ -3,17 +3,21 @@
 Usage: python tools/slice_lobby_hud.py
 Reads Assets/UI/lobby HUD/*.png, writes Assets/UI/lobby HUD/export/<Name>.png
 (names match the keys in src/client/Controllers/Sprites.luau). Needs Pillow + numpy.
-Rects are alpha>16 bounding boxes measured from the sheets (x, y, w, h).
+Rects are alpha>16 bounding boxes measured from the sheets (x, y, w, h); Icon_Roll is its own file, alpha>=8 bbox.
+Shares the crop / margin / de-matte / 9-slice rebuild code with tools/slice_bag.py. XpTrack and XpFill (drawn sliced by LobbyHud)
+get their SliceCenter in export/manifest.json.
 """
 
+import json
 from pathlib import Path
 
-import numpy as np
 from PIL import Image
+
+from slice_bag import cut, fit, seamproof, measure
 
 SRC = Path(__file__).resolve().parent.parent / "Assets" / "UI" / "lobby HUD"
 OUT = SRC / "export"
-MARGIN = 6  # source px kept around each bbox for the soft edge
+MARGIN = 6  # minimum source px kept around each bbox for the soft edge (slice_bag.fit raises it at heavy downscale)
 
 # name: (sheet, (x, y, w, h), longest output side)
 SPRITES = {
@@ -22,7 +26,7 @@ SPRITES = {
     "Frame_Highlighted": ("shared-frames.png", (1120, 134, 464, 454), 256),
     "Frame_Disabled": ("shared-frames.png", (1658, 134, 466, 454), 256),
     "Icon_Shop": ("icons.png", (50, 70, 366, 330), 256),
-    "Icon_Roll": ("icons.png", (468, 82, 404, 300), 256),
+    "Icon_Roll": ("Icon_Roll.png", (82, 136, 1159, 830), 256),
     "Icon_Bag": ("icons.png", (920, 58, 376, 350), 256),
     "Icon_Play": ("icons.png", (1362, 70, 350, 326), 256),
     "Icon_Codes": ("icons.png", (54, 514, 366, 308), 256),
@@ -40,51 +44,34 @@ SPRITES = {
     "XpTrack": ("xp-bar.png", (44, 68, 2084, 84), 1024),
     "XpFill": ("xp-bar.png", (52, 426, 2068, 54), 1024),
 }
-
-
-def threshold(rgba: np.ndarray) -> np.ndarray:
-    """Drop the alpha 1-7 speckle fringe and make 'opaque' (alpha 253) truly opaque."""
-    a = rgba[..., 3]
-    a[a < 8] = 0
-    a[a >= 248] = 255
-    return rgba
-
-
-def bleed(rgba: np.ndarray) -> np.ndarray:
-    """Spread edge colour into transparent pixels so Roblox's bilinear sampling has no dark halo."""
-    a = rgba[..., 3]
-    rgb = rgba[..., :3].astype(np.float32)
-    known = a > 0
-    for _ in range(8):
-        acc = np.zeros_like(rgb)
-        cnt = np.zeros(a.shape, np.float32)
-        for dy, dx in ((-1, 0), (1, 0), (0, -1), (0, 1)):
-            k = np.roll(known, (dy, dx), (0, 1))
-            acc += np.roll(rgb, (dy, dx), (0, 1)) * k[..., None]
-            cnt += k
-        grow = ~known & (cnt > 0)
-        rgb[grow] = acc[grow] / cnt[grow, None]
-        known |= grow
-    rgba[..., :3] = rgb.astype(np.uint8)
-    return rgba
+HEIGHTS = {"XpTrack": 24}  # export height (margin included) ~2x the drawn 12 px
+SLICED = {"XpTrack", "XpFill"}
 
 
 def main() -> None:
     OUT.mkdir(exist_ok=True)
     sheets: dict[str, Image.Image] = {}
-    for name, (sheet, (x, y, w, h), side) in SPRITES.items():
+    manifest = {}
+    shared = None
+    for name, (sheet, rect, side) in SPRITES.items():
         img = sheets.setdefault(sheet, Image.open(SRC / sheet).convert("RGBA"))
-        box = (x - MARGIN, y - MARGIN, x + w + MARGIN, y + h + MARGIN)
-        crop = Image.fromarray(threshold(np.array(img.crop(box))))
-        k = side / max(crop.size)
-        if name == "XpFill":  # keep the track's scale, not its own
-            k = 1024 / (2084 + 2 * MARGIN)
-        size = (round(crop.width * k), round(crop.height * k))
-        # Pillow premultiplies RGBA when resizing, so bleed afterwards.
-        out = Image.fromarray(bleed(np.array(crop.resize(size, Image.LANCZOS))))
-        out.save(OUT / f"{name}.png", optimize=True)
-        assert out.width <= 1024 and out.height <= 1024, name
-        print(f"{name}: {size[0]}x{size[1]}")
+        if name == "XpFill":  # keep the track's scale and margin, not its own
+            k, m = shared
+        else:
+            k, m = fit(rect[2], rect[3], MARGIN, side=side, height=HEIGHTS.get(name), inc_margin=True)
+        if name == "XpTrack":
+            shared = (k, m)
+        px, masked = cut(img, rect, MARGIN, k, m)
+        info = {"w": px.shape[1], "h": px.shape[0]}
+        note = f"k={k:.3f} m={m}" + (f" MASKED {masked} opaque neighbour px" if masked else "")
+        if name in SLICED:
+            px, line, notes = seamproof(px, measure(px, (0, 0, 0, 0)))
+            info["slice"] = line
+            note += f" {line}" + "".join(f" WARN {n}" for n in notes)
+        Image.fromarray(px).save(OUT / f"{name}.png", optimize=True)
+        manifest[name] = info
+        print(f"{name}: {px.shape[1]}x{px.shape[0]} {note}")
+    (OUT / "manifest.json").write_text(json.dumps(manifest, indent=1))
 
 
 if __name__ == "__main__":
