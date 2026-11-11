@@ -19,16 +19,22 @@ local TIER = {
 		mx = 6,
 		my = 5,
 		rim = 1.0,
-		over = 88, -- banner top to window frame top
-		banner = Vector2.new(406, 144), -- 0.66x the 615x218 art: ribbon ~307x96 vs ref 338x88 (art aspect differs)
+		over = 86, -- layout only: banner top to window frame top (the banner itself sits at bannerTop)
+		bannerTop = -90.6,
+		banner = Vector2.new(380, 134.7), -- 0.618x the 615x218 art: ribbon top 41 / bottom 117 at x 860/940 as in the ref
 		bannerText = 76,
-		tabTop = 44, -- from the rim box top (all Full values below are rim-box relative)
-		tabH = 62,
-		tabGap = 12,
-		icon = 38,
+		tabTop = 41.8, -- from the rim box top (all Full values below are rim-box relative)
+		tabH = 75.5, -- visible tab body 64 tall (sprite margin + shadow ~13% of the box)
+		tabGap = -0.8, -- box gap (the tab sprite shows ~20 px less than its box in width): visible gap 17-18
+		icon = 54.5, -- visible 52x52
+		iconGap = 17, -- 19 px visible icon to label
 		tabText = 34,
-		contentTop = 122,
-		bottomPad = 28,
+		side = 28.5, -- window box edge to panels (visible panel rim 11 px from the band)
+		gap = 3, -- panel boxes overlap their transparent margins: visible rim gap 11
+		detailCut = 46, -- detail panel ends this far above the content bottom (rim bottom 781 on every tab)
+		detailInset = 35, -- detail slot ends above the panel bottom: action row top ~688
+		contentTop = 119.5,
+		bottomPad = 32, -- + my: content bottom to window box bottom (rim inner edge 10 px below the content)
 		pitch = 142,
 	},
 	Compact = {
@@ -36,6 +42,7 @@ local TIER = {
 		my = 1,
 		rim = 0.78,
 		over = 46,
+		bannerTop = -46,
 		banner = Vector2.new(214, 76),
 		bannerText = 34,
 		tabText = 24,
@@ -43,17 +50,23 @@ local TIER = {
 		tabH = 56,
 		tabGap = 8,
 		icon = 30,
+		iconGap = 6,
+		side = 27,
+		gap = 10,
+		detailCut = 0,
+		detailInset = 8,
 		contentTop = 92,
 		bottomPad = 16,
 		pitch = 120,
 	},
 }
-local SIDE, GAP = 27, 10 -- rim to panels; between left panel and detail
-local FULL_INK = Vector2.new(1248, 761)
+local GAP = 10 -- vertical gap left panel to footer
+local FULL_INK = Vector2.new(1251, 770) -- window box minus the transparent mx/my margin: visible rim 213-1459 x 98-861
+local TAB_W = { 278.3, 299.3, 280.3, 314.3 } -- full-tier box widths for 4 tabs: visible 265 / 286 / 267 / 301 as in the ref
 local TOOLBAR_H, FOOTER_H = 68, 97
-local DETAIL_INSET = 8 -- detail content stops this far above the panel bottom (14 px to the inner rim, as in the reference)
+local FOOTER_BOX = Vector2.new(786, 111) -- footer strip box: visible 242-1018 x 734-832 (slice-scale-0.69 margins: 4 left, 6 right, 3 top, 10 bottom)
 local GRID_INSET = 12 -- GridScroll stops this far above the panel bottom so peeking cards clip inside the rim
-local DETAIL_MAX, DETAIL_MIN = 410, 310
+local DETAIL_MAX, DETAIL_MIN = 420, 310
 local MIN_SCALE, MAX_SCALE = 0.8, 1.5
 
 local Shell = {}
@@ -179,8 +192,10 @@ function Shell.new(parent, deps)
 			return
 		end
 		local ins = deps.fit()
-		local availW = size.X - 2 * (ins.leftReal + 8)
-		local availH = ins.bottomTopReal - 10 -- region [4, bottomTop - 6]
+		local phone = size.Y < UiKit.PHONE_H
+		local availW = size.X - 2 * (ins.leftReal + if phone then 8 else 6)
+		local vpad = if phone then 0 else 4 -- the window box may reach the bag row: its bottom margin is transparent
+		local availH = ins.bottomTopReal - 10 + vpad -- region [4, bottomTop - 6 + vpad]
 		local full = TIER.Full
 		local fullW, fullH = FULL_INK.X + 2 * full.mx, FULL_INK.Y + 2 * full.my
 		local bs = math.clamp(math.min(availW / fullW, availH / (fullH + full.over)), MIN_SCALE, MAX_SCALE)
@@ -194,15 +209,16 @@ function Shell.new(parent, deps)
 		local t = if compact then TIER.Compact else TIER.Full
 		local hf = if compact then math.clamp(dh - t.over, 250, 725) else math.clamp(dh - t.over, 440, fullH)
 		local winW = math.min(if compact then 1160 else fullW, dw)
-		local side = SIDE + t.mx
+		local side = t.side
 		local inner = winW - 2 * side
-		local cols = math.clamp(math.floor((inner - GAP - DETAIL_MIN - 10) / t.pitch), 2, 5)
+		local gap = t.gap
+		local cols = math.clamp(math.floor((inner - gap - DETAIL_MIN - 10) / t.pitch), 2, 5)
 		local leftW = cols * t.pitch + 10
-		local detailW = math.min(DETAIL_MAX, inner - GAP - leftW)
+		local detailW = math.min(DETAIL_MAX, inner - gap - leftW)
 		if detailW == DETAIL_MAX then
-			leftW = inner - GAP - detailW -- spare width goes to the grid panel (the grid centres its cards)
+			leftW = inner - gap - detailW -- spare width goes to the grid panel (the grid centres its cards)
 		else
-			winW = 2 * side + GAP + leftW + detailW
+			winW = 2 * side + gap + leftW + detailW
 		end
 		local contentTop, bottomPad = t.contentTop + t.my, t.bottomPad + (if compact then 0 else t.my)
 		local contentH = hf - contentTop - bottomPad
@@ -212,7 +228,7 @@ function Shell.new(parent, deps)
 
 		-- Window centred in the free region.
 		local compH = (t.over + hf) * bs
-		local top = 4 + ((ins.bottomTopReal - 8) - 4 - compH) / 2
+		local top = 4 + ((ins.bottomTopReal - 8 + vpad) - 4 - compH) / 2
 		window.Size = UDim2.fromOffset(winW, hf)
 		window.Position = UDim2.new(0.5, 0, 0, (top + t.over * bs + hf * bs / 2) / bs)
 		chrome.SliceScale = t.rim
@@ -220,41 +236,66 @@ function Shell.new(parent, deps)
 		content.Position = UDim2.fromOffset(side, contentTop)
 		content.Size = UDim2.fromOffset(winW - 2 * side, contentH)
 		left.Size = UDim2.fromOffset(leftW, contentH)
-		leftPanel.Size = UDim2.fromOffset(leftW, leftH)
+		-- Full: the panel rim shows 1 px in from its box on the left and 3 px on the right (visible 239-1012)
+		leftPanel.Position = UDim2.fromOffset(if compact then 0 else 1, 0)
+		leftPanel.Size = UDim2.fromOffset(if compact then leftW else leftW + 2, leftH)
 		toolbar.Size = UDim2.fromOffset(leftW, TOOLBAR_H)
 		grid.Position = UDim2.fromOffset(3, TOOLBAR_H)
 		grid.Size = UDim2.fromOffset(leftW - 6, leftH - TOOLBAR_H - GRID_INSET)
 		-- Compact: an overlay (own strip background) over the panel bottom, wide enough for 5 slots + button;
 		-- the controller decides when it is visible (Footer:SetVisible).
-		footer.Position = UDim2.fromOffset(0, contentH - FOOTER_H)
-		footer.Size = UDim2.fromOffset(leftW, FOOTER_H)
-		detail.Position = UDim2.fromOffset(leftW + GAP, 0)
-		detail.Size = UDim2.fromOffset(detailW, contentH)
-		detailSlot.Size = UDim2.fromOffset(detailW, contentH - DETAIL_INSET) -- offsets: Parts read slot widths in design px
+		if compact then
+			footer.Position = UDim2.fromOffset(0, contentH - FOOTER_H)
+			footer.Size = UDim2.fromOffset(leftW, FOOTER_H)
+		else
+			footer.Position = UDim2.fromOffset(5, contentH + 10 - FOOTER_BOX.Y)
+			footer.Size = UDim2.fromOffset(FOOTER_BOX.X, FOOTER_BOX.Y)
+		end
+		local detailH = contentH - t.detailCut
+		detail.Position = UDim2.fromOffset(leftW + gap, 0)
+		detail.Size = UDim2.fromOffset(detailW, detailH)
+		detailSlot.Size = UDim2.fromOffset(detailW, detailH - t.detailInset) -- offsets: Parts read slot widths in design px
 		for _, slotFrame in self.Slots do
 			slotFrame:SetAttribute("Compact", compact)
 		end
 		self.Compact = compact
 
-		banner.Position = UDim2.new(0.5, 0, 0, -t.over)
+		banner.Position = UDim2.new(0.5, 0, 0, t.bannerTop)
 		banner.Size = UDim2.fromOffset(t.banner.X, t.banner.Y)
+		-- Full: BAG text keeps its screen position (30.7 right of the banner centre, 12.7 above the window top).
+		bannerText.Position = if compact
+			then UDim2.fromScale(354 / 615, 114 / 218)
+			else UDim2.fromOffset(t.banner.X / 2 + 30.7, 77.9)
 		bannerText.TextSize = t.bannerText
-		close.Position = UDim2.fromOffset(winW - t.mx - 27, t.my + 5)
+		close.Size = if compact then UDim2.fromOffset(72, 68) else UDim2.fromOffset(84.5, 80) -- visible 74x72 (the sprite shows ~0.87 of its box)
+		close.Position = if compact
+			then UDim2.fromOffset(winW - t.mx - 27, t.my + 5)
+			else UDim2.fromOffset(winW - t.mx - 29, t.my + 8.5) -- centre 1432.5, 101.5
 
 		-- Tabs: equal widths; label shrinks (>=15) and the icon drops when very narrow.
 		local barW = winW - 2 * (t.mx + 47)
 		local n = math.max(1, #self._tabs)
+		local fixedW = not compact and n == #TAB_W
 		local tabW = math.floor((barW - (n - 1) * t.tabGap) / n)
+		if fixedW then
+			barW = t.tabGap * (n - 1)
+			for _, w in TAB_W do
+				barW += w
+			end
+		end
 		tabBar.Position = UDim2.new(0.5, 0, 0, t.tabTop + t.my)
 		tabBar.Size = UDim2.fromOffset(barW, t.tabH)
 		tabBar.UIListLayout.Padding = UDim.new(0, t.tabGap)
-		for _, tab in self._tabButtons do
-			tab.Size = UDim2.fromOffset(tabW, t.tabH)
+		for i, tab in self._tabButtons do
+			local w = if fixedW then TAB_W[i] else tabW
+			tab.Size = UDim2.fromOffset(w, t.tabH)
+			tab.Row.Position = UDim2.fromOffset(0, if compact then 0 else -4) -- ref label y 159-178: above the tab centre
+			tab.Row.UIListLayout.Padding = UDim.new(0, t.iconGap)
 			tab.Row.Icon.Size = UDim2.fromOffset(t.icon, t.icon)
-			tab.Row.Icon.Visible = tabW >= 150
-			local avail = tabW - 24 - (if tabW >= 150 then t.icon + 6 else 0)
+			tab.Row.Icon.Visible = w >= 150
+			local avail = w - 24 - (if w >= 150 then t.icon + t.iconGap else 0)
 			tab.Row.Label.UISizeConstraint.MaxSize = Vector2.new(avail, t.tabH)
-			Parts.fit(tab.Row.Label, avail, if tabW < 170 then 18 else t.tabText, 15)
+			Parts.fit(tab.Row.Label, avail, if w < 170 then 18 else t.tabText, 15)
 		end
 		self:_skinTabs()
 	end

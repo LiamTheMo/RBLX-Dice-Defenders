@@ -12,7 +12,9 @@ local FONT = Enum.Font.FredokaOne
 -- Sampled from reference.png: near-black outline on all HUD text, gold / pink currency numbers.
 local STROKE = Color3.fromRGB(9, 14, 24)
 local GOLD_TEXT = Color3.fromRGB(249, 199, 53)
-local GEM_TEXT = Color3.fromRGB(247, 142, 236)
+local GEM_TEXT = Color3.fromRGB(243, 89, 232)
+local DIM = Color3.fromRGB(180, 180, 182) -- ~70% tint of the HUD icons/labels behind the bag (ref #B1B1B3 / #B4AFB4)
+local BAG_LABEL = Color3.fromRGB(236, 234, 236) -- the selected BAG label stays light (ref #ECEAEC)
 local DESIGN = Vector2.new(1672, 941)
 -- XP bar: design height / track export height (24) is the slice scale; the fill uses the same scale.
 local XP_FILL_CAPS = 112 - (89 - 24) -- narrowest fill: both caps, export px
@@ -20,6 +22,13 @@ local XP_FILL_PAD = 3.95 -- fill box inset from each end of the track, export px
 local BAG_ROW = Vector2.new(880, 50) -- bag-mode bottom row (reference x 405-1285, y 872-922)
 local CELL = Vector2.new(124, 114)
 local BAG_CELL, BAG_GRID_X, BAG_ICON_SCALE = UDim2.fromOffset(104, 110), 114, 0.88
+-- Icon art drawn at ref ink size: design px per export px (export 256 wide; the sprite margin is ~5 export px).
+local ICON_ART = {
+	Roll = Vector2.new(256, 185) * 0.415,
+	Quests = Vector2.new(256, 248) * 0.335,
+	Bag = Vector2.new(256, 239) * 0.345,
+}
+local LABEL_Y = 89.5 -- label centre in the 114 px cell (ref label rows y 432 / 547 / 660)
 local MARGIN = 20 -- side safe margin
 local PROFILE_H = 44 + 36 + 12 -- currencies, gap, XP bar (LVL / XP text overlays the bar)
 local DECK_H = 105
@@ -85,13 +94,13 @@ local function iconButton(parent, o)
 		Size = UDim2.fromScale(1, 1),
 	}, btn)
 	make("UIScale", { Name = "BagScale" }, content) -- bag mode shrinks the left grid
-	list(content, Enum.FillDirection.Vertical, 0)
-	-- Fixed-size holder: the list lays out scaled sizes, so scaling the icon directly would move the label.
+	-- Fixed-size holder, absolutely placed: scaling the icon directly would move the label.
 	local holder = make("Frame", {
 		Name = "IconHolder",
 		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = if o.Label then UDim2.new(0.5, 0, 0, 40) else UDim2.fromScale(0.5, 0.5),
 		Size = o.IconSize or UDim2.fromOffset(88, 78),
-		LayoutOrder = 1,
 	}, content)
 	local icon = make("ImageLabel", {
 		Name = "Icon",
@@ -100,7 +109,7 @@ local function iconButton(parent, o)
 		ScaleType = Enum.ScaleType.Fit,
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromScale(1, 1),
+		Size = if o.Art then UDim2.fromOffset(o.Art.X, o.Art.Y) else UDim2.fromScale(1, 1),
 	}, holder)
 	local scale = make("UIScale", {}, icon)
 	local label
@@ -109,9 +118,10 @@ local function iconButton(parent, o)
 			Name = "Label",
 			Text = o.Label,
 			TextColor3 = UiKit.WHITE,
-			TextSize = 31,
-			Size = UDim2.fromOffset(CELL.X, 34),
-			LayoutOrder = 2,
+			TextSize = 37,
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.new(0.5, 0, 0, LABEL_Y),
+			Size = UDim2.fromOffset(CELL.X, 40),
 		}, content)
 		outline(label, 4)
 	end
@@ -141,7 +151,7 @@ local function counter(parent, order, iconId, str, color)
 	local label = text({
 		Text = str,
 		TextColor3 = color,
-		TextSize = 36,
+		TextSize = 43,
 		AutomaticSize = Enum.AutomaticSize.X,
 		Size = UDim2.fromOffset(0, 44),
 		LayoutOrder = 2,
@@ -226,8 +236,10 @@ function LobbyHud.build(parent, cb)
 		{ "Daily", I.Daily, soon("Daily") },
 	}
 	for i, t in left do
-		local btn =
-			iconButton(grid, { Name = t[1], Order = i, Icon = t[2], Label = string.upper(t[1]), OnClick = t[3] })
+		local btn = iconButton(
+			grid,
+			{ Name = t[1], Order = i, Icon = t[2], Label = string.upper(t[1]), OnClick = t[3], Art = ICON_ART[t[1]] }
+		)
 		if t[1] == "Bag" then
 			self.BagButton = btn
 		end
@@ -237,6 +249,7 @@ function LobbyHud.build(parent, cb)
 		Name = "Quests",
 		Icon = I.Quests,
 		Label = "QUESTS",
+		Art = ICON_ART.Quests,
 		OnClick = function()
 			open("Quests")
 		end,
@@ -247,11 +260,12 @@ function LobbyHud.build(parent, cb)
 	local gear = iconButton(hud, {
 		Name = "Gear",
 		Icon = I.Settings,
-		IconSize = UDim2.fromOffset(57, 55),
+		IconSize = UDim2.fromOffset(60, 59.4), -- visible gold 51x52 (the recoloured cog shows ~0.86 of its box)
 		Size = UDim2.fromOffset(88, 88),
 		OnClick = soon("Settings"),
 	})
-	gear.Position = UDim2.new(1, -60, 0, 58)
+	gear.Position = UDim2.new(1, -60, 0, 60.5)
+	self.Gear, self.Quests = gear, quests
 
 	local bottom = make("Frame", {
 		Name = "Bottom",
@@ -334,9 +348,9 @@ function LobbyHud.build(parent, cb)
 			Name = name,
 			Text = str,
 			TextColor3 = UiKit.WHITE,
-			TextSize = 26, -- smaller than the 36 px currency numbers; 13 px on screen at the 0.5 phone floor
+			TextSize = 37, -- white-fill ~23 as in the HUD ref; bag mode drops to 32
 			AutomaticSize = Enum.AutomaticSize.X,
-			Size = UDim2.fromOffset(0, 30),
+			Size = UDim2.fromOffset(0, 40),
 			LayoutOrder = order,
 			ZIndex = 3,
 		}, xpText)
@@ -352,7 +366,7 @@ function LobbyHud.build(parent, cb)
 		Name = "BagRow",
 		BackgroundTransparency = 1,
 		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(0.5, 0, 1, -(BOTTOM_GAP - 2 + BAG_ROW.Y / 2)),
+		Position = UDim2.new(0.5, 0, 1, -(BOTTOM_GAP - 2 + BAG_ROW.Y / 2) - 4.5), -- ref content centre y 893.5
 		Size = UDim2.fromOffset(BAG_ROW.X, BAG_ROW.Y),
 		Visible = false,
 	}, hud)
@@ -361,10 +375,21 @@ function LobbyHud.build(parent, cb)
 		Name = "Divider",
 		BackgroundColor3 = Color3.fromRGB(240, 240, 240),
 		BorderSizePixel = 0,
-		Size = UDim2.fromOffset(4, 44),
+		Size = UDim2.fromOffset(4, 36),
 		LayoutOrder = 2,
 	}, row)
 	make("UICorner", { CornerRadius = UDim.new(0.5, 0) }, divider)
+	-- LVL / XP text and bar sit 10 px apart (the row's own 43 px padding is for the other gaps).
+	local group = make("Frame", {
+		Name = "XpGroup",
+		BackgroundTransparency = 1,
+		AutomaticSize = Enum.AutomaticSize.X,
+		Size = UDim2.fromOffset(0, 50),
+		LayoutOrder = 3,
+		Visible = false,
+	}, row)
+	list(group, Enum.FillDirection.Horizontal, 9)
+	self.XpGroup = group
 	self.BagRow, self.Profile, self.Currencies, self.XpText = row, profile, currencies, xpText
 	self.CounterBoxes = { goldBox, gemBox }
 	self:_layoutXp(584, 12)
@@ -376,7 +401,7 @@ function LobbyHud.build(parent, cb)
 		LayoutOrder = 2,
 	}, bottom)
 	self.DeckBar = deck
-	list(deck, Enum.FillDirection.Horizontal, 6)
+	list(deck, Enum.FillDirection.Horizontal, -2.2) -- pitch 116.5; boxes overlap their transparent margins
 	self.Slots = {}
 	for i = 1, 5 do
 		local slot = make("ImageButton", {
@@ -385,7 +410,7 @@ function LobbyHud.build(parent, cb)
 			AutoButtonColor = false,
 			Image = F.Normal,
 			ScaleType = Enum.ScaleType.Stretch,
-			Size = UDim2.fromOffset(109, DECK_H),
+			Size = UDim2.fromOffset(118.7, 116), -- visible rim 110x105 (the sprite shows 0.927 x 0.905 of its box)
 			LayoutOrder = i,
 			ZIndex = 2,
 		}, deck)
@@ -437,28 +462,32 @@ function LobbyHud:SetBagMode(on: boolean)
 	local currencies, xpText, xp = self.Currencies, self.XpText, self.XpBar
 	local currencyList = currencies:FindFirstChildOfClass("UIListLayout")
 	if on then
-		currencies.Parent, xpText.Parent, xp.Parent = self.BagRow, self.BagRow, self.BagRow
-		currencies.LayoutOrder, xpText.LayoutOrder, xp.LayoutOrder = 1, 3, 4
+		currencies.Parent, xpText.Parent, xp.Parent = self.BagRow, self.XpGroup, self.XpGroup
+		self.XpGroup.Visible = true
+		currencies.LayoutOrder, xpText.LayoutOrder, xp.LayoutOrder = 1, 1, 2
 		currencies.AutomaticSize, currencies.Size = Enum.AutomaticSize.X, UDim2.fromOffset(0, 44)
 		currencyList.Padding = UDim.new(0, 54)
 		for _, box in self.CounterBoxes do
 			box.AutomaticSize, box.Size = Enum.AutomaticSize.X, UDim2.fromOffset(0, 44)
 		end
-		xpText.AutomaticSize, xpText.Size = Enum.AutomaticSize.X, UDim2.fromOffset(0, 30)
+		xpText.AutomaticSize, xpText.Size = Enum.AutomaticSize.X, UDim2.fromOffset(0, 40)
+		self.LvlLabel.TextSize, self.XpLabel.TextSize = 32, 32
 		xpText.Position = UDim2.new()
 		xpText.UIListLayout.Padding = UDim.new(0, 30)
-		xp.Size = UDim2.fromOffset(183, 22)
-		self:_layoutXp(183, 22)
+		xp.Size = UDim2.fromOffset(189.3, 29.3) -- ink 182x22 (export margin 3 px, slice scale 1.22)
+		self:_layoutXp(189.3, 29.3)
 	else
 		currencies.Parent, xp.Parent = self.Profile, self.Profile
 		xpText.Parent = xp
+		self.XpGroup.Visible = false
+		self.LvlLabel.TextSize, self.XpLabel.TextSize = 37, 37
 		currencies.LayoutOrder, xp.LayoutOrder = 1, 2
 		currencies.AutomaticSize, currencies.Size = Enum.AutomaticSize.None, UDim2.fromOffset(416, 44)
 		currencyList.Padding = UDim.new(0, 16)
 		for _, box in self.CounterBoxes do
 			box.AutomaticSize, box.Size = Enum.AutomaticSize.None, UDim2.fromOffset(200, 44)
 		end
-		xpText.AutomaticSize, xpText.Size = Enum.AutomaticSize.None, UDim2.fromOffset(584, 30)
+		xpText.AutomaticSize, xpText.Size = Enum.AutomaticSize.None, UDim2.fromOffset(584, 40)
 		xpText.Position = UDim2.new(0.5, 0, 0.5, -5)
 		xpText.UIListLayout.Padding = UDim.new(0, 32)
 		xp.Size = UDim2.fromOffset(584, 12)
@@ -474,8 +503,24 @@ function LobbyHud:SetBagMode(on: boolean)
 			c.BagScale.Scale = if on then BAG_ICON_SCALE else 1
 		end
 	end
+	-- HUD behind the bag is dimmed to ~70%; the selected BAG label stays light and holds the hover scale.
+	local quests = self.Quests
+	quests.Position = UDim2.new(1, -(MARGIN + CELL.X / 2) + (if on then 9 else 0), 0.5, 20) -- bag ref label centre 1599
+	local all = grid:GetChildren()
+	table.insert(all, self.Gear)
+	table.insert(all, quests)
+	for _, btn in all do
+		local c = btn:FindFirstChild("Content")
+		if c then
+			c.IconHolder.Icon.ImageColor3 = if on and btn ~= self.BagButton then DIM else UiKit.WHITE
+			local label = c:FindFirstChild("Label")
+			if label then
+				label.TextColor3 = if on then DIM else UiKit.WHITE
+			end
+		end
+	end
 	self.BagButton:SetAttribute("DebugState", if on then "Hover" else nil)
-	self.BagButton.Content.Label.TextColor3 = if on then GOLD_TEXT else UiKit.WHITE -- selected: gold label + held hover scale
+	self.BagButton.Content.Label.TextColor3 = if on then BAG_LABEL else UiKit.WHITE
 end
 
 -- Real px (Root space) the bag window must stay clear of: icon columns on the left (the window overlaps the
