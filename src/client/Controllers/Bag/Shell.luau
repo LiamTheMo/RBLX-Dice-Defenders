@@ -15,10 +15,9 @@ local Z = 20 -- Bag root; Sibling ZIndex (descendants always >= their parent)
 local FULL_W, FULL_H = 1160, 725
 local TIER = {
 	Full = {
-		over = 90,
-		banner = Vector2.new(400, 138),
-		bannerText = 68,
-		die = 64,
+		over = 99,
+		banner = Vector2.new(427, 151), -- the art's 615x218 aspect; spans about x 625-1052 in the 1672 reference
+		bannerText = 64,
 		tabTop = 52,
 		tabH = 60,
 		tabGap = 16,
@@ -28,10 +27,9 @@ local TIER = {
 		pitch = 142,
 	},
 	Compact = {
-		over = 44,
-		banner = Vector2.new(200, 69),
-		bannerText = 44,
-		die = 40,
+		over = 46,
+		banner = Vector2.new(214, 76),
+		bannerText = 34,
 		tabTop = 30,
 		tabH = 56,
 		tabGap = 8,
@@ -125,37 +123,25 @@ function Shell.new(parent, deps)
 	}, tabBar)
 	self.TabBar = tabBar
 
-	-- Banner: ribbon + crowned die + live text, centred on the window axis.
+	-- Banner: one baked sprite (laurels, ribbon, crowned die); only the "BAG" text is live, in the art's free box
+	-- (export px x 236-490, y 86-174 of 615x218).
 	local banner = make("ImageLabel", {
 		Name = "Banner",
 		BackgroundTransparency = 1,
 		AnchorPoint = Vector2.new(0.5, 0),
 		ZIndex = Z + 10,
 	}, window)
-	Parts.skin(banner, "Ribbon")
-	local group = frame("Group", banner, Z + 11)
-	group.AnchorPoint = Vector2.new(0.5, 0.5)
-	group.Position = UDim2.fromScale(0.5, 0.48)
-	group.Size = UDim2.fromScale(1, 0.5)
-	make("UIListLayout", {
-		FillDirection = Enum.FillDirection.Horizontal,
-		HorizontalAlignment = Enum.HorizontalAlignment.Center,
-		VerticalAlignment = Enum.VerticalAlignment.Center,
-		SortOrder = Enum.SortOrder.LayoutOrder,
-		Padding = UDim.new(0, 8),
-	}, group)
-	local die =
-		make("ImageLabel", { Name = "BagDie", BackgroundTransparency = 1, LayoutOrder = 1, ZIndex = Z + 12 }, group)
-	Parts.skin(die, "BagDie")
-	local bannerText = Parts.text(group, {
+	Parts.skin(banner, "Banner")
+	local bannerText = Parts.text(banner, {
 		Name = "Text",
 		Text = "BAG",
 		TextTruncate = Enum.TextTruncate.None,
-		AutomaticSize = Enum.AutomaticSize.X,
-		LayoutOrder = 2,
-		ZIndex = Z + 12,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(363 / 615, 130 / 218),
+		Size = UDim2.fromScale(254 / 615, 88 / 218),
+		ZIndex = Z + 11,
 	}, 3)
-	self.Banner, self.BagDie = banner, die
+	self.Banner = banner
 
 	local close = make("ImageButton", {
 		Name = "Close",
@@ -228,9 +214,7 @@ function Shell.new(parent, deps)
 
 		banner.Position = UDim2.new(0.5, 0, 0, -t.over)
 		banner.Size = UDim2.fromOffset(t.banner.X, t.banner.Y)
-		die.Size = UDim2.fromOffset(t.die, t.die)
 		bannerText.TextSize = t.bannerText
-		bannerText.Size = UDim2.fromOffset(0, t.bannerText + 2)
 		close.Position = UDim2.fromOffset(winW - 27, 6)
 
 		-- Tabs: equal widths; label shrinks (>=15) and the icon drops when very narrow.

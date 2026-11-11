@@ -14,6 +14,8 @@ local STROKE = Color3.fromRGB(9, 14, 24)
 local GOLD_TEXT = Color3.fromRGB(249, 199, 53)
 local GEM_TEXT = Color3.fromRGB(247, 142, 236)
 local DESIGN = Vector2.new(1672, 941)
+local XP_SCALE = 12 / 24 -- XP bar: design height / track export height (fill uses the same scale)
+local XP_FILL_CAPS = (428 - (415 - 13)) * XP_SCALE -- narrowest fill: both caps
 local CELL = Vector2.new(124, 114)
 local MARGIN = 20 -- side safe margin
 local PROFILE_H = 44 + 24 + 12 + 6 * 2
@@ -307,33 +309,27 @@ function LobbyHud.build(parent, cb)
 	make("ImageLabel", {
 		Name = "Track",
 		BackgroundTransparency = 1,
-		Image = Sprites.XpTrack, -- 1024x47 export, pill caps ~23 px
+		Image = Sprites.XpTrack, -- 431x24 export, pill caps 37 / 32 px
 		ScaleType = Enum.ScaleType.Slice,
-		SliceCenter = Rect.new(24, 23, 1000, 24),
-		SliceScale = 12 / 47,
+		SliceCenter = Rect.new(37, 10, 399, 14),
+		SliceScale = XP_SCALE,
 		Size = UDim2.fromScale(1, 1),
 	}, xp)
-	local interior = make("Frame", {
-		Name = "Interior",
-		BackgroundTransparency = 1,
-		Position = UDim2.fromOffset(2, 2),
-		Size = UDim2.new(1, -4, 1, -4),
-	}, xp)
-	self.XpClip = make("Frame", {
+	-- Fill is sized to the value (never cropped), at the track's SliceScale and never narrower than its caps.
+	local xpFraction = 0 -- Placeholder: no XP data yet, so 0 fill (hidden)
+	self.XpFill = make("ImageLabel", {
 		Name = "Fill",
 		BackgroundTransparency = 1,
-		ClipsDescendants = true,
-		Size = UDim2.fromScale(0, 1), -- Placeholder: no XP data yet, so 0 fill
-	}, interior)
-	self.XpClip:SetAttribute("Placeholder", true)
-	make("ImageLabel", {
-		BackgroundTransparency = 1,
-		Image = Sprites.XpFill, -- 1016x32
+		Image = Sprites.XpFill, -- 428x18 export
 		ScaleType = Enum.ScaleType.Slice,
-		SliceCenter = Rect.new(16, 15, 1000, 16),
-		SliceScale = 8 / 32,
-		Size = UDim2.fromOffset(580, 8), -- full interior so the rounded cap never squashes
-	}, self.XpClip)
+		SliceCenter = Rect.new(13, 8, 415, 10),
+		SliceScale = XP_SCALE,
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, 2, 0.5, 0),
+		Size = UDim2.fromOffset(math.max(XP_FILL_CAPS, 580 * xpFraction), 18 * XP_SCALE),
+		Visible = xpFraction > 0,
+	}, xp)
+	self.XpFill:SetAttribute("Placeholder", true)
 
 	local deck = make("Frame", {
 		Name = "DeckBar",

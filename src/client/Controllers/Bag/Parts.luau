@@ -7,6 +7,7 @@ local UserInputService = game:GetService("UserInputService")
 
 local UiKit = require(script.Parent.Parent.UiKit)
 local Sprites = require(script.Parent.BagSprites)
+local SlotFrame = require(script.Parent.Parent.Sprites).Frame
 
 local make = UiKit.make
 local FONT = Enum.Font.FredokaOne
@@ -461,6 +462,8 @@ end
 
 -- Grid ----------------------------------------------------------------------------------------------------
 
+local GRID_FADE, GRID_GAP = 14, 8 -- edge fade (design px) and card gap
+
 -- y/h per card slot inside the card; icon is square.
 local CARD = {
 	Full = {
@@ -500,6 +503,16 @@ function Parts.Grid(parent)
 		Size = UDim2.fromScale(1, 1),
 		ZIndex = parent.ZIndex,
 	}, parent)
+	-- Whole rows at rest (sized in rebuild); the CanvasGroup's gradient fades the cut edges while scrolling.
+	local fade = make("CanvasGroup", {
+		Name = "Fade",
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromScale(1, 1),
+		ZIndex = root.ZIndex + 1,
+	}, root)
+	local fadeGradient = make("UIGradient", { Rotation = 90 }, fade)
 	local scroll = make("ScrollingFrame", {
 		Name = "GridScroll",
 		BackgroundTransparency = 1,
@@ -508,10 +521,9 @@ function Parts.Grid(parent)
 		CanvasSize = UDim2.new(),
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		ScrollingDirection = Enum.ScrollingDirection.Y,
-		ScrollBarThickness = 6,
-		ScrollBarImageColor3 = GOLD,
+		ScrollBarThickness = 0, -- the reference shows none; wheel, touch and drag still scroll
 		ZIndex = root.ZIndex + 1,
-	}, root)
+	}, fade)
 	local gridPad = make("UIPadding", {
 		PaddingLeft = UDim.new(0, 6),
 		PaddingRight = UDim.new(0, 6),
@@ -520,7 +532,7 @@ function Parts.Grid(parent)
 	}, scroll)
 	local layout = make("UIGridLayout", {
 		CellSize = UDim2.fromOffset(134, 190),
-		CellPadding = UDim2.fromOffset(8, 8),
+		CellPadding = UDim2.fromOffset(GRID_GAP, GRID_GAP),
 		HorizontalAlignment = Enum.HorizontalAlignment.Left,
 		SortOrder = Enum.SortOrder.LayoutOrder,
 	}, scroll)
@@ -537,6 +549,27 @@ function Parts.Grid(parent)
 		ZIndex = scroll.ZIndex + 1,
 	})
 	local emptyText = "Nothing here yet"
+	local visibleH = 0
+	local updateFade
+
+	-- Edges fade only where content is cut off: nothing at rest on the top row, nothing at the end of the list.
+	function updateFade()
+		local y, maxY = scroll.CanvasPosition.Y, math.max(0, scroll.AbsoluteCanvasSize.Y - scroll.AbsoluteWindowSize.Y)
+		local f = GRID_FADE / math.max(visibleH, 2 * GRID_FADE + 1)
+		local top, bot = f * math.clamp(y / GRID_FADE, 0, 1), f * math.clamp((maxY - y) / GRID_FADE, 0, 1)
+		local pts = {}
+		table.insert(pts, if top > 0 then NumberSequenceKeypoint.new(0, 1) else NumberSequenceKeypoint.new(0, 0))
+		if top > 0 then
+			table.insert(pts, NumberSequenceKeypoint.new(top, 0))
+		end
+		if bot > 0 then
+			table.insert(pts, NumberSequenceKeypoint.new(1 - bot, 0))
+		end
+		table.insert(pts, if bot > 0 then NumberSequenceKeypoint.new(1, 1) else NumberSequenceKeypoint.new(1, 0))
+		fadeGradient.Transparency = NumberSequence.new(pts)
+	end
+	connect(conns, scroll:GetPropertyChangedSignal("CanvasPosition"), updateFade)
+	connect(conns, scroll:GetPropertyChangedSignal("AbsoluteCanvasSize"), updateFade)
 
 	local function buildCard(item, order)
 		local spec = if parent:GetAttribute("Compact") then CARD.Compact else CARD.Full
@@ -605,6 +638,11 @@ function Parts.Grid(parent)
 		local cols = math.max(1, math.floor((parent.Size.X.Offset - 12 + 8) / (spec.size.X + 8)))
 		local side = math.max(0, math.floor((parent.Size.X.Offset - (cols * spec.size.X + (cols - 1) * 8)) / 2))
 		gridPad.PaddingLeft, gridPad.PaddingRight = UDim.new(0, side), UDim.new(0, side)
+		local pitch = spec.size.Y + GRID_GAP
+		local rows = math.max(1, math.floor((parent.Size.Y.Offset - 4 + GRID_GAP) / pitch))
+		visibleH = rows * pitch - GRID_GAP + 4 -- leftover height stays inside the panel
+		fade.Size = UDim2.new(1, 0, 0, visibleH)
+		updateFade()
 		for _, c in cards do
 			c:Destroy()
 		end
@@ -710,7 +748,8 @@ function Parts.Footer(parent)
 	for i = 1, 5 do
 		local slot =
 			img(slotsFrame, { Name = "Slot" .. i, Size = UDim2.fromOffset(68, 68), LayoutOrder = i }, "ImageButton")
-		Parts.skin(slot, "CardIdle", 0.3)
+		slot.Image = SlotFrame.Normal -- lobby deck-slot frame, drawn whole
+		slot.ScaleType = Enum.ScaleType.Stretch
 		Parts.interact(slot)
 		slot.Activated:Connect(function()
 			if onSlot then
@@ -974,19 +1013,25 @@ function Parts.Detail(parent)
 		if s.Kind == "Level" then
 			local track = img(subline, { Name = "LevelBar", Size = UDim2.fromOffset(250, 26) })
 			Parts.skinH(track, "LevelTrack", 26)
-			local clip = img(track, {
+			-- Fill is sized to the value (never cropped): same SliceScale as the track, never narrower than its caps.
+			local ts, fs = Sprites.LevelTrack, Sprites.LevelFill
+			local k = 26 / ts.Size.Y
+			local fh = fs.Size.Y * k
+			local capsW = fs.Slice and (fs.Size.X - (fs.Slice.Max.X - fs.Slice.Min.X)) * k or 0
+			local fillW = math.max(capsW, 242 * math.clamp(s.Value / math.max(1, s.Max), 0, 1))
+			local fill = img(track, {
 				Name = "Fill",
-				Position = UDim2.fromOffset(4, 4),
-				Size = UDim2.fromOffset(242 * math.clamp(s.Value / math.max(1, s.Max), 0, 1), 18),
-				ClipsDescendants = true,
-			}, "Frame")
-			local fill = img(clip, { Name = "FillImage", Size = UDim2.fromOffset(242, 18) })
-			Parts.skinH(fill, "LevelFill", 18)
+				AnchorPoint = Vector2.new(0, 0.5),
+				Position = UDim2.new(0, 4, 0.5, 0),
+				Size = UDim2.fromOffset(fillW, fh),
+				Visible = s.Value > 0,
+			})
+			Parts.skin(fill, "LevelFill", k)
 			Parts.text(track, {
 				Text = ("LV %d / %d"):format(s.Value, s.Max),
 				TextSize = 17,
 				Size = UDim2.fromScale(1, 1),
-				ZIndex = clip.ZIndex + 2,
+				ZIndex = fill.ZIndex + 2,
 			}, 1.5)
 		else
 			Parts.Pill(
@@ -1049,6 +1094,7 @@ function Parts.Detail(parent)
 			local function stepBtn(nm, sprite, w, order, delta, str)
 				local b = img(r, { Name = nm, Size = UDim2.fromOffset(w, 56), LayoutOrder = order }, "ImageButton")
 				Parts.skinH(b, sprite, 56)
+				b.ScaleType = Enum.ScaleType.Stretch -- whole art at its aspect, no slicing
 				b.ImageColor3 = if on then WHITE else DISABLED_TINT
 				Parts.interact(b)
 				if str then
@@ -1063,12 +1109,12 @@ function Parts.Detail(parent)
 					end
 				end)
 			end
-			stepBtn("Minus", "QtyMinus", 56, 1, -1, "-")
+			stepBtn("Minus", "QtyMinus", 64, 1, -1, "-")
 			local field = img(r, { Name = "Field", Size = UDim2.fromOffset(120, 56), LayoutOrder = 2 })
 			Parts.skinH(field, "QtyField", 56)
 			field.ImageColor3 = if on then WHITE else DISABLED_TINT
 			Parts.text(field, { Text = tostring(st.Qty), TextSize = 26, Size = UDim2.fromScale(1, 1) })
-			stepBtn("Plus", "QtyPlus", 56, 3, 1, "+")
+			stepBtn("Plus", "QtyPlus", 64, 3, 1, "+")
 			stepBtn("Max", "BtnGold", 88, 4, "max", "MAX")
 		end
 		extra.Visible = list ~= nil or model.Stepper ~= nil
