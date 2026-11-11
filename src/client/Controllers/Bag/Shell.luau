@@ -33,7 +33,7 @@ local TIER = {
 		tabText = 34,
 		side = 28.5, -- window box edge to panels (visible panel rim 11 px from the band)
 		gap = 3, -- panel boxes overlap their transparent margins: visible rim gap 11
-		detailCut = 46, -- detail panel ends this far above the content bottom (rim bottom 781 on every tab)
+		detailCut = -6, -- both panels reach the window's content bottom on every tab (Dice: level with the footer strip's bottom rim, 830)
 		detailInset = 35, -- detail slot ends above the panel bottom: action row top ~688
 		contentTop = 119.5,
 		bottomPad = 32, -- + my: content bottom to window box bottom (rim inner edge 10 px below the content)
@@ -257,8 +257,11 @@ function Shell.new(parent, deps)
 			footer.Position = UDim2.fromOffset(0, contentH - FOOTER_H)
 			footer.Size = UDim2.fromOffset(leftW, FOOTER_H)
 		else
+			-- FOOTER_BOX is the reference-frame size; a narrower window narrows the left column, so the strip
+			-- loses the same width (else it runs over the detail panel).
+			local fullLeftW = fullW - 2 * side - gap - DETAIL_MAX
 			footer.Position = UDim2.fromOffset(5, contentH + 10 - FOOTER_BOX.Y)
-			footer.Size = UDim2.fromOffset(FOOTER_BOX.X, FOOTER_BOX.Y)
+			footer.Size = UDim2.fromOffset(FOOTER_BOX.X - math.max(0, fullLeftW - leftW), FOOTER_BOX.Y)
 		end
 		local detailH = contentH - cut
 		detail.Position = UDim2.fromOffset(leftW + gap, 0)

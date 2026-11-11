@@ -44,6 +44,8 @@ function Items.Detail(item)
 		ArtY = 24,
 		ArtH = 184,
 		NameY = 211,
+		NameDY = -9, -- the ribbon body sits above its box centre: lift the name onto it
+		NameMax = 42, -- ref name is 219 px wide (46 gave 238)
 		Gap = 7,
 		Divider = true,
 		DividerLine = true, -- the ref draws a plain thin line here

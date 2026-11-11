@@ -28,8 +28,10 @@ function Cosmetics.GetItems()
 			Type = c.Type,
 			Description = c.Description,
 			Equipped = c.Equipped,
-			TopTag = string.upper(c.Rarity),
-			Footer = if c.Equipped then "EQUIPPED" else nil,
+			TopTag = if c.Equipped then "EQUIPPED" else nil, -- Dice-style card: EQUIPPED pill, rarity pill, and the type where Dice shows Lv.
+			TopTagStyle = "Equipped",
+			SubTag = string.upper(c.Rarity),
+			Footer = (string.gsub(c.Type, " %(Cosmetic%)$", "")),
 		}
 	end
 	return items
