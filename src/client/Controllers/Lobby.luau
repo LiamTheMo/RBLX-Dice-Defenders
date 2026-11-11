@@ -10,6 +10,7 @@ local RunService = game:GetService("RunService")
 local NetClient = require(script.Parent.NetClient)
 local UiKit = require(script.Parent.UiKit)
 local LobbyHud = require(script.Parent.LobbyHud)
+local Bag = require(script.Parent.Bag.Bag)
 local Display = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Display"))
 
 local make, panel, label, button = UiKit.make, UiKit.panel, UiKit.label, UiKit.button
@@ -41,7 +42,7 @@ local TOASTS = {
 	Network = "Connection problem",
 }
 local RESULT_TITLES = { Won = "Victory!", Lost = "Defeat", Aborted = "Run Ended", Error = "Something went wrong" }
-local PANELS = { "Play", "Deck", "Collection", "Quests", "Profile" }
+local PANELS = { "Play", "Deck", "Quests", "Profile" }
 
 local Lobby = {}
 
@@ -52,12 +53,23 @@ local openPanel = nil
 local draft = {} -- unsaved deck edit (client-only UI state)
 local selectedSlot = 1
 local dismissed = false
+local lobbyActive = false
 local questTimers = {} -- { label, base, resetAt }
 
 local function toast(text: string)
 	toastToken += 1
 	local token = toastToken
 	ui.Toast.Text = text
+	-- Bag open: sit over the HUD currency block so the bag banner, X and tabs stay visible.
+	if ui.Bag:IsOpen() then
+		ui.ToastFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+		-- Clamped: on phones the HUD block is hidden and bottomTopReal is the screen height.
+		local y = math.min(ui.LobbyHud:GetBagInsets().bottomTopReal + 26, UiKit.screenSize(ui.Root).Y - 26)
+		ui.ToastFrame.Position = UDim2.new(0.5, 0, 0, y)
+	else
+		ui.ToastFrame.AnchorPoint = Vector2.new(0.5, 0)
+		ui.ToastFrame.Position = UDim2.new(0.5, 0, 0, 10)
+	end
 	ui.ToastFrame.Visible = true
 	task.delay(2.5, function()
 		if token == toastToken then
@@ -123,6 +135,11 @@ local function outline(lbl)
 end
 
 local function showPanel(name: string?)
+	if name == "Bag" then -- the bag is its own window, not one of the placeholder panels
+		ui.Bag:Toggle()
+		return
+	end
+	ui.Bag:Close()
 	openPanel = name
 	for key, p in ui.Panels do
 		p.Frame.Visible = key == name
@@ -296,44 +313,6 @@ local function renderDeck()
 	end
 end
 
-local function renderCollection()
-	local body = ui.Panels.Collection.Body
-	clear(body)
-	local meta = NetClient.LastMeta
-	local order = 0
-	for _, die in meta and meta.Dice or {} do
-		order += 1
-		local info = Display.Dice[die.Id]
-		local r = row(body, order)
-		make("Frame", {
-			BackgroundColor3 = info and info.Color or WHITE,
-			Size = UDim2.fromOffset(28, 28),
-			Position = UDim2.new(0, 10, 0.5, -14),
-			BorderSizePixel = 0,
-		}, r)
-		text(
-			r,
-			("%s  %s  Lv %d  Copies %d"):format(deckName(die.Id), info and info.Rarity or "", die.Level, die.Copies),
-			UDim2.new(1, -56, 1, -8),
-			UDim2.fromOffset(46, 4),
-			22
-		)
-	end
-	for _, die in Display.Locked do
-		order += 1
-		local r = row(body, order)
-		r.BackgroundColor3 = MUTED
-		text(
-			r,
-			("%s  %s \u{2014} Not available yet"):format(die.Name, die.Rarity),
-			UDim2.new(1, -16, 1, -8),
-			UDim2.fromOffset(8, 4),
-			22,
-			CREAM
-		)
-	end
-end
-
 local function formatReset(resetAt: number): string
 	local left = math.max(0, math.floor(resetAt - workspace:GetServerTimeNow()))
 	return ("Resets in %02d:%02d"):format(left // 3600, (left % 3600) // 60)
@@ -426,9 +405,14 @@ local function renderState(snap)
 	local active = phase == "Lobby" or phase == "Ended"
 	ui.Root.Visible = active
 	if not active then
+		if lobbyActive then
+			showPanel(nil) -- also closes the bag; only on the transition, not every State tick
+		end
+		lobbyActive = false
 		ui.ResultBackdrop.Visible = false
 		return
 	end
+	lobbyActive = true
 	renderPlay(snap)
 	renderProfile(snap)
 	ui.LobbyHud:SetGold(snap.Gold)
@@ -438,7 +422,6 @@ end
 local function renderMeta()
 	resetDraft()
 	renderDeck()
-	renderCollection()
 	renderQuests()
 	local meta = NetClient.LastMeta
 	ui.LobbyHud:SetDeck(meta and meta.Deck)
@@ -466,6 +449,8 @@ local function build()
 		make("Frame", { Name = "Root", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Visible = false }, gui)
 	ui.LobbyHud = LobbyHud.build(ui.Root, { open = showPanel, toast = toast })
 	ui.Hud = ui.LobbyHud.Hud
+	-- Sibling of Hud (so Hud.Visible never hides it); Toast lives on the gui and stays above.
+	ui.Bag = Bag.new(ui.Root, { hud = ui.LobbyHud, toast = toast })
 
 	for _, name in PANELS do
 		newPanel(name)
@@ -524,10 +509,10 @@ local function build()
 		Position = UDim2.new(0.5, 0, 0, 10),
 		Size = UDim2.new(0.5, 0, 0, 40),
 		Visible = false,
-		ZIndex = 30,
+		ZIndex = 60, -- above the bag banner (Z 30+)
 	}, gui))
 	make("UISizeConstraint", { MinSize = Vector2.new(220, 40), MaxSize = Vector2.new(460, 44) }, ui.ToastFrame)
-	ui.Toast = label({ Size = UDim2.fromScale(1, 1), ZIndex = 31 }, ui.ToastFrame, 22)
+	ui.Toast = label({ Size = UDim2.fromScale(1, 1), ZIndex = 61 }, ui.ToastFrame, 22)
 	outline(ui.Toast)
 end
 
@@ -557,6 +542,9 @@ function Lobby.Destroy()
 		connection:Disconnect()
 	end
 	table.clear(connections)
+	if ui and ui.Bag then
+		ui.Bag:Destroy()
+	end
 	if gui then
 		gui:Destroy()
 	end

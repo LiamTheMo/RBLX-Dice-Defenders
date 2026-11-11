@@ -2,7 +2,6 @@
 -- LobbyHud.build(parent, { open = (panel) -> (), toast = (text) -> () }) -> hud; hud:SetGold(n), hud:SetDeck(ids).
 
 local ContentProvider = game:GetService("ContentProvider")
-local UserInputService = game:GetService("UserInputService")
 
 local UiKit = require(script.Parent.UiKit)
 local Sprites = require(script.Parent.Sprites)
@@ -17,6 +16,10 @@ local GEM_TEXT = Color3.fromRGB(247, 142, 236)
 local DESIGN = Vector2.new(1672, 941)
 local CELL = Vector2.new(124, 114)
 local MARGIN = 20 -- side safe margin
+local PROFILE_H = 44 + 24 + 12 + 6 * 2
+local DECK_H = 110
+local BOTTOM_H = PROFILE_H + DECK_H + 6
+local BOTTOM_GAP = 18 -- design px from the bottom edge to the Bottom block
 
 local LobbyHud = {}
 LobbyHud.__index = LobbyHud
@@ -56,39 +59,6 @@ local function list(parent, direction, padding)
 		SortOrder = Enum.SortOrder.LayoutOrder,
 		Padding = UDim.new(0, padding),
 	}, parent)
-end
-
--- Hover (mouse only), press (mouse and touch) and the DebugState attribute ("Hover" | "Pressed", for
--- captures) call apply("Normal" | "Hover" | "Pressed"). Returns refresh for callers with extra state.
-local function wire(btn, apply)
-	local hover, down = false, false
-	local function refresh()
-		local forced = btn:GetAttribute("DebugState")
-		apply(
-			if forced == "Pressed" or down then "Pressed" elseif forced == "Hover" or hover then "Hover" else "Normal"
-		)
-	end
-	local mouseOnly = not UserInputService.TouchEnabled or UserInputService.MouseEnabled
-	btn.MouseEnter:Connect(function()
-		hover = mouseOnly
-		refresh()
-	end)
-	btn.MouseLeave:Connect(function()
-		hover, down = false, false
-		refresh()
-	end)
-	btn.MouseButton1Down:Connect(function()
-		down = true
-		refresh()
-	end)
-	btn.MouseButton1Up:Connect(function()
-		down = false
-		refresh()
-	end)
-	btn:GetAttributeChangedSignal("DebugState"):Connect(refresh)
-	btn:GetPropertyChangedSignal("Interactable"):Connect(refresh)
-	refresh()
-	return refresh
 end
 
 -- Borderless icon + outlined label. The transparent button is the whole touch target; Icon scales.
@@ -133,7 +103,7 @@ local function iconButton(parent, o)
 		}, content)
 		outline(label, 3)
 	end
-	wire(btn, function(state)
+	UiKit.wire(btn, function(state)
 		local on = btn.Interactable
 		icon.ImageTransparency = if on then 0 else 0.45
 		if label then
@@ -184,20 +154,24 @@ function LobbyHud.build(parent, cb)
 	local hud = make("Frame", { Name = "Hud", BackgroundTransparency = 1 }, parent)
 	self.Hud = hud
 	local uiScale = make("UIScale", {}, hud)
+	self.UiScale = uiScale
 	local xpSize -- UITextSizeConstraint of the XP text, set below
 	local function rescale()
-		local size = parent.AbsoluteSize
+		local size = UiKit.screenSize(parent)
 		if size.X <= 0 or size.Y <= 0 then
 			return
 		end
 		local s = math.min(size.X / DESIGN.X, size.Y / DESIGN.Y)
 		-- Phone floor: 124x114 cells stay 62x57 and labels ~14 px; the regions still clear each other down to 568x276.
-		if size.Y < 500 then
+		if size.Y < UiKit.PHONE_H then
 			s = math.max(s, 0.5)
 		end
 		s = math.min(s, 1.5)
 		uiScale.Scale = s
 		hud.Size = UDim2.fromScale(1 / s, 1 / s)
+		if self.BagOn then
+			self:SetBagMode(true) -- re-apply the phone-height Bottom rule after a resize/rotation
+		end
 		if xpSize then
 			-- The constraint works in on-screen px (after UIScale): 24 design px (glyphs ~60% of the
 			-- reference's XP text), never under 11 px.
@@ -206,6 +180,7 @@ function LobbyHud.build(parent, cb)
 		end
 	end
 	parent:GetPropertyChangedSignal("AbsoluteSize"):Connect(rescale)
+	parent:GetAttributeChangedSignal("EmulateSize"):Connect(rescale)
 	rescale()
 
 	local grid = make("Frame", {
@@ -231,7 +206,7 @@ function LobbyHud.build(parent, cb)
 			"Bag",
 			I.Bag,
 			function()
-				open("Collection")
+				open("Bag")
 			end,
 		},
 		{
@@ -245,7 +220,11 @@ function LobbyHud.build(parent, cb)
 		{ "Daily", I.Daily, soon("Daily") },
 	}
 	for i, t in left do
-		iconButton(grid, { Name = t[1], Order = i, Icon = t[2], Label = string.upper(t[1]), OnClick = t[3] })
+		local btn =
+			iconButton(grid, { Name = t[1], Order = i, Icon = t[2], Label = string.upper(t[1]), OnClick = t[3] })
+		if t[1] == "Bag" then
+			self.BagButton = btn
+		end
 	end
 
 	local quests = iconButton(hud, {
@@ -268,16 +247,14 @@ function LobbyHud.build(parent, cb)
 	})
 	gear.Position = UDim2.new(1, -60, 0, 60)
 
-	local PROFILE_H = 44 + 24 + 12 + 6 * 2
-	local DECK_H = 110
-	local bottomH = PROFILE_H + DECK_H + 6
 	local bottom = make("Frame", {
 		Name = "Bottom",
 		BackgroundTransparency = 1,
 		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(0.5, 0, 1, -(18 + bottomH / 2)),
-		Size = UDim2.fromOffset(584, bottomH),
+		Position = UDim2.new(0.5, 0, 1, -(BOTTOM_GAP + BOTTOM_H / 2)),
+		Size = UDim2.fromOffset(584, BOTTOM_H),
 	}, hud)
+	self.Bottom = bottom
 	list(bottom, Enum.FillDirection.Vertical, 6)
 
 	-- One hit area over currencies + XP bar opens Profile.
@@ -364,6 +341,7 @@ function LobbyHud.build(parent, cb)
 		Size = UDim2.fromOffset(584, DECK_H),
 		LayoutOrder = 2,
 	}, bottom)
+	self.DeckBar = deck
 	list(deck, Enum.FillDirection.Horizontal, 6)
 	self.Slots = {}
 	for i = 1, 5 do
@@ -388,7 +366,7 @@ function LobbyHud.build(parent, cb)
 			Visible = false,
 			ZIndex = 3, -- Lobby gui uses Global ZIndex: must beat the slot's 2 to draw over its frame
 		}, slot)
-		local refresh = wire(slot, function(state)
+		local refresh = UiKit.wire(slot, function(state)
 			slot.Image = if slot:GetAttribute("Empty")
 				then F.Disabled
 				elseif state == "Pressed" then F.Pressed
@@ -402,6 +380,27 @@ function LobbyHud.build(parent, cb)
 		self.Slots[i] = icon
 	end
 	return self
+end
+
+-- Bag open: the deck row hides, the currency/XP block drops to the bottom margin and BAG keeps the hover look.
+function LobbyHud:SetBagMode(on: boolean)
+	self.BagOn = on
+	local h = if on then PROFILE_H else BOTTOM_H
+	self.DeckBar.Visible = not on
+	self.Bottom.Visible = not (on and UiKit.screenSize(self.Hud.Parent).Y < UiKit.PHONE_H) -- phones: the bag takes that strip too
+	self.Bottom.Size = UDim2.fromOffset(584, h)
+	self.Bottom.Position = UDim2.new(0.5, 0, 1, -(BOTTOM_GAP + h / 2))
+	self.BagButton:SetAttribute("DebugState", if on then "Hover" else nil)
+	self.BagButton.Content.Label.TextColor3 = if on then GOLD_TEXT else UiKit.WHITE -- selected: gold label + held hover scale
+end
+
+-- Real px (Root space) the bag window must stay clear of: icon columns on the left, the Bottom block's top in bag mode.
+function LobbyHud:GetBagInsets()
+	local size, s = UiKit.screenSize(self.Hud.Parent), self.UiScale.Scale
+	return {
+		leftReal = if size.Y < UiKit.PHONE_H then 144 * s - 2 else 245 * s,
+		bottomTopReal = if size.Y < UiKit.PHONE_H then size.Y else size.Y - (BOTTOM_GAP + PROFILE_H) * s,
+	}
 end
 
 function LobbyHud:SetGold(gold: number?)
