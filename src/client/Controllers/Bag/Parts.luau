@@ -706,7 +706,6 @@ function Parts.Grid(parent)
 	local updateFade
 
 	-- Edges fade only where content is cut off: nothing at rest on the top row, nothing at the end of the list.
-	-- The styled scrollbar shows only when the content overflows.
 	function updateFade()
 		local y, maxY = scroll.CanvasPosition.Y, math.max(0, scroll.AbsoluteCanvasSize.Y - scroll.AbsoluteWindowSize.Y)
 		local f = GRID_FADE / math.max(visibleH, 2 * GRID_FADE + 1)
@@ -721,7 +720,7 @@ function Parts.Grid(parent)
 		end
 		table.insert(pts, if bot > 0 then NumberSequenceKeypoint.new(1, 1) else NumberSequenceKeypoint.new(1, 0))
 		fadeGradient.Transparency = NumberSequence.new(pts)
-		track.Visible = maxY > 1 and visibleH > 0
+		track.Visible = #items > 0 and visibleH > 0 -- always on (the thumb fills the track when nothing scrolls)
 		local win, canvas = scroll.AbsoluteWindowSize.Y, math.max(1, scroll.AbsoluteCanvasSize.Y)
 		local thumbH = math.clamp(math.floor(visibleH * win / canvas), 40, math.max(40, visibleH))
 		thumb.Size = UDim2.fromOffset(barW, thumbH)
@@ -914,7 +913,10 @@ function Parts.Grid(parent)
 		local gx, gy = if compact then 6 else g.gx, if compact then 6 else g.gy
 		local m = if compact then 0 else CARD_M -- visible card + margin = cell
 		cellM = m
-		local inner = W - 2 * side
+		-- Items/Materials reserve the scrollbar column so the bar sits clear of the last card column (as on Dice):
+		-- Full keeps cells inside [18, W - 29] (bar at W - 21), Compact inside [side, W - 19] (bar at W - 11).
+		local reserve = if g.padL then 0 elseif compact then 13 else 12
+		local inner = W - 2 * side - reserve
 		local cols = math.min(g.cols, math.max(1, math.floor((inner + gx) / (MIN_CARD_W + gx))))
 		cardW = math.min(if compact then 190 else g.maxW or 190, math.floor((inner - (cols - 1) * gx) / cols))
 		local pt = if compact then 10 else TOP -- compact: 10 px clear of the window top for the selected glow
@@ -941,14 +943,15 @@ function Parts.Grid(parent)
 		layout.CellPadding = UDim2.fromOffset(gx - m, gy - m)
 		-- Rows are left-aligned (a lone result sits in column 1); the whole column block is centred by padding.
 		local pad = math.max(0, math.floor((W - (cols * cardW + (cols - 1) * gx)) / 2 - m / 2))
-		if not compact then -- Full: Dice is left-aligned on the reference column 1; the others centre in the panel interior (slot sits 2 px right of it)
-			pad = g.padL or pad + 2
+		if g.padL then -- Dice (and Cosmetics): left-aligned on the reference column 1
+			pad = if compact then pad else g.padL
+		else -- Items/Materials: centred in the width left of the scrollbar column
+			pad = (if compact then side else 18) + math.floor((inner - (cols * cardW + (cols - 1) * gx)) / 2)
 		end
 		gridPad.PaddingLeft = UDim.new(0, pad + GLOW_X)
-		-- Full: the +2 shift comes off the right pad (the cells need the full width); Dice keeps room for column 5 only
-		gridPad.PaddingRight =
-			UDim.new(0, if compact then pad + GLOW_X elseif g.padL then GLOW_X else math.max(0, pad - 4) + GLOW_X)
-		barW = if compact then math.clamp(pad - 8, 6, 14) else 12 -- Full: thumb ink 8 px, clear of the cards and inside the rim
+		-- the cells need the full width: only the glow margin is kept on the right (Dice compact keeps its centring pad)
+		gridPad.PaddingRight = UDim.new(0, if compact and g.padL then pad + GLOW_X else GLOW_X)
+		barW = if compact then (if g.padL then math.clamp(pad - 8, 6, 14) else 8) else 12 -- Full: thumb ink 8 px, clear of the cards and inside the rim
 		gridPad.PaddingTop = UDim.new(0, pt)
 		local pitch = cardH + gy
 		rows = rows or math.max(1, math.floor((H - pt - 2 - m + gy) / pitch))
