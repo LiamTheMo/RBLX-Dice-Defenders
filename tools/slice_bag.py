@@ -104,6 +104,13 @@ SPRITES = {
     "CosFlagRight": ("Cosmetics/icons-badges-and-effects.png", (259, 439, 183, 297), 250, SHEET_MARGIN),
     "PillWide": ("Cosmetics/controls-regenerated.png", (1020, 900, 453, 92), 453, SHEET_MARGIN),
     "GlowRing": ("Cosmetics/icons-badges-and-effects.png", (473, 788, 568, 212), 560, 24),
+    # Loop 3: white EQUIPPED check lifted off the Dice sheet's baked pill (glyph + its dark outline only), stepper -/+ buttons with their own
+    # baked glyphs (Items sheet), a white USE flask (recoloured from the Items sheet's green one), a wider banner (Items sheet).
+    "CheckWhite": ("Dice/icons-badges-and-effects.png", (178, 488, 41, 35), 41, 6),
+    "StepMinus": ("Items/icons-badges-and-effects.png", (975, 392, 84, 83), 84, SHEET_MARGIN),
+    "StepPlus": ("Items/icons-badges-and-effects.png", (867, 392, 85, 83), 85, SHEET_MARGIN),
+    "IconFlaskWhite": ("Items/icons-badges-and-effects.png", (39, 372, 94, 118), 118, SHEET_MARGIN),
+    "BannerWide": ("Items/icons-badges-and-effects.png", (403, 147, 691, 209), 691, SHEET_MARGIN),
 }
 # Sliced, height-fitted controls: export height (px, margin included) ~2x the largest full-tier draw height.
 HEIGHTS = {
@@ -384,6 +391,38 @@ def recolor_card(arr: np.ndarray, rim: str | None, fill: str | None, d: int, whi
     return arr
 
 
+def isolate_check(arr: np.ndarray) -> np.ndarray:
+    """Keep only the white check mark baked into a green pill (flood from its brightest pixel through white pixels), grown 2 px so its dark
+    outline comes along. Everything else (the pill) goes transparent."""
+    c = arr[..., :3].astype(int)
+    white = (c.min(-1) >= 170) & (np.ptp(c, -1) <= 50)
+    h, w = white.shape
+    cur = np.zeros_like(white)
+    sy, sx = np.unravel_index(np.argmax(np.where(white, c.sum(-1), 0)), white.shape)
+    cur[sy, sx] = True
+    while True:
+        p = np.pad(cur, 1)
+        nxt = (p[:-2, 1:-1] | p[2:, 1:-1] | p[1:-1, :-2] | p[1:-1, 2:] | p[:-2, :-2] | p[:-2, 2:] | p[2:, :-2] | p[2:, 2:] | cur) & white
+        if (nxt == cur).all():
+            break
+        cur = nxt
+    keep = cur
+    for _ in range(2):
+        p = np.pad(keep, 1)
+        keep = p[:-2, 1:-1] | p[2:, 1:-1] | p[1:-1, :-2] | p[1:-1, 2:] | p[:-2, :-2] | p[:-2, 2:] | p[2:, :-2] | p[2:, 2:] | keep
+    arr[..., 3] = np.where(keep, 255, 0).astype(np.uint8)
+    return arr
+
+
+def recolor_flask_white(arr: np.ndarray) -> np.ndarray:
+    """Green flask -> white (the reference USE glyph): every bright, saturated pixel goes toward white by its saturation; the dark outline stays."""
+    rgb = arr[..., :3].astype(np.float32) / 255
+    _, s, v = _hsv(rgb)
+    wt = np.clip(s * 1.1, 0, 1) * np.clip((v - 0.3) / 0.3, 0, 1)
+    arr[..., :3] = np.round((rgb + (1 - rgb) * (wt[..., None] * 0.92)) * 255).astype(np.uint8)
+    return arr
+
+
 # name -> recolour applied to the source crop (before resize). TabPurple: idle tab body = reference tab body (Dice reference, x 1075-1095, y 147-195)
 TAB_REF = ("dice-reference.png", (1075, 147, 20, 48))
 RECOLOR = {f"Card{r}": (lambda a, c=c: recolor_card(a, c[0], c[1], 17)) for r, c in CARD_FILL.items()}
@@ -397,6 +436,9 @@ RECOLOR["Close"] = lambda a: recolor_tone(recolor_close(a), [("F8B695", "FDE9C3"
 RECOLOR["LeftPanel"] = lambda a: recolor_tone(a, [("FFB465", "FAFAEC", 30)])  # rim highlight -> ref cream
 RECOLOR["Detail"] = lambda a: recolor_tone(a, [("E76E28", "F2855D", 28)])
 RECOLOR["Strip"] = lambda a: recolor_tone(a, [("CE1FA1", "A82B8B", 30)])
+RECOLOR["DividerGold"] = lambda a: recolor_tone(a, [("F2A903", "F5C21C", 80)])  # warm body median #F2A903 -> ref #F5C21C; the pale core (B > 90) is out of range
+RECOLOR["CheckWhite"] = isolate_check
+RECOLOR["IconFlaskWhite"] = recolor_flask_white
 RECOLOR["StatRow"] = lambda a: recolor_card(a, "663064", "320E2B", 12, 0)  # reference row: #320E2B fill, subtle #5A2A58 rim
 
 
