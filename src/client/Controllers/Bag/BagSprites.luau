@@ -8,7 +8,7 @@
 return {
 	Banner = { Image = "rbxassetid://76738978316837", Size = Vector2.new(615, 218) },
 	Window = {
-		Image = "rbxassetid://74635802178347",
+		Image = "rbxassetid://73131910274476",
 		Size = Vector2.new(1024, 454),
 		Slice = Rect.new(292, 154, 800, 330),
 	},
@@ -24,9 +24,9 @@ return {
 	},
 	Strip = { Image = "rbxassetid://116142876011318", Size = Vector2.new(611, 141), Slice = Rect.new(164, 51, 500, 87) },
 	TabPurple = {
-		Image = "rbxassetid://123157195681056",
+		Image = "rbxassetid://110641694601256",
 		Size = Vector2.new(502, 120),
-		Slice = Rect.new(79, 44, 439, 71),
+		Slice = Rect.new(79, 45, 439, 71),
 	},
 	TabGold = {
 		Image = "rbxassetid://102821520842628",
@@ -57,7 +57,7 @@ return {
 		Size = Vector2.new(268, 265),
 		Slice = Rect.new(89, 57, 187, 207),
 	},
-	Close = { Image = "rbxassetid://125887242292231", Size = Vector2.new(153, 145) },
+	Close = { Image = "rbxassetid://92898669724157", Size = Vector2.new(153, 145) },
 	LevelTrack = {
 		Image = "rbxassetid://86428448512666",
 		Size = Vector2.new(355, 52),
@@ -109,6 +109,74 @@ return {
 	Magnifier = { Image = "rbxassetid://100509891805364", Size = Vector2.new(105, 103) },
 	SortArrows = { Image = "rbxassetid://123586293497993", Size = Vector2.new(137, 104) },
 	Flask = { Image = "rbxassetid://82272186901928", Size = Vector2.new(200, 224) },
+	-- Loop 1: rarity cards (CardIdle recoloured; each has its own measured Slice), copper cards, scrollbar (vertical 9-slice:
+	-- Slice spans the full width, so draw with SliceScale = draw width / Size.X), ribbon, divider, stat row, stat icons.
+	CardCommon = {
+		Image = "rbxassetid://97423768325603",
+		Size = Vector2.new(265, 266),
+		Slice = Rect.new(74, 87, 191, 205),
+	},
+	CardUncommon = {
+		Image = "rbxassetid://106080999465815",
+		Size = Vector2.new(265, 266),
+		Slice = Rect.new(74, 88, 192, 205),
+	},
+	CardRare = {
+		Image = "rbxassetid://133435865359005",
+		Size = Vector2.new(265, 266),
+		Slice = Rect.new(74, 87, 191, 173),
+	},
+	CardEpic = {
+		Image = "rbxassetid://88370086038510",
+		Size = Vector2.new(265, 266),
+		Slice = Rect.new(108, 88, 188, 148),
+	},
+	CardLegendary = {
+		Image = "rbxassetid://104064869717722",
+		Size = Vector2.new(265, 266),
+		Slice = Rect.new(74, 87, 191, 166),
+	},
+	CardMythic = {
+		Image = "rbxassetid://81436082049657",
+		Size = Vector2.new(265, 266),
+		Slice = Rect.new(74, 88, 190, 166),
+	},
+	CardSecret = {
+		Image = "rbxassetid://111703002470717",
+		Size = Vector2.new(265, 266),
+		Slice = Rect.new(95, 97, 190, 205),
+	},
+	CardCopper = {
+		Image = "rbxassetid://109888527590831",
+		Size = Vector2.new(284, 277),
+		Slice = Rect.new(96, 124, 185, 163),
+	},
+	CardCopperMaroon = {
+		Image = "rbxassetid://134499798182540",
+		Size = Vector2.new(284, 277),
+		Slice = Rect.new(96, 124, 185, 163),
+	},
+	ScrollTrack = {
+		Image = "rbxassetid://129632252744880",
+		Size = Vector2.new(41, 278),
+		Slice = Rect.new(0, 65, 41, 227),
+	},
+	ScrollThumb = {
+		Image = "rbxassetid://133261866017550",
+		Size = Vector2.new(42, 174),
+		Slice = Rect.new(0, 37, 42, 133),
+	},
+	NameRibbon = { Image = "rbxassetid://106849464375213", Size = Vector2.new(547, 125) },
+	DividerGold = { Image = "rbxassetid://76841838528551", Size = Vector2.new(709, 54) },
+	StatRow = {
+		Image = "rbxassetid://112877718547884",
+		Size = Vector2.new(367, 58),
+		Slice = Rect.new(36, 26, 335, 32),
+	},
+	IconSword = { Image = "rbxassetid://123699420907091", Size = Vector2.new(127, 128) },
+	IconTarget = { Image = "rbxassetid://110125594661154", Size = Vector2.new(141, 143) },
+	IconHourglass = { Image = "rbxassetid://97862745424254", Size = Vector2.new(108, 134) },
+	IconFlame = { Image = "rbxassetid://127274386417168", Size = Vector2.new(126, 137) },
 	GlowCommon = { Image = "rbxassetid://93110762135131", Size = Vector2.new(512, 506) },
 	GlowUncommon = { Image = "rbxassetid://75255030105583", Size = Vector2.new(512, 506) },
 	GlowRare = { Image = "rbxassetid://97291881573481", Size = Vector2.new(512, 506) },
