@@ -14,15 +14,17 @@ local STROKE = Color3.fromRGB(9, 14, 24)
 local GOLD_TEXT = Color3.fromRGB(249, 199, 53)
 local GEM_TEXT = Color3.fromRGB(247, 142, 236)
 local DESIGN = Vector2.new(1672, 941)
-local XP_SCALE = 12 / 24 -- XP bar: design height / track export height (fill uses the same scale)
-local XP_FILL_CAPS = (112 - (89 - 24)) * XP_SCALE -- narrowest fill: both caps
-local XP_FILL_PAD = 3.95 * XP_SCALE -- fill box inset from each end of the track, so the pill sits inside the rim (manifest XpFill.pad)
+-- XP bar: design height / track export height (24) is the slice scale; the fill uses the same scale.
+local XP_FILL_CAPS = 112 - (89 - 24) -- narrowest fill: both caps, export px
+local XP_FILL_PAD = 3.95 -- fill box inset from each end of the track, export px, so the pill sits inside the rim (manifest XpFill.pad)
+local BAG_ROW = Vector2.new(880, 50) -- bag-mode bottom row (reference x 405-1285, y 872-922)
 local CELL = Vector2.new(124, 114)
+local BAG_CELL, BAG_GRID_X, BAG_ICON_SCALE = UDim2.fromOffset(104, 110), 114, 0.88
 local MARGIN = 20 -- side safe margin
-local PROFILE_H = 44 + 24 + 12 + 6 * 2
-local DECK_H = 110
+local PROFILE_H = 44 + 36 + 12 -- currencies, gap, XP bar (LVL / XP text overlays the bar)
+local DECK_H = 105
 local BOTTOM_H = PROFILE_H + DECK_H + 6
-local BOTTOM_GAP = 18 -- design px from the bottom edge to the Bottom block
+local BOTTOM_GAP = 21 -- design px from the bottom edge to the Bottom block
 
 local LobbyHud = {}
 LobbyHud.__index = LobbyHud
@@ -75,7 +77,14 @@ local function iconButton(parent, o)
 		LayoutOrder = o.Order or 0,
 		ZIndex = 2,
 	}, parent)
-	local content = make("Frame", { Name = "Content", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) }, btn)
+	local content = make("Frame", {
+		Name = "Content",
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromScale(1, 1),
+	}, btn)
+	make("UIScale", { Name = "BagScale" }, content) -- bag mode shrinks the left grid
 	list(content, Enum.FillDirection.Vertical, 0)
 	-- Fixed-size holder: the list lays out scaled sizes, so scaling the icon directly would move the label.
 	local holder = make("Frame", {
@@ -100,11 +109,11 @@ local function iconButton(parent, o)
 			Name = "Label",
 			Text = o.Label,
 			TextColor3 = UiKit.WHITE,
-			TextSize = 28,
-			Size = UDim2.fromOffset(CELL.X, 30),
+			TextSize = 31,
+			Size = UDim2.fromOffset(CELL.X, 34),
 			LayoutOrder = 2,
 		}, content)
-		outline(label, 3)
+		outline(label, 4)
 	end
 	UiKit.wire(btn, function(state)
 		local on = btn.Interactable
@@ -138,7 +147,7 @@ local function counter(parent, order, iconId, str, color)
 		LayoutOrder = 2,
 	}, box)
 	outline(label, 3)
-	return label
+	return label, box
 end
 
 function LobbyHud.build(parent, cb)
@@ -158,7 +167,6 @@ function LobbyHud.build(parent, cb)
 	self.Hud = hud
 	local uiScale = make("UIScale", {}, hud)
 	self.UiScale = uiScale
-	local xpSize -- UITextSizeConstraint of the XP text, set below
 	local function rescale()
 		local size = UiKit.screenSize(parent)
 		if size.X <= 0 or size.Y <= 0 then
@@ -175,12 +183,6 @@ function LobbyHud.build(parent, cb)
 		if self.BagOn then
 			self:SetBagMode(true) -- re-apply the phone-height Bottom rule after a resize/rotation
 		end
-		if xpSize then
-			-- The constraint works in on-screen px (after UIScale): 24 design px (glyphs ~60% of the
-			-- reference's XP text), never under 11 px.
-			xpSize.MinTextSize = 11
-			xpSize.MaxTextSize = math.max(11, math.floor(24 * s + 0.5))
-		end
 	end
 	parent:GetPropertyChangedSignal("AbsoluteSize"):Connect(rescale)
 	parent:GetAttributeChangedSignal("EmulateSize"):Connect(rescale)
@@ -190,10 +192,11 @@ function LobbyHud.build(parent, cb)
 		Name = "LeftGrid",
 		BackgroundTransparency = 1,
 		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(0, MARGIN + CELL.X, 0.5, 0),
+		Position = UDim2.new(0, MARGIN + CELL.X, 0.5, 44), -- reference icon rows y 347 / 462 / 582
 		Size = UDim2.fromOffset(CELL.X * 2, CELL.Y * 3),
 	}, hud)
-	make("UIGridLayout", {
+	self.LeftGrid = grid
+	self.LeftCells = make("UIGridLayout", {
 		CellSize = UDim2.fromOffset(CELL.X, CELL.Y),
 		CellPadding = UDim2.fromOffset(0, 0),
 		FillDirectionMaxCells = 2,
@@ -238,17 +241,17 @@ function LobbyHud.build(parent, cb)
 			open("Quests")
 		end,
 	})
-	quests.Position = UDim2.new(1, -(MARGIN + CELL.X / 2), 0.5, 0)
+	quests.Position = UDim2.new(1, -(MARGIN + CELL.X / 2), 0.5, 20)
 
 	-- 88 px hit area, 60 px icon, no label.
 	local gear = iconButton(hud, {
 		Name = "Gear",
 		Icon = I.Settings,
-		IconSize = UDim2.fromOffset(60, 60),
+		IconSize = UDim2.fromOffset(57, 55),
 		Size = UDim2.fromOffset(88, 88),
 		OnClick = soon("Settings"),
 	})
-	gear.Position = UDim2.new(1, -60, 0, 60)
+	gear.Position = UDim2.new(1, -60, 0, 58)
 
 	local bottom = make("Frame", {
 		Name = "Bottom",
@@ -273,7 +276,7 @@ function LobbyHud.build(parent, cb)
 	profile.Activated:Connect(function()
 		open("Profile")
 	end)
-	list(profile, Enum.FillDirection.Vertical, 6)
+	list(profile, Enum.FillDirection.Vertical, 36)
 
 	local currencies = make("Frame", {
 		Name = "Currencies",
@@ -282,55 +285,89 @@ function LobbyHud.build(parent, cb)
 		LayoutOrder = 1,
 	}, profile)
 	list(currencies, Enum.FillDirection.Horizontal, 16)
-	self.GoldLabel = counter(currencies, 1, Sprites.Coin, formatGold(0), GOLD_TEXT)
+	local goldBox, gemBox
+	self.GoldLabel, goldBox = counter(currencies, 1, Sprites.Coin, formatGold(0), GOLD_TEXT)
 	-- Placeholder: the server sends no gems yet.
-	self.GemLabel = counter(currencies, 2, Sprites.Gem, "\u{2014}", GEM_TEXT)
+	self.GemLabel, gemBox = counter(currencies, 2, Sprites.Gem, "\u{2014}", GEM_TEXT)
 	self.GemLabel:SetAttribute("Placeholder", true)
-
-	-- Sits above the bar; TextScaled + the constraint set in rescale keep it >= 11 physical px.
-	local xpText = text({
-		Name = "XpLabel",
-		Text = "LVL \u{2014}", -- Placeholder: no level/XP from the server yet
-		TextColor3 = UiKit.WHITE,
-		TextScaled = true,
-		Size = UDim2.fromOffset(584, 24),
-		LayoutOrder = 2,
-	}, profile)
-	xpSize = make("UITextSizeConstraint", {}, xpText)
-	outline(xpText, 2)
-	xpText:SetAttribute("Placeholder", true)
-	rescale()
 
 	local xp = make("Frame", {
 		Name = "XpBar",
 		BackgroundTransparency = 1,
 		Size = UDim2.fromOffset(584, 12),
-		LayoutOrder = 3,
+		LayoutOrder = 2,
 	}, profile)
-	make("ImageLabel", {
+	self.XpTrack = make("ImageLabel", {
 		Name = "Track",
 		BackgroundTransparency = 1,
 		Image = Sprites.XpTrack, -- 143x24 export, caps 22 / 49 px (the right cap keeps the rim's glints)
 		ScaleType = Enum.ScaleType.Slice,
 		SliceCenter = Rect.new(22, 10, 94, 14),
-		SliceScale = XP_SCALE,
 		Size = UDim2.fromScale(1, 1),
 	}, xp)
 	-- Fill is sized to the value (never cropped), at the track's SliceScale and never narrower than its caps.
-	local xpFraction = 0 -- Placeholder: no XP data yet, so 0 fill (hidden)
 	self.XpFill = make("ImageLabel", {
 		Name = "Fill",
 		BackgroundTransparency = 1,
 		Image = Sprites.XpFill, -- 112x16 export
 		ScaleType = Enum.ScaleType.Slice,
 		SliceCenter = Rect.new(24, 7, 89, 9),
-		SliceScale = XP_SCALE,
 		AnchorPoint = Vector2.new(0, 0.5),
-		Position = UDim2.new(0, XP_FILL_PAD, 0.5, 0),
-		Size = UDim2.fromOffset(math.max(XP_FILL_CAPS, (584 - 2 * XP_FILL_PAD) * xpFraction), 16 * XP_SCALE),
-		Visible = xpFraction > 0,
+		Visible = false,
 	}, xp)
 	self.XpFill:SetAttribute("Placeholder", true)
+	self.XpFraction = 0 -- Placeholder: no XP data yet, so 0 fill (hidden)
+	self.XpBar = xp
+
+	-- LVL / XP text: one centred group. HUD: overlaid on the thin bar (reference y 784-806); bag row: inline, left of the bar.
+	local xpText = make("Frame", {
+		Name = "XpText",
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, 0.5, -5),
+		Size = UDim2.fromOffset(584, 30),
+		ZIndex = 3,
+	}, xp)
+	list(xpText, Enum.FillDirection.Horizontal, 32)
+	local function xpLabel(name, str, order)
+		local l = text({
+			Name = name,
+			Text = str,
+			TextColor3 = UiKit.WHITE,
+			TextSize = 26, -- smaller than the 36 px currency numbers; 13 px on screen at the 0.5 phone floor
+			AutomaticSize = Enum.AutomaticSize.X,
+			Size = UDim2.fromOffset(0, 30),
+			LayoutOrder = order,
+			ZIndex = 3,
+		}, xpText)
+		outline(l, 3)
+		l:SetAttribute("Placeholder", true) -- no level/XP from the server yet
+		return l
+	end
+	self.LvlLabel = xpLabel("LvlLabel", "LVL \u{2014}", 1)
+	self.XpLabel = xpLabel("XpLabel", "\u{2014} / \u{2014} XP", 2)
+
+	-- Bag-mode bottom row: the same objects re-parented into one inline centred row (SetBagMode).
+	local row = make("Frame", {
+		Name = "BagRow",
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, 1, -(BOTTOM_GAP - 2 + BAG_ROW.Y / 2)),
+		Size = UDim2.fromOffset(BAG_ROW.X, BAG_ROW.Y),
+		Visible = false,
+	}, hud)
+	list(row, Enum.FillDirection.Horizontal, 43)
+	local divider = make("Frame", {
+		Name = "Divider",
+		BackgroundColor3 = Color3.fromRGB(240, 240, 240),
+		BorderSizePixel = 0,
+		Size = UDim2.fromOffset(4, 44),
+		LayoutOrder = 2,
+	}, row)
+	make("UICorner", { CornerRadius = UDim.new(0.5, 0) }, divider)
+	self.BagRow, self.Profile, self.Currencies, self.XpText = row, profile, currencies, xpText
+	self.CounterBoxes = { goldBox, gemBox }
+	self:_layoutXp(584, 12)
 
 	local deck = make("Frame", {
 		Name = "DeckBar",
@@ -348,7 +385,7 @@ function LobbyHud.build(parent, cb)
 			AutoButtonColor = false,
 			Image = F.Normal,
 			ScaleType = Enum.ScaleType.Stretch,
-			Size = UDim2.fromOffset(112, DECK_H),
+			Size = UDim2.fromOffset(109, DECK_H),
 			LayoutOrder = i,
 			ZIndex = 2,
 		}, deck)
@@ -379,24 +416,75 @@ function LobbyHud.build(parent, cb)
 	return self
 end
 
--- Bag open: the deck row hides, the currency/XP block drops to the bottom margin and BAG keeps the hover look.
+-- XP track + fill for a w x h bar (design px): slice scale = h / 24 (track export height), fill inset by the manifest pad.
+function LobbyHud:_layoutXp(w: number, h: number)
+	local k = h / 24
+	self.XpTrack.SliceScale = k
+	self.XpFill.SliceScale = k
+	self.XpFill.Position = UDim2.new(0, XP_FILL_PAD * k, 0.5, 0)
+	self.XpFill.Size = UDim2.fromOffset(math.max(XP_FILL_CAPS * k, (w - 2 * XP_FILL_PAD * k) * self.XpFraction), 16 * k)
+	self.XpFill.Visible = self.XpFraction > 0
+end
+
+-- Bag open: the deck row and Bottom block hide; currencies, LVL / XP text and the XP bar are re-parented into one
+-- inline centred row (reference y 872-922). Phones: the bag takes that strip too, so the row hides. BAG keeps the hover look.
 function LobbyHud:SetBagMode(on: boolean)
 	self.BagOn = on
-	local h = if on then PROFILE_H else BOTTOM_H
+	local phone = UiKit.screenSize(self.Hud.Parent).Y < UiKit.PHONE_H
 	self.DeckBar.Visible = not on
-	self.Bottom.Visible = not (on and UiKit.screenSize(self.Hud.Parent).Y < UiKit.PHONE_H) -- phones: the bag takes that strip too
-	self.Bottom.Size = UDim2.fromOffset(584, h)
-	self.Bottom.Position = UDim2.new(0.5, 0, 1, -(BOTTOM_GAP + h / 2))
+	self.Bottom.Visible = not on
+	self.BagRow.Visible = on and not phone
+	local currencies, xpText, xp = self.Currencies, self.XpText, self.XpBar
+	local currencyList = currencies:FindFirstChildOfClass("UIListLayout")
+	if on then
+		currencies.Parent, xpText.Parent, xp.Parent = self.BagRow, self.BagRow, self.BagRow
+		currencies.LayoutOrder, xpText.LayoutOrder, xp.LayoutOrder = 1, 3, 4
+		currencies.AutomaticSize, currencies.Size = Enum.AutomaticSize.X, UDim2.fromOffset(0, 44)
+		currencyList.Padding = UDim.new(0, 54)
+		for _, box in self.CounterBoxes do
+			box.AutomaticSize, box.Size = Enum.AutomaticSize.X, UDim2.fromOffset(0, 44)
+		end
+		xpText.AutomaticSize, xpText.Size = Enum.AutomaticSize.X, UDim2.fromOffset(0, 30)
+		xpText.Position = UDim2.new()
+		xpText.UIListLayout.Padding = UDim.new(0, 30)
+		xp.Size = UDim2.fromOffset(183, 22)
+		self:_layoutXp(183, 22)
+	else
+		currencies.Parent, xp.Parent = self.Profile, self.Profile
+		xpText.Parent = xp
+		currencies.LayoutOrder, xp.LayoutOrder = 1, 2
+		currencies.AutomaticSize, currencies.Size = Enum.AutomaticSize.None, UDim2.fromOffset(416, 44)
+		currencyList.Padding = UDim.new(0, 16)
+		for _, box in self.CounterBoxes do
+			box.AutomaticSize, box.Size = Enum.AutomaticSize.None, UDim2.fromOffset(200, 44)
+		end
+		xpText.AutomaticSize, xpText.Size = Enum.AutomaticSize.None, UDim2.fromOffset(584, 30)
+		xpText.Position = UDim2.new(0.5, 0, 0.5, -5)
+		xpText.UIListLayout.Padding = UDim.new(0, 32)
+		xp.Size = UDim2.fromOffset(584, 12)
+		self:_layoutXp(584, 12)
+	end
+	-- Bag refs draw the icon grid smaller and further left (pitch 104x110, centre x 114) so column 2 clears the window.
+	local grid = self.LeftGrid
+	grid.Position = UDim2.new(0, if on then BAG_GRID_X else MARGIN + CELL.X, 0.5, if on then 38 else 44)
+	self.LeftCells.CellSize = if on then BAG_CELL else UDim2.fromOffset(CELL.X, CELL.Y)
+	for _, btn in grid:GetChildren() do
+		local c = btn:FindFirstChild("Content")
+		if c then
+			c.BagScale.Scale = if on then BAG_ICON_SCALE else 1
+		end
+	end
 	self.BagButton:SetAttribute("DebugState", if on then "Hover" else nil)
 	self.BagButton.Content.Label.TextColor3 = if on then GOLD_TEXT else UiKit.WHITE -- selected: gold label + held hover scale
 end
 
--- Real px (Root space) the bag window must stay clear of: icon columns on the left, the Bottom block's top in bag mode.
+-- Real px (Root space) the bag window must stay clear of: icon columns on the left (the window overlaps the
+-- second column's edge as in the reference), the bag-mode row's top at the bottom.
 function LobbyHud:GetBagInsets()
 	local size, s = UiKit.screenSize(self.Hud.Parent), self.UiScale.Scale
 	return {
-		leftReal = if size.Y < UiKit.PHONE_H then 144 * s - 2 else 245 * s,
-		bottomTopReal = if size.Y < UiKit.PHONE_H then size.Y else size.Y - (BOTTOM_GAP + PROFILE_H) * s,
+		leftReal = if size.Y < UiKit.PHONE_H then 144 * s - 2 else 198 * s,
+		bottomTopReal = if size.Y < UiKit.PHONE_H then size.Y else size.Y - (BOTTOM_GAP - 2 + BAG_ROW.Y) * s,
 	}
 end
 
