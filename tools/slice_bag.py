@@ -41,7 +41,7 @@ SPRITES = {
     "LevelFill": ("Dice/controls-regenerated.png", (864, 922, 519, 51), 519, SHEET_MARGIN),  # native, like the track
     # Title
     "Ribbon": ("Cosmetics/icons-regenerated.png", (26, 820, 690, 182), 690, SHEET_MARGIN),
-    "BagDie": ("new menu dice.png", (166, 34, 840, 1169), 512, SHEET_MARGIN),
+    "BagDie": ("New/new menu dice.png", (166, 34, 840, 1169), 512, SHEET_MARGIN),
     # Pills (Materials controls 15-20)
     "PillGold": ("Materials/controls-regenerated.png", (52, 781, 254, 81), 254, SHEET_MARGIN),
     "PillPurple": ("Materials/controls-regenerated.png", (341, 781, 245, 81), 245, SHEET_MARGIN),
@@ -67,9 +67,10 @@ SPRITES = {
     "Flask": ("Items/icons-regenerated.png", (810, 420, 190, 214), 256, SHEET_MARGIN),
     "EquippedPill": ("Dice/icons-badges-and-effects.png", (36, 472, 204, 64), 204, SHEET_MARGIN),
 }
-GLOW_SRC = SRC / "new glow.png"  # neutral grey ray burst; GlowCommon is it as-is, the rest are tinted
+GLOW_SRC = SRC / "New" / "new glow.png"  # neutral grey ray burst; GlowCommon is it as-is, the rest are tinted
 GLOW_BBOX = (122, 50, 1094, 1081)  # alpha>=8 extent (x, y, w, h)
 GLOW_SIDE = 512
+DEEP, LIGHT = 0.8, 0.3  # tinted glow: base = tint * DEEP, rays = tint lerped toward white by LIGHT
 # rarity: tint hex, taken from the matching Bag_Pill* sprite (Legendary warmer orange-gold, Secret crimson)
 GLOWS = {
     "GlowCommon": None, "GlowUncommon": "42BC02", "GlowRare": "0185FA", "GlowEpic": "8D15F1",
@@ -86,7 +87,7 @@ SLICED = {
 
 
 def tint_glow(rgba: np.ndarray, hexcol: str | None) -> np.ndarray:
-    """Clean alpha, fade the rim, recolour: mids/edges take the hue, the hot core and ray highlights stay near-white."""
+    """Clean alpha, fade the rim, recolour: a deep base to a light version of the same hue by grey level."""
     rgba = rgba.copy()
     a = rgba[..., 3].astype(np.float32)
     a[a < 12] = 0
@@ -97,10 +98,11 @@ def tint_glow(rgba: np.ndarray, hexcol: str | None) -> np.ndarray:
     rgba[..., 3] = np.round(a).astype(np.uint8)
     if hexcol:
         tint = np.array([int(hexcol[i : i + 2], 16) for i in (0, 2, 4)], np.float32) / 255
-        lum = rgba[..., :3].astype(np.float32).mean(-1) / 255
-        hot = np.clip((lum - 0.6) / 0.35, 0, 1)[..., None] ** 1.5
-        base = tint * np.clip(lum / 0.75, 0, 1.2)[..., None]
-        rgba[..., :3] = np.clip((base * (1 - hot) + hot) * 255, 0, 255).astype(np.uint8)
+        lum = rgba[..., :3].astype(np.float32).mean(-1)
+        lo, hi = np.percentile(lum[rgba[..., 3] > 0], (2, 99.5))
+        t = np.clip((lum - lo) / (hi - lo), 0, 1)[..., None]
+        deep, light = tint * DEEP, tint + (1 - tint) * LIGHT  # same hue throughout, never pure white
+        rgba[..., :3] = np.clip((deep + (light - deep) * t) * 255, 0, 255).astype(np.uint8)
     return rgba
 
 
