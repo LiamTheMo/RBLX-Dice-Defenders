@@ -18,7 +18,7 @@ return {
 		Codes = "rbxassetid://74109008812258",
 		Daily = "rbxassetid://109962548987845",
 		Quests = "rbxassetid://98989594468537",
-		Settings = "rbxassetid://87526365416350",
+		Settings = "rbxassetid://85507248580399",
 	},
 	Coin = "rbxassetid://130085489748233",
 	Gem = "rbxassetid://108015364836270",
