@@ -88,9 +88,12 @@ for n, r in {"IconQuestScroll": (96, 15, 397, 280), "IconDie": (559, 12, 811, 27
              "IconCalendar": (1403, 299, 1663, 550), "IconCalendarWeek": (47, 595, 308, 857)}.items():
     add(n, "QI", r)
 add("IconWings", "QI", (914, 312, 1274, 550), also=[(999, 299, 1191, 408)])
-add("CellSelected", "AC", (43, 33, 341, 328))
-add("CellCopper", "AC", (353, 46, 629, 326))
-add("CellLocked", "AC", (655, 45, 931, 327))
+# slice=(l, t, r, b) is a fixed SliceCenter Rect (export px, pixels untouched, no seamproof): plain rounded frames, corner arc ~46 px
+# after the 11-15 px margin; CellSelected adds the 14 px glow margin; CellLocked's padlock (x190-250, y26-96) sits wholly in the
+# top-right corner patch (right edge 283-185 = 98 px wide, top 100 px tall), so the stretched edges never touch it.
+add("CellSelected", "AC", (43, 33, 341, 328), slice=(66, 66, 237, 233))
+add("CellCopper", "AC", (353, 46, 629, 326), slice=(60, 60, 225, 228))
+add("CellLocked", "AC", (655, 45, 931, 327), slice=(60, 100, 185, 228))
 add("PillComplete", "AC", (691, 351, 1065, 453), sliced=(0, 0, 0, 0))
 add("BarTrackAch", "AC", (45, 482, 525, 579), sliced=(0, 0, 0, 0))
 add("BarFillAch", "AC", (564, 480, 1047, 579), "fill", sliced=(0, 0, 0, 0))
@@ -316,6 +319,8 @@ def main() -> None:
             px, line, notes = sb.seamproof(px, lines, bool(kw.get("chevron")), None, False)
             out["slice"] = line
             note = f" slice {line}" + "".join(f" WARN {n}" for n in notes)
+        if "slice" in kw:
+            out["slice"] = list(kw["slice"])
         out["ink"] = sb.ink_box(px)
         if info["edgeClipped"]:
             note += " WARN touches the sheet edge"

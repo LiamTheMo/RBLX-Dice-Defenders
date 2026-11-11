@@ -2,19 +2,25 @@
 -- Detail.new(Slots.Detail) -> :Show(model|nil) :OnAction(cb(state, model)) :Destroy
 -- model = { Kind = "Quest" | "Achievement" | "Mastery", Title, Name, Icon (QuestSprites key), Action = { Label, State, Enabled }, Body }
 --   Quest Body = { Desc, Progress, Goal, Gold, Gems? } (Gems nil hides the gems box). State = Claim | Claimed | Soon | Progress.
--- Only the Quest kind is built; the Achievement and Mastery frames below are empty, hidden branches to fill later.
+--   Achievement Body = { Desc, Progress, Goal, Unit?, Locked?, Badge, BadgeBig?, Rewards = { { Name, Amount } } }.
+--   Mastery Body = the mastery row { Desc, Level, Xp, XpGoal, Die, Milestones } (SampleData.Mastery shape); Title "DICE MASTERY", no Action.
 
 local UiKit = require(script.Parent.Parent.UiKit)
 local Parts = require(script.Parent.Parent.Bag.Parts)
 local HudSprites = require(script.Parent.Parent.Sprites)
 local QuestLogic = require(script.Parent.QuestLogic)
 local Draw = require(script.Parent.Draw)
+local Achievements = require(script.Parent.Tabs.Achievements)
+local Mastery = require(script.Parent.Tabs.Mastery)
 
 local make = UiKit.make
 local Bag, Q = Draw.Bag, Draw.Q
 
 local ACTION_H = 76 -- bottom strip: the button (64 box, ink ~61) stays put while the body scrolls
 local BODY_H = 500
+local MAST_H = 606 -- Mastery body: no action button, so no bottom strip
+local ACH_H = 588 -- Achievement body: the CLAIM button sits in its reward row, so no bottom strip
+local REWARD_ICON = { Crystals = "Crystals", Die = "SkinFire" } -- Die: closest available die art
 local BOX_H, BOX_K = 54, 0.55 -- StatRow boxes: visible height and rim scale
 local COIN_TEXT = Color3.fromRGB(251, 243, 137)
 local SOFT = Color3.fromRGB(205, 210, 235)
@@ -63,8 +69,7 @@ function Detail.new(parent)
 	-- Quest kind --------------------------------------------------------------------------------------------
 	local quest = Draw.img(body, { Name = "Quest", Size = UDim2.fromScale(1, 1) }, "Frame")
 	local z = quest.ZIndex
-	local rays = Draw.img(quest, { Name = "Rays", ImageTransparency = 0.3, ZIndex = z })
-	local glow = Draw.img(quest, { Name = "Glow", ImageTransparency = 0.25, ZIndex = z + 1 })
+	local glow = Draw.img(quest, { Name = "Glow", ImageTransparency = 0.5, ZIndex = z + 1 }) -- soft purple bloom (Epic glow)
 	local icon = Draw.img(quest, { Name = "Icon", ZIndex = z + 3 })
 	local sparkles = {}
 	for i = 1, 4 do
@@ -117,7 +122,114 @@ function Detail.new(parent)
 
 	-- Achievement / Mastery kinds: filled later (same body, own frame).
 	local achievement = Draw.img(body, { Name = "Achievement", Size = UDim2.fromScale(1, 1), Visible = false }, "Frame")
+	local az = achievement.ZIndex
+	local aGlow = Draw.img(achievement, { Name = "Glow", ImageTransparency = 0.35, ZIndex = az + 1 })
+	local aBadge = Draw.img(achievement, { Name = "Badge", ZIndex = az + 3 })
+	local aSparkles = {}
+	for i = 1, 4 do
+		aSparkles[i] = Draw.img(achievement, { Name = "Sparkle" .. i, ZIndex = az + 4 })
+	end
+	local aRibbon = Draw.img(achievement, { Name = "Ribbon", ZIndex = az + 5 })
+	local aRibbonText = Parts.text(
+		achievement,
+		{ Name = "Title", TextSize = 26, AnchorPoint = Vector2.new(0.5, 0.5), ZIndex = az + 6 },
+		3
+	)
+	local aName = Parts.text(
+		achievement,
+		{ Name = "Name", TextSize = 34, AnchorPoint = Vector2.new(0.5, 0.5), ZIndex = az + 4 },
+		3
+	)
+	local aPill = Achievements.pill(achievement, "Status", 188, 36, az + 4)
+	aPill.Frame.AnchorPoint = Vector2.new(0.5, 0.5)
+	local aDesc = Parts.text(achievement, {
+		Name = "Desc",
+		TextSize = 17,
+		TextWrapped = true,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		ZIndex = az + 4,
+	}, 2)
+	local aDiv1 = Draw.img(achievement, { Name = "Divider1", ZIndex = az + 2 })
+	local aDiv2 = Draw.img(achievement, { Name = "Divider2", ZIndex = az + 2 })
+	local aLabel = Parts.text(achievement, {
+		Name = "ProgressLabel",
+		Text = "PROGRESS",
+		TextSize = 20,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		ZIndex = az + 4,
+	}, 2)
+	local aBar, aBarW
+	local aRewPill =
+		Parts.Pill(achievement, "Purple", "REWARD", { Name = "RewardPill", InkW = 150, InkH = 28, TextSize = 20 })
+	aRewPill.AnchorPoint = Vector2.new(0.5, 0.5)
+	aRewPill.ZIndex = az + 6
+	aRewPill.Label.ZIndex = az + 7
+	local aRewards = {} -- up to two reward boxes: { box, icon, text }
+	for i = 1, 2 do
+		aRewards[i] = {
+			box = Draw.img(achievement, { Name = "RewardBox" .. i, ZIndex = az + 2 }),
+			icon = Draw.img(achievement, { Name = "RewardIcon" .. i, ZIndex = az + 4 }),
+			text = Parts.text(
+				achievement,
+				{ Name = "RewardText" .. i, TextSize = 22, AnchorPoint = Vector2.new(0.5, 0.5), ZIndex = az + 4 },
+				3
+			),
+		}
+	end
+	local showAchievement
 	local mastery = Draw.img(body, { Name = "Mastery", Size = UDim2.fromScale(1, 1), Visible = false }, "Frame")
+	local mz = mastery.ZIndex
+	local mFlagL = Draw.img(mastery, { Name = "FlagL", ZIndex = mz + 1 })
+	local mFlagR = Draw.img(mastery, { Name = "FlagR", ZIndex = mz + 1 })
+	local mRays = Draw.img(mastery, { Name = "Rays", ZIndex = mz + 1 })
+	local mHalo = Draw.img(mastery, { Name = "Halo", ZIndex = mz + 2 })
+	local mDie = Draw.img(mastery, { Name = "Die", ZIndex = mz + 3 })
+	local mSparkles = {}
+	for i = 1, 4 do
+		mSparkles[i] = Draw.img(mastery, { Name = "Sparkle" .. i, ZIndex = mz + 4 })
+	end
+	local mRibbon = Draw.img(mastery, { Name = "Ribbon", ZIndex = mz + 5 })
+	local mRibbonText =
+		Parts.text(mastery, { Name = "Title", TextSize = 24, AnchorPoint = Vector2.new(0.5, 0.5), ZIndex = mz + 6 }, 3)
+	local mName =
+		Parts.text(mastery, { Name = "Name", TextSize = 32, AnchorPoint = Vector2.new(0.5, 0.5), ZIndex = mz + 4 }, 3)
+	local mPill = Mastery.pill(mastery, "LevelPill", 190, mz + 4)
+	mPill.Frame.AnchorPoint = Vector2.new(0.5, 0.5)
+	local mBar, mBarW
+	local mDesc = Parts.text(mastery, {
+		Name = "Desc",
+		TextSize = 17,
+		TextWrapped = true,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		ZIndex = mz + 4,
+	}, 2)
+	local mDiv = Draw.img(mastery, { Name = "Divider", ZIndex = mz + 2 })
+	local mNext = Draw.img(mastery, { Name = "NextBanner", ZIndex = mz + 3 })
+	local mNextText = Parts.text(mastery, {
+		Name = "NextText",
+		Text = "NEXT REWARDS",
+		TextSize = 18,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		ZIndex = mz + 4,
+	}, 2)
+	local mRewards = {} -- up to two reward boxes: { box, icon, name, lock, lv }
+	for i = 1, 2 do
+		local function label(n: string)
+			return Parts.text(
+				mastery,
+				{ Name = n .. i, TextSize = 16, AnchorPoint = Vector2.new(0.5, 0.5), ZIndex = mz + 4 },
+				2
+			)
+		end
+		mRewards[i] = {
+			box = Draw.img(mastery, { Name = "RewardBox" .. i, ZIndex = mz + 2 }),
+			icon = Draw.img(mastery, { Name = "RewardIcon" .. i, ZIndex = mz + 4 }),
+			name = label("RewardName"),
+			lock = Draw.img(mastery, { Name = "RewardLock" .. i, ZIndex = mz + 4 }),
+			lv = label("RewardLv"),
+		}
+	end
+	local showMastery
 
 	-- Action button: transparent touch-size hit button over a non-interactive Parts.button visual.
 	local actions = Draw.img(root, {
@@ -163,17 +275,17 @@ function Detail.new(parent)
 			return
 		end
 		local W = slotW - 2 * (if slotW >= 380 then 40 else 14)
-		body.Size = UDim2.fromOffset(W, BODY_H)
+		local kind = current and current.Kind
+		body.Size =
+			UDim2.fromOffset(W, if kind == "Achievement" then ACH_H elseif kind == "Mastery" then MAST_H else BODY_H)
 		body.Position = UDim2.fromOffset((slotW - W) / 2, 0)
 		local cx = W / 2
 		local rw = math.min(300, W)
 		Draw.apply(ribbon, Q.DetailRibbon, cx, 36, rw, rw * Q.DetailRibbon.Ink.Height / Q.DetailRibbon.Ink.Width)
 		at(ribbonText, cx, 33)
 		ribbonText.Size = UDim2.fromOffset(rw * 0.62, 40)
-		local rayW = math.min(260, W)
-		Draw.apply(rays, Q.Rays, cx, 150, rayW, rayW * Q.Rays.Ink.Height / Q.Rays.Ink.Width)
-		local gw, gh = Draw.fitIn(Bag.GlowLegendary, 190, 190)
-		Draw.apply(glow, Bag.GlowLegendary, cx, 136, gw, gh)
+		local gw, gh = Draw.fitIn(Bag.GlowEpic, 230, 230)
+		Draw.apply(glow, Bag.GlowEpic, cx, 136, gw, gh)
 		local function spark(i: number, rec, dx: number, dy: number, size: number)
 			local sw, sh = Draw.fitIn(rec, size, size)
 			Draw.apply(sparkles[i], rec, cx + dx, 136 + dy, sw, sh)
@@ -207,6 +319,10 @@ function Detail.new(parent)
 		end
 		if current and current.Kind == "Quest" then
 			showQuest(current)
+		elseif current and current.Kind == "Achievement" then
+			showAchievement(current)
+		elseif current and current.Kind == "Mastery" then
+			showMastery(current)
 		end
 	end
 	table.insert(conns, parent:GetPropertyChangedSignal("Size"):Connect(layout))
@@ -218,7 +334,7 @@ function Detail.new(parent)
 		Parts.fit(ribbonText, ribbonText.Size.X.Offset, 26, 16)
 		name.Text = m.Name or ""
 		Parts.fit(name, name.Size.X.Offset, 38, 22)
-		local rec = Q[m.Icon] or Q.IconQuestScroll
+		local rec = Q.IconQuestScroll -- the reference always shows the scroll for the Quest kind
 		local iw, ih = Draw.fitIn(rec, 130, 112)
 		Draw.apply(icon, rec, body.Size.X.Offset / 2, 136, iw, ih)
 		objText.Text = b.Desc or ""
@@ -255,6 +371,182 @@ function Detail.new(parent)
 		end
 	end
 
+	function showAchievement(m)
+		local b = m.Body
+		local W = body.Size.X.Offset
+		local cx = W / 2
+		local rw = math.min(300, W)
+		local function sized(inst, rec, y: number, w: number)
+			Draw.apply(inst, rec, cx, y, w, w * rec.Ink.Height / rec.Ink.Width)
+		end
+		sized(aRibbon, Q.DetailRibbon, 36, rw)
+		at(aRibbonText, cx, 33)
+		aRibbonText.Size = UDim2.fromOffset(rw * 0.62, 40)
+		aRibbonText.Text = m.Title or "ACHIEVEMENT"
+		Parts.fit(aRibbonText, aRibbonText.Size.X.Offset, 26, 16)
+		local gw, gh = Draw.fitIn(Bag.GlowLegendary, 250, 250)
+		Draw.apply(aGlow, Bag.GlowLegendary, cx, 140, gw, gh)
+		local brec = Q[b.BadgeBig] or Q[b.Badge] or Q.BadgeKing
+		local bw, bh = Draw.fitIn(brec, math.min(250, W - 20), 130)
+		Draw.apply(aBadge, brec, cx, 140, bw, bh)
+		local reach = math.min(112, W / 2 - 24)
+		local sp = {
+			{ Q.Sparkle1, -reach, -56, 38 },
+			{ Q.Sparkle2, reach, -18, 42 },
+			{ Q.Sparkle3, -reach + 20, 40, 18 },
+			{ Q.Sparkle4, reach - 34, 44, 22 },
+		}
+		for i, s in sp do
+			local sw, sh = Draw.fitIn(s[1], s[4], s[4])
+			Draw.apply(aSparkles[i], s[1], cx + s[2], 140 + s[3], sw, sh)
+		end
+		at(aName, cx, 224)
+		aName.Size = UDim2.fromOffset(W - 10, 44)
+		aName.Text = string.upper(m.Name or "")
+		Parts.fit(aName, W - 10, 34, 20)
+		aPill:Set(b)
+		at(aPill.Frame, cx, 270)
+		at(aDesc, cx, 326)
+		aDesc.Size = UDim2.fromOffset(W - 24, 68)
+		aDesc.Text = b.Desc or ""
+		aDesc.TextSize = Parts.fitSize(aDesc.Text, (W - 24) * 2.6, 17, 14)
+		sized(aDiv1, Bag.DividerGold, 374, rw)
+		at(aLabel, cx, 398)
+		aLabel.Size = UDim2.fromOffset(W, 26)
+		sized(aDiv2, Bag.DividerGold, 482, rw)
+		if aBarW ~= W - 20 then
+			aBarW = W - 20
+			if aBar then
+				aBar.Frame:Destroy()
+			end
+			aBar = Draw.bar(achievement, "ProgressBar", aBarW, 34, az + 4)
+			at(aBar.Frame, cx, 436)
+		end
+		local done = not b.Locked and b.Goal > 0 and b.Progress >= b.Goal
+		local pct = if b.Locked then 0 else QuestLogic.percent(b.Progress, b.Goal)
+		aBar:Set(pct, QuestLogic.progressText(b.Progress, b.Goal, b.Unit), done)
+		at(aRewPill, cx, 506)
+		-- Reward row: one box per reward on the left, the action button on the right (the shared button, reparented).
+		local btnW = math.min(120, math.floor(W * 0.36))
+		local n = math.min(#b.Rewards, 2)
+		local left = W - btnW - 6
+		local bxw = math.min(96, math.floor((left - 6 * (n - 1)) / math.max(n, 1)))
+		local x0 = (left - (n * bxw + 6 * (n - 1))) / 2
+		local rowY = 506 + 56
+		for i, r in aRewards do
+			local entry = b.Rewards[i]
+			r.box.Visible, r.icon.Visible, r.text.Visible = entry ~= nil, entry ~= nil, entry ~= nil
+			if entry then
+				local rx = x0 + (i - 1) * (bxw + 6) + bxw / 2
+				Draw.apply(r.box, Bag.StatRow, rx, rowY, bxw, 82, BOX_K)
+				local rec = Q[REWARD_ICON[entry.Name] or "Crystals"]
+				local iw, ih = Draw.fitIn(rec, 50, 46)
+				Draw.apply(r.icon, rec, rx, rowY - 14, iw, ih)
+				r.text.Text = "x" .. QuestLogic.format(entry.Amount)
+				r.text.Size = UDim2.fromOffset(bxw - 8, 28)
+				at(r.text, rx, rowY + 26)
+				Parts.fit(r.text, bxw - 8, 22, 14)
+			end
+		end
+		hit.Parent = achievement
+		hit.ZIndex = az + 8
+		hit.Size = UDim2.fromOffset(btnW + 8, 64)
+		hit.Position = UDim2.fromOffset(W - (btnW + 8) / 2, rowY)
+		visual.Size = UDim2.fromOffset(btnW, 56)
+	end
+
+	function showMastery(m)
+		local b = m.Body
+		local W = body.Size.X.Offset
+		local cx = W / 2
+		local rw = math.min(300, W)
+		local function sized(inst, rec, y: number, w: number)
+			Draw.apply(inst, rec, cx, y, w, w * rec.Ink.Height / rec.Ink.Width)
+		end
+		sized(mRibbon, Q.DetailRibbon, 36, rw)
+		at(mRibbonText, cx, 33)
+		mRibbonText.Size = UDim2.fromOffset(rw * 0.62, 40)
+		mRibbonText.Text = m.Title or "DICE MASTERY"
+		Parts.fit(mRibbonText, mRibbonText.Size.X.Offset, 24, 14)
+		-- flame banners hang from both ribbon ends (the art is fire-themed for every die)
+		local fh = 96
+		for _, f in { { mFlagL, Q.BannerFlameL, -1 }, { mFlagR, Q.BannerFlameR, 1 } } do
+			local fw = fh * f[2].Ink.Width / f[2].Ink.Height
+			Draw.apply(f[1], f[2], cx + f[3] * (rw / 2 - fw / 2 + 2), 36 + fh / 2 - 8, fw, fh)
+		end
+		local rayW, rayH = Draw.fitIn(Q.Rays, math.min(240, W - 20), 170)
+		Draw.apply(mRays, Q.Rays, cx, 146, rayW, rayH)
+		local hw, hh = Draw.fitIn(Q.Halo, 170, 60)
+		Draw.apply(mHalo, Q.Halo, cx, 196, hw, hh)
+		local drec = Q[b.Die] or Q.DieFire
+		local dw, dh = Draw.fitIn(drec, 112, 116)
+		Draw.apply(mDie, drec, cx, 140, dw, dh)
+		local reach = math.min(112, W / 2 - 24)
+		local sp = {
+			{ Q.Sparkle1, -reach, -50, 36 },
+			{ Q.Sparkle2, reach, -20, 40 },
+			{ Q.Sparkle3, -reach + 14, 36, 18 },
+			{ Q.Sparkle4, reach - 26, 44, 22 },
+		}
+		for i, s in sp do
+			local sw, sh = Draw.fitIn(s[1], s[4], s[4])
+			Draw.apply(mSparkles[i], s[1], cx + s[2], 140 + s[3], sw, sh)
+		end
+		at(mName, cx, 226)
+		mName.Size = UDim2.fromOffset(W - 10, 40)
+		mName.Text = string.upper(m.Name or "")
+		Parts.fit(mName, W - 10, 32, 18)
+		mPill:Set(b.Level)
+		at(mPill.Frame, cx, 268)
+		if mBarW ~= W - 20 then
+			mBarW = W - 20
+			if mBar then
+				mBar.Frame:Destroy()
+			end
+			mBar = Mastery.bar(mastery, "XpBar", mBarW, 32, mz + 4)
+			at(mBar.Frame, cx, 312)
+		end
+		mBar:Set(b.Xp, b.XpGoal)
+		at(mDesc, cx, 360)
+		mDesc.Size = UDim2.fromOffset(W - 24, 48)
+		mDesc.Text = b.Desc or ""
+		mDesc.TextSize = Parts.fitSize(mDesc.Text, (W - 24) * 1.9, 17, 13)
+		sized(mDiv, Bag.DividerGold, 404, rw)
+		local nw = math.min(220, W)
+		sized(mNext, Q.NextRewards, 432, nw)
+		at(mNextText, cx, 432)
+		mNextText.Size = UDim2.fromOffset(nw * 0.6, 30)
+		Parts.fit(mNextText, nw * 0.6, 18, 12)
+		local rewards = QuestLogic.nextRewards(b)
+		local bxw = math.min(150, math.floor((W - 8) / 2))
+		local bxh = bxw * Q.RewardBox.Ink.Height / Q.RewardBox.Ink.Width
+		local cy = 458 + bxh / 2
+		for i, r in mRewards do
+			local entry = rewards[i]
+			for _, o in r do
+				o.Visible = entry ~= nil
+			end
+			if entry then
+				local rx = cx + (i - 1 - (#rewards - 1) / 2) * (bxw + 8)
+				Draw.apply(r.box, Q.RewardBox, rx, cy, bxw, bxh)
+				local irec = Q[entry.Icon] or Q.Crystals
+				local iw, ih = Draw.fitIn(irec, bxw * 0.58, bxh * 0.42)
+				Draw.apply(r.icon, irec, rx, cy - bxh * 0.18, iw, ih)
+				r.name.Text = entry.Name
+				r.name.Size = UDim2.fromOffset(bxw - 14, 22)
+				at(r.name, rx, cy + bxh * 0.14)
+				Parts.fit(r.name, bxw - 14, 16, 11)
+				local lw, lh = Draw.fitIn(Bag.Lock, 18, 18)
+				local gx = rx - (18 + 4 + 40) / 2 -- lock + "Lv. N" group centred in the box
+				Draw.apply(r.lock, Bag.Lock, gx + 9, cy + bxh * 0.33, lw, lh)
+				r.lv.Text = "Lv. " .. entry.Lv
+				r.lv.TextXAlignment = Enum.TextXAlignment.Left
+				r.lv.Size = UDim2.fromOffset(44, 22)
+				at(r.lv, gx + 18 + 4 + 22, cy + bxh * 0.33)
+			end
+		end
+	end
+
 	function api:Show(model)
 		current = model
 		local kind = model and model.Kind
@@ -262,18 +554,33 @@ function Detail.new(parent)
 		scroll.Visible = model ~= nil
 		actions.Visible = model ~= nil
 		quest.Visible, achievement.Visible, mastery.Visible = kind == "Quest", kind == "Achievement", kind == "Mastery"
+		local ach = kind == "Achievement"
+		local tall = ach or kind == "Mastery" -- no bottom action strip
+		local bodyH = if ach then ACH_H elseif kind == "Mastery" then MAST_H else BODY_H
+		scroll.Size = if tall then UDim2.fromScale(1, 1) else UDim2.new(1, 0, 1, -ACTION_H)
+		scroll.CanvasSize = UDim2.fromOffset(0, bodyH)
+		body.Size = UDim2.fromOffset(body.Size.X.Offset, bodyH)
+		if not ach then -- back in the bottom strip (the Achievement branch moves it into its reward row)
+			hit.Parent = actions
+			hit.ZIndex = actions.ZIndex + 1
+			hit.Position = UDim2.fromScale(0.5, 0.5)
+			hit.Size = UDim2.fromOffset(240, 64)
+			visual.Size = UDim2.fromOffset(228, 64)
+		end
 		if not model then
 			return
 		end
 		scroll.CanvasPosition = Vector2.new(0, 0)
 		if kind == "Quest" then
 			showQuest(model)
+		elseif ach then
+			showAchievement(model)
 		else
-			-- TODO(achievements, mastery tabs): build and fill the `achievement` / `mastery` frames, one branch per kind.
-			placeholder.Visible = false
+			showMastery(model)
 		end
 		local a = model.Action
-		actions.Visible = a ~= nil
+		actions.Visible = a ~= nil and not tall
+		hit.Visible = a ~= nil
 		if a then
 			Parts.setButton(visual, { Label = a.Label, Enabled = a.Enabled ~= false })
 			local sparkOn = a.State == "Claim" and a.Enabled ~= false

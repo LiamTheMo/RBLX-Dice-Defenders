@@ -115,16 +115,19 @@ return {
 		Image = "rbxassetid://71820568478320",
 		Size = Vector2.new(303, 299),
 		Ink = Rect.new(15, 14, 289, 285),
+		Slice = Rect.new(66, 66, 237, 233),
 	},
 	CellCopper = {
 		Image = "rbxassetid://104721560846861",
 		Size = Vector2.new(285, 288),
 		Ink = Rect.new(12, 11, 274, 275),
+		Slice = Rect.new(60, 60, 225, 228),
 	},
 	CellLocked = {
 		Image = "rbxassetid://139833135488976",
 		Size = Vector2.new(283, 288),
 		Ink = Rect.new(11, 11, 271, 275),
+		Slice = Rect.new(60, 100, 185, 228),
 	},
 	PillComplete = {
 		Image = "rbxassetid://71991667855494",

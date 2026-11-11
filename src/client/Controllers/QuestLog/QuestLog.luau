@@ -15,17 +15,29 @@ local SampleData = require(script.Parent.SampleData)
 local Toolbar = require(script.Parent.Toolbar)
 local Detail = require(script.Parent.Detail)
 local Quests = require(script.Parent.Tabs.Quests)
+local Achievements = require(script.Parent.Tabs.Achievements)
+local Mastery = require(script.Parent.Tabs.Mastery)
 
 local ACTION = "QuestLogClose"
 local DAY = 86400
 
-local PLACEHOLDERS = { "Search quests...", "Search achievements...", "Search mastery..." }
+local PLACEHOLDERS = { "Search quests...", "Search achievements...", "Search dice mastery..." }
 local OPTIONS = {
 	{ Id = "All", Label = "All Quests" },
 	{ Id = "Daily", Label = "Daily" },
 	{ Id = "Weekly", Label = "Weekly" },
 	{ Id = "Story", Label = "Story" },
 	{ Id = "Claimable", Label = "Claimable" },
+}
+local ACH_OPTIONS = {
+	{ Id = "ProgressDesc", Label = "Progress (High → Low)" },
+	{ Id = "ProgressAsc", Label = "Progress (Low → High)" },
+	{ Id = "Name", Label = "Name (A → Z)" },
+}
+local MASTERY_OPTIONS = {
+	{ Id = "LevelDesc", Label = "Level (High → Low)" },
+	{ Id = "LevelAsc", Label = "Level (Low → High)" },
+	{ Id = "Name", Label = "Name (A → Z)" },
 }
 local ACTION_LABEL = { Claim = "CLAIM", Claimed = "CLAIMED", Soon = "SOON", Progress = "CLAIM" }
 
@@ -38,6 +50,26 @@ local function questModel(row, busy)
 		Icon = row.Icon,
 		Body = { Desc = row.Desc, Progress = row.Progress, Goal = row.Goal, Gold = row.Gold, Gems = row.Gems },
 		Action = { Label = ACTION_LABEL[state], State = state, Enabled = state == "Claim" and not busy },
+	}
+end
+
+local function achModel(item)
+	local state = QuestLogic.claimState(item)
+	return {
+		Kind = "Achievement",
+		Title = "ACHIEVEMENT",
+		Name = item.Name,
+		Body = {
+			Desc = item.Desc,
+			Progress = item.Progress,
+			Goal = item.Goal,
+			Unit = item.Unit,
+			Locked = item.Locked,
+			Badge = item.Badge,
+			BadgeBig = item.BadgeBig,
+			Rewards = item.Rewards,
+		},
+		Action = { Label = ACTION_LABEL[state], State = state, Enabled = false }, -- every sample row: never live
 	}
 end
 
@@ -69,9 +101,13 @@ function QuestLog.new(parent, deps)
 	})
 	local toolbar = Toolbar.new(shell.Slots.Toolbar)
 	local quests = Quests.new(shell.Slots.Grid)
+	local achievements = Achievements.new(shell.Slots.Grid)
+	local mastery = Mastery.new(shell.Slots.Grid)
 	local detail = Detail.new(shell.Slots.Detail)
 
 	local rows, selected = {}, nil
+	local achItems, achSelected = {}, nil
+	local masterySelected = nil
 	local query, mode = "", "All"
 	local pending = {} -- ids with a ClaimQuest request in flight
 	local timerToken = 0
@@ -109,6 +145,46 @@ function QuestLog.new(parent, deps)
 		end
 	end
 
+	local function renderAch()
+		achItems = QuestLogic.sortAchievements(QuestLogic.filterByName(SampleData.Achievements, query), mode)
+		achievements:SetItems(achItems)
+		local done, total = QuestLogic.achievementCount(SampleData.Achievements) -- whole list, not the filtered view
+		toolbar:SetCount(done .. " / " .. total)
+		local pick
+		for _, item in achItems do
+			if item.Id == achSelected then
+				pick = item
+			end
+		end
+		pick = pick or achItems[1]
+		if pick then
+			hooks.OnAchSelect(pick.Id, pick)
+		else
+			achSelected = nil
+			achievements:SetSelected(nil)
+			detail:Show(nil)
+		end
+	end
+
+	local function renderMastery()
+		local list = QuestLogic.sortMastery(QuestLogic.filterByName(SampleData.Mastery, query), mode)
+		mastery:SetRows(list)
+		local pick
+		for _, row in list do
+			if row.Id == masterySelected then
+				pick = row
+			end
+		end
+		pick = pick or list[1]
+		if pick then
+			hooks.OnMasterySelect(pick.Id, pick)
+		else
+			masterySelected = nil
+			mastery:SetSelected(nil)
+			detail:Show(nil)
+		end
+	end
+
 	-- HOOKS ------------------------------------------------------------------------------------------------
 	hooks = {
 		OnSelect = function(id: string, row) -- default: highlight the row and show it in the detail panel
@@ -134,13 +210,44 @@ function QuestLog.new(parent, deps)
 				end
 			end)
 		end,
+		OnAchSelect = function(id: string, item) -- Achievements tab: highlight the cell and show it in the detail panel
+			achSelected = id
+			achievements:SetSelected(id)
+			detail:Show(achModel(item))
+		end,
+		OnAchClaim = function(_id: string, _item)
+			deps.toast("Coming soon!") -- every achievement is a Sample for now
+		end,
+		OnMasterySelect = function(id: string, row) -- Mastery tab: highlight the cell and show it in the detail panel
+			masterySelected = id
+			mastery:SetSelected(id)
+			detail:Show({ Kind = "Mastery", Title = "DICE MASTERY", Name = row.Name, Body = row })
+		end,
 		OnSearch = function(q: string)
-			query = q
-			render()
+			local tab = shell:GetTab()
+			if tab >= 1 and tab <= 3 then
+				query = q
+				if tab == 1 then
+					render()
+				elseif tab == 2 then
+					renderAch()
+				else
+					renderMastery()
+				end
+			end
 		end,
 		OnOption = function(id: string)
-			mode = id
-			render()
+			local tab = shell:GetTab()
+			if tab >= 1 and tab <= 3 then
+				mode = id
+				if tab == 1 then
+					render()
+				elseif tab == 2 then
+					renderAch()
+				else
+					renderMastery()
+				end
+			end
 		end,
 	}
 	self.Hooks = hooks
@@ -150,6 +257,15 @@ function QuestLog.new(parent, deps)
 	quests:OnClaim(function(id, row)
 		hooks.OnClaim(id, row)
 	end)
+	achievements:OnSelect(function(id, item)
+		hooks.OnAchSelect(id, item)
+	end)
+	achievements:OnClaim(function(id, item)
+		hooks.OnAchClaim(id, item)
+	end)
+	mastery:OnSelect(function(id, row)
+		hooks.OnMasterySelect(id, row)
+	end)
 	toolbar:OnSearch(function(q)
 		hooks.OnSearch(q)
 	end)
@@ -157,7 +273,9 @@ function QuestLog.new(parent, deps)
 		hooks.OnOption(id)
 	end)
 	detail:OnAction(function(state)
-		if state == "Claim" and selected then
+		if shell:GetTab() == 2 then
+			deps.toast("Coming soon!") -- sample achievements never touch state or remotes
+		elseif state == "Claim" and selected then
 			for _, row in rows do
 				if row.Id == selected then
 					hooks.OnClaim(row.Id, row)
@@ -169,17 +287,26 @@ function QuestLog.new(parent, deps)
 	local function showTab()
 		local tab = shell:GetTab()
 		toolbar:SetPlaceholder(PLACEHOLDERS[tab] or "Search...")
-		query, mode = "", "All"
+		local default = if tab == 2 then "ProgressDesc" elseif tab == 3 then "LevelDesc" else "All"
+		query, mode = "", default
+		achSelected, masterySelected = nil, nil
 		toolbar:SetQuery("")
-		toolbar:SetLabel("Show:")
-		toolbar:SetOptions(if tab == 1 then OPTIONS else {}, "All")
+		toolbar:SetLabel(if tab >= 2 then "SORT:" else "Show:")
+		toolbar:SetOptions(if tab == 1 then OPTIONS elseif tab == 2 then ACH_OPTIONS else MASTERY_OPTIONS, default)
+		toolbar:SetCount(nil)
 		quests:SetVisible(tab == 1)
+		achievements:SetVisible(tab == 2)
+		mastery:SetVisible(tab == 3)
 		if tab == 1 then
 			selected = nil
 			quests:SetEmptyText("No quests found")
 			render()
+		elseif tab == 2 then
+			achievements:SetEmptyText("No achievements found")
+			renderAch()
 		else
-			detail:Show(nil) -- Achievements and Mastery: empty list area until built
+			mastery:SetEmptyText("No dice found")
+			renderMastery()
 		end
 	end
 
@@ -192,8 +319,10 @@ function QuestLog.new(parent, deps)
 	shell:OnClose(function()
 		ContextActionService:UnbindAction(ACTION)
 		timerToken += 1
-		selected, query, mode = nil, "", "All"
+		selected, achSelected, masterySelected, query, mode = nil, nil, nil, "", "All"
 		quests:SetScroll(0)
+		achievements:SetScroll(0)
+		mastery:SetScroll(0)
 		hud:SetBagMode(false)
 	end)
 	table.insert(
@@ -222,7 +351,7 @@ function QuestLog.new(parent, deps)
 	)
 
 	self._shell, self._hud, self._conns = shell, hud, conns
-	self._parts = { toolbar, quests, detail }
+	self._parts = { toolbar, quests, achievements, mastery, detail }
 	self._open = function(tab)
 		local idx = tab or 1
 		if shell:IsOpen() then

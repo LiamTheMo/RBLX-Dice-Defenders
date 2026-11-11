@@ -73,22 +73,6 @@ function Toolbar.new(parent)
 		{ Name = "Text", TextSize = 22, AnchorPoint = Vector2.new(0.5, 0.5), ZIndex = skin.ZIndex + 1 },
 		2
 	)
-	local chevron =
-		Draw.img(hit, { Name = "Chevron", Size = UDim2.fromOffset(22, 16), ZIndex = skin.ZIndex + 1 }, "Frame")
-	chevron.AnchorPoint = Vector2.new(0.5, 0.5)
-	for i = 1, 2 do -- two rounded bars rotated into a "v"
-		local arm = Draw.img(chevron, {
-			Name = "Arm" .. i,
-			BackgroundTransparency = 0,
-			BackgroundColor3 = WHITE,
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.fromOffset(if i == 1 then 6.5 else 15.5, 8),
-			Size = UDim2.fromOffset(13, 4),
-			Rotation = if i == 1 then 45 else -45,
-		}, "Frame")
-		make("UICorner", { CornerRadius = UDim.new(0.5, 0) }, arm)
-		make("UIStroke", { Color = Color3.fromRGB(9, 14, 24), Thickness = 1.5 }, arm)
-	end
 
 	local menu = Draw.img(root, {
 		Name = "OptionMenu",
@@ -135,7 +119,6 @@ function Toolbar.new(parent)
 		hit.Size = UDim2.fromOffset(ddW + 8, HIT_H)
 		hit.Position = UDim2.fromOffset(right + 4, CY)
 		Draw.apply(skin, Q.Dropdown, (ddW + 8) / 2, HIT_H / 2, ddW, INK_H)
-		chevron.Position = UDim2.fromOffset(4 + ddW - 28, HIT_H / 2)
 		ddText.Position = UDim2.fromOffset(4 + 12 + (ddW - 62) / 2, HIT_H / 2)
 		ddText.Size = UDim2.fromOffset(ddW - 62, INK_H)
 		setLabelText()
