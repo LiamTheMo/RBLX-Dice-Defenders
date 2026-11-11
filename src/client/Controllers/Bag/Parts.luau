@@ -41,12 +41,15 @@ local PILL = {
 	Gold = "PillGold",
 	Pink = "PillPink",
 }
+local GLOW_SCALE = 1.6 -- the burst spreads well past the item, as in the references
 local GLOW = {
-	Uncommon = "GlowGreen",
-	Rare = "GlowBlue",
-	Epic = "GlowPurple",
-	Legendary = "GlowGold",
-	Mythic = "GlowPurple",
+	Common = "GlowCommon",
+	Uncommon = "GlowUncommon",
+	Rare = "GlowRare",
+	Epic = "GlowEpic",
+	Legendary = "GlowLegendary",
+	Mythic = "GlowMythic",
+	Secret = "GlowSecret",
 }
 
 -- Sprites ------------------------------------------------------------------------------------------------
@@ -956,7 +959,7 @@ function Parts.Detail(parent)
 		put(desc, { l.desc[1] + nameDy, descH })
 		desc.Visible = descH >= 17
 		put(extra, { l.extra[1] + nameDy, l.extra[2] })
-		glow.Size = UDim2.fromOffset(l.prev[2], l.prev[2])
+		glow.Size = UDim2.fromOffset(l.prev[2] * GLOW_SCALE, l.prev[2] * GLOW_SCALE)
 		icon.Size = UDim2.fromOffset(l.icon, l.icon)
 		actions.Position = UDim2.new(0.5, 0, 1, -l.rowPad)
 		scroll.Size = UDim2.new(1, 0, 1, -(56 + l.rowPad))
@@ -1137,7 +1140,7 @@ function Parts.Detail(parent)
 				{ Name = "Status", H = L().tags[2], MinW = 116, TextSize = 17, Order = 2 }
 			)
 		end
-		Parts.skin(glow, GLOW[model.Rarity] or "GlowBlue")
+		Parts.skin(glow, GLOW[model.Rarity] or "GlowCommon")
 		local has = model.Icon ~= nil and model.Icon ~= ""
 		Parts.image(icon, if has then model.Icon else fallback)
 		icon.ImageColor3 = model.Tint or (if has then WHITE else Parts.RarityColor[model.Rarity] or WHITE)

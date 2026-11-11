@@ -41,7 +41,7 @@ SPRITES = {
     "LevelFill": ("Dice/controls-regenerated.png", (864, 922, 519, 51), 519, SHEET_MARGIN),  # native, like the track
     # Title
     "Ribbon": ("Cosmetics/icons-regenerated.png", (26, 820, 690, 182), 690, SHEET_MARGIN),
-    "BagDie": ("Shared/bag-crowned-die.png", (270, 46, 771, 1061), 512, SHEET_MARGIN),
+    "BagDie": ("new menu dice.png", (166, 34, 840, 1169), 512, SHEET_MARGIN),
     # Pills (Materials controls 15-20)
     "PillGold": ("Materials/controls-regenerated.png", (52, 781, 254, 81), 254, SHEET_MARGIN),
     "PillPurple": ("Materials/controls-regenerated.png", (341, 781, 245, 81), 245, SHEET_MARGIN),
@@ -66,13 +66,15 @@ SPRITES = {
     "CheckCircle": ("Materials/icons-regenerated.png", (1220, 290, 168, 170), 128, SHEET_MARGIN),
     "Flask": ("Items/icons-regenerated.png", (810, 420, 190, 214), 256, SHEET_MARGIN),
     "EquippedPill": ("Dice/icons-badges-and-effects.png", (36, 472, 204, 64), 204, SHEET_MARGIN),
-    # Glows keep their soft alpha (see SOFT)
-    "GlowGold": ("Materials/icons-badges-and-effects.png", (90, 404, 266, 226), 256, GLOW_MARGIN),
-    "GlowPurple": ("Materials/icons-badges-and-effects.png", (756, 408, 262, 220), 256, GLOW_MARGIN),
-    "GlowBlue": ("Materials/icons-badges-and-effects.png", (1092, 410, 252, 216), 256, GLOW_MARGIN),
-    "GlowGreen": ("Materials/icons-badges-and-effects.png", (1426, 412, 252, 216), 256, GLOW_MARGIN),
 }
-SOFT = {"GlowGold", "GlowPurple", "GlowBlue", "GlowGreen"}
+GLOW_SRC = SRC / "new glow.png"  # neutral grey ray burst; GlowCommon is it as-is, the rest are tinted
+GLOW_BBOX = (122, 50, 1094, 1081)  # alpha>=8 extent (x, y, w, h)
+GLOW_SIDE = 512
+# rarity: tint hex, taken from the matching Bag_Pill* sprite (Legendary warmer orange-gold, Secret crimson)
+GLOWS = {
+    "GlowCommon": None, "GlowUncommon": "42BC02", "GlowRare": "0185FA", "GlowEpic": "8D15F1",
+    "GlowLegendary": "FF9A1F", "GlowMythic": "FF4FCB", "GlowSecret": "DC143C",
+}
 # 9-slice sprites. Value = minimum (l, t, r, b) in export px that the slice must keep clear (e.g. Sort's baked chevron).
 SLICED = {
     "Window": None, "LeftPanel": None, "Detail": None, "Strip": None, "TabPurple": None, "TabGold": None,
@@ -81,6 +83,25 @@ SLICED = {
     "PillGold": None, "PillPurple": None, "PillBlue": None, "PillGreen": None, "PillGrey": None, "PillPink": None,
     "QtyMinus": None, "QtyField": None, "QtyPlus": None, "EquippedPill": (0, 0, 0, 0),
 }
+
+
+def tint_glow(rgba: np.ndarray, hexcol: str | None) -> np.ndarray:
+    """Clean alpha, fade the rim, recolour: mids/edges take the hue, the hot core and ray highlights stay near-white."""
+    rgba = rgba.copy()
+    a = rgba[..., 3].astype(np.float32)
+    a[a < 12] = 0
+    h, w = a.shape
+    yy, xx = np.mgrid[0:h, 0:w]
+    r = np.hypot((xx - w / 2) / (w / 2), (yy - h / 2) / (h / 2))
+    a *= 1 - np.clip((r - 0.86) / 0.14, 0, 1) ** 2 * (3 - 2 * np.clip((r - 0.86) / 0.14, 0, 1))  # smooth rim falloff
+    rgba[..., 3] = np.round(a).astype(np.uint8)
+    if hexcol:
+        tint = np.array([int(hexcol[i : i + 2], 16) for i in (0, 2, 4)], np.float32) / 255
+        lum = rgba[..., :3].astype(np.float32).mean(-1) / 255
+        hot = np.clip((lum - 0.6) / 0.35, 0, 1)[..., None] ** 1.5
+        base = tint * np.clip(lum / 0.75, 0, 1.2)[..., None]
+        rgba[..., :3] = np.clip((base * (1 - hot) + hot) * 255, 0, 255).astype(np.uint8)
+    return rgba
 
 
 def threshold(rgba: np.ndarray, soft: bool) -> np.ndarray:
@@ -138,7 +159,7 @@ def main() -> None:
     for name, (sheet, (x, y, w, h), side, margin) in SPRITES.items():
         img = sheets.setdefault(sheet, Image.open(SRC / sheet).convert("RGBA"))
         box = (x - margin, y - margin, x + w + margin, y + h + margin)
-        crop = Image.fromarray(threshold(np.array(img.crop(box)), name in SOFT))
+        crop = Image.fromarray(threshold(np.array(img.crop(box)), False))
         k = min(1.0, side / max(w, h))  # never upscale
         size = (round(crop.width * k), round(crop.height * k))
         # Pillow premultiplies RGBA when resizing, so bleed afterwards.
@@ -149,6 +170,14 @@ def main() -> None:
         if name in SLICED:
             manifest[name]["slice"] = measure(px, SLICED[name] or (0, 0, 0, 0))
         print(f"{name}: {size[0]}x{size[1]} {manifest[name].get('slice', '')}")
+    gx, gy, gw, gh = GLOW_BBOX
+    glow = Image.open(GLOW_SRC).convert("RGBA").crop((gx, gy, gx + gw, gy + gh))
+    size = (round(gw * GLOW_SIDE / max(gw, gh)), round(gh * GLOW_SIDE / max(gw, gh)))
+    for name, col in GLOWS.items():
+        px = bleed(np.array(Image.fromarray(tint_glow(np.array(glow), col)).resize(size, Image.LANCZOS)))
+        Image.fromarray(px).save(OUT / f"Bag_{name}.png", optimize=True)
+        manifest[name] = {"w": size[0], "h": size[1]}
+        print(f"{name}: {size[0]}x{size[1]} {col}")
     (OUT / "manifest.json").write_text(json.dumps(manifest, indent=1))
 
 
