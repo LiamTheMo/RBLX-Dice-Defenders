@@ -842,14 +842,14 @@ function Parts.Grid(parent)
 					Pad = if compactNow then nil else px(13), -- ref: 12-14 px between the text and the pill ends
 				})
 				pill.AnchorPoint = Vector2.new(0.5, 0.5)
-				pill.Position = UDim2.new(0.5, 0, 0, math.floor(h * tsize(0.8, 0.74)))
+				pill.Position = UDim2.new(0.5, 0, 0, math.floor(h * tsize(0.78, 0.74)))
 			end
 			if item.Footer then
 				local foot = Parts.text(
 					card,
 					{ Name = "Footer", Text = item.Footer, TextSize = tsize(px(22), 13), TextColor3 = WHITE }
 				)
-				place(foot, math.floor(h * tsize(0.895, 0.9)), w - px(12), px(tsize(24, 17)), 0.5)
+				place(foot, math.floor(h * tsize(0.91, 0.9)), w - px(12), px(tsize(22, 17)), 0.5)
 			end
 		elseif item.Footer then -- Items: bold outlined count at the bottom-right, no plate
 			local qty = Parts.text(card, { Name = "Qty", Text = item.Footer, TextSize = px(tsize(34, 22)) })
@@ -1092,14 +1092,24 @@ function Parts.Footer(parent)
 		elseif w < 700 then
 			dw, dh, labelW, btnW, gap = 56, 58, 84, 120, 6
 		end
+		local roomy = labelW == 118
+		local rowGap = if compact then 0 elseif w < 700 then 8 else 16
+		-- Full: the row (label, divider, slots, divider, button + 14 right pad) must sit inside the strip's ink
+		-- (box minus ~21 px): a narrower box shrinks widths and gaps by one factor (1 at the reference width).
+		local fk = 1
+		if not compact then
+			local base = labelW + 7 + 5 * dw + 4 * gap + btnW + 4 * rowGap + 14
+			fk = math.min(1, (w - 21) / base)
+			dw, dh, labelW, btnW, gap, rowGap = dw * fk, dh * fk, labelW * fk, btnW * fk, gap * fk, rowGap * fk
+		end
 		label.Visible, btn.Visible, backing.Visible = not compact, not compact, compact
 		div1.Visible, div2.Visible = not compact, not compact
 		label.Size = UDim2.fromOffset(labelW, 78)
-		label.TextSize = if labelW == 118 then 23 else 15 -- ref: 91 px wide, rows 13/14/18
-		labelPad.PaddingLeft = UDim.new(0, if labelW == 118 then 16 else 0) -- ref: text 29 px from the rim, centred in the rim-divider cell
-		labelPad.PaddingBottom = UDim.new(0, if labelW == 118 then 6 else 0)
-		rowPad.PaddingRight = UDim.new(0, if compact then 0 else 14)
-		rowLayout.Padding = UDim.new(0, if compact then 0 elseif w < 700 then 8 else 16)
+		label.TextSize = if roomy then 23 * fk else 15 * fk -- ref: 91 px wide, rows 13/14/18
+		labelPad.PaddingLeft = UDim.new(0, if roomy then 16 * fk else 0) -- ref: text 29 px from the rim, centred in the rim-divider cell
+		labelPad.PaddingBottom = UDim.new(0, if roomy then 6 else 0)
+		rowPad.PaddingRight = UDim.new(0, if compact then 0 else 14 * fk)
+		rowLayout.Padding = UDim.new(0, rowGap)
 		slotsLayout.Padding = UDim.new(0, gap)
 		local perRow = if compact then math.clamp(math.floor((w - 24 + gap) / (dw + gap)), 1, 5) else 5
 		local rows = math.ceil(5 / perRow)
@@ -1110,7 +1120,7 @@ function Parts.Footer(parent)
 			else UDim2.fromScale(1, 1) -- Full: the whole footer box is the strip (visible 242-1018 x 734-832)
 		for i, slot in slots do
 			slot.Size = UDim2.fromOffset(dw, dh)
-			local ic = if dw == 75 then 55 else dw - 16
+			local ic = if roomy then math.floor(dw * 55 / 75) else dw - 16
 			icons[i].Size = UDim2.fromOffset(ic, ic)
 		end
 		btn.Size = UDim2.fromOffset(btnW, btnH)
@@ -1273,8 +1283,8 @@ function Parts.Detail(parent)
 		TextSize = 18,
 		TextWrapped = true,
 		TextColor3 = WHITE,
-		Size = UDim2.new(1, -28, 1, -12),
-		Position = UDim2.fromOffset(14, 6),
+		Size = UDim2.new(1, -28, 1, -6), -- the text's own line height is ~0.95 of its size: leave it room
+		Position = UDim2.fromOffset(14, 3),
 	}, 2)
 	local divider = img(body, { Name = "Divider", AnchorPoint = Vector2.new(0.5, 0) })
 	Parts.image(divider, "DividerGold")
@@ -1745,7 +1755,10 @@ function Parts.Detail(parent)
 	-- Buttons: one size (Full 127x74 box = ink 120x67; Compact 127x48) shrunk equally when the panel is narrower than 3.
 	local function layoutButtons()
 		local c = compact()
-		local w = if c then math.min(127, math.floor((parent.Size.X.Offset - 16 - 2 * 8) / 3)) else BTN_W
+		-- Full: the 3 ink widths + gaps must stay inside the detail rim (slot width - 20 - 1)
+		local w = if c
+			then math.min(127, math.floor((parent.Size.X.Offset - 16 - 2 * 8) / 3))
+			else math.min(BTN_W, math.floor((parent.Size.X.Offset - 11) / 3))
 		local h = if c then 48 else BTN_H
 		actionsList.Padding = UDim.new(0, if c then 8 else BTN_GAP)
 		-- one label size on every tab and every row: what the tightest label needs. UNEQUIP has the whole width,

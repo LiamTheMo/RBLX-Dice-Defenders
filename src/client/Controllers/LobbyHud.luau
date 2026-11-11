@@ -121,7 +121,7 @@ local function iconButton(parent, o)
 			TextSize = 37,
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			Position = UDim2.new(0.5, 0, 0, LABEL_Y + (o.LabelDrop or 0)),
-			Size = UDim2.fromOffset(CELL.X, 40),
+			Size = UDim2.fromOffset(o.LabelW or CELL.X, 40),
 		}, content)
 		outline(label, 4)
 	end
@@ -249,6 +249,7 @@ function LobbyHud.build(parent, cb)
 		Name = "Quests",
 		Icon = I.Quests,
 		Label = "QUESTS",
+		LabelW = 140, -- QUESTS at 37 px is as wide as the 124 cell: the box needs slack for TextFits
 		Art = ICON_ART.Quests,
 		OnClick = function()
 			open("Quests")

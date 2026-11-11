@@ -279,6 +279,9 @@ function Shell.new(parent, deps)
 		bannerText.Position = bn.textPos
 			or if compact then UDim2.fromScale(354 / 615, 114 / 218) else UDim2.fromOffset(bsz.X / 2 + 30.7, 77.9)
 		bannerText.TextSize = (if compact then bn.textCompact else bn.textFull) or t.bannerText
+		if not bn.textSize then -- the box holds the text (centre unchanged): TextFits true at every scale
+			bannerText.Size = UDim2.fromOffset(bsz.X * 254 / 615, math.ceil(bannerText.TextSize * 1.2))
+		end
 		close.Size = if compact then UDim2.fromOffset(72, 68) else UDim2.fromOffset(84.5, 80) -- visible 74x72 (the sprite shows ~0.87 of its box)
 		close.Position = if compact
 			then UDim2.fromOffset(winW - t.mx - 27, t.my + 5)
@@ -290,11 +293,15 @@ function Shell.new(parent, deps)
 		local fixedW = not compact and n == #TAB_W
 		local equalW = not compact and not fixedW and #self._tabs > 0 -- other tab counts fill the Bag's tab-row span
 		local tabW = math.floor((barW - (n - 1) * t.tabGap) / n)
+		local tabK = 1
 		if fixedW or equalW then
 			barW = t.tabGap * (#TAB_W - 1)
 			for _, w in TAB_W do
 				barW += w
 			end
+			-- a narrower window shrinks the tabs with it (1 at the reference width: 40.6 px of rim each side)
+			tabK = math.min(1, (winW - 2 * t.mx - 81.2) / barW)
+			barW *= tabK
 			if equalW then
 				tabW = (barW - (n - 1) * t.tabGap) / n
 			end
@@ -303,7 +310,7 @@ function Shell.new(parent, deps)
 		tabBar.Size = UDim2.fromOffset(barW, t.tabH)
 		tabBar.UIListLayout.Padding = UDim.new(0, t.tabGap)
 		for i, tab in self._tabButtons do
-			local w = if fixedW then TAB_W[i] else tabW
+			local w = if fixedW then TAB_W[i] * tabK else tabW
 			tab.Size = UDim2.fromOffset(w, t.tabH)
 			tab.Row.Position = UDim2.fromOffset(0, if compact then 0 else -4) -- ref label y 159-178: above the tab centre
 			tab.Row.UIListLayout.Padding = UDim.new(0, t.iconGap)
