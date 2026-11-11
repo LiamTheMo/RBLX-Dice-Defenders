@@ -40,10 +40,21 @@ function Items.Detail(item)
 	return {
 		Name = item.Name,
 		Rarity = item.Rarity,
-		Header = string.upper(item.Rarity) .. " ITEM",
-		DescBox = true,
+		NameRibbon = true, -- the Title Case name sits on the gold-rim ribbon
+		ArtY = 24,
+		ArtH = 184,
+		NameY = 211,
+		Gap = 7,
+		Divider = true,
+		StepInline = true,
 		Icon = item.Icon,
-		Subline = { Kind = "Qty", Text = "Quantity: x" .. BagLogic.formatCount(item.Quantity) },
+		Subline = {
+			Kind = "Qty",
+			Text = "Quantity: x" .. BagLogic.formatCount(item.Quantity),
+			Gold = true,
+			W = 223,
+			H = 38,
+		},
 		Description = item.Description,
 		Stepper = { Qty = 1, Max = item.Quantity, Enabled = false },
 		Buttons = {

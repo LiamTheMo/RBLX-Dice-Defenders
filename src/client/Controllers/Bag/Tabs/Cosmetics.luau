@@ -39,6 +39,15 @@ function Cosmetics.Detail(item)
 	return {
 		Name = item.Name,
 		Rarity = item.Rarity,
+		Upper = true,
+		CenterTag = true,
+		Ring = true,
+		Flags = true,
+		TopY = 18,
+		ArtY = 66,
+		ArtH = 175,
+		NameY = 254,
+		Gap = 8,
 		StatusTag = if item.Equipped then "EQUIPPED" else nil,
 		Subline = {
 			Kind = "Type",

@@ -165,7 +165,7 @@ function Shell.new(parent, deps)
 		Position = UDim2.fromScale(354 / 615, 114 / 218), -- ref: BAG ink centre 30 px right of, 7 px above the ribbon centre
 		Size = UDim2.fromScale(254 / 615, 88 / 218),
 		ZIndex = Z + 11,
-	}, 3)
+	}, 5)
 	self.Banner = banner
 
 	local close = make("ImageButton", {
@@ -224,7 +224,10 @@ function Shell.new(parent, deps)
 		local contentH = hf - contentTop - bottomPad
 		-- Left column is one box on every tab: the panel fills it, minus the footer strip when the Dice footer shows
 		-- (compact: the footer overlays the panel bottom).
-		local leftH = if compact or not self._footerOn then contentH else contentH - FOOTER_H - GAP
+		local leftH = if compact
+			then contentH
+			elseif self._footerOn then contentH - FOOTER_H - GAP
+			else contentH - t.detailCut
 
 		-- Window centred in the free region.
 		local compH = (t.over + hf) * bs
@@ -373,7 +376,7 @@ function Shell:SetTabs(tabs)
 			ZIndex = Z + 6,
 			AutomaticSize = Enum.AutomaticSize.X,
 			Size = UDim2.fromOffset(0, 40),
-		})
+		}, 4)
 		make("UISizeConstraint", {}, label) -- caps the width so long labels truncate; the icon+label group stays centred
 		table.insert(
 			self._conns,

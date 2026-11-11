@@ -86,6 +86,8 @@ function Dice.Detail(item)
 	return {
 		Name = item.Name,
 		Rarity = item.Rarity,
+		Gap = 4,
+		ExtraY = 279, -- detail layout (Full tier, px from the slot top): art 36-168, name 154, rows follow
 		StatusTag = if equipped then "EQUIPPED" else nil,
 		Icon = item.Icon,
 		Tint = item.Tint,
