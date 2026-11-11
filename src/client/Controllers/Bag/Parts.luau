@@ -24,6 +24,12 @@ local function dimImage(inst, on: boolean)
 	inst.ImageTransparency = if on then 0 else DISABLED_FADE
 end
 
+-- Disabled label (same on action buttons and stepper): translucent text and outline.
+local function dimLabel(label, on: boolean)
+	label.TextTransparency = if on then 0 else 0.45
+	label:FindFirstChildOfClass("UIStroke").Transparency = if on then 0 else 0.45
+end
+
 local Parts = {}
 Parts.CheckKey = "CheckWhite" -- white tick with a dark-green outline, sits on the green EQUIPPED pill
 
@@ -295,7 +301,6 @@ function Parts.button(parent, o)
 		local ic = img(btn, { Name = "Icon", AnchorPoint = Vector2.new(0, 0.5), ZIndex = label.ZIndex })
 		Parts.image(ic, o.Icon)
 	end
-	local stroke = label:FindFirstChildOfClass("UIStroke")
 	btn.Destroying:Connect(function()
 		refreshers[btn] = nil -- the refresh closure holds btn strongly: drop it when the button dies
 	end)
@@ -307,8 +312,7 @@ function Parts.button(parent, o)
 			dimImage(ic, on)
 			ic.ImageTransparency = if on then 0 else 0.55
 		end
-		label.TextTransparency = if on then 0 else 0.45
-		stroke.Transparency = if on then 0 else 0.45
+		dimLabel(label, on)
 	end)
 	Parts.setButton(btn, { Style = o.Style, Label = o.Label, Enabled = o.Enabled ~= false })
 	return btn
@@ -663,6 +667,7 @@ function Parts.Grid(parent)
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		ScrollingDirection = Enum.ScrollingDirection.Y,
 		ScrollBarThickness = 0, -- the styled bar below replaces the native one; wheel, touch and drag still scroll
+		ScrollBarImageTransparency = 1, -- thickness 0 still drew a 2 px native thumb in the gutter
 		ZIndex = root.ZIndex + 1,
 	}, fade)
 	local gridPad = make("UIPadding", {
@@ -854,7 +859,7 @@ function Parts.Grid(parent)
 			else item.Tint or (if has then WHITE else Parts.RarityColor[item.Rarity] or WHITE)
 		if kind == "Dice" then
 			local title = Parts.text(card, { Name = "Title", Text = item.Name, TextSize = px(tsize(22, 15)) })
-			place(title, math.floor(h * tsize(0.65, 0.575)), w - px(12), px(tsize(26, 17)), 0.5)
+			place(title, math.floor(h * tsize(0.645, 0.55)), w - px(12), px(tsize(26, 17)), 0.5)
 			Parts.fit(title, w - px(14), px(tsize(22, 15)), 11)
 			if item.SubTag then
 				local pill = Parts.Pill(card, item.Rarity, item.SubTag, {
@@ -865,14 +870,16 @@ function Parts.Grid(parent)
 					Pad = if compactNow then nil else px(13), -- ref: 12-14 px between the text and the pill ends
 				})
 				pill.AnchorPoint = Vector2.new(0.5, 0.5)
-				pill.Position = UDim2.new(0.5, 0, 0, math.floor(h * tsize(0.78, 0.74)))
+				pill.Position = UDim2.new(0.5, 0, 0, math.floor(h * tsize(0.77, 0.69)))
 			end
 			if item.Footer then
+				-- short cards (small windows) lift the line a little so it keeps clear of the bottom rim
+				local lift = if compactNow then 0 else math.clamp(math.floor((206 - h) / 20 + 0.5), 0, 1)
 				local foot = Parts.text(
 					card,
 					{ Name = "Footer", Text = item.Footer, TextSize = tsize(px(22), 13), TextColor3 = WHITE }
 				)
-				place(foot, math.floor(h * tsize(0.91, 0.9)), w - px(12), px(tsize(22, 17)), 0.5)
+				place(foot, math.floor(h * tsize(0.895, 0.82)) - lift, w - px(12), px(tsize(22, 17)), 0.5)
 			end
 		elseif item.Footer then -- Items: bold outlined count at the bottom-right, no plate
 			local qty = Parts.text(card, { Name = "Qty", Text = item.Footer, TextSize = px(tsize(34, 22)) })
@@ -910,7 +917,7 @@ function Parts.Grid(parent)
 		local inner = W - 2 * side
 		local cols = math.min(g.cols, math.max(1, math.floor((inner + gx) / (MIN_CARD_W + gx))))
 		cardW = math.min(if compact then 190 else g.maxW or 190, math.floor((inner - (cols - 1) * gx) / cols))
-		local pt = if compact then 7 else TOP -- compact: 7 px clear of the window top for the glow
+		local pt = if compact then 10 else TOP -- compact: 10 px clear of the window top for the selected glow
 		local rows, c0, capped
 		if compact then -- whole rows that fill the height: the row count whose card height stays nearest the aspect height
 			c0 = math.floor(cardW / g.aspect)
@@ -1397,7 +1404,7 @@ function Parts.Detail(parent)
 		local artH, nameY = lay.artH + grow - cut, lay.nameY + grow - cut
 		scroll.Size = if slack < 0 then UDim2.new(1, 0, 1, -(ACTION_TOP + MIN_GAP)) else UDim2.fromScale(1, 1)
 		at(preview, lay.artY, artH)
-		local g = math.min(artH * 1.5, w)
+		local g = math.min(artH * 1.5, w, 2 * (lay.artY + artH / 2 - 14)) -- top stays 14 px under the panel top (inside the rim)
 		glow.Size = UDim2.fromOffset(g, g)
 		icon.Size = UDim2.fromOffset(artH, artH)
 		ring.Visible = lay.ring == true
@@ -1405,7 +1412,8 @@ function Parts.Detail(parent)
 		for i, flag in { flagL, flagR } do
 			flag.Visible = lay.flags == true
 			stretchTo(flag, if i == 1 then "CosFlagLeft" else "CosFlagRight", 77, 122)
-			flag.Position = UDim2.new(0.5, if i == 1 then -156 else 156, 0, lay.flagY)
+			local fx = math.floor(parent.Size.X.Offset * 0.371 + 0.5) -- 156 at the reference width, follows the panel
+			flag.Position = UDim2.new(0.5, if i == 1 then -fx else fx, 0, lay.flagY)
 		end
 		nameRibbon.Visible = lay.nameRibbon == true
 		stretchTo(nameRibbon, "ItemsNameRibbon", 358, 84) -- ref ribbon: 44 px body, 55 px with the gold edges
@@ -1700,7 +1708,10 @@ function Parts.Detail(parent)
 					str = tostring(st.Qty)
 				end
 				if str then -- Minus / Plus have their glyph baked in
-					Parts.text(b, { Text = str, TextSize = tsz, Size = UDim2.fromScale(1, 1) })
+					local t = Parts.text(b, { Text = str, TextSize = tsz, Size = UDim2.fromScale(1, 1) })
+					if not isField then
+						dimLabel(t, on)
+					end
 				end
 			end
 		end
@@ -1777,7 +1788,7 @@ function Parts.Detail(parent)
 				dimImage(b, on)
 				Parts.interact(b)
 				if str then
-					Parts.text(b, { Text = str, TextSize = 22, Size = UDim2.fromScale(1, 1) })
+					dimLabel(Parts.text(b, { Text = str, TextSize = 22, Size = UDim2.fromScale(1, 1) }), on)
 				end
 				b.Activated:Connect(function()
 					if onStep then

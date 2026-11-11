@@ -250,6 +250,7 @@ function LobbyHud.build(parent, cb)
 		Icon = I.Quests,
 		Label = "QUESTS",
 		LabelW = 140, -- QUESTS at 37 px is as wide as the 124 cell: the box needs slack for TextFits
+		LabelDrop = 8, -- ref QUESTS ink top 520 (was 511 at the shared label row)
 		Art = ICON_ART.Quests,
 		OnClick = function()
 			open("Quests")

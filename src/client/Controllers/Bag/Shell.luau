@@ -263,8 +263,10 @@ function Shell.new(parent, deps)
 			-- FOOTER_BOX is the reference-frame size; a narrower window narrows the left column, so the strip
 			-- loses the same width (else it runs over the detail panel).
 			local fullLeftW = fullW - 2 * side - gap - DETAIL_MAX
-			footer.Position = UDim2.fromOffset(5, contentH + 10 - FOOTER_BOX.Y)
-			footer.Size = UDim2.fromOffset(FOOTER_BOX.X - math.max(0, fullLeftW - leftW), FOOTER_BOX.Y)
+			-- Strip rim lines up with the left panel's (its box margins are 4 left / 6 right) and ends level with the
+			-- detail panel's bottom rim.
+			footer.Position = UDim2.fromOffset(-1, contentH + 8 - (FOOTER_BOX.Y - 2))
+			footer.Size = UDim2.fromOffset(FOOTER_BOX.X - math.max(0, fullLeftW - leftW) + 2.5, FOOTER_BOX.Y - 2)
 		end
 		local detailH = contentH - cut
 		detail.Position = UDim2.fromOffset(leftW + gap, 0)
