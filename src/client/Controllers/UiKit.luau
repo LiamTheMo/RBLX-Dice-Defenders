@@ -1,5 +1,7 @@
 -- Shared placeholder UI helpers and palette (moved out of Hud; no Init/Start).
 
+local UserInputService = game:GetService("UserInputService")
+
 local NAVY = Color3.fromRGB(27, 22, 54)
 local NAVY_LIGHT = Color3.fromRGB(52, 44, 96)
 local WHITE = Color3.new(1, 1, 1)
@@ -9,6 +11,7 @@ local GREY = Color3.fromRGB(110, 106, 140)
 local FONT = Enum.Font.FredokaOne
 
 local UiKit = {
+	PHONE_H = 500, -- screens shorter than this (px) use the phone layouts
 	NAVY = NAVY,
 	NAVY_LIGHT = NAVY_LIGHT,
 	WHITE = WHITE,
@@ -16,6 +19,12 @@ local UiKit = {
 	GREEN = GREEN,
 	GREY = GREY,
 }
+
+-- Screen size a container lays out against: the EmulateSize attribute (Vector2, for captures) else its AbsoluteSize.
+function UiKit.screenSize(container: GuiObject): Vector2
+	local emulated = container:GetAttribute("EmulateSize")
+	return if typeof(emulated) == "Vector2" then emulated else container.AbsoluteSize
+end
 
 function UiKit.make(class: string, props: { [string]: any }, parent: Instance?): any
 	local inst = Instance.new(class)
@@ -81,6 +90,39 @@ function UiKit.button(props: { [string]: any }, parent: Instance, color: Color3,
 	end)
 	btn.Activated:Connect(onClick)
 	return btn
+end
+
+-- Hover (mouse only), press (mouse and touch) and the DebugState attribute ("Hover" | "Pressed", for
+-- captures) call apply("Normal" | "Hover" | "Pressed"). Returns refresh for callers with extra state.
+function UiKit.wire(btn, apply)
+	local hover, down = false, false
+	local function refresh()
+		local forced = btn:GetAttribute("DebugState")
+		apply(
+			if forced == "Pressed" or down then "Pressed" elseif forced == "Hover" or hover then "Hover" else "Normal"
+		)
+	end
+	local mouseOnly = not UserInputService.TouchEnabled or UserInputService.MouseEnabled
+	btn.MouseEnter:Connect(function()
+		hover = mouseOnly
+		refresh()
+	end)
+	btn.MouseLeave:Connect(function()
+		hover, down = false, false
+		refresh()
+	end)
+	btn.MouseButton1Down:Connect(function()
+		down = true
+		refresh()
+	end)
+	btn.MouseButton1Up:Connect(function()
+		down = false
+		refresh()
+	end)
+	btn:GetAttributeChangedSignal("DebugState"):Connect(refresh)
+	btn:GetPropertyChangedSignal("Interactable"):Connect(refresh)
+	refresh()
+	return refresh
 end
 
 return UiKit
