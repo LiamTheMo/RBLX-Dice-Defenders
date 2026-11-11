@@ -21,6 +21,13 @@ OUT = SRC / "export"
 SHEET_MARGIN = 4  # source px kept around each bbox for the soft edge
 GLOW_MARGIN = 20  # bursts fade far past their alpha>=160 bbox
 
+# rarity -> (rim hex, fill hex). Rims are the Bag_Glow tints (= the matching pill body); fills are the Materials/Dice reference card fills
+# (Secret has no reference card: crimson).
+CARD_FILL = {
+    "Common": ("B4B4B4", "4A4B4A"), "Uncommon": ("42BC02", "1F4C01"), "Rare": ("0185FA", "0A457A"), "Epic": ("8D15F1", "4F1276"),
+    "Legendary": ("FF9A1F", "7A3A00"), "Mythic": ("FF4FCB", "60148D"), "Secret": ("DC143C", "5A0F1E"),
+}
+
 # name: (sheet, (x, y, w, h), longest output side of the bbox, margin). Never upscaled (side is capped at native).
 SPRITES = {
     # Frames
@@ -70,6 +77,19 @@ SPRITES = {
     "CheckCircle": ("Materials/icons-regenerated.png", (1220, 290, 168, 170), 128, SHEET_MARGIN),
     "Flask": ("Items/icons-regenerated.png", (810, 420, 190, 214), 256, SHEET_MARGIN),
     "EquippedPill": ("Dice/icons-badges-and-effects.png", (36, 472, 204, 64), 204, 14),
+    # Loop 1: rarity cards = CardIdle recoloured (RECOLOR); CardCopper = the Cosmetics sheet's copper-rimmed card at CardIdle's scale
+    **{f"Card{r}": ("Dice/controls-regenerated.png", (270, 544, 317, 318), 256, SHEET_MARGIN) for r in CARD_FILL},
+    "CardCopper": ("Cosmetics/controls-regenerated.png", (73, 44, 339, 331), 274, SHEET_MARGIN),
+    "CardCopperMaroon": ("Cosmetics/controls-regenerated.png", (73, 44, 339, 331), 274, SHEET_MARGIN),  # items tab: maroon fill
+    "ScrollTrack": ("Materials/controls-regenerated.png", (1576, 25, 54, 447), 270, SHEET_MARGIN),  # ~2 texels per design px at 16 px wide
+    "ScrollThumb": ("Materials/controls-regenerated.png", (1676, 70, 55, 274), 270, SHEET_MARGIN),
+    "NameRibbon": ("Materials/icons-badges-and-effects.png", (46, 747, 537, 115), 537, SHEET_MARGIN),
+    "DividerGold": ("Cosmetics/controls-regenerated.png", (68, 920, 891, 57), 700, SHEET_MARGIN),
+    "StatRow": ("Cosmetics/controls-regenerated.png", (843, 807, 357, 48), 357, SHEET_MARGIN),  # native: the reference row is 33 px tall
+    "IconSword": ("Dice/icons-badges-and-effects.png", (999, 300, 103, 104), 128, 12),
+    "IconTarget": ("Dice/icons-badges-and-effects.png", (1130, 293, 117, 119), 128, 12),
+    "IconHourglass": ("Dice/icons-badges-and-effects.png", (1277, 296, 84, 110), 128, 12),
+    "IconFlame": ("Dice/icons-badges-and-effects.png", (1401, 291, 102, 113), 128, 12),
 }
 # Sliced, height-fitted controls: export height (px, margin included) ~2x the largest full-tier draw height.
 HEIGHTS = {
@@ -77,12 +97,13 @@ HEIGHTS = {
     "Sort": 112, "PillGold": 60, "PillPurple": 60, "PillBlue": 60, "PillGreen": 60, "PillGrey": 60, "PillPink": 60,
     "QtyMinus": 112, "QtyField": 112, "QtyPlus": 112, "LevelTrack": 52,
 }
+VERTICAL = {"ScrollTrack", "ScrollThumb"}  # sliced top/bottom only: Slice = Rect(0, t, w, h - b); draw with SliceScale = draw width / Size.X
 FEATHER = {"EquippedPill"}  # baked halo runs into the next element on the sheet: fade it to nothing over the margin
 ERASE_GLYPH = {"QtyMinus": (11, 3), "QtyPlus": (7, 0)}  # the baked -/+ is drawn live; fill its area (pad, extra pad below) from the art around it
 # Keep the baked chevron / check mark: the right-hand band is neither rebuilt nor checked. Value = (t_max, b_min) rows that bracket the
 # glyph and its outline so no slice line crosses it (None where the pill's own corner arc forbids that: the line crosses the glyph).
 KEEP_RIGHT = {"EquippedPill": None}
-SHARED_SCALE = {"LevelFill": "LevelTrack"}  # same resize factor and margin as the track so the fill fits its interior
+SHARED_SCALE = {"LevelFill": "LevelTrack", "ScrollThumb": "ScrollTrack"}  # same resize factor and margin as the track so the fill fits its interior
 PILL_PINK_REF = ("materials-reference.png", (306, 310, 320, 322))  # MYTHIC pill body in the Materials reference screen
 GLOW_SRC = SRC / "New" / "new glow.png"  # neutral grey ray burst; GlowCommon is it as-is, the rest are tinted
 GLOW_BBOX = (122, 50, 1094, 1081)  # alpha>=8 extent (x, y, w, h)
@@ -96,11 +117,13 @@ GLOWS = {
 # 9-slice sprites. Value = minimum (l, t, r, b) in export px that the slice must keep clear (e.g. a baked check mark).
 # Sort is not here: its baked chevron can't sit on a slice line, so Parts draws it whole (Stretch) at its art aspect.
 SLICED = {
-    "Window": None, "LeftPanel": None, "Detail": None, "Strip": None, "TabPurple": None, "TabGold": None,
+    "Window": (292, 154, 224, 124), "LeftPanel": None, "Detail": None, "Strip": None, "TabPurple": (79, 44, 63, 49), "TabGold": None,
     "BtnGreen": None, "BtnRed": None, "BtnGold": None, "BtnPurple": None, "Search": None,
     "CardIdle": None, "CardSelected": None, "LevelTrack": None, "LevelFill": None,
     "PillGold": None, "PillPurple": None, "PillBlue": None, "PillGreen": None, "PillGrey": None, "PillPink": None,
     "QtyMinus": None, "QtyField": None, "QtyPlus": None, "EquippedPill": (0, 0, 76, 0),
+    **{f"Card{r}": None for r in CARD_FILL}, "CardCopper": None, "CardCopperMaroon": None, "StatRow": None,
+    "ScrollTrack": None, "ScrollThumb": None,
 }
 
 
@@ -237,15 +260,97 @@ def _rgb(h, s, v):
     return np.stack([f(5), f(3), f(1)], -1)
 
 
-def recolor_pink(arr: np.ndarray, ref_rgb: np.ndarray) -> np.ndarray:
-    """Hue/saturation/value-shift the pill so its body median matches the MYTHIC pill body in the reference screen."""
+def recolor_pink(arr: np.ndarray, ref_rgb: np.ndarray, band: tuple[float, float] | None = None) -> np.ndarray:
+    """Hue/saturation/value-shift the sprite so its body median matches the reference body colour (the MYTHIC pill; the idle tab).
+    The body is the middle rows by default, or the rows between band (fractions of the height)."""
     h, w, _ = arr.shape
-    body = np.median(arr[h // 2 - 6 : h // 2 + 6, w // 2 - 40 : w // 2 + 40, :3].reshape(-1, 3) / 255.0, 0)[None]
+    r0, r1 = (int(band[0] * h), int(band[1] * h)) if band else (h // 2 - 6, h // 2 + 6)
+    body = np.median(arr[r0:r1, w // 2 - 40 : w // 2 + 40, :3].reshape(-1, 3) / 255.0, 0)[None]
     (h0, s0, v0), (h1, s1, v1) = ([float(c[0]) for c in _hsv(m)] for m in (body, ref_rgb[None] / 255.0))
     hh, ss, vv = _hsv(arr[..., :3] / 255.0)
     out = _rgb((hh + h1 - h0) % 1, np.clip(ss * s1 / s0, 0, 1), np.clip(vv * v1 / v0, 0, 1))
     arr[..., :3] = np.round(out * 255).astype(np.uint8)
     return arr
+
+
+def _hexrgb(h: str) -> np.ndarray:
+    return np.array([int(h[i : i + 2], 16) for i in (0, 2, 4)], np.float32)
+
+
+def _edge_dist(alive: np.ndarray, n: int) -> np.ndarray:
+    """How many of n alternating cross / square erosions each pixel of `alive` survives (~ distance to the silhouette edge, capped at n)."""
+    dist = np.zeros(alive.shape, np.float32)
+    cur = alive.copy()
+    for i in range(n):
+        dist += cur
+        p = np.pad(cur, 1)
+        nxt = p[:-2, 1:-1] & p[2:, 1:-1] & p[1:-1, :-2] & p[1:-1, 2:]
+        if i % 2:
+            nxt = nxt & p[:-2, :-2] & p[:-2, 2:] & p[2:, :-2] & p[2:, 2:]
+        cur = nxt
+    return dist
+
+
+def recolor_window(arr: np.ndarray) -> np.ndarray:
+    """Dice reference rim is orange (#FB9124 / highlight #FBB14B) where the sheet's is gold (#FDBC34): rotate the bright rim hue about
+    8 degrees toward red."""
+    rgb = arr[..., :3].astype(np.float32) / 255
+    h, s_, v = _hsv(rgb)
+    deg = h * 360
+    wt = np.clip((deg - 26) / 10, 0, 1) * np.clip((v - 0.85) / 0.1, 0, 1) * np.clip((s_ - 0.4) / 0.2, 0, 1)
+    arr[..., :3] = np.round(np.clip(_rgb((deg - 8 * wt) / 360 % 1, s_, v), 0, 1) * 255).astype(np.uint8)
+    return arr
+
+
+def trim_outline(px: np.ndarray) -> np.ndarray:
+    """Soften the 1-2 px near-black outer outline of the finished export (the reference window has only a soft shadow): alpha x 0.4.
+    Done after the slice is built so it is identical along every stretched band and cannot move a slice line."""
+    dark = (px[..., :3].mean(-1) < 100) & (_edge_dist(px[..., 3] >= 160, 3) <= 2) & (px[..., 3] > 0)
+    px[..., 3][dark] = np.round(px[..., 3][dark] * 0.4).astype(np.uint8)
+    return px
+
+
+def recolor_close(arr: np.ndarray) -> np.ndarray:
+    """Close X red face #F31C17 -> reference #F72827: add (4, 12, 16) to pure-red pixels only (white X and the outlines are untouched)."""
+    rgb = arr[..., :3].astype(np.float32)
+    wt = np.clip((rgb[..., 0] - 150) / 60, 0, 1) * np.clip((120 - rgb[..., 1]) / 40, 0, 1) * np.clip((120 - rgb[..., 2]) / 40, 0, 1)
+    arr[..., :3] = np.clip(rgb + wt[..., None] * np.array([4, 12, 16], np.float32), 0, 255).astype(np.uint8)
+    return arr
+
+
+def recolor_card(arr: np.ndarray, rim: str | None, fill: str | None, d: int, white: float = 0.5) -> np.ndarray:
+    """Recolour a frame by region: the rim (every pixel within d px of the silhouette edge, outlines included) takes the rim colour
+    scaled by its grey level (highlights go toward white by `white`), the interior takes the fill colour scaled the same way, so the
+    art's own shading and gradient survive. None keeps that region as drawn."""
+    rgb = arr[..., :3].astype(np.float32)
+    lum = rgb.mean(-1)
+    alive = arr[..., 3] >= 160
+    dist = _edge_dist(alive, d + 2)
+    w = np.clip((d + 1 - dist) / 2, 0, 1)[..., None]  # 1 on the rim, soft hand-over to the fill
+    if rim:
+        ring = (w[..., 0] > 0.9) & alive
+        t = (lum / np.percentile(lum[ring], 80))[..., None]
+        base = _hexrgb(rim) * np.minimum(t, 1)
+        rim_px = base + (255 - base) * np.clip(t - 1, 0, 1) * white
+    else:
+        rim_px = rgb
+    if fill:
+        inner = (w[..., 0] < 0.1) & alive
+        t = np.clip(lum / np.median(lum[inner]), 0, 2.5)[..., None]
+        fill_px = _hexrgb(fill) * t
+    else:
+        fill_px = rgb
+    arr[..., :3] = np.clip(rim_px * w + fill_px * (1 - w), 0, 255).astype(np.uint8)
+    return arr
+
+
+# name -> recolour applied to the source crop (before resize). TabPurple: idle tab body = reference tab body (Dice reference, x 1075-1095, y 147-195)
+TAB_REF = ("dice-reference.png", (1075, 147, 20, 48))
+RECOLOR = {f"Card{r}": (lambda a, c=c: recolor_card(a, c[0], c[1], 17)) for r, c in CARD_FILL.items()}
+RECOLOR["CardCopperMaroon"] = lambda a: recolor_card(a, None, "421717", 18)
+RECOLOR["Window"] = recolor_window
+RECOLOR["Close"] = recolor_close
+RECOLOR["StatRow"] = lambda a: recolor_card(a, "8A3C86", "320E2B", 12, 0)  # reference row: #320E2B fill, faint #5A2A58 rim
 
 
 def cut(img: Image.Image, rect, base: int, k: float, m: int, recolor=None, feather: bool = False):
@@ -327,14 +432,17 @@ def erase_glyph(px: np.ndarray, pad: int, below: int) -> np.ndarray:
     return _to_px(O)
 
 
-def rebuild(px: np.ndarray, l: int, t: int, r: int, b: int, keep_right: bool = False) -> np.ndarray:
+def rebuild(px: np.ndarray, l: int, t: int, r: int, b: int, keep_right: bool = False, vertical: bool = False) -> np.ndarray:
     """Stretch regions become plain interpolations of their border lines (premultiplied): top/bottom bands lerp along x between
     columns l and r-1, left/right bands along y between rows t and b-1, the centre is a bilinear blend of its four corner pixels."""
     h, w, _ = px.shape
     P = _pa(px)
     O = P.copy()
-    u = ((np.arange(l, r) - l) / (r - 1 - l))[None, :, None]
     v = ((np.arange(t, b) - t) / (b - 1 - t))[:, None, None]
+    if vertical:  # full-width bands: every column is a lerp between its rows t and b-1 (the caps are left untouched)
+        O[t:b] = P[t : t + 1] * (1 - v) + P[b - 1 : b] * v
+        return _to_px(O)
+    u = ((np.arange(l, r) - l) / (r - 1 - l))[None, :, None]
     for y0, y1 in ((0, t), (b, h)):
         O[y0:y1, l:r] = P[y0:y1, l : l + 1] * (1 - u) + P[y0:y1, r - 1 : r] * u
     for x0, x1 in ((0, l),) + (() if keep_right else ((r, w),)):
@@ -343,7 +451,7 @@ def rebuild(px: np.ndarray, l: int, t: int, r: int, b: int, keep_right: bool = F
     return _to_px(O)
 
 
-def seamproof(px: np.ndarray, lines: list[int], keep_right: bool = False, bracket: tuple | None = None):
+def seamproof(px: np.ndarray, lines: list[int], keep_right: bool = False, bracket: tuple | None = None, vertical: bool = False):
     """Move each SliceCenter line inward until the art is flat across it (step <= 6 over 8 px, cap 45%), rebuild the stretch
     regions, then check adjacent-pixel deltas within 3 px of every line are <= 8 (moving a failing line further in).
     Returns (px, [l, t, r, b], notes); notes lists any line that still fails at the cap."""
@@ -359,13 +467,14 @@ def seamproof(px: np.ndarray, lines: list[int], keep_right: bool = False, bracke
         Av = _side(A, s)
         return Av[: w - d[2]] if keep_right and s in (1, 3) else Av
 
-    for s in range(4):
+    sides = (1, 3) if vertical else range(4)
+    for s in sides:
         Pv = view(P, s)
         d[s] = min(range(d[s], max(cap[s], d[s]) + 1), key=lambda c: (_flat(Pv, c) > 6, c if _flat(Pv, c) <= 6 else _flat(Pv, c)))
     for _ in range(600):
-        out = rebuild(px, d[0], d[1], w - d[2], h - d[3], keep_right)
+        out = rebuild(px, d[0], d[1], w - d[2], h - d[3], keep_right, vertical)
         Q = _prem(out)
-        bad = [s for s in range(4) if _step(view(Q, s), d[s]) > 8]
+        bad = [s for s in sides if _step(view(Q, s), d[s]) > 8]
         moved = [s for s in bad if d[s] < cap[s]]
         if not moved:
             notes = [f"side{s} step {_step(view(Q, s), d[s]):.1f}" for s in bad]
@@ -382,12 +491,15 @@ def main() -> None:
     ref = np.array(Image.open(SRC / PILL_PINK_REF[0]).convert("RGB"))
     x0, y0, x1, y1 = PILL_PINK_REF[1]
     pink_ref = np.median(ref[y0:y1, x0:x1].reshape(-1, 3), 0)
+    tx, ty, tw, th = TAB_REF[1]
+    tab_ref = np.median(np.array(Image.open(SRC / TAB_REF[0]).convert("RGB"))[ty : ty + th, tx : tx + tw].reshape(-1, 3), 0)
+    RECOLOR["TabPurple"] = lambda a: recolor_pink(a, tab_ref, (0.15, 0.8))
     shared: dict[str, tuple[float, int]] = {}
     for name, (sheet, rect, side, margin) in SPRITES.items():
         img = sheets.setdefault(sheet, Image.open(SRC / sheet).convert("RGBA"))
         k, m = shared[SHARED_SCALE[name]] if name in SHARED_SCALE else fit(rect[2], rect[3], margin, side=side, height=HEIGHTS.get(name))
         shared[name] = (k, m)
-        recolor = (lambda a: recolor_pink(a, pink_ref)) if name == "PillPink" else None
+        recolor = (lambda a: recolor_pink(a, pink_ref)) if name == "PillPink" else RECOLOR.get(name)
         px, masked = cut(img, rect, margin, k, m, recolor, name in FEATHER)
         assert px.shape[0] <= 1024 and px.shape[1] <= 1024, name
         info = {"w": px.shape[1], "h": px.shape[0]}
@@ -395,9 +507,14 @@ def main() -> None:
         if name in ERASE_GLYPH:
             px = erase_glyph(px, *ERASE_GLYPH[name])
         if name in SLICED:
-            px, line, notes = seamproof(px, measure(px, SLICED[name] or (0, 0, 0, 0)), name in KEEP_RIGHT, KEEP_RIGHT.get(name))
+            lines = measure(px, SLICED[name] or (0, 0, 0, 0))
+            if name in VERTICAL:
+                lines[0], lines[2] = 0, px.shape[1]
+            px, line, notes = seamproof(px, lines, name in KEEP_RIGHT, KEEP_RIGHT.get(name), name in VERTICAL)
             info["slice"] = line
             note += f" {line}" + "".join(f" WARN {n}" for n in notes)
+        if name == "Window":
+            px = trim_outline(px)
         Image.fromarray(px).save(OUT / f"Bag_{name}.png", optimize=True)
         manifest[name] = info
         print(f"{name}: {px.shape[1]}x{px.shape[0]} {note}")
