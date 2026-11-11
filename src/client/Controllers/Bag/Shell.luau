@@ -237,7 +237,9 @@ function Shell.new(parent, deps)
 
 		-- Window centred in the free region.
 		local compH = (t.over + hf) * bs
-		local top = 4 + ((ins.bottomTopReal - 8 + vpad) - 4 - compH) / 2
+		-- Free height sits above the window (the bag row is anchored to the screen bottom): the window stays under it
+		local spare = (ins.bottomTopReal - 8 + vpad) - 4 - compH
+		local top = 4 + (if compact or spare < 0 then spare / 2 else spare)
 		window.Size = UDim2.fromOffset(winW, hf)
 		window.Position = UDim2.new(0.5, 0, 0, (top + t.over * bs + hf * bs / 2) / bs)
 		chrome.SliceScale = t.rim
@@ -249,6 +251,7 @@ function Shell.new(parent, deps)
 		leftPanel.Position = UDim2.fromOffset(if compact then 0 else 1, 0)
 		leftPanel.Size = UDim2.fromOffset(if compact then leftW else leftW + 2, leftH)
 		toolbar.Size = UDim2.fromOffset(leftW, TOOLBAR_H)
+		grid:SetAttribute("FooterInset", FOOTER_H + GAP - cut) -- Cosmetics sizes its cards as if the Dice footer were shown
 		grid.Position = UDim2.fromOffset(3, TOOLBAR_H)
 		grid.Size = UDim2.fromOffset(leftW - 6, leftH - bump - TOOLBAR_H - GRID_INSET)
 		-- Compact: an overlay (own strip background) over the panel bottom, wide enough for 5 slots + button;

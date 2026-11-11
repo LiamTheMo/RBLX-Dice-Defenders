@@ -15,7 +15,14 @@ local STROKE = Color3.fromRGB(9, 14, 24)
 local WHITE = Color3.new(1, 1, 1)
 local GOLD = Color3.fromRGB(249, 199, 53)
 local SOFT = Color3.fromRGB(205, 210, 235)
-local DISABLED_TINT = Color3.new(0.55, 0.55, 0.6)
+local DISABLED_TINT = Color3.new(0.5, 0.5, 0.55)
+local DISABLED_FADE = 0.4 -- disabled sprites go dim and let the panel show through: reads disabled on every button colour
+
+-- One disabled look for every button / stepper sprite.
+local function dimImage(inst, on: boolean)
+	inst.ImageColor3 = if on then WHITE else DISABLED_TINT
+	inst.ImageTransparency = if on then 0 else DISABLED_FADE
+end
 
 local Parts = {}
 Parts.CheckKey = "CheckWhite" -- white tick with a dark-green outline, sits on the green EQUIPPED pill
@@ -232,15 +239,17 @@ function Parts.setButton(btn, o)
 	if o.Style then
 		Parts.skinH(btn, BTN[o.Style] or "BtnGreen", btn.Size.Y.Offset)
 	end
+	local k = btn:GetAttribute("SliceK") -- action rows: corner scale independent of the height
+	if k then
+		btn.SliceScale = k
+	end
 	local ic = btn:FindFirstChild("Icon") -- padlock / coins left of the label
 	local inset = 0
+	local s = 0
 	if ic then
-		local s = math.floor(btn.Size.Y.Offset * 0.5)
+		s = math.floor(btn.Size.Y.Offset * 0.5)
 		ic.Size = UDim2.fromOffset(s, s)
-		ic.Position = UDim2.new(0, 10, 0.5, 0)
 		inset = s + 6
-		label.Position = UDim2.fromOffset(8 + inset, 4)
-		label.Size = UDim2.new(1, -(16 + inset), 1, -8)
 	end
 	if o.Label then
 		label.Text = o.Label
@@ -250,6 +259,14 @@ function Parts.setButton(btn, o)
 		else
 			Parts.fit(label, btn.Size.X.Offset - 16 - inset, btn:GetAttribute("TextMax"), 15)
 		end
+	end
+	if ic then -- icon and label centred as one group
+		local tw = math.min(measure(label.Text, label.TextSize) + 2, btn.Size.X.Offset - 16 - inset)
+		local x0 = math.floor((btn.Size.X.Offset - (inset + tw)) / 2)
+		ic.Position = UDim2.new(0, x0, 0.5, 0)
+		label.TextXAlignment = Enum.TextXAlignment.Left
+		label.Position = UDim2.fromOffset(x0 + inset, 4)
+		label.Size = UDim2.new(0, tw, 1, -8)
 	end
 	if o.Enabled ~= nil then
 		btn:SetAttribute("Enabled", o.Enabled)
@@ -284,9 +301,14 @@ function Parts.button(parent, o)
 	end)
 	refreshers[btn] = Parts.interact(btn, function()
 		local on = btn:GetAttribute("Enabled") ~= false
-		btn.ImageColor3 = if on then WHITE else DISABLED_TINT
-		label.TextTransparency = if on then 0 else 0.35
-		stroke.Transparency = if on then 0 else 0.35
+		dimImage(btn, on)
+		local ic = btn:FindFirstChild("Icon")
+		if ic then
+			dimImage(ic, on)
+			ic.ImageTransparency = if on then 0 else 0.55
+		end
+		label.TextTransparency = if on then 0 else 0.45
+		stroke.Transparency = if on then 0 else 0.45
 	end)
 	Parts.setButton(btn, { Style = o.Style, Label = o.Label, Enabled = o.Enabled ~= false })
 	return btn
@@ -373,8 +395,8 @@ function Parts.Toolbar(parent)
 	local sortLabel = Parts.text(sort, {
 		Name = "Label",
 		TextSize = 28,
-		Position = UDim2.fromOffset(62, 0),
-		Size = UDim2.new(1, -100, 1, 0),
+		Position = UDim2.fromOffset(58, 0),
+		Size = UDim2.new(1, -(58 + 29), 1, 0),
 		TextXAlignment = Enum.TextXAlignment.Left,
 	})
 
@@ -456,7 +478,7 @@ function Parts.Toolbar(parent)
 				sortLabel.Text = (if tabKind == "Cosmetics" then "" else "Sort: ") .. o.Label
 			end
 		end
-		Parts.fit(sortLabel, 126, 28, 15)
+		sortLabel.TextSize = Parts.fitSize("Sort: Quantity", 130, 28, 15) -- one size on every tab: the longest label fits
 	end
 	local function openMenu()
 		for _, c in menu:GetChildren() do
@@ -704,6 +726,7 @@ function Parts.Grid(parent)
 	connect(conns, scroll:GetPropertyChangedSignal("AbsoluteCanvasSize"), updateFade)
 
 	local cardW, cardH = 134, 190 -- visible (ink) card size; the cell adds CARD_M
+	local diceSized = false -- Cosmetics: Dice cards (same size as on the Dice tab) in a taller panel; extra rows peek
 	local compactNow, cellM = false, 0
 	local function tsize(full: number, small: number): number -- Full tier text size vs the old size on phones
 		return if compactNow then small else full
@@ -888,9 +911,9 @@ function Parts.Grid(parent)
 		local cols = math.min(g.cols, math.max(1, math.floor((inner + gx) / (MIN_CARD_W + gx))))
 		cardW = math.min(if compact then 190 else g.maxW or 190, math.floor((inner - (cols - 1) * gx) / cols))
 		local pt = if compact then 7 else TOP -- compact: 7 px clear of the window top for the glow
-		local rows
+		local rows, c0, capped
 		if compact then -- whole rows that fill the height: the row count whose card height stays nearest the aspect height
-			local c0 = math.floor(cardW / g.aspect)
+			c0 = math.floor(cardW / g.aspect)
 			local best
 			for n = 1, 4 do
 				local ch = (H - pt - 2 - GLOW_Y - (n - 1) * gy) / n
@@ -900,8 +923,12 @@ function Parts.Grid(parent)
 			end
 			rows = rows or 1
 			cardH = math.floor((H - pt - 2 - GLOW_Y - (rows - 1) * gy) / rows)
+			capped = cardH > c0 -- keep the card aspect: the spare height shows the start of the next row
+			cardH = math.min(cardH, c0)
 		else -- whole rows fill the slot: the last row ends BOT above it
-			cardH = math.floor((H - BOT - TOP - m - (g.rows - 1) * gy) / g.rows)
+			-- Cosmetics panel is taller by the Dice footer (+ gap): size the cards as on the Dice tab
+			local refH = H - (if diceSized then parent:GetAttribute("FooterInset") or 0 else 0)
+			cardH = math.floor((refH - BOT - TOP - m - (g.rows - 1) * gy) / g.rows)
 		end
 		layout.CellSize = UDim2.fromOffset(cardW + m, cardH + m)
 		layout.CellPadding = UDim2.fromOffset(gx - m, gy - m)
@@ -919,6 +946,11 @@ function Parts.Grid(parent)
 		local pitch = cardH + gy
 		rows = rows or math.max(1, math.floor((H - pt - 2 - m + gy) / pitch))
 		visibleH = rows * pitch - gy + pt + 2 + m -- cells overhang the pitch by their margin -- leftover height stays inside the panel
+		if capped then
+			visibleH = H - GLOW_Y
+		elseif diceSized and not compact then
+			visibleH = H - 2
+		end
 		fade.Size = UDim2.new(1, 2 * GLOW_X, 0, visibleH + GLOW_Y)
 		track.Size = UDim2.fromOffset(barW, visibleH)
 		track.Position = UDim2.new(1, if compact then -3 else -9, 0, 0)
@@ -942,6 +974,7 @@ function Parts.Grid(parent)
 	function api:SetKind(k: string)
 		-- Materials draw as Items cells, Cosmetics as Dice cards
 		kind = if k == "Materials" then "Items" elseif k == "Cosmetics" then "Dice" elseif GRIDS[k] then k else "Dice"
+		diceSized = k == "Cosmetics"
 	end
 	function api:SetItems(list)
 		items = list
@@ -1171,14 +1204,16 @@ end
 local STAT_GREEN = Color3.fromRGB(110, 222, 70)
 local COPPER = Color3.fromRGB(201, 122, 90)
 local GOLD_TEXT = "#F9C735"
--- Action buttons: one size on every tab. Full: ink 120x70 (box 129x82), 8 px ink gap; Compact: 127x48, 8 px gap.
-local BTN_W, BTN_H, BTN_GAP = 129, 86, -1 -- box overlaps by the sprite margins: ink 120x70, 8 px ink gap
-local BTN_DROP = 16 -- Full: the sprite shadow rim hangs below the slot bottom
-local ACTION_TOP = BTN_H - BTN_DROP - 4 -- Full: content ends this far above the slot bottom (the action row ink starts ~3 px under its box)
+-- Action buttons: one size on every tab. Full: ink 120x67 with ~10 px corners (slice scale BTN_K, ref), 8 px ink gap; Compact: 127x48, 8 px gap.
+local BTN_W, BTN_H, BTN_GAP, BTN_K = 125, 72, 3, 0.5 -- box = ink + 10 source px of margin x BTN_K (5 px)
+local BTN_DROP = 14 -- Full: the sprite shadow rim hangs below the slot bottom
+local ACTION_TOP = BTN_H - BTN_DROP - 2 -- Full: content ends this far above the slot bottom (the action row ink starts ~2 px under its box)
+local MIN_GAP = 8 -- Full: least clear space between blocks and above the action row
 
 -- One template for every tab. Full tier: elements sit at reference offsets from the slot top (art overlaps the tag
--- row, name overlaps the art), later blocks flow with model.Gap; the action row is pinned to the slot bottom and the
--- content always fits (no scrollbar). Compact keeps the old stacked flow with a scroll.
+-- row, name overlaps the art), later blocks flow with equal gaps (>= MIN_GAP, the last one above the action row); the
+-- action row is pinned to the slot bottom. When the panel is short the art shrinks first (to 60%), then the gaps, else
+-- the body scrolls above the row. Compact keeps the old stacked flow with a scroll.
 function Parts.Detail(parent)
 	local api, conns = {}, {}
 	local onAction, onStep
@@ -1327,7 +1362,6 @@ function Parts.Detail(parent)
 			inst.Position = UDim2.new(0.5, 0, 0, math.floor(y))
 			inst.Size = UDim2.new(1, 0, 0, h)
 		end
-		scroll.Size = UDim2.fromScale(1, 1)
 		scroll.ScrollBarThickness = 0
 		actions.Size = UDim2.new(1, -16, 0, BTN_H)
 		actions.Position = UDim2.new(0.5, 0, 1, BTN_DROP)
@@ -1338,19 +1372,30 @@ function Parts.Detail(parent)
 		stretchTo(ribbon, "NameRibbon", 292, 56)
 		ribbonText.Size = UDim2.fromScale(0.66, 0.6)
 		Parts.fit(ribbonText, ribbon.Size.X.Offset * 0.58, 26, 12)
-		-- The panel reaches the window's content bottom: its spare height is shared out so no band stays empty.
-		-- 40% (max 40 px) grows the art and pushes the name down; the rest is added to every gap below the name
-		-- and the one above the action row.
+		-- Spare height after the name, the blocks and MIN_GAP in each of the (blocks + 1) gaps. Spare: 40% (max 40 px)
+		-- grows the art and pushes the name down, the rest widens every gap evenly. Short: take it from the art
+		-- (down to 60%), then from the gaps between blocks (down to 4).
 		local blocks = (if subH > 0 then 1 else 0)
 			+ (if descH > 0 then 1 else 0)
 			+ (if divH > 0 then 1 else 0)
 			+ (if extraH > 0 then 1 else 0)
 		local used = subH + descH + divH + extraH
-		local free = parent.Size.Y.Offset - ACTION_TOP - (lay.nameY + nameH + used + lay.gap * blocks)
-		local grow = math.clamp(math.floor(free * 0.4), 0, 40)
-		local share = if free > 0 then (free - grow) / (blocks + 1) else 0
-		local artH, nameY = lay.artH + grow, lay.nameY + grow
-		local gap = lay.gap + share
+		local slack = parent.Size.Y.Offset - ACTION_TOP - (lay.nameY + nameH + used + MIN_GAP * (blocks + 1))
+		local grow, cut, gap = 0, 0, MIN_GAP
+		if slack >= 0 then
+			grow = math.clamp(math.floor(slack * 0.4), 0, 40)
+			gap = MIN_GAP + (slack - grow) / (blocks + 1)
+		else
+			cut = math.min(-slack, math.floor(lay.artH * 0.4))
+			slack += cut
+			if slack < 0 and blocks > 0 then
+				local d = math.min(-slack / blocks, MIN_GAP - 4)
+				gap -= d
+				slack += d * blocks
+			end
+		end
+		local artH, nameY = lay.artH + grow - cut, lay.nameY + grow - cut
+		scroll.Size = if slack < 0 then UDim2.new(1, 0, 1, -(ACTION_TOP + MIN_GAP)) else UDim2.fromScale(1, 1)
 		at(preview, lay.artY, artH)
 		local g = math.min(artH * 1.5, w)
 		glow.Size = UDim2.fromOffset(g, g)
@@ -1385,9 +1430,6 @@ function Parts.Detail(parent)
 			y += divH + gap
 		end
 		if extraH > 0 then
-			if free <= 0 then
-				y = lay.extraY or y
-			end
 			at(extra, y, extraH)
 			y += extraH
 		end
@@ -1405,7 +1447,7 @@ function Parts.Detail(parent)
 		local btnH, pad = 48, 8
 		local gap = 3
 		local y0 = 11 -- clear of the panel rim and its corner
-		local viewH = parent.Size.Y.Offset - (btnH + pad + 4)
+		local viewH = parent.Size.Y.Offset - (btnH + pad + 6)
 		local s = side()
 		scroll.Size = UDim2.new(1, 0, 0, math.max(0, viewH))
 		scroll.ScrollBarThickness = 0 -- the native bar drew outside the rim; touch / wheel / drag still scroll
@@ -1618,6 +1660,10 @@ function Parts.Detail(parent)
 			Position = UDim2.fromScale(0.5, 0),
 			Size = UDim2.fromOffset(420, H),
 		}, "Frame")
+		local fitK = math.min(1, (parent.Size.X.Offset - 40) / (span + 2)) -- a narrow panel scales the row down, clear of the rim
+		if fitK < 1 then
+			make("UIScale", { Scale = fitK }, r)
+		end
 		local x0 = (420 - span) / 2 + (if inline then 0 else 5)
 		for _, p in spec do
 			local nm, sprite, x, iw, ih, str, tsz = p[1], p[2], p[3], p[4], p[5], p[6], p[7]
@@ -1641,7 +1687,7 @@ function Parts.Detail(parent)
 					Size = UDim2.fromOffset(bw, bh),
 				}, if isField then "ImageLabel" else "ImageButton")
 				Parts.skin(b, sprite, k)
-				b.ImageColor3 = if on or isField then WHITE else DISABLED_TINT
+				dimImage(b, on or isField)
 				if not isField then
 					Parts.interact(b)
 					b.Activated:Connect(function()
@@ -1728,7 +1774,7 @@ function Parts.Detail(parent)
 				)
 				Parts.skinH(b, sprite, rowH)
 				b.ScaleType = Enum.ScaleType.Stretch -- whole art at its aspect, no slicing
-				b.ImageColor3 = if on then WHITE else DISABLED_TINT
+				dimImage(b, on)
 				Parts.interact(b)
 				if str then
 					Parts.text(b, { Text = str, TextSize = 22, Size = UDim2.fromScale(1, 1) })
@@ -1743,7 +1789,7 @@ function Parts.Detail(parent)
 			local field =
 				img(r, { Name = "Field", Size = UDim2.fromOffset(math.floor(112 * k), rowH), LayoutOrder = 2 })
 			Parts.skinH(field, "QtyField", rowH)
-			field.ImageColor3 = if on then WHITE else DISABLED_TINT
+			dimImage(field, on)
 			Parts.text(field, { Text = "x" .. tostring(st.Qty), TextSize = 20, Size = UDim2.fromScale(1, 1) })
 			stepBtn("Plus", "StepPlus", 56, 3, 1)
 			stepBtn("Max", "BtnPurple", 88, 4, "max", "MAX")
@@ -1752,13 +1798,13 @@ function Parts.Detail(parent)
 		extra.Visible = extraH > 0
 	end
 
-	-- Buttons: one size (Full 127x74 box = ink 120x67; Compact 127x48) shrunk equally when the panel is narrower than 3.
+	-- Buttons: one size (Full 125x72 box = ink 120x67; Compact 127x48) shrunk equally when the panel is narrower than 3.
 	local function layoutButtons()
 		local c = compact()
 		-- Full: the 3 ink widths + gaps must stay inside the detail rim (slot width - 20 - 1)
 		local w = if c
 			then math.min(127, math.floor((parent.Size.X.Offset - 16 - 2 * 8) / 3))
-			else math.min(BTN_W, math.floor((parent.Size.X.Offset - 11) / 3))
+			else math.min(BTN_W, math.floor((parent.Size.X.Offset - 22) / 3))
 		local h = if c then 48 else BTN_H
 		actionsList.Padding = UDim.new(0, if c then 8 else BTN_GAP)
 		-- one label size on every tab and every row: what the tightest label needs. UNEQUIP has the whole width,
@@ -1768,6 +1814,7 @@ function Parts.Detail(parent)
 		for _, btn in actions:GetChildren() do
 			if btn:IsA("ImageButton") then
 				btn.Size = UDim2.fromOffset(w, h)
+				btn:SetAttribute("SliceK", if c then nil else BTN_K)
 				btn:SetAttribute("TextFixed", text)
 				Parts.setButton(btn, { Label = btn.Label.Text, Style = btn:GetAttribute("Style") })
 			end
@@ -1861,13 +1908,11 @@ function Parts.Detail(parent)
 			artY = model.ArtY or 36,
 			artH = model.ArtH or 132,
 			nameY = model.NameY or 154,
-			gap = model.Gap or 12,
 			ring = model.Ring,
 			flags = model.Flags,
 			flagY = 36,
 			nameRibbon = model.NameRibbon,
 			nameDY = model.NameDY,
-			extraY = model.ExtraY,
 			line = model.DividerLine,
 		}
 		renderTags(model, c)

@@ -49,7 +49,6 @@ function Cosmetics.Detail(item)
 		ArtY = 66,
 		ArtH = 175,
 		NameY = 254,
-		Gap = 8,
 		StatusTag = if item.Equipped then "EQUIPPED" else nil,
 		Subline = {
 			Kind = "Type",
