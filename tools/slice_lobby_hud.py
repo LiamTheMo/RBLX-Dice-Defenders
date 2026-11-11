@@ -4,11 +4,13 @@ Usage: python tools/slice_lobby_hud.py
 Reads Assets/UI/lobby HUD/*.png, writes Assets/UI/lobby HUD/export/<Name>.png
 (names match the keys in src/client/Controllers/Sprites.luau). Needs Pillow + numpy.
 Rects are alpha>16 bounding boxes measured from the sheets (x, y, w, h); Icon_Roll is its own file, alpha>=8 bbox.
+XpFill is scaled to sit inside the track's channel; its manifest "pad" is how far (track-export px) its box sits in from each end.
 Shares the crop / margin / de-matte / 9-slice rebuild code with tools/slice_bag.py. XpTrack and XpFill (drawn sliced by LobbyHud)
 get their SliceCenter in export/manifest.json.
 """
 
 import json
+import math
 from pathlib import Path
 
 from PIL import Image
@@ -33,19 +35,21 @@ SPRITES = {
     "Icon_Daily": ("icons.png", (500, 482, 330, 358), 256),
     "Icon_Quests": ("icons.png", (918, 494, 358, 346), 256),
     "Icon_Settings": ("icons.png", (1370, 494, 344, 342), 256),
-    "Coin": ("Coin.png", (56, 44, 1126, 1140), 128),
-    "Gem": ("Gem.png", (2, 2, 124, 114), 128),
+    "Coin": ("Coin.png", (47, 29, 1139, 1168), 128),
+    "Gem": ("Gem.png", (212, 153, 881, 854), 128),
     "Dice_Sun": ("Dice_Sun.png", (5, 5, 229, 246), 256),
     "Dice_Ice": ("Dice_Ice.png", (5, 5, 238, 247), 256),
     "Dice_Fire": ("Dice_Fire.png", (5, 5, 229, 246), 256),
     "Dice_Leaf": ("Dice_Leaf.png", (5, 5, 239, 247), 256),
     "Dice_Lightning": ("Dice_Lightning.png", (3, 5, 248, 246), 256),
-    # Same scale for both bars so the fill lines up with the track interior.
-    "XpTrack": ("xp-bar.png", (44, 68, 2084, 84), 1024),
-    "XpFill": ("xp-bar.png", (52, 426, 2068, 54), 1024),
+    "XpTrack": ("xptrack.png", (13, 217, 2146, 278), 1024),
+    "XpFill": ("xpfill.png", (79, 268, 2004, 187), 1024),  # scaled to fit XP_CHANNEL, see main()
 }
 HEIGHTS = {"XpTrack": 24}  # export height (margin included) ~2x the drawn 12 px
 SLICED = {"XpTrack", "XpFill"}
+PAD = {"xptrack.png": 64}  # transparent border added to the sheet: its art runs to 13 px from the edge, less than the margin
+XP_CHANNEL = (70, 273, 2032, 163)  # xptrack.png: the purple channel inside the copper rim (x, y, w, h)
+XP_FILL_INSET = 4  # source px of dark channel kept around the fill, as in the xpbar.png mock-up
 
 
 def main() -> None:
@@ -54,15 +58,30 @@ def main() -> None:
     manifest = {}
     shared = None
     for name, (sheet, rect, side) in SPRITES.items():
-        img = sheets.setdefault(sheet, Image.open(SRC / sheet).convert("RGBA"))
-        if name == "XpFill":  # keep the track's scale and margin, not its own
-            k, m = shared
+        if sheet not in sheets:
+            img = Image.open(SRC / sheet).convert("RGBA")
+            p = PAD.get(sheet, 0)
+            sheets[sheet] = Image.new("RGBA", (img.width + 2 * p, img.height + 2 * p))
+            sheets[sheet].paste(img, (p, p))
+        img = sheets[sheet]
+        p = PAD.get(sheet, 0)
+        rect = (rect[0] + p, rect[1] + p, rect[2], rect[3])
+        if name == "XpFill":  # track's scale times pill-to-channel height, so the pill sits inside the copper rim
+            k = shared[0] * (XP_CHANNEL[3] - 2 * XP_FILL_INSET) / rect[3]
+            m = max(MARGIN, math.ceil(3 / k) + 2)
         else:
             k, m = fit(rect[2], rect[3], MARGIN, side=side, height=HEIGHTS.get(name), inc_margin=True)
-        if name == "XpTrack":
-            shared = (k, m)
         px, masked = cut(img, rect, MARGIN, k, m)
+        if name == "XpTrack":
+            shared = (px.shape[1] / (rect[2] + 2 * m), m)  # effective x scale after rounding, margin
         info = {"w": px.shape[1], "h": px.shape[0]}
+        if name == "XpFill":
+            # Track-export px from each end of the track to the fill's box (its own margin included); the art is symmetric.
+            kt, mt = shared
+            track_rect = SPRITES["XpTrack"][1]
+            left = (mt + XP_CHANNEL[0] + XP_FILL_INSET - track_rect[0]) * kt - m * px.shape[1] / (rect[2] + 2 * m)
+            right = (mt + track_rect[0] + track_rect[2] - (XP_CHANNEL[0] + XP_CHANNEL[2] - XP_FILL_INSET)) * kt - m * px.shape[1] / (rect[2] + 2 * m)
+            info["pad"] = [round(left, 2), round(right, 2)]
         note = f"k={k:.3f} m={m}" + (f" MASKED {masked} opaque neighbour px" if masked else "")
         if name in SLICED:
             px, line, notes = seamproof(px, measure(px, (0, 0, 0, 0)))

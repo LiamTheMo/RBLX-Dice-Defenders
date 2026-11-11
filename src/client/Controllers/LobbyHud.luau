@@ -15,7 +15,8 @@ local GOLD_TEXT = Color3.fromRGB(249, 199, 53)
 local GEM_TEXT = Color3.fromRGB(247, 142, 236)
 local DESIGN = Vector2.new(1672, 941)
 local XP_SCALE = 12 / 24 -- XP bar: design height / track export height (fill uses the same scale)
-local XP_FILL_CAPS = (428 - (415 - 13)) * XP_SCALE -- narrowest fill: both caps
+local XP_FILL_CAPS = (112 - (89 - 24)) * XP_SCALE -- narrowest fill: both caps
+local XP_FILL_PAD = 3.95 * XP_SCALE -- fill box inset from each end of the track, so the pill sits inside the rim (manifest XpFill.pad)
 local CELL = Vector2.new(124, 114)
 local MARGIN = 20 -- side safe margin
 local PROFILE_H = 44 + 24 + 12 + 6 * 2
@@ -309,9 +310,9 @@ function LobbyHud.build(parent, cb)
 	make("ImageLabel", {
 		Name = "Track",
 		BackgroundTransparency = 1,
-		Image = Sprites.XpTrack, -- 431x24 export, pill caps 37 / 32 px
+		Image = Sprites.XpTrack, -- 143x24 export, caps 22 / 49 px (the right cap keeps the rim's glints)
 		ScaleType = Enum.ScaleType.Slice,
-		SliceCenter = Rect.new(37, 10, 399, 14),
+		SliceCenter = Rect.new(22, 10, 94, 14),
 		SliceScale = XP_SCALE,
 		Size = UDim2.fromScale(1, 1),
 	}, xp)
@@ -320,13 +321,13 @@ function LobbyHud.build(parent, cb)
 	self.XpFill = make("ImageLabel", {
 		Name = "Fill",
 		BackgroundTransparency = 1,
-		Image = Sprites.XpFill, -- 428x18 export
+		Image = Sprites.XpFill, -- 112x16 export
 		ScaleType = Enum.ScaleType.Slice,
-		SliceCenter = Rect.new(13, 8, 415, 10),
+		SliceCenter = Rect.new(24, 7, 89, 9),
 		SliceScale = XP_SCALE,
 		AnchorPoint = Vector2.new(0, 0.5),
-		Position = UDim2.new(0, 2, 0.5, 0),
-		Size = UDim2.fromOffset(math.max(XP_FILL_CAPS, 580 * xpFraction), 18 * XP_SCALE),
+		Position = UDim2.new(0, XP_FILL_PAD, 0.5, 0),
+		Size = UDim2.fromOffset(math.max(XP_FILL_CAPS, (584 - 2 * XP_FILL_PAD) * xpFraction), 16 * XP_SCALE),
 		Visible = xpFraction > 0,
 	}, xp)
 	self.XpFill:SetAttribute("Placeholder", true)

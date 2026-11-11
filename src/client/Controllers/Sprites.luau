@@ -20,10 +20,10 @@ return {
 		Quests = "rbxassetid://98989594468537",
 		Settings = "rbxassetid://87526365416350",
 	},
-	Coin = "rbxassetid://77740953491206",
-	Gem = "rbxassetid://78341023899444",
-	XpTrack = "rbxassetid://77898971388959", -- export 431x24
-	XpFill = "rbxassetid://102610878322715", -- export 428x18
+	Coin = "rbxassetid://130085489748233",
+	Gem = "rbxassetid://108015364836270",
+	XpTrack = "rbxassetid://81408180099705", -- export 143x24
+	XpFill = "rbxassetid://71158637905066", -- export 112x16
 	-- Elemental die art. Only dice listed in DieArt use it; other dice show Icon.Roll tinted
 	-- with their Display colour.
 	Dice = {
