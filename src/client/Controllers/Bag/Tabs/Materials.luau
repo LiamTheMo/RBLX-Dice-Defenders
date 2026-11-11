@@ -9,6 +9,7 @@ Materials.Id = "MATERIALS"
 Materials.Label = "MATERIALS"
 Materials.Icon = "IconCrystals"
 Materials.Fallback = "IconCrystals"
+Materials.Grid = "Materials"
 Materials.Placeholder = "Search materials..."
 Materials.SortOptions = {
 	{ Id = "Rarity", Label = "Rarity" },
@@ -39,13 +40,15 @@ function Materials.Detail(item)
 	return {
 		Name = item.Name,
 		Rarity = item.Rarity,
+		Header = string.upper(item.Rarity) .. " MATERIAL",
+		DescBox = true,
 		Icon = item.Icon,
 		Subline = { Kind = "Qty", Text = "Quantity: x" .. BagLogic.formatCount(item.Quantity) },
 		Description = item.Description,
 		Stepper = { Qty = 1, Max = item.Quantity, Enabled = false },
 		Buttons = {
-			{ Id = "Lock", Label = "LOCK", Style = "Purple", Enabled = false, Hint = "Coming soon" },
-			{ Id = "Sell", Label = "SELL", Style = "Gold", Enabled = false, Hint = "Coming soon" },
+			{ Id = "Lock", Label = "LOCK", Style = "Purple", Icon = "Lock", Enabled = false, Hint = "Coming soon" },
+			{ Id = "Sell", Label = "SELL", Style = "Gold", Icon = "Coins", Enabled = false, Hint = "Coming soon" },
 		},
 	}
 end

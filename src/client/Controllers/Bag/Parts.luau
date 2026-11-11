@@ -42,7 +42,6 @@ local PILL = {
 	Gold = "PillGold",
 	Pink = "PillPink",
 }
-local GLOW_SCALE = 1.6 -- the burst spreads well past the item, as in the references
 local GLOW = {
 	Common = "GlowCommon",
 	Uncommon = "GlowUncommon",
@@ -139,32 +138,40 @@ function Parts.interact(btn, extra)
 	end)
 end
 
--- Pill: rarity / colour key -> sprite. o.W fixed width (text truncates) or auto from the measured text.
+-- Pill: rarity / colour key -> sprite. o.W fixed width (text fits/truncates) or auto from the measured text.
+-- "Equipped" style draws the white check (right, or left with o.CheckLeft); o.Icon (BagSprites key) draws a left icon.
 function Parts.Pill(parent, style: string, str: string, o)
 	o = o or {}
 	local h, size = o.H or 22, o.TextSize or 15
-	local equipped = style == "Equipped" -- green pill with a check at the right; text sits left of it
+	local equipped = style == "Equipped"
+	local deco = equipped or o.Icon ~= nil
+	local left = o.CheckLeft or o.Icon ~= nil
+	local w = o.W or math.max(o.MinW or 0, measure(str, size) + 28 + (if deco then h else 0))
 	local pill = img(parent, {
 		Name = o.Name or "Pill",
-		Size = UDim2.fromOffset(o.W or math.max(o.MinW or 0, measure(str, size) + 28 + (if equipped then h else 0)), h),
+		Size = UDim2.fromOffset(w, h),
 		LayoutOrder = o.Order or 0,
 	})
 	Parts.skinH(pill, PILL[style] or "PillGrey", h)
-	Parts.text(pill, {
+	local label = Parts.text(pill, {
 		Name = "Label",
 		Text = str,
 		TextSize = size,
-		Size = if equipped then UDim2.new(1, -(h + 4), 1, 0) else UDim2.fromScale(1, 1),
-	}, 1.5)
-	if equipped then
-		-- EquippedPill's check sits inside its 9-slice centre (it would stretch), so draw the check separately.
-		local check = img(pill, {
-			Name = "Check",
-			AnchorPoint = Vector2.new(1, 0.5),
-			Position = UDim2.new(1, -6, 0.5, 0),
+		Position = UDim2.fromOffset(if deco and left then h - 2 else 0, 0),
+		Size = if deco then UDim2.new(1, -(h + 4), 1, 0) else UDim2.fromScale(1, 1),
+	}, 2)
+	if o.W then
+		Parts.fit(label, w - (if deco then h + 4 else 0) - 12, size, 11)
+	end
+	if deco then
+		-- the check / icon sits outside the 9-slice centre (it would stretch), so draw it separately.
+		local mark = img(pill, {
+			Name = if equipped then "Check" else "Icon",
+			AnchorPoint = Vector2.new(if left then 0 else 1, 0.5),
+			Position = UDim2.new(if left then 0 else 1, if left then 6 else -6, 0.5, 0),
 			Size = UDim2.fromOffset(h - 8, h - 8),
 		})
-		Parts.image(check, "Check")
+		Parts.image(mark, if equipped then "Check" else o.Icon)
 	end
 	return pill
 end
@@ -178,9 +185,19 @@ function Parts.setButton(btn, o)
 	if o.Style then
 		Parts.skinH(btn, BTN[o.Style] or "BtnGreen", btn.Size.Y.Offset)
 	end
+	local ic = btn:FindFirstChild("Icon") -- padlock / coins left of the label
+	local inset = 0
+	if ic then
+		local s = math.floor(btn.Size.Y.Offset * 0.5)
+		ic.Size = UDim2.fromOffset(s, s)
+		ic.Position = UDim2.new(0, 10, 0.5, 0)
+		inset = s + 6
+		label.Position = UDim2.fromOffset(8 + inset, 4)
+		label.Size = UDim2.new(1, -(16 + inset), 1, -8)
+	end
 	if o.Label then
 		label.Text = o.Label
-		Parts.fit(label, btn.Size.X.Offset - 16, btn:GetAttribute("TextMax"), 15)
+		Parts.fit(label, btn.Size.X.Offset - 16 - inset, btn:GetAttribute("TextMax"), 15)
 	end
 	if o.Enabled ~= nil then
 		btn:SetAttribute("Enabled", o.Enabled)
@@ -205,6 +222,10 @@ function Parts.button(parent, o)
 	btn:SetAttribute("TextMax", o.TextSize or 26)
 	local label =
 		Parts.text(btn, { Name = "Label", Size = UDim2.new(1, -16, 1, -8), Position = UDim2.fromOffset(8, 4) })
+	if o.Icon then
+		local ic = img(btn, { Name = "Icon", AnchorPoint = Vector2.new(0, 0.5), ZIndex = label.ZIndex })
+		Parts.image(ic, o.Icon)
+	end
 	local stroke = label:FindFirstChildOfClass("UIStroke")
 	btn.Destroying:Connect(function()
 		refreshers[btn] = nil -- the refresh closure holds btn strongly: drop it when the button dies
@@ -240,7 +261,7 @@ end
 
 -- Toolbar -----------------------------------------------------------------------------------------------
 
-local CONTROL_H, SORT_ROW = 56, 56
+local CONTROL_H, SORT_ROW = 44, 56 -- search/sort boxes are 44 px tall as in the reference (menu rows stay touch-size)
 
 function Parts.Toolbar(parent)
 	local api, conns = {}, {}
@@ -255,10 +276,10 @@ function Parts.Toolbar(parent)
 		ZIndex = parent.ZIndex,
 	}, parent)
 	make("UIPadding", {
-		PaddingLeft = UDim.new(0, 20),
-		PaddingRight = UDim.new(0, 20),
-		PaddingTop = UDim.new(0, 6),
-		PaddingBottom = UDim.new(0, 6),
+		PaddingLeft = UDim.new(0, 24),
+		PaddingRight = UDim.new(0, 24),
+		PaddingTop = UDim.new(0, 12),
+		PaddingBottom = UDim.new(0, 12),
 	}, root)
 
 	local search = img(root, { Name = "Search" })
@@ -277,24 +298,13 @@ function Parts.Toolbar(parent)
 		Font = FONT,
 		TextSize = 22,
 		TextColor3 = WHITE,
-		PlaceholderColor3 = Color3.fromRGB(170, 175, 205),
+		PlaceholderColor3 = Color3.fromRGB(196, 169, 180), -- light mauve (reference #C4A9B4)
 		Text = "",
 		PlaceholderText = "Search",
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextTruncate = Enum.TextTruncate.AtEnd,
 		ZIndex = search.ZIndex + 1,
 	}, search)
-	local count = Parts.text(search, {
-		Name = "Count",
-		TextSize = 16,
-		TextXAlignment = Enum.TextXAlignment.Right,
-		AnchorPoint = Vector2.new(1, 0.5),
-		Position = UDim2.new(1, -16, 0.5, 0),
-		Size = UDim2.fromOffset(78, 24),
-		TextColor3 = SOFT,
-		Visible = false,
-	}, 1.5)
-
 	local sort = img(root, { Name = "Sort", AnchorPoint = Vector2.new(1, 0) }, "ImageButton")
 	Parts.skinH(sort, "Sort", CONTROL_H)
 	Parts.interact(sort)
@@ -315,27 +325,50 @@ function Parts.Toolbar(parent)
 
 	-- Narrow left panels: the sort button becomes arrows only (a plain button sprite) and the placeholder
 	-- shortens to its first word at 18 px, so the search box stays readable.
-	local sortW = 224
+	local sortW = 234
 	local placeholder = "Search"
+	local tabKind = "Dice" -- Materials/Items draw the search|sort divider, Cosmetics a "SORT:" label
+	local divider = img(
+		root,
+		{ Name = "Divider", AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(3, 32), Visible = false },
+		"Frame"
+	)
+	divider.BackgroundTransparency = 0
+	divider.BackgroundColor3 = Color3.fromRGB(192, 102, 58)
+	make("UICorner", { CornerRadius = UDim.new(0.5, 0) }, divider)
+	local sortTag = Parts.text(root, {
+		Name = "SortTag",
+		Text = "SORT:",
+		TextSize = 22,
+		Visible = false,
+		AnchorPoint = Vector2.new(1, 0),
+		Size = UDim2.fromOffset(64, CONTROL_H),
+		TextXAlignment = Enum.TextXAlignment.Right,
+	})
 	local function layout()
-		local inner = parent.Size.X.Offset - 40 -- design px (the shell sets slot sizes in offsets)
-		sortW = if inner >= 440 then 224 else 56
-		if sortW == 224 then
+		local inner = parent.Size.X.Offset - 48 -- design px (the shell sets slot sizes in offsets)
+		sortW = if inner >= 440 then 234 else 56
+		if sortW == 234 then
 			Parts.skinH(sort, "Sort", CONTROL_H)
 			sort.ScaleType = Enum.ScaleType.Stretch -- the baked chevron must not meet a 9-slice edge
 		else
 			Parts.skinH(sort, "BtnPurple", CONTROL_H)
 		end
-		input.TextSize = if sortW == 224 then 22 else 18
-		input.PlaceholderText = if sortW == 224 then placeholder else placeholder:match("%S+") or placeholder
+		input.TextSize = if sortW == 234 then 22 else 18
+		input.PlaceholderText = if sortW == 234 then placeholder else placeholder:match("%S+") or placeholder
 		sort.Size = UDim2.fromOffset(sortW, CONTROL_H)
 		sort.Position = UDim2.fromScale(1, 0)
-		search.Size = UDim2.new(1, -(sortW + 16), 0, CONTROL_H)
-		sortLabel.Visible = sortW == 224
-		count.Visible = count.Text ~= "" and inner >= 500 -- the search box keeps its room on narrow panels
-		arrows.Position = if sortW == 224 then UDim2.new(0, 14, 0.5, 0) else UDim2.new(0.5, -14, 0.5, 0)
+		local tagW = if tabKind == "Cosmetics" and sortW == 234 then 72 else 0
+		search.Size = UDim2.fromOffset(math.min(440, inner - sortW - tagW - 16), CONTROL_H) -- 440 as in the reference; spare width sits between the boxes
+		sortTag.Visible = tagW > 0
+		sortTag.Position = UDim2.new(1, -sortW - 8, 0, 0)
+		local gapL, gapR = search.Size.X.Offset, inner - sortW - tagW
+		divider.Visible = tabKind ~= "Cosmetics" and tabKind ~= "Dice" and sortW == 234 and gapR - gapL >= 24
+		divider.Position = UDim2.fromOffset(math.floor((gapL + gapR) / 2), CONTROL_H / 2)
+		sortLabel.Visible = sortW == 234
+		arrows.Position = if sortW == 234 then UDim2.new(0, 14, 0.5, 0) else UDim2.new(0.5, -14, 0.5, 0)
 		input.Position = UDim2.fromOffset(52, 0)
-		input.Size = UDim2.new(1, -(52 + (if count.Visible then 90 else 16)), 1, 0)
+		input.Size = UDim2.new(1, -(52 + 16), 1, 0)
 	end
 	connect(conns, parent:GetPropertyChangedSignal("Size"), layout)
 	layout()
@@ -364,10 +397,10 @@ function Parts.Toolbar(parent)
 		sortLabel.Text = ""
 		for _, o in options do
 			if o.Id == active then
-				sortLabel.Text = o.Label
+				sortLabel.Text = (if tabKind == "Cosmetics" then "" else "Sort: ") .. o.Label
 			end
 		end
-		Parts.fit(sortLabel, 130, 22, 15)
+		Parts.fit(sortLabel, 140, 22, 15)
 	end
 	local function openMenu()
 		for _, c in menu:GetChildren() do
@@ -429,6 +462,10 @@ function Parts.Toolbar(parent)
 		end
 	end)
 
+	function api:SetKind(k: string)
+		tabKind = k
+		layout()
+	end
 	function api:SetPlaceholder(s: string)
 		placeholder = s
 		layout()
@@ -449,10 +486,6 @@ function Parts.Toolbar(parent)
 	function api:OnSort(cb)
 		onSort = cb
 	end
-	function api:SetCount(str: string?)
-		count.Text = str or ""
-		layout()
-	end
 	function api:Destroy()
 		disconnectAll(conns)
 		root:Destroy()
@@ -462,39 +495,42 @@ end
 
 -- Grid ----------------------------------------------------------------------------------------------------
 
-local GRID_FADE, GRID_GAP = 14, 8 -- edge fade (design px) and card gap
-
--- y/h per card slot inside the card; icon is square.
-local CARD = {
-	Full = {
-		size = Vector2.new(134, 190),
-		tag = { 6, 20 },
-		icon = { 26, 88 },
-		title = { 114, 22 },
-		sub = { 138, 22 },
-		foot = { 162, 20 },
-		pillW = 110,
-		text = 17,
-		small = 15,
-		badge = Vector2.new(30, 34),
-	},
-	Compact = {
-		size = Vector2.new(112, 150),
-		tag = { 4, 18 },
-		icon = { 22, 62 },
-		title = { 85, 18 },
-		sub = { 104, 18 },
-		foot = { 123, 18 },
-		pillW = 96,
-		text = 15,
-		small = 15,
-		badge = Vector2.new(24, 28),
-	},
+local GRID_FADE = 14 -- edge fade (design px)
+local MIN_CARD_W = 96
+-- Per-tab grid from the references: columns, card aspect (w/h), gap, side margin. Dice 5x2, Materials 4x3, Items 5x3, Cosmetics 4x3.
+local GRIDS = {
+	Dice = { cols = 5, aspect = 0.73, gap = 8, side = 18 },
+	Materials = { cols = 4, aspect = 1.05, gap = 14, side = 27 },
+	Items = { cols = 5, aspect = 0.98, gap = 8, side = 16 },
+	Cosmetics = { cols = 4, aspect = 1.15, gap = 8, side = 12 },
 }
+local RARITY_CARD = {
+	Common = "CardCommon",
+	Uncommon = "CardUncommon",
+	Rare = "CardRare",
+	Epic = "CardEpic",
+	Legendary = "CardLegendary",
+	Mythic = "CardMythic",
+	Secret = "CardSecret",
+}
+local COPPER_CARD = { Items = "CardCopperMaroon", Cosmetics = "CardCopper" }
+-- Scrollbar sprites span their full width, so slice only a narrow centre column (no horizontal stretch).
+local BAR = {
+	ScrollTrack = Rect.new(19, 65, 22, 227),
+	ScrollThumb = Rect.new(20, 37, 22, 133),
+}
+
+local function barSkin(inst, name: string, w: number)
+	local s = Sprites[name]
+	inst.Image = s.Image
+	inst.ScaleType = Enum.ScaleType.Slice
+	inst.SliceCenter = BAR[name]
+	inst.SliceScale = w / s.Size.X
+end
 
 function Parts.Grid(parent)
 	local api, conns = {}, {}
-	local items, cards, selected, fallback = {}, {}, nil, nil
+	local items, cards, selected, fallback, kind = {}, {}, nil, nil, "Dice"
 	local onSelect
 
 	local root = make("Frame", {
@@ -507,8 +543,8 @@ function Parts.Grid(parent)
 	local fade = make("CanvasGroup", {
 		Name = "Fade",
 		BackgroundTransparency = 1,
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.5),
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.fromScale(0.5, 0),
 		Size = UDim2.fromScale(1, 1),
 		ZIndex = root.ZIndex + 1,
 	}, root)
@@ -521,7 +557,7 @@ function Parts.Grid(parent)
 		CanvasSize = UDim2.new(),
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		ScrollingDirection = Enum.ScrollingDirection.Y,
-		ScrollBarThickness = 0, -- the reference shows none; wheel, touch and drag still scroll
+		ScrollBarThickness = 0, -- the styled bar below replaces the native one; wheel, touch and drag still scroll
 		ZIndex = root.ZIndex + 1,
 	}, fade)
 	local gridPad = make("UIPadding", {
@@ -532,7 +568,7 @@ function Parts.Grid(parent)
 	}, scroll)
 	local layout = make("UIGridLayout", {
 		CellSize = UDim2.fromOffset(134, 190),
-		CellPadding = UDim2.fromOffset(GRID_GAP, GRID_GAP),
+		CellPadding = UDim2.fromOffset(8, 8),
 		HorizontalAlignment = Enum.HorizontalAlignment.Left,
 		SortOrder = Enum.SortOrder.LayoutOrder,
 	}, scroll)
@@ -548,11 +584,19 @@ function Parts.Grid(parent)
 		Visible = false,
 		ZIndex = scroll.ZIndex + 1,
 	})
+	local track = img(root, {
+		Name = "ScrollTrack",
+		AnchorPoint = Vector2.new(1, 0),
+		Visible = false,
+		ZIndex = scroll.ZIndex + 2,
+	})
+	local thumb = img(track, { Name = "Thumb", AnchorPoint = Vector2.new(0.5, 0), ZIndex = track.ZIndex + 1 })
 	local emptyText = "Nothing here yet"
-	local visibleH = 0
+	local visibleH, barW = 0, 12
 	local updateFade
 
 	-- Edges fade only where content is cut off: nothing at rest on the top row, nothing at the end of the list.
+	-- The styled scrollbar shows only when the content overflows.
 	function updateFade()
 		local y, maxY = scroll.CanvasPosition.Y, math.max(0, scroll.AbsoluteCanvasSize.Y - scroll.AbsoluteWindowSize.Y)
 		local f = GRID_FADE / math.max(visibleH, 2 * GRID_FADE + 1)
@@ -567,59 +611,132 @@ function Parts.Grid(parent)
 		end
 		table.insert(pts, if bot > 0 then NumberSequenceKeypoint.new(1, 1) else NumberSequenceKeypoint.new(1, 0))
 		fadeGradient.Transparency = NumberSequence.new(pts)
+		track.Visible = maxY > 1 and visibleH > 0
+		local win, canvas = scroll.AbsoluteWindowSize.Y, math.max(1, scroll.AbsoluteCanvasSize.Y)
+		local thumbH = math.clamp(math.floor(visibleH * win / canvas), 40, math.max(40, visibleH))
+		thumb.Size = UDim2.fromOffset(barW, thumbH)
+		thumb.Position = UDim2.new(0.5, 0, 0, math.floor((visibleH - thumbH) * (if maxY > 0 then y / maxY else 0)))
 	end
 	connect(conns, scroll:GetPropertyChangedSignal("CanvasPosition"), updateFade)
 	connect(conns, scroll:GetPropertyChangedSignal("AbsoluteCanvasSize"), updateFade)
 
+	local cardW, cardH = 134, 190
+
 	local function buildCard(item, order)
-		local spec = if parent:GetAttribute("Compact") then CARD.Compact else CARD.Full
-		local card = img(scroll, { Name = "Card_" .. item.Id, LayoutOrder = order }, "ImageButton")
-		Parts.skin(card, item.Id == selected and "CardSelected" or "CardIdle", 0.5)
-		Parts.interact(card)
-		local function place(inst, row, w, h)
-			inst.AnchorPoint = Vector2.new(0.5, 0)
-			inst.Position = UDim2.new(0.5, 0, 0, row[1])
-			inst.Size = UDim2.fromOffset(w, h or row[2])
+		local w, h = cardW, cardH
+		local sc = math.clamp(w / 140, 0.72, 1)
+		local function px(n: number): number
+			return math.max(1, math.floor(n * sc + 0.5))
 		end
+		local card = img(scroll, { Name = "Card_" .. item.Id, LayoutOrder = order }, "ImageButton")
+		local copper = COPPER_CARD[kind]
+		Parts.skin(card, copper or RARITY_CARD[item.Rarity] or "CardCommon", if copper then 0.4 else 0.5)
+		if item.Locked then
+			card.ImageColor3 = Color3.fromRGB(140, 140, 150)
+		end
+		Parts.interact(card)
+		-- Selected: gold rim over the card (the rarity fill stays visible), toggled by SetSelected.
+		local sel = img(card, {
+			Name = "SelRim",
+			Position = UDim2.fromOffset(3, 3),
+			Size = UDim2.new(1, -6, 1, -6),
+			Visible = item.Id == selected,
+		}, "Frame")
+		make("UICorner", { CornerRadius = UDim.new(0, px(20)) }, sel)
+		make("UIStroke", { Color = GOLD, Thickness = 4 }, sel)
+		local function place(inst, y, pw, ph, anchorY)
+			inst.AnchorPoint = Vector2.new(0.5, anchorY or 0)
+			inst.Position = UDim2.new(0.5, 0, 0, y)
+			inst.Size = UDim2.fromOffset(pw, ph)
+		end
+		-- top pill: EQUIPPED (dice) or the rarity tag, floating inset ~70% of the card width
 		if item.TopTag then
-			local pill =
-				Parts.Pill(card, if item.TopTagStyle == "Equipped" then "Equipped" else item.Rarity, item.TopTag, {
-					Name = "TopTag",
-					W = spec.pillW,
-					H = spec.tag[2],
-					TextSize = spec.small,
-				})
-			place(pill, spec.tag, spec.pillW)
+			local eq = item.TopTagStyle == "Equipped"
+			local pw = if eq then px(100) else math.floor(w * 0.7)
+			local ph = if eq then px(25) else px(26)
+			local pill = Parts.Pill(card, if eq then "Equipped" else item.Rarity, item.TopTag, {
+				Name = "TopTag",
+				W = pw,
+				H = ph,
+				TextSize = px(15),
+			})
+			place(pill, px(8), pw, ph)
 		end
 		local icon = img(card, { Name = "Icon" })
-		place(icon, spec.icon, spec.icon[2], spec.icon[2])
+		local isz, itop
+		if kind == "Dice" then
+			isz, itop = math.floor(w * 0.62), math.floor(h * 0.16)
+		elseif kind == "Materials" then
+			isz, itop = math.floor(math.min(w * 0.62, h * 0.55)), math.floor(h * 0.27)
+		elseif kind == "Items" then
+			isz, itop = math.floor(h * 0.5), math.floor(h * 0.24)
+		else
+			isz, itop = math.floor(h * 0.54), math.floor(h * 0.2)
+		end
+		place(icon, itop, isz, isz)
 		local has = item.Icon ~= nil and item.Icon ~= ""
 		Parts.image(icon, if has then item.Icon else fallback)
 		icon.ImageColor3 = if item.Locked
 			then Color3.new(0.45, 0.45, 0.45)
 			else item.Tint or (if has then WHITE else Parts.RarityColor[item.Rarity] or WHITE)
-		local title = Parts.text(card, { Name = "Title", Text = item.Name, TextSize = spec.text })
-		place(title, spec.title, spec.size.X - 12)
-		if item.SubTag then
-			local pill = Parts.Pill(card, item.Rarity, item.SubTag, {
-				Name = "SubTag",
-				W = spec.pillW,
-				H = spec.sub[2],
-				TextSize = spec.small,
-			})
-			place(pill, spec.sub, spec.pillW)
-		end
-		if item.Footer then
-			local foot =
-				Parts.text(card, { Name = "Footer", Text = item.Footer, TextSize = spec.small, TextColor3 = SOFT })
-			place(foot, spec.foot, spec.size.X - 12)
+		if kind == "Dice" then
+			local title = Parts.text(card, { Name = "Title", Text = item.Name, TextSize = px(18) })
+			place(title, math.floor(h * 0.65), w - px(12), px(22), 0.5)
+			if item.SubTag then
+				local pw = math.floor(w * 0.8)
+				local pill = Parts.Pill(card, item.Rarity, item.SubTag, {
+					Name = "SubTag",
+					W = pw,
+					H = px(27),
+					TextSize = px(15),
+				})
+				place(pill, math.floor(h * 0.8), pw, px(27), 0.5)
+			end
+			if item.Footer then
+				local foot =
+					Parts.text(card, { Name = "Footer", Text = item.Footer, TextSize = px(15), TextColor3 = WHITE })
+				place(foot, math.floor(h * 0.92), w - px(12), px(18), 0.5)
+			end
+		elseif kind == "Cosmetics" then
+			if item.Footer == "EQUIPPED" then
+				local pw = math.floor(w * 0.78)
+				local pill = Parts.Pill(card, "Equipped", "EQUIPPED", {
+					Name = "Equipped",
+					W = pw,
+					H = px(27),
+					TextSize = px(15),
+					CheckLeft = true,
+				})
+				place(pill, h - px(10), pw, px(27), 1)
+			else
+				local nm = Parts.text(card, { Name = "Title", Text = string.upper(item.Name), TextSize = px(16) })
+				place(nm, h - px(10), w - px(16), px(24), 1)
+				Parts.fit(nm, w - px(20), px(16), 11)
+			end
+		elseif item.Footer then
+			if kind == "Items" then
+				local band = img(card, { Name = "QtyBand" }, "Frame")
+				band.BackgroundTransparency = 0.35
+				band.BackgroundColor3 = Color3.fromRGB(48, 16, 80)
+				make("UICorner", { CornerRadius = UDim.new(0, px(10)) }, band)
+				place(band, h - px(10), w - px(28), px(30), 1)
+			end
+			local qty = Parts.text(card, { Name = "Qty", Text = item.Footer, TextSize = px(22) })
+			if kind == "Items" then
+				place(qty, h - px(10), w - px(28), px(30), 1)
+			else
+				qty.AnchorPoint = Vector2.new(1, 1)
+				qty.Position = UDim2.new(1, -math.floor(w * 0.13), 1, -px(8))
+				qty.Size = UDim2.fromOffset(math.floor(w * 0.7), px(28))
+				qty.TextXAlignment = Enum.TextXAlignment.Right
+			end
 		end
 		if item.CornerBadge then
 			local badge = img(card, {
 				Name = "CornerBadge",
 				AnchorPoint = Vector2.new(1, 0),
-				Position = UDim2.new(1, -6, 0, 6),
-				Size = UDim2.fromOffset(spec.badge.X, spec.badge.Y),
+				Position = UDim2.new(1, -px(14), 0, px(12)),
+				Size = UDim2.fromOffset(px(25), px(28)),
 			})
 			Parts.image(badge, item.CornerBadge) -- "Lock" | "Check"
 		end
@@ -632,16 +749,28 @@ function Parts.Grid(parent)
 	end
 
 	local function rebuild()
-		local spec = if parent:GetAttribute("Compact") then CARD.Compact else CARD.Full
-		layout.CellSize = UDim2.fromOffset(spec.size.X, spec.size.Y)
+		local g = GRIDS[kind]
+		local compact = parent:GetAttribute("Compact")
+		local W, H = parent.Size.X.Offset, parent.Size.Y.Offset
+		local side, gap = if compact then 6 else g.side, if compact then 6 else g.gap
+		local inner = W - 2 * side
+		local cols = math.min(g.cols, math.max(1, math.floor((inner + gap) / (MIN_CARD_W + gap))))
+		cardW = math.min(190, math.floor((inner - (cols - 1) * gap) / cols))
+		cardH = math.floor(cardW / g.aspect)
+		layout.CellSize = UDim2.fromOffset(cardW, cardH)
+		layout.CellPadding = UDim2.fromOffset(gap, gap)
 		-- Rows are left-aligned (a lone result sits in column 1); the whole column block is centred by padding.
-		local cols = math.max(1, math.floor((parent.Size.X.Offset - 12 + 8) / (spec.size.X + 8)))
-		local side = math.max(0, math.floor((parent.Size.X.Offset - (cols * spec.size.X + (cols - 1) * 8)) / 2))
-		gridPad.PaddingLeft, gridPad.PaddingRight = UDim.new(0, side), UDim.new(0, side)
-		local pitch = spec.size.Y + GRID_GAP
-		local rows = math.max(1, math.floor((parent.Size.Y.Offset - 4 + GRID_GAP) / pitch))
-		visibleH = rows * pitch - GRID_GAP + 4 -- leftover height stays inside the panel
+		local pad = math.max(0, math.floor((W - (cols * cardW + (cols - 1) * gap)) / 2))
+		gridPad.PaddingLeft, gridPad.PaddingRight = UDim.new(0, pad), UDim.new(0, pad)
+		barW = math.clamp(pad - 8, 6, 14)
+		local pitch = cardH + gap
+		local rows = math.max(1, math.floor((H - 4 + gap) / pitch))
+		visibleH = rows * pitch - gap + 4 -- leftover height stays inside the panel
 		fade.Size = UDim2.new(1, 0, 0, visibleH)
+		track.Size = UDim2.fromOffset(barW, visibleH)
+		track.Position = UDim2.new(1, -3, 0, 0)
+		barSkin(track, "ScrollTrack", barW)
+		barSkin(thumb, "ScrollThumb", barW)
 		updateFade()
 		for _, c in cards do
 			c:Destroy()
@@ -652,10 +781,14 @@ function Parts.Grid(parent)
 		end
 		empty.Text = emptyText
 		empty.Visible = #items == 0
+		updateFade()
 	end
 	connect(conns, parent:GetAttributeChangedSignal("Compact"), rebuild)
 	connect(conns, parent:GetPropertyChangedSignal("Size"), rebuild)
 
+	function api:SetKind(k: string)
+		kind = if GRIDS[k] then k else "Dice"
+	end
 	function api:SetItems(list)
 		items = list
 		rebuild()
@@ -663,7 +796,7 @@ function Parts.Grid(parent)
 	function api:SetSelected(id: string?)
 		selected = id
 		for cid, card in cards do
-			Parts.skin(card, if cid == id then "CardSelected" else "CardIdle", 0.5)
+			card.SelRim.Visible = cid == id
 		end
 	end
 	function api:OnSelect(cb)
@@ -704,7 +837,7 @@ function Parts.Footer(parent)
 		BackgroundTransparency = 1,
 		AnchorPoint = Vector2.new(0, 1),
 		Position = UDim2.fromScale(0, 1),
-		Size = UDim2.new(1, 0, 0, 92), -- bottom-anchored: the compact overlay grows upward when slots wrap
+		Size = UDim2.new(1, 0, 0, 97), -- bottom-anchored: the compact overlay grows upward when slots wrap
 		ZIndex = parent.ZIndex,
 	}, parent)
 	-- Opaque backing for the compact overlay (it sits over the card grid).
@@ -718,36 +851,45 @@ function Parts.Footer(parent)
 	backing.BackgroundColor3 = Color3.fromRGB(58, 22, 84)
 	make("UICorner", { CornerRadius = UDim.new(0, 14) }, backing)
 	local strip = img(root, { Name = "Strip", Size = UDim2.fromScale(1, 1), ZIndex = backing.ZIndex + 1 })
-	Parts.skinH(strip, "Strip", 92)
+	Parts.skinH(strip, "Strip", 97)
 	local row = img(strip, { Name = "Row", Size = UDim2.fromScale(1, 1) }, "Frame")
 	local rowLayout = make("UIListLayout", {
 		FillDirection = Enum.FillDirection.Horizontal,
 		HorizontalAlignment = Enum.HorizontalAlignment.Center,
 		VerticalAlignment = Enum.VerticalAlignment.Center,
 		SortOrder = Enum.SortOrder.LayoutOrder,
-		Padding = UDim.new(0, 14),
+		Padding = UDim.new(0, 16),
 	}, row)
 	local label = Parts.text(row, {
 		Name = "Label",
 		Text = "LOADOUT",
-		TextSize = 18,
+		TextSize = 22,
 		TextWrapped = true,
-		Size = UDim2.fromOffset(120, 60),
+		Size = UDim2.fromOffset(112, 78),
 		LayoutOrder = 1,
 	})
+	-- Native dividers (no sprite fits): white after the label, copper before the button.
+	local function divider(name, w, color, order)
+		local d = img(row, { Name = name, Size = UDim2.fromOffset(w, 65), LayoutOrder = order }, "Frame")
+		d.BackgroundTransparency = 0
+		d.BackgroundColor3 = color
+		make("UICorner", { CornerRadius = UDim.new(0.5, 0) }, d)
+		return d
+	end
+	local div1 = divider("DividerWhite", 4, Color3.fromRGB(242, 240, 244), 2)
 	local slotsFrame =
-		img(row, { Name = "Slots", Size = UDim2.fromOffset(5 * 68 + 4 * 8, 68), LayoutOrder = 2 }, "Frame")
+		img(row, { Name = "Slots", Size = UDim2.fromOffset(5 * 75 + 4 * 9, 78), LayoutOrder = 3 }, "Frame")
 	local slotsLayout = make("UIListLayout", {
 		FillDirection = Enum.FillDirection.Horizontal,
 		HorizontalAlignment = Enum.HorizontalAlignment.Center,
 		VerticalAlignment = Enum.VerticalAlignment.Center,
 		SortOrder = Enum.SortOrder.LayoutOrder,
-		Padding = UDim.new(0, 8),
+		Padding = UDim.new(0, 9),
 	}, slotsFrame)
 	local icons, slots = {}, {}
 	for i = 1, 5 do
 		local slot =
-			img(slotsFrame, { Name = "Slot" .. i, Size = UDim2.fromOffset(68, 68), LayoutOrder = i }, "ImageButton")
+			img(slotsFrame, { Name = "Slot" .. i, Size = UDim2.fromOffset(75, 78), LayoutOrder = i }, "ImageButton")
 		slot.Image = SlotFrame.Normal -- lobby deck-slot frame, drawn whole
 		slot.ScaleType = Enum.ScaleType.Stretch
 		Parts.interact(slot)
@@ -765,13 +907,14 @@ function Parts.Footer(parent)
 			Visible = false,
 		})
 	end
+	local div2 = divider("DividerCopper", 3, Color3.fromRGB(192, 102, 58), 4)
 	local btn = Parts.button(row, {
 		Name = "Unequip",
-		Style = "Red",
+		Style = "Purple",
 		Label = "UNEQUIP ALL",
 		TextSize = 20,
-		Size = UDim2.fromOffset(160, 56),
-		Order = 3,
+		Size = UDim2.fromOffset(151, 50),
+		Order = 5,
 	})
 	btn.Activated:Connect(function()
 		if onButton then
@@ -783,27 +926,29 @@ function Parts.Footer(parent)
 	local function layoutFooter()
 		local w = parent.Size.X.Offset
 		local compact = parent:GetAttribute("Compact")
-		local d, labelW, btnW, gap = 68, 120, 160, 8
+		local dw, dh, labelW, btnW, btnH, gap = 75, 78, 112, 151, 50, 9
 		if compact then
-			gap, d = 4, 56 -- touch floor: wrap into rows (3+2 on a narrow panel) instead of shrinking
+			gap, dw, dh = 4, 56, 56 -- touch floor: wrap into rows (3+2 on a narrow panel) instead of shrinking
 		elseif w < 700 then
-			d, labelW, btnW, gap = 56, 84, 120, 6
+			dw, dh, labelW, btnW, gap = 56, 58, 84, 120, 6
 		end
 		label.Visible, btn.Visible, backing.Visible = not compact, not compact, compact
-		label.Size = UDim2.fromOffset(labelW, 60)
-		label.TextSize = if labelW == 120 then 18 else 15
-		rowLayout.Padding = UDim.new(0, if compact then 0 elseif w < 700 then 8 else 14)
+		div1.Visible, div2.Visible = not compact, not compact
+		label.Size = UDim2.fromOffset(labelW, 78)
+		label.TextSize = if labelW == 112 then 22 else 15
+		rowLayout.Padding = UDim.new(0, if compact then 0 elseif w < 700 then 8 else 16)
 		slotsLayout.Padding = UDim.new(0, gap)
-		local perRow = if compact then math.clamp(math.floor((w - 24 + gap) / (d + gap)), 1, 5) else 5
+		local perRow = if compact then math.clamp(math.floor((w - 24 + gap) / (dw + gap)), 1, 5) else 5
 		local rows = math.ceil(5 / perRow)
 		slotsLayout.Wraps = true
-		slotsFrame.Size = UDim2.fromOffset(perRow * d + (perRow - 1) * gap, rows * d + (rows - 1) * gap)
-		root.Size = UDim2.new(1, 0, 0, if rows > 1 then slotsFrame.Size.Y.Offset + 36 else 92)
+		slotsFrame.Size = UDim2.fromOffset(perRow * dw + (perRow - 1) * gap, rows * dh + (rows - 1) * gap)
+		root.Size = UDim2.new(1, 0, 0, if rows > 1 then slotsFrame.Size.Y.Offset + 36 else 97)
 		for i, slot in slots do
-			slot.Size = UDim2.fromOffset(d, d)
-			icons[i].Size = UDim2.fromOffset(d - 16, d - 16)
+			slot.Size = UDim2.fromOffset(dw, dh)
+			local ic = if dw == 75 then 55 else dw - 16
+			icons[i].Size = UDim2.fromOffset(ic, ic)
 		end
-		btn.Size = UDim2.fromOffset(btnW, 56)
+		btn.Size = UDim2.fromOffset(btnW, btnH)
 		Parts.setButton(btn, { Label = btn.Label.Text })
 	end
 	connect(conns, parent:GetPropertyChangedSignal("Size"), layoutFooter)
@@ -848,41 +993,22 @@ end
 
 -- Detail ----------------------------------------------------------------------------------------------------
 
-local SIDE = 14
-local STAT_PITCH = 33
--- Detail rows ({y, h}; name adds max/min text size). Compact keeps pill, preview, name and subline above the
--- pinned buttons without scrolling; only description and stats scroll.
-local DETAIL = {
-	Full = {
-		tags = { 12, 30 },
-		prev = { 46, 150 },
-		icon = 112,
-		name = { 198, 40, 34, 22 },
-		sub = { 240, 26 },
-		desc = { 270, 46 },
-		extra = { 322, 162 },
-		rowPad = 20,
-	},
-	Compact = {
-		tags = { 2, 24 },
-		prev = { 28, 48 },
-		icon = 40,
-		name = { 78, 28, 24, 20 },
-		sub = { 108, 24 },
-		desc = { 136, 40 },
-		extra = { 180, 162 },
-		rowPad = 8,
-	},
-}
+local STAT_GREEN = Color3.fromRGB(110, 222, 70)
+local COPPER = Color3.fromRGB(201, 122, 90)
+local BTN_W, BTN_GAP = 127, 8 -- action buttons: one size on every tab (3 per row, a 2-button row is centred)
 
+-- One template for every tab, stacked top to bottom: top (rarity pill + status pill, or the ribbon header), art
+-- (takes the spare height), name, subline, description, divider, extra (stats or stepper); action buttons are pinned.
 function Parts.Detail(parent)
 	local api, conns = {}, {}
 	local onAction, onStep
 	local fallback, lastModel
-	local nameDy = 0 -- extra height when the full-tier name wraps to 2 lines
-	local dy = 0 -- shifts the top block down to centre it when description and stats are empty
-	local function L()
-		return if parent:GetAttribute("Compact") then DETAIL.Compact else DETAIL.Full
+	local hasHeader, subH, descH, divH, extraH, nameH = false, 0, 0, 0, 0, 44
+	local function compact(): boolean
+		return parent:GetAttribute("Compact") == true
+	end
+	local function side(): number
+		return if compact() then 10 else 20
 	end
 
 	local root = make("Frame", {
@@ -895,24 +1021,20 @@ function Parts.Detail(parent)
 		Name = "Scroll",
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		Size = UDim2.new(1, 0, 1, -76), -- refit by applyLayout
+		Size = UDim2.new(1, 0, 1, -76), -- refit by relayout
 		CanvasSize = UDim2.new(),
 		ScrollingDirection = Enum.ScrollingDirection.Y,
 		ScrollBarThickness = 4,
 		ScrollBarImageColor3 = GOLD,
 		ZIndex = root.ZIndex + 1,
 	}, root)
-	local body = img(
-		scroll,
-		{ Name = "Body", Size = UDim2.new(1, -2 * SIDE, 0, 490), Position = UDim2.fromOffset(SIDE, 0) },
-		"Frame"
-	)
-	local function slot(name, y, h)
-		return img(body, {
+	local body =
+		img(scroll, { Name = "Body", Size = UDim2.new(1, -40, 0, 490), Position = UDim2.fromOffset(20, 0) }, "Frame")
+	local function slot(name, parentFrame)
+		return img(parentFrame or body, {
 			Name = name,
 			AnchorPoint = Vector2.new(0.5, 0),
-			Position = UDim2.new(0.5, 0, 0, y),
-			Size = UDim2.new(1, 0, 0, h),
+			Size = UDim2.new(1, 0, 0, 30),
 		}, "Frame")
 	end
 	local function centredRow(frame, gap)
@@ -925,9 +1047,19 @@ function Parts.Detail(parent)
 		}, frame)
 	end
 
-	local tags = slot("TopTags", 12, 30)
-	centredRow(tags, 12)
-	local preview = slot("Preview", 46, 150)
+	local tags = slot("TopTags")
+	local header = slot("Header")
+	local ribbon =
+		img(header, { Name = "Ribbon", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
+	Parts.image(ribbon, "NameRibbon")
+	local ribbonText = Parts.text(ribbon, {
+		Name = "Label",
+		TextSize = 20,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.45),
+		Size = UDim2.fromScale(0.6, 0.6),
+	}, 2)
+	local preview = slot("Preview")
 	local glow = img(preview, {
 		Name = "Glow",
 		AnchorPoint = Vector2.new(0.5, 0.5),
@@ -941,34 +1073,30 @@ function Parts.Detail(parent)
 		Size = UDim2.fromOffset(112, 112),
 		ZIndex = glow.ZIndex + 1,
 	})
-	local name = Parts.text(body, {
-		Name = "Name",
-		TextSize = 34,
-		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 198),
-		Size = UDim2.new(1, 0, 0, 40),
-	})
-	local subline = slot("Subline", 240, 26)
-	centredRow(subline, 8)
-	local desc = Parts.text(body, {
-		Name = "Description",
-		TextSize = 17,
+	local name = Parts.text(body, { Name = "Name", TextSize = 38, AnchorPoint = Vector2.new(0.5, 0) })
+	local subline = slot("Subline")
+	centredRow(subline, 10)
+	local descBox =
+		img(body, { Name = "Description", AnchorPoint = Vector2.new(0.5, 0), Size = UDim2.new(1, 0, 0, 30) }) -- QtyField inset box when boxed, bare text otherwise
+	local desc = Parts.text(descBox, {
+		Name = "Text",
+		TextSize = 18,
 		TextWrapped = true,
-		TextColor3 = SOFT,
-		TextYAlignment = Enum.TextYAlignment.Top,
-		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 270),
-		Size = UDim2.new(1, 0, 0, 46),
-	}, 1.5)
-	local extra = slot("Extra", 322, 162)
+		TextColor3 = WHITE,
+		Size = UDim2.new(1, -28, 1, -12),
+		Position = UDim2.fromOffset(14, 6),
+	}, 2)
+	local divider = img(body, { Name = "Divider", AnchorPoint = Vector2.new(0.5, 0) })
+	Parts.image(divider, "DividerGold")
+	local extra = slot("Extra")
 	local actions = img(root, {
 		Name = "ActionRow",
 		AnchorPoint = Vector2.new(0.5, 1),
 		Position = UDim2.new(0.5, 0, 1, -20),
-		Size = UDim2.new(1, -2 * SIDE, 0, 56),
+		Size = UDim2.new(1, -16, 0, 67),
 		ZIndex = scroll.ZIndex + 1,
 	}, "Frame")
-	centredRow(actions, 11)
+	centredRow(actions, BTN_GAP)
 	local placeholder = Parts.text(root, {
 		Name = "Placeholder",
 		Text = "Select an item",
@@ -976,131 +1104,214 @@ function Parts.Detail(parent)
 		TextColor3 = SOFT,
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.new(1, -2 * SIDE, 0, 40),
+		Size = UDim2.new(1, -40, 0, 40),
 	})
 
-	local function applyLayout()
-		local l = L()
-		local function put(inst, row)
-			inst.Position = UDim2.new(0.5, 0, 0, row[1])
-			inst.Size = UDim2.new(1, 0, 0, row[2])
-		end
-		put(tags, { l.tags[1] + dy, l.tags[2] })
-		put(preview, { l.prev[1] + dy, l.prev[2] })
-		put(name, { l.name[1] + dy, l.name[2] + nameDy })
-		put(subline, { l.sub[1] + dy + nameDy, l.sub[2] })
-		-- compact: the description box ends above the pinned buttons so AtEnd cuts a whole line, never a glyph
-		local area = parent.Size.Y.Offset - (56 + l.rowPad)
-		local descH = l.desc[2]
-		if l == DETAIL.Compact then
-			descH = math.max(0, math.min(descH, area - l.desc[1] - nameDy - 4))
-		end
-		put(desc, { l.desc[1] + nameDy, descH })
-		desc.Visible = descH >= 17
-		put(extra, { l.extra[1] + nameDy, l.extra[2] })
-		glow.Size = UDim2.fromOffset(l.prev[2] * GLOW_SCALE, l.prev[2] * GLOW_SCALE)
-		icon.Size = UDim2.fromOffset(l.icon, l.icon)
-		actions.Position = UDim2.new(0.5, 0, 1, -l.rowPad)
-		scroll.Size = UDim2.new(1, 0, 1, -(56 + l.rowPad))
+	local function bodyW(): number
+		return parent.Size.X.Offset - 2 * side()
 	end
-	applyLayout()
 
-	local function renderSubline(s)
+	local function relayout()
+		local c = compact()
+		local btnH, pad = if c then 48 else 67, if c then 8 else 22
+		local gap = if c then 4 else 6
+		local y0 = if c then 6 else 16
+		local viewH = parent.Size.Y.Offset - (btnH + pad + (if c then 4 else 8))
+		local s = side()
+		scroll.Size = UDim2.new(1, 0, 0, math.max(0, viewH))
+		actions.Size = UDim2.new(1, -16, 0, btnH)
+		actions.Position = UDim2.new(0.5, 0, 1, -pad)
+		body.Position = UDim2.fromOffset(s, 0)
+		local w = bodyW()
+		divH = if divider.Visible then math.floor(w * 0.9 * 54 / 709) else 0
+		local topH = if hasHeader then (if c then 34 else 64) else (if c then 24 else 30)
+		local heights = { topH, nameH, subH, descH, divH, extraH }
+		local n, fixed = 1, 0 -- 1 = the art block
+		for _, h in heights do
+			if h > 0 then
+				n += 1
+				fixed += h
+			end
+		end
+		local free = viewH - y0 - fixed - gap * (n - 1)
+		local artH = math.clamp(free, if c then 32 else 110, 170)
+		local g = gap + (if c then 0 else math.clamp((free - artH) / math.max(1, n - 1), 0, 14))
+		local y = y0 -- clear of the panel rim
+		local function put(inst, h)
+			inst.AnchorPoint = Vector2.new(0.5, 0)
+			inst.Position = UDim2.new(0.5, 0, 0, math.floor(y))
+			inst.Size = UDim2.new(1, 0, 0, h)
+			y += h + g
+		end
+		tags.Visible, header.Visible = not hasHeader, hasHeader
+		put(if hasHeader then header else tags, topH)
+		local artY = y
+		put(preview, artH)
+		glow.Size = UDim2.fromOffset(
+			math.min(artH * 1.5, 2 * (artY + artH / 2), w),
+			math.min(artH * 1.5, 2 * (artY + artH / 2), w)
+		)
+		icon.Size = UDim2.fromOffset(artH * 0.92, artH * 0.92)
+		put(name, nameH)
+		if subH > 0 then
+			put(subline, subH)
+		end
+		if descH > 0 then
+			put(descBox, descH)
+		end
+		if divH > 0 then
+			put(divider, divH)
+			divider.Size = UDim2.fromOffset(math.floor(w * 0.9), divH)
+		end
+		if extraH > 0 then
+			put(extra, extraH)
+		end
+		local total = math.max(0, y - g)
+		body.Size = UDim2.new(1, -2 * s, 0, total)
+		scroll.CanvasSize = UDim2.fromOffset(0, total)
+		ribbon.Size = UDim2.fromOffset(math.floor(topH * 547 / 125), topH)
+		ribbonText.Size = UDim2.fromScale(0.66, 0.6)
+		Parts.fit(ribbonText, ribbon.Size.X.Offset * 0.66, if c then 14 else 20, 10)
+		-- the Description frame/text is wholly inside body width
+		subline.Visible, descBox.Visible, extra.Visible = subH > 0, descH > 0, extraH > 0
+	end
+
+	local function renderSubline(sub)
 		clearChildren(subline, "UIListLayout")
-		if not s then
+		local c = compact()
+		subH = 0
+		if not sub then
 			return
 		end
-		if s.Kind == "Level" then
-			local track = img(subline, { Name = "LevelBar", Size = UDim2.fromOffset(250, 26) })
+		if sub.Kind == "Level" then
+			subH = if c then 24 else 28
+			local txt = ("Lv. %d / %d"):format(sub.Value, sub.Max)
+			local size = if c then 15 else 20
+			local tw = measure(txt, size) + 6
+			Parts.text(subline, { Text = txt, TextSize = size, Size = UDim2.fromOffset(tw, subH), LayoutOrder = 1 }, 2)
+			local barW = math.clamp(bodyW() - tw - 12, 100, 218)
+			local track = img(subline, { Name = "LevelBar", Size = UDim2.fromOffset(barW, 26), LayoutOrder = 2 })
 			Parts.skinH(track, "LevelTrack", 26)
 			-- Fill is sized to the value (never cropped): same SliceScale as the track, never narrower than its caps.
 			local ts, fs = Sprites.LevelTrack, Sprites.LevelFill
 			local k = 26 / ts.Size.Y
 			local fh = fs.Size.Y * k
 			local capsW = fs.Slice and (fs.Size.X - (fs.Slice.Max.X - fs.Slice.Min.X)) * k or 0
-			local fillW = math.max(capsW, 242 * math.clamp(s.Value / math.max(1, s.Max), 0, 1))
+			local fillW = math.max(capsW, (barW - 8) * math.clamp(sub.Value / math.max(1, sub.Max), 0, 1))
 			local fill = img(track, {
 				Name = "Fill",
 				AnchorPoint = Vector2.new(0, 0.5),
 				Position = UDim2.new(0, 4, 0.5, 0),
 				Size = UDim2.fromOffset(fillW, fh),
-				Visible = s.Value > 0,
+				Visible = sub.Value > 0,
 			})
 			Parts.skin(fill, "LevelFill", k)
-			Parts.text(track, {
-				Text = ("LV %d / %d"):format(s.Value, s.Max),
-				TextSize = 17,
-				Size = UDim2.fromScale(1, 1),
-				ZIndex = fill.ZIndex + 2,
-			}, 1.5)
+		elseif sub.Kind == "Qty" then
+			-- dark pill with a copper rim (no sprite): "Quantity: x1,248"
+			subH = if c then 24 else 30
+			local size = if c then 15 else 19
+			local pill = img(subline, {
+				Name = "QtyPill",
+				Size = UDim2.fromOffset(math.max(150, measure(sub.Text, size) + 40), subH),
+			}, "Frame")
+			pill.BackgroundTransparency = 0
+			pill.BackgroundColor3 = Color3.fromRGB(75, 24, 62)
+			make("UICorner", { CornerRadius = UDim.new(0.5, 0) }, pill)
+			make("UIStroke", { Color = COPPER, Thickness = 2 }, pill)
+			Parts.text(pill, { Text = sub.Text, TextSize = size, Size = UDim2.fromScale(1, 1) }, 2)
 		else
+			subH = if c then 24 else 28
 			Parts.Pill(
 				subline,
-				if s.Kind == "Qty" then "Blue" else "Purple",
-				s.Text,
-				{ H = 26, MinW = 90, TextSize = 17 }
+				"Purple",
+				sub.Text,
+				{ H = subH, MinW = 90, TextSize = if c then 15 else 17, Icon = sub.Icon }
 			)
 		end
 	end
 
 	local function renderExtra(model)
-		for _, c in extra:GetChildren() do
-			c:Destroy()
+		for _, ch in extra:GetChildren() do
+			ch:Destroy()
 		end
+		local c = compact()
+		extraH = 0
 		local list = model.Stats
 		if list then
-			Parts.text(extra, {
-				Name = "StatsHeader",
-				Text = "COMBAT STATS",
-				TextSize = 20,
-				Size = UDim2.new(1, 0, 0, 26),
-				TextColor3 = GOLD,
-			})
+			local rowH, pitch = if c then 26 else 30, if c then 28 else 33
+			local hp = Parts.Pill(
+				extra,
+				"Purple",
+				"COMBAT STATS",
+				{ Name = "StatsHeader", H = if c then 22 else 26, MinW = 190, TextSize = if c then 15 else 17 }
+			)
+			hp.AnchorPoint, hp.Position = Vector2.new(0.5, 0), UDim2.fromScale(0.5, 0)
+			local top = hp.Size.Y.Offset + 4
 			for i = 1, math.min(#list, 4) do
 				local st = list[i]
 				local r = img(extra, {
 					Name = "Stat" .. i,
-					Position = UDim2.fromOffset(0, 26 + (i - 1) * STAT_PITCH),
-					Size = UDim2.new(1, 0, 0, 30),
-				}, "Frame")
+					Position = UDim2.fromOffset(0, top + (i - 1) * pitch),
+					Size = UDim2.new(1, 0, 0, rowH),
+				})
+				Parts.skinH(r, "StatRow", rowH)
 				local ic = img(r, {
-					Size = UDim2.fromOffset(24, 24),
+					Size = UDim2.fromOffset(rowH - 4, rowH - 4),
 					AnchorPoint = Vector2.new(0, 0.5),
-					Position = UDim2.new(0, 6, 0.5, 0),
+					Position = UDim2.new(0, 8, 0.5, 0),
 				})
 				Parts.image(ic, st.Icon)
 				Parts.text(r, {
 					Text = st.Label,
-					TextSize = 19,
+					TextSize = if c then 15 else 19,
 					TextXAlignment = Enum.TextXAlignment.Left,
-					Position = UDim2.fromOffset(40, 0),
-					Size = UDim2.new(0.55, -40, 1, 0),
-				})
+					Position = UDim2.fromOffset(rowH + 12, 0),
+					Size = UDim2.new(0.55, -(rowH + 12), 1, 0),
+				}, 2)
 				Parts.text(r, {
 					Text = st.Value,
-					TextSize = 21,
+					TextSize = if c then 16 else 22,
 					TextXAlignment = Enum.TextXAlignment.Right,
-					TextColor3 = st.Color or WHITE,
+					TextColor3 = st.Color or STAT_GREEN,
 					AnchorPoint = Vector2.new(1, 0),
-					Position = UDim2.new(1, -6, 0, 0),
-					Size = UDim2.fromScale(0.45, 1),
-				})
+					Position = UDim2.new(1, -12, 0, 0),
+					Size = UDim2.fromScale(0.4, 1),
+				}, 2)
 			end
+			extraH = top + (math.min(#list, 4) - 1) * pitch + rowH
 		elseif model.Stepper then
 			local st = model.Stepper
-			local r = img(extra, { Name = "Stepper", Size = UDim2.new(1, 0, 0, 56) }, "Frame")
-			centredRow(r, 8)
+			local rowH = if c then 44 else 56
+			local labH = if c then 0 else 22 -- the label is dropped on short screens
+			Parts.text(extra, {
+				Name = "Label",
+				Text = "Use Quantity:",
+				TextSize = 19,
+				Size = UDim2.new(1, 0, 0, labH),
+				Visible = not c,
+			}, 2)
+			local r = img(extra, {
+				Name = "Stepper",
+				Position = UDim2.fromOffset(0, if c then 0 else labH + 4),
+				Size = UDim2.new(1, 0, 0, rowH),
+			}, "Frame")
+			centredRow(r, math.floor(8 * math.min(1, bodyW() / 336)))
 			local on = st.Enabled ~= false
+			local k = math.min(1, bodyW() / 336)
 			local function stepBtn(nm, sprite, w, order, delta, str)
-				local b = img(r, { Name = nm, Size = UDim2.fromOffset(w, 56), LayoutOrder = order }, "ImageButton")
-				Parts.skinH(b, sprite, 56)
+				local b = img(
+					r,
+					{ Name = nm, Size = UDim2.fromOffset(math.floor(w * k), rowH), LayoutOrder = order },
+					"ImageButton"
+				)
+				Parts.skinH(b, sprite, rowH)
 				b.ScaleType = Enum.ScaleType.Stretch -- whole art at its aspect, no slicing
 				b.ImageColor3 = if on then WHITE else DISABLED_TINT
 				Parts.interact(b)
 				if str then
 					Parts.text(
 						b,
-						{ Text = str, TextSize = if str == "MAX" then 24 else 36, Size = UDim2.fromScale(1, 1) }
+						{ Text = str, TextSize = if str == "MAX" then 22 else 34, Size = UDim2.fromScale(1, 1) }
 					)
 				end
 				b.Activated:Connect(function()
@@ -1109,35 +1320,45 @@ function Parts.Detail(parent)
 					end
 				end)
 			end
-			stepBtn("Minus", "QtyMinus", 64, 1, -1, "-")
-			local field = img(r, { Name = "Field", Size = UDim2.fromOffset(120, 56), LayoutOrder = 2 })
-			Parts.skinH(field, "QtyField", 56)
+			stepBtn("Minus", "QtyMinus", 56, 1, -1, "\u{2212}")
+			local field =
+				img(r, { Name = "Field", Size = UDim2.fromOffset(math.floor(112 * k), rowH), LayoutOrder = 2 })
+			Parts.skinH(field, "QtyField", rowH)
 			field.ImageColor3 = if on then WHITE else DISABLED_TINT
-			Parts.text(field, { Text = tostring(st.Qty), TextSize = 26, Size = UDim2.fromScale(1, 1) })
-			stepBtn("Plus", "QtyPlus", 64, 3, 1, "+")
-			stepBtn("Max", "BtnGold", 88, 4, "max", "MAX")
+			Parts.text(
+				field,
+				{ Text = "x" .. tostring(st.Qty), TextSize = if c then 20 else 24, Size = UDim2.fromScale(1, 1) }
+			)
+			stepBtn("Plus", "QtyPlus", 56, 3, 1, "+")
+			stepBtn("Max", "BtnPurple", 88, 4, "max", "MAX")
+			extraH = (if c then 0 else labH + 4) + rowH
 		end
-		extra.Visible = list ~= nil or model.Stepper ~= nil
-		local ex = L().extra
-		body.Size = UDim2.new(1, -2 * SIDE, 0, ex[1] + nameDy + 8 + (if extra.Visible then ex[2] else 0))
-		scroll.CanvasSize = UDim2.fromOffset(0, body.Size.Y.Offset)
+		extra.Visible = extraH > 0
 	end
 
-	-- Buttons are 110x56 and shrink (equal widths) when the detail panel is narrower than 3 of them.
-	local buttonList = {}
+	-- Buttons: one size (127x67, 127x56 compact) shrunk equally when the panel is narrower than 3 of them.
 	local function layoutButtons()
-		local n = math.max(1, #buttonList)
-		local w = math.min(110, math.floor((parent.Size.X.Offset - 2 * SIDE - 11 * (n - 1)) / n))
+		local w = math.min(BTN_W, math.floor((parent.Size.X.Offset - 16 - 2 * BTN_GAP) / 3))
+		local h = if compact() then 48 else 67
 		for _, btn in actions:GetChildren() do
 			if btn:IsA("ImageButton") then
-				btn.Size = UDim2.fromOffset(w, 56)
+				btn.Size = UDim2.fromOffset(w, h)
 				Parts.setButton(btn, { Label = btn.Label.Text, Style = btn:GetAttribute("Style") })
 			end
 		end
 	end
-	connect(conns, parent:GetPropertyChangedSignal("Size"), layoutButtons)
+	local function refresh()
+		relayout()
+		layoutButtons()
+	end
+	connect(conns, parent:GetPropertyChangedSignal("Size"), function()
+		if lastModel then
+			api:Show(lastModel)
+		else
+			refresh()
+		end
+	end)
 	connect(conns, parent:GetAttributeChangedSignal("Compact"), function()
-		applyLayout()
 		if lastModel then
 			api:Show(lastModel)
 		end
@@ -1145,14 +1366,16 @@ function Parts.Detail(parent)
 
 	function api:SetButtons(list)
 		clearChildren(actions, "UIListLayout")
-		buttonList = list
 		for i, b in list do
 			local btn = Parts.button(actions, {
 				Name = "Action" .. i,
 				Style = b.Style,
 				Label = b.Label,
 				Enabled = b.Enabled,
+				Icon = b.Icon,
 				Order = i,
+				TextSize = 30,
+				Size = UDim2.fromOffset(BTN_W, 67),
 			})
 			btn:SetAttribute("Style", b.Style)
 			btn.Activated:Connect(function()
@@ -1171,42 +1394,67 @@ function Parts.Detail(parent)
 		if not on then
 			return
 		end
+		local c = compact()
+		hasHeader = model.Header ~= nil
+		ribbonText.Text = model.Header or ""
 		clearChildren(tags, "UIListLayout")
-		Parts.Pill(
+		local th = if c then 24 else 30
+		local left = Parts.Pill(
 			tags,
 			model.Rarity,
 			string.upper(model.Rarity),
-			{ Name = "Rarity", H = L().tags[2], MinW = 116, TextSize = 17, Order = 1 }
+			{ Name = "Rarity", H = th, MinW = if c then 0 else 116, TextSize = if c then 14 else 17 }
 		)
+		left.AnchorPoint, left.Position = Vector2.zero, UDim2.fromScale(0, 0)
 		if model.StatusTag then
-			Parts.Pill(
+			local right = Parts.Pill(
 				tags,
 				"Equipped",
 				model.StatusTag,
-				{ Name = "Status", H = L().tags[2], MinW = 116, TextSize = 17, Order = 2 }
+				{ Name = "Status", H = th, MinW = if c then 0 else 116, TextSize = if c then 14 else 17 }
 			)
+			right.AnchorPoint, right.Position = Vector2.new(1, 0), UDim2.fromScale(1, 0)
 		end
 		Parts.skin(glow, GLOW[model.Rarity] or "GlowCommon")
 		local has = model.Icon ~= nil and model.Icon ~= ""
 		Parts.image(icon, if has then model.Icon else fallback)
 		icon.ImageColor3 = model.Tint or (if has then WHITE else Parts.RarityColor[model.Rarity] or WHITE)
-		name.Text = model.Name
-		local l0 = L()
-		local wrap = l0 == DETAIL.Full and measure(model.Name, l0.name[4]) > 350
-		nameDy = if wrap then 20 else 0
-		name.TextWrapped = wrap
-		if wrap then
-			Parts.fit(name, 2 * 340, 26, 20)
+		-- name: caps, 38 px; shrinks to fit one line, wraps to two only when it still does not fit
+		local up, w = string.upper(model.Name), bodyW()
+		local nameMax, nameMin = if c then 24 else 38, if c then 18 else 24
+		name.Text = up
+		name.Size = UDim2.new(1, 0, 0, if c then 26 else 44)
+		if measure(up, nameMin) > w then
+			name.TextWrapped = true
+			name.TextSize = nameMin
+			nameH = (if c then 26 else 44) + (if c then 18 else 24)
+			name.Size = UDim2.new(1, 0, 0, nameH)
 		else
-			Parts.fit(name, 350, l0.name[3], l0.name[4])
+			name.TextWrapped = false
+			Parts.fit(name, w, nameMax, nameMin)
+			nameH = if c then 26 else 44
 		end
 		renderSubline(model.Subline)
-		desc.Text = model.Description
+		-- description: boxed (QtyField) on materials/items, bare text elsewhere; at most 3 lines (2 compact)
+		local text = model.Description or ""
+		local dsize, lineH = if c then 15 else 18, if c then 18 else 22
+		desc.TextSize = dsize
+		desc.Text = text
+		descBox.Visible = text ~= ""
+		descH = 0
+		if text ~= "" then
+			local lines =
+				math.min(if c then 2 else 3, math.max(1, math.ceil(measure(text, dsize) / math.max(1, w - 28))))
+			descH = lines * lineH + (if model.DescBox then (if c then 10 else 22) else 6)
+			if model.DescBox then
+				Parts.skin(descBox, "QtyField", math.clamp(descH / Sprites.QtyField.Size.Y, 0.3, 1))
+			else
+				descBox.Image = ""
+			end
+		end
+		divider.Visible = model.Divider == true
 		renderExtra(model)
-		local l = L()
-		local free = parent.Size.Y.Offset - (56 + l.rowPad) - (l.sub[1] + l.sub[2]) - l.tags[1]
-		dy = if (model.Description or "") == "" and not extra.Visible then math.max(0, math.floor(free / 2)) else 0
-		applyLayout()
+		refresh()
 		self:SetButtons(model.Buttons)
 	end
 	function api:OnAction(cb)

@@ -8,6 +8,7 @@ Cosmetics.Id = "COSMETICS"
 Cosmetics.Label = "COSMETICS"
 Cosmetics.Icon = "IconCrown"
 Cosmetics.Fallback = "IconCrown"
+Cosmetics.Grid = "Cosmetics"
 Cosmetics.Placeholder = "Search cosmetics..."
 Cosmetics.SortOptions = {
 	{ Id = "Rarity", Label = "Rarity" },
@@ -39,12 +40,17 @@ function Cosmetics.Detail(item)
 		Name = item.Name,
 		Rarity = item.Rarity,
 		StatusTag = if item.Equipped then "EQUIPPED" else nil,
-		Subline = { Kind = "Type", Text = item.Type },
+		Subline = {
+			Kind = "Type",
+			Text = item.Type,
+			Icon = if string.find(item.Type, "Dice") then "IconDice" else "IconCrown",
+		},
+		Divider = true,
 		Description = item.Description,
 		Buttons = {
 			{ Id = "Equip", Label = "EQUIP", Style = "Green", Enabled = false, Hint = "Coming soon" },
 			{ Id = "Unequip", Label = "UNEQUIP", Style = "Red", Enabled = false, Hint = "Coming soon" },
-			{ Id = "Lock", Label = "LOCK", Style = "Purple", Enabled = false, Hint = "Coming soon" },
+			{ Id = "Lock", Label = "LOCK", Style = "Purple", Icon = "Lock", Enabled = false, Hint = "Coming soon" },
 		},
 	}
 end

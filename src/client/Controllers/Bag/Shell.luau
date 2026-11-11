@@ -11,25 +11,34 @@ local Parts = require(script.Parent.Parts)
 local make = UiKit.make
 local Z = 20 -- Bag root; Sibling ZIndex (descendants always >= their parent)
 
--- Window (frame, excluding the banner overhang). Full: 1160x725; compact (phones): shrinks to the space.
-local FULL_W, FULL_H = 1160, 725
+-- Window frame (excluding the banner overhang). Full tier = the 1672x941 reference: rim box 1248x761 (x 212, y 97)
+-- plus the sprite's transparent margin mx/my. Compact (phones) shrinks to the space. mx/my double as offsets.
+-- rim = Window SliceScale (1.0: orange band ~16 px as in the reference; corner radius ~38 vs 45, the art's limit).
 local TIER = {
 	Full = {
-		over = 99,
-		banner = Vector2.new(427, 151), -- the art's 615x218 aspect; spans about x 625-1052 in the 1672 reference
-		bannerText = 64,
-		tabTop = 52,
-		tabH = 60,
-		tabGap = 16,
-		icon = 36,
-		contentTop = 120,
-		bottomPad = 17,
+		mx = 6,
+		my = 5,
+		rim = 1.0,
+		over = 88, -- banner top to window frame top
+		banner = Vector2.new(406, 144), -- 0.66x the 615x218 art: ribbon ~307x96 vs ref 338x88 (art aspect differs)
+		bannerText = 76,
+		tabTop = 44, -- from the rim box top (all Full values below are rim-box relative)
+		tabH = 62,
+		tabGap = 12,
+		icon = 38,
+		tabText = 34,
+		contentTop = 122,
+		bottomPad = 28,
 		pitch = 142,
 	},
 	Compact = {
+		mx = 0,
+		my = 1,
+		rim = 0.78,
 		over = 46,
 		banner = Vector2.new(214, 76),
 		bannerText = 34,
+		tabText = 24,
 		tabTop = 30,
 		tabH = 56,
 		tabGap = 8,
@@ -39,10 +48,12 @@ local TIER = {
 		pitch = 120,
 	},
 }
-local SIDE, GAP = 27, 6 -- rim to panels; between left panel and detail
-local TOOLBAR_H, FOOTER_H = 68, 92
+local SIDE, GAP = 27, 10 -- rim to panels; between left panel and detail
+local FULL_INK = Vector2.new(1248, 761)
+local TOOLBAR_H, FOOTER_H = 68, 97
+local DETAIL_INSET = 8 -- detail content stops this far above the panel bottom (14 px to the inner rim, as in the reference)
 local GRID_INSET = 12 -- GridScroll stops this far above the panel bottom so peeking cards clip inside the rim
-local DETAIL_MAX, DETAIL_MIN = 380, 310
+local DETAIL_MAX, DETAIL_MIN = 410, 310
 local MIN_SCALE, MAX_SCALE = 0.8, 1.5
 
 local Shell = {}
@@ -85,7 +96,8 @@ function Shell.new(parent, deps)
 		Size = UDim2.fromScale(1, 1),
 		ZIndex = Z + 1,
 	}, window)
-	Parts.skin(chrome, "Window", 0.78)
+	Parts.skin(chrome, "Window", TIER.Full.rim)
+	self.Chrome = chrome
 
 	-- Content: left column (toolbar, grid, footer) + detail.
 	local content = frame("Content", window, Z + 2)
@@ -137,7 +149,7 @@ function Shell.new(parent, deps)
 		Text = "BAG",
 		TextTruncate = Enum.TextTruncate.None,
 		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(363 / 615, 130 / 218),
+		Position = UDim2.fromScale(354 / 615, 114 / 218), -- ref: BAG ink centre 30 px right of, 7 px above the ribbon centre
 		Size = UDim2.fromScale(254 / 615, 88 / 218),
 		ZIndex = Z + 11,
 	}, 3)
@@ -168,8 +180,10 @@ function Shell.new(parent, deps)
 		end
 		local ins = deps.fit()
 		local availW = size.X - 2 * (ins.leftReal + 8)
-		local availH = ins.bottomTopReal - 12 -- region [4, bottomTop - 8]
-		local bs = math.clamp(math.min(availW / FULL_W, availH / (FULL_H + TIER.Full.over)), MIN_SCALE, MAX_SCALE)
+		local availH = ins.bottomTopReal - 10 -- region [4, bottomTop - 6]
+		local full = TIER.Full
+		local fullW, fullH = FULL_INK.X + 2 * full.mx, FULL_INK.Y + 2 * full.my
+		local bs = math.clamp(math.min(availW / fullW, availH / (fullH + full.over)), MIN_SCALE, MAX_SCALE)
 		uiScale.Scale = bs
 		scaled.Size = UDim2.fromScale(1 / bs, 1 / bs)
 		local dw, dh = availW / bs, availH / bs -- design px that remain
@@ -178,23 +192,33 @@ function Shell.new(parent, deps)
 		-- grid shows fewer rows (min about one row plus a peek) instead.
 		local compact = size.Y < UiKit.PHONE_H
 		local t = if compact then TIER.Compact else TIER.Full
-		local hf = if compact then math.clamp(dh - t.over, 250, FULL_H) else math.clamp(dh - t.over, 440, FULL_H)
-		local winW = math.min(FULL_W, dw)
-		local cols = math.clamp(math.floor((winW - 2 * SIDE - GAP - DETAIL_MIN - 10) / t.pitch), 2, 5)
+		local hf = if compact then math.clamp(dh - t.over, 250, 725) else math.clamp(dh - t.over, 440, fullH)
+		local winW = math.min(if compact then 1160 else fullW, dw)
+		local side = SIDE + t.mx
+		local inner = winW - 2 * side
+		local cols = math.clamp(math.floor((inner - GAP - DETAIL_MIN - 10) / t.pitch), 2, 5)
 		local leftW = cols * t.pitch + 10
-		local detailW = math.min(DETAIL_MAX, winW - 2 * SIDE - GAP - leftW)
-		winW = 2 * SIDE + GAP + leftW + detailW
-		local contentH = hf - t.contentTop - t.bottomPad
-		local leftH = if compact then contentH else contentH - FOOTER_H - GAP -- compact: the footer overlays the panel bottom
+		local detailW = math.min(DETAIL_MAX, inner - GAP - leftW)
+		if detailW == DETAIL_MAX then
+			leftW = inner - GAP - detailW -- spare width goes to the grid panel (the grid centres its cards)
+		else
+			winW = 2 * side + GAP + leftW + detailW
+		end
+		local contentTop, bottomPad = t.contentTop + t.my, t.bottomPad + (if compact then 0 else t.my)
+		local contentH = hf - contentTop - bottomPad
+		-- Left column is one box on every tab: the panel fills it, minus the footer strip when the Dice footer shows
+		-- (compact: the footer overlays the panel bottom).
+		local leftH = if compact or not self._footerOn then contentH else contentH - FOOTER_H - GAP
 
 		-- Window centred in the free region.
 		local compH = (t.over + hf) * bs
 		local top = 4 + ((ins.bottomTopReal - 8) - 4 - compH) / 2
 		window.Size = UDim2.fromOffset(winW, hf)
 		window.Position = UDim2.new(0.5, 0, 0, (top + t.over * bs + hf * bs / 2) / bs)
+		chrome.SliceScale = t.rim
 
-		content.Position = UDim2.fromOffset(SIDE, t.contentTop)
-		content.Size = UDim2.fromOffset(winW - 2 * SIDE, contentH)
+		content.Position = UDim2.fromOffset(side, contentTop)
+		content.Size = UDim2.fromOffset(winW - 2 * side, contentH)
 		left.Size = UDim2.fromOffset(leftW, contentH)
 		leftPanel.Size = UDim2.fromOffset(leftW, leftH)
 		toolbar.Size = UDim2.fromOffset(leftW, TOOLBAR_H)
@@ -202,11 +226,11 @@ function Shell.new(parent, deps)
 		grid.Size = UDim2.fromOffset(leftW - 6, leftH - TOOLBAR_H - GRID_INSET)
 		-- Compact: an overlay (own strip background) over the panel bottom, wide enough for 5 slots + button;
 		-- the controller decides when it is visible (Footer:SetVisible).
-		footer.Position = UDim2.fromOffset(0, if compact then contentH - FOOTER_H else leftH + GAP)
+		footer.Position = UDim2.fromOffset(0, contentH - FOOTER_H)
 		footer.Size = UDim2.fromOffset(leftW, FOOTER_H)
 		detail.Position = UDim2.fromOffset(leftW + GAP, 0)
 		detail.Size = UDim2.fromOffset(detailW, contentH)
-		detailSlot.Size = UDim2.fromOffset(detailW, contentH) -- offsets: Parts read slot widths in design px
+		detailSlot.Size = UDim2.fromOffset(detailW, contentH - DETAIL_INSET) -- offsets: Parts read slot widths in design px
 		for _, slotFrame in self.Slots do
 			slotFrame:SetAttribute("Compact", compact)
 		end
@@ -215,13 +239,13 @@ function Shell.new(parent, deps)
 		banner.Position = UDim2.new(0.5, 0, 0, -t.over)
 		banner.Size = UDim2.fromOffset(t.banner.X, t.banner.Y)
 		bannerText.TextSize = t.bannerText
-		close.Position = UDim2.fromOffset(winW - 27, 6)
+		close.Position = UDim2.fromOffset(winW - t.mx - 27, t.my + 5)
 
 		-- Tabs: equal widths; label shrinks (>=15) and the icon drops when very narrow.
-		local barW = winW - 94
+		local barW = winW - 2 * (t.mx + 47)
 		local n = math.max(1, #self._tabs)
 		local tabW = math.floor((barW - (n - 1) * t.tabGap) / n)
-		tabBar.Position = UDim2.new(0.5, 0, 0, t.tabTop)
+		tabBar.Position = UDim2.new(0.5, 0, 0, t.tabTop + t.my)
 		tabBar.Size = UDim2.fromOffset(barW, t.tabH)
 		tabBar.UIListLayout.Padding = UDim.new(0, t.tabGap)
 		for _, tab in self._tabButtons do
@@ -230,7 +254,7 @@ function Shell.new(parent, deps)
 			tab.Row.Icon.Visible = tabW >= 150
 			local avail = tabW - 24 - (if tabW >= 150 then t.icon + 6 else 0)
 			tab.Row.Label.UISizeConstraint.MaxSize = Vector2.new(avail, t.tabH)
-			Parts.fit(tab.Row.Label, avail, if tabW < 170 then 18 else 24, 15)
+			Parts.fit(tab.Row.Label, avail, if tabW < 170 then 18 else t.tabText, 15)
 		end
 		self:_skinTabs()
 	end
@@ -243,6 +267,14 @@ function Shell.new(parent, deps)
 		end)
 	)
 	return self
+end
+
+-- The Dice footer strip shows/hides: the left panel gives it room (full tier) or fills the column again.
+function Shell:SetFooter(on: boolean)
+	if self._footerOn ~= on then
+		self._footerOn = on
+		self:Fit()
+	end
 end
 
 function Shell:Fit()

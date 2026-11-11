@@ -9,6 +9,7 @@ Items.Id = "ITEMS"
 Items.Label = "ITEMS"
 Items.Icon = "IconPotion"
 Items.Fallback = "IconPotion"
+Items.Grid = "Items"
 Items.Placeholder = "Search items..."
 Items.SortOptions = {
 	{ Id = "Rarity", Label = "Rarity" },
@@ -39,14 +40,16 @@ function Items.Detail(item)
 	return {
 		Name = item.Name,
 		Rarity = item.Rarity,
+		Header = string.upper(item.Rarity) .. " ITEM",
+		DescBox = true,
 		Icon = item.Icon,
 		Subline = { Kind = "Qty", Text = "Quantity: x" .. BagLogic.formatCount(item.Quantity) },
 		Description = item.Description,
 		Stepper = { Qty = 1, Max = item.Quantity, Enabled = false },
 		Buttons = {
 			{ Id = "Use", Label = "USE", Style = "Green", Enabled = false, Hint = "Coming soon" },
-			{ Id = "Lock", Label = "LOCK", Style = "Purple", Enabled = false, Hint = "Coming soon" },
-			{ Id = "Sell", Label = "SELL", Style = "Red", Enabled = false, Hint = "Coming soon" },
+			{ Id = "Lock", Label = "LOCK", Style = "Purple", Icon = "Lock", Enabled = false, Hint = "Coming soon" },
+			{ Id = "Sell", Label = "SELL", Style = "Red", Icon = "Coins", Enabled = false, Hint = "Coming soon" },
 		},
 	}
 end

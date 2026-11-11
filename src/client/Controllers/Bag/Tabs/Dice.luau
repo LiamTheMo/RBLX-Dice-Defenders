@@ -9,6 +9,7 @@ Dice.Id = "DICE"
 Dice.Label = "DICE"
 Dice.Icon = "IconDice"
 Dice.Fallback = Sprites.Icon.Roll -- tinted glyph for dice without art
+Dice.Grid = "Dice"
 Dice.Placeholder = "Search dice..."
 Dice.SortOptions = {
 	{ Id = "Rarity", Label = "Rarity" },
@@ -68,6 +69,14 @@ function Dice.GetItems(meta)
 	return items
 end
 
+-- Per-die combat numbers live only in the server config: the rows render a dash until the client gets them.
+local STATS = {
+	{ Icon = "IconSword", Label = "Damage", Value = "\u{2013}" },
+	{ Icon = "IconTarget", Label = "Range", Value = "\u{2013}" },
+	{ Icon = "IconHourglass", Label = "Attack Speed", Value = "\u{2013}" },
+	{ Icon = "IconFlame", Label = "Burn Damage", Value = "\u{2013}" },
+}
+
 -- Buttons: one size, EQUIP only valid for an owned die not in the deck.
 function Dice.Detail(item)
 	local locked = item.Locked == true
@@ -82,6 +91,7 @@ function Dice.Detail(item)
 		Tint = item.Tint,
 		Subline = if locked then nil else { Kind = "Level", Value = item.Level, Max = Dice.MaxLevel },
 		Description = if locked then "Not available yet" else "",
+		Stats = STATS,
 		Buttons = {
 			{
 				Id = "Equip",
@@ -90,8 +100,22 @@ function Dice.Detail(item)
 				Enabled = equipOk,
 				Hint = hint or "Already equipped",
 			},
-			{ Id = "Lock", Label = "LOCK", Style = "Gold", Enabled = false, Hint = hint or "Coming soon" },
-			{ Id = "Sell", Label = "SELL", Style = "Red", Enabled = false, Hint = hint or "Coming soon" },
+			{
+				Id = "Lock",
+				Label = "LOCK",
+				Style = "Gold",
+				Icon = "Lock",
+				Enabled = false,
+				Hint = hint or "Coming soon",
+			},
+			{
+				Id = "Sell",
+				Label = "SELL",
+				Style = "Red",
+				Icon = "Coins",
+				Enabled = false,
+				Hint = hint or "Coming soon",
+			},
 		},
 	}
 end

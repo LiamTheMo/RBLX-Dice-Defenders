@@ -63,6 +63,7 @@ function Bag.new(parent, deps)
 		local tab = TABS[cur]
 		-- Loadout strip: DICE tab only; on short screens (Compact) it is an overlay shown just while picking a slot.
 		footer:SetVisible(tab.Footer ~= nil and (not shell.Compact or pending ~= nil))
+		shell:SetFooter(tab.Footer ~= nil)
 		if not tab.Footer then
 			return
 		end
@@ -108,12 +109,13 @@ function Bag.new(parent, deps)
 				st.selected = if view[1] then view[1].Id else nil
 				pending = nil
 			end
+			grid:SetKind(tab.Grid)
+			toolbar:SetKind(tab.Grid)
 			grid:SetFallback(tab.Fallback)
 			detail:SetFallback(tab.Fallback)
 			toolbar:SetPlaceholder(tab.Placeholder)
 			toolbar:SetQuery(st.query)
 			toolbar:SetSortOptions(tab.SortOptions, st.sort)
-			toolbar:SetCount(BagLogic.formatCount(#view))
 			grid:SetEmptyText(if st.query ~= "" then "No results" else tab.EmptyText)
 			grid:SetItems(view)
 			grid:SetSelected(st.selected)
