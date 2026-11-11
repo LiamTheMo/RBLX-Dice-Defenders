@@ -1,17 +1,20 @@
 -- Quest Log controller: one Shell (banner, close, three tabs), the shared Toolbar and Detail, and the Quests list.
 -- QuestLog.new(parent, { hud = LobbyHud, toast = (string) -> () }) -> :Open(tab?) :Close() :Toggle() :IsOpen() :SetTab(n) :Destroy()
--- Rows come from NetClient.LastMeta.Quests plus the client-only SampleData; re-rendered on NetClient.Meta while open.
+-- Rows come from NetClient.LastMeta.Quests plus the client-only SampleData (Studio only); re-rendered on NetClient.Meta.
 -- Claim: only real "Claim" rows send ClaimQuest (one in flight per id); the next Meta decides the Claimed state.
--- Hooks (self.Hooks): the single place live behaviour plugs in; replace a field to change what a part does.
 
 local ContextActionService = game:GetService("ContextActionService")
 local GuiService = game:GetService("GuiService")
+local RunService = game:GetService("RunService")
 
 local NetClient = require(script.Parent.Parent.NetClient)
 local Shell = require(script.Parent.Parent.Bag.Shell)
 local Q = require(script.Parent.QuestSprites)
 local QuestLogic = require(script.Parent.QuestLogic)
-local SampleData = require(script.Parent.SampleData)
+-- Live players never see sample progress; Studio keeps it for building against the references.
+local SampleData = if RunService:IsStudio()
+	then require(script.Parent.SampleData)
+	else { Quests = {}, Achievements = {}, Mastery = {} }
 local Toolbar = require(script.Parent.Toolbar)
 local Detail = require(script.Parent.Detail)
 local Quests = require(script.Parent.Tabs.Quests)
@@ -109,14 +112,16 @@ function QuestLog.new(parent, deps)
 	local achItems, achSelected = {}, nil
 	local masterySelected = nil
 	local query, mode = "", "All"
-	local pending = {} -- ids with a ClaimQuest request in flight
+	local pending = {} -- ids with a ClaimQuest in flight, held until the next Meta after a success
 	local timerToken = 0
 
 	local hooks
 	local function refreshTimers()
 		local meta = NetClient.LastMeta
 		local now = workspace:GetServerTimeNow()
-		local dailyAt = if meta and meta.DailyResetAt then meta.DailyResetAt else (now // DAY + 1) * DAY
+		local dailyAt = if meta and type(meta.DailyResetAt) == "number"
+			then meta.DailyResetAt
+			else (now // DAY + 1) * DAY
 		quests:SetResetText(
 			QuestLogic.resetText(dailyAt - now),
 			QuestLogic.resetText(QuestLogic.weeklyResetAt(now) - now)
@@ -149,7 +154,7 @@ function QuestLog.new(parent, deps)
 		achItems = QuestLogic.sortAchievements(QuestLogic.filterByName(SampleData.Achievements, query), mode)
 		achievements:SetItems(achItems)
 		local done, total = QuestLogic.achievementCount(SampleData.Achievements) -- whole list, not the filtered view
-		toolbar:SetCount(done .. " / " .. total)
+		toolbar:SetCount(if total > 0 then done .. " / " .. total else nil)
 		local pick
 		for _, item in achItems do
 			if item.Id == achSelected then
@@ -203,8 +208,10 @@ function QuestLog.new(parent, deps)
 			pending[id] = true
 			hooks.OnSelect(id, row) -- re-show the detail with the busy button
 			task.spawn(function()
-				NetClient.Request("ClaimQuest", id) -- rejection toast comes from Lobby; Meta shows the result
-				pending[id] = nil
+				local ok = NetClient.Request("ClaimQuest", id) -- rejection toast comes from Lobby; Meta shows the result
+				if not ok then
+					pending[id] = nil
+				end
 				if shell:IsOpen() and shell:GetTab() == 1 then
 					render()
 				end
@@ -250,7 +257,6 @@ function QuestLog.new(parent, deps)
 			end
 		end,
 	}
-	self.Hooks = hooks
 	quests:OnSelect(function(id, row)
 		hooks.OnSelect(id, row)
 	end)
@@ -272,10 +278,10 @@ function QuestLog.new(parent, deps)
 	toolbar:OnOption(function(id)
 		hooks.OnOption(id)
 	end)
-	detail:OnAction(function(state)
+	detail:OnAction(function()
 		if shell:GetTab() == 2 then
 			deps.toast("Coming soon!") -- sample achievements never touch state or remotes
-		elseif state == "Claim" and selected then
+		elseif selected then
 			for _, row in rows do
 				if row.Id == selected then
 					hooks.OnClaim(row.Id, row)
@@ -302,10 +308,12 @@ function QuestLog.new(parent, deps)
 			quests:SetEmptyText("No quests found")
 			render()
 		elseif tab == 2 then
-			achievements:SetEmptyText("No achievements found")
+			achievements:SetEmptyText(
+				if #SampleData.Achievements == 0 then "Achievements are coming soon!" else "No achievements found"
+			)
 			renderAch()
 		else
-			mastery:SetEmptyText("No dice found")
+			mastery:SetEmptyText(if #SampleData.Mastery == 0 then "Dice mastery is coming soon!" else "No dice found")
 			renderMastery()
 		end
 	end
@@ -344,6 +352,7 @@ function QuestLog.new(parent, deps)
 	table.insert(
 		conns,
 		NetClient.Meta:Connect(function()
+			table.clear(pending)
 			if shell:IsOpen() and shell:GetTab() == 1 then
 				render()
 			end
