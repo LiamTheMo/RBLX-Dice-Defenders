@@ -23,7 +23,7 @@ local TIER = {
 		rim = 1.0,
 		over = 86, -- layout only: banner top to window frame top (the banner itself sits at bannerTop)
 		bannerTop = -90.6,
-		banner = Vector2.new(380, 134.7), -- 0.618x the 615x218 art: ribbon top 41 / bottom 117 at x 860/940 as in the ref
+		banner = Vector2.new(435, 135.9), -- BannerWide 701x219 at 0.62: laurel span ~424 as in the ref
 		bannerText = 76,
 		tabTop = 41.8, -- from the rim box top (all Full values below are rim-box relative)
 		tabH = 75.5, -- visible tab body 64 tall (sprite margin + shadow ~13% of the box)
@@ -45,7 +45,7 @@ local TIER = {
 		rim = 0.78,
 		over = 46,
 		bannerTop = -46,
-		banner = Vector2.new(214, 76),
+		banner = Vector2.new(244, 76),
 		bannerText = 34,
 		tabText = 24,
 		tabTop = 30,
@@ -160,7 +160,7 @@ function Shell.new(parent, deps)
 		AnchorPoint = Vector2.new(0.5, 0),
 		ZIndex = Z + 10,
 	}, window)
-	Parts.skin(banner, bn.sprite or "Banner")
+	Parts.skin(banner, bn.sprite or "BannerWide")
 	local bannerText = Parts.text(banner, {
 		Name = "Text",
 		Text = bn.text or "BAG",
@@ -229,7 +229,11 @@ function Shell.new(parent, deps)
 		-- Left column is one box on every tab: the panel fills it, minus the footer strip when the Dice footer shows
 		-- (compact: the footer overlays the panel bottom).
 		local cut = if deps.fullDetail then 0 else t.detailCut
-		local leftH = if compact then contentH elseif self._footerOn then contentH - FOOTER_H - GAP else contentH - cut
+		local bump = if not compact and self._footerOn then 8 else 0 -- dice: panel bottom rim reaches the ref (gap to the footer 6)
+		local leftH = if compact
+			then contentH
+			elseif self._footerOn then contentH - FOOTER_H - GAP + bump
+			else contentH - cut
 
 		-- Window centred in the free region.
 		local compH = (t.over + hf) * bs
@@ -246,7 +250,7 @@ function Shell.new(parent, deps)
 		leftPanel.Size = UDim2.fromOffset(if compact then leftW else leftW + 2, leftH)
 		toolbar.Size = UDim2.fromOffset(leftW, TOOLBAR_H)
 		grid.Position = UDim2.fromOffset(3, TOOLBAR_H)
-		grid.Size = UDim2.fromOffset(leftW - 6, leftH - TOOLBAR_H - GRID_INSET)
+		grid.Size = UDim2.fromOffset(leftW - 6, leftH - bump - TOOLBAR_H - GRID_INSET)
 		-- Compact: an overlay (own strip background) over the panel bottom, wide enough for 5 slots + button;
 		-- the controller decides when it is visible (Footer:SetVisible).
 		if compact then

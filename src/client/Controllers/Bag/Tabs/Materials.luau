@@ -48,6 +48,7 @@ function Materials.Detail(item)
 		NameY = 197,
 		Gap = 6,
 		DescBox = true,
+		DescSize = 22,
 		Icon = item.Icon,
 		Subline = { Kind = "Qty", Text = "Quantity: x" .. BagLogic.formatCount(item.Quantity), W = 229, H = 34 },
 		Description = item.Description,

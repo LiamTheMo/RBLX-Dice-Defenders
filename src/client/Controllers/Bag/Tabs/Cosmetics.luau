@@ -55,6 +55,7 @@ function Cosmetics.Detail(item)
 			Icon = if string.find(item.Type, "Dice") then "IconDice" else "IconCrown",
 		},
 		Divider = true,
+		DescSize = 23,
 		Description = item.Description,
 		Buttons = {
 			{ Id = "Equip", Label = "EQUIP", Style = "Green", Enabled = false, Hint = "Coming soon" },

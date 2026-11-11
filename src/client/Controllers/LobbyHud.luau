@@ -25,7 +25,7 @@ local BAG_CELL, BAG_GRID_X, BAG_ICON_SCALE = UDim2.fromOffset(104, 110), 114, 0.
 -- Icon art drawn at ref ink size: design px per export px (export 256 wide; the sprite margin is ~5 export px).
 local ICON_ART = {
 	Roll = Vector2.new(256, 185) * 0.415,
-	Quests = Vector2.new(256, 248) * 0.335,
+	Quests = Vector2.new(256, 248) * 0.42, -- ink 97x80 as in the ref
 	Bag = Vector2.new(256, 239) * 0.345,
 }
 local LABEL_Y = 89.5 -- label centre in the 114 px cell (ref label rows y 432 / 547 / 660)
@@ -120,7 +120,7 @@ local function iconButton(parent, o)
 			TextColor3 = UiKit.WHITE,
 			TextSize = 37,
 			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.new(0.5, 0, 0, LABEL_Y),
+			Position = UDim2.new(0.5, 0, 0, LABEL_Y + (o.LabelDrop or 0)),
 			Size = UDim2.fromOffset(CELL.X, 40),
 		}, content)
 		outline(label, 4)
@@ -338,7 +338,7 @@ function LobbyHud.build(parent, cb)
 		Name = "XpText",
 		BackgroundTransparency = 1,
 		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(0.5, 0, 0.5, -5),
+		Position = UDim2.new(0.5, 0, 0.5, -9.5),
 		Size = UDim2.fromOffset(584, 30),
 		ZIndex = 3,
 	}, xp)
@@ -488,13 +488,14 @@ function LobbyHud:SetBagMode(on: boolean)
 			box.AutomaticSize, box.Size = Enum.AutomaticSize.None, UDim2.fromOffset(200, 44)
 		end
 		xpText.AutomaticSize, xpText.Size = Enum.AutomaticSize.None, UDim2.fromOffset(584, 40)
-		xpText.Position = UDim2.new(0.5, 0, 0.5, -5)
+		xpText.Position = UDim2.new(0.5, 0, 0.5, -9.5)
 		xpText.UIListLayout.Padding = UDim.new(0, 32)
 		xp.Size = UDim2.fromOffset(584, 12)
 		self:_layoutXp(584, 12)
 	end
 	-- Bag refs draw the icon grid smaller and further left (pitch 104x110, centre x 114) so column 2 clears the window.
 	local grid = self.LeftGrid
+	grid.Visible = not (on and phone) -- modal bag covers column 2 on phones: hide the grid, restore on close
 	grid.Position = UDim2.new(0, if on then BAG_GRID_X else MARGIN + CELL.X, 0.5, if on then 38 else 44)
 	self.LeftCells.CellSize = if on then BAG_CELL else UDim2.fromOffset(CELL.X, CELL.Y)
 	for _, btn in grid:GetChildren() do

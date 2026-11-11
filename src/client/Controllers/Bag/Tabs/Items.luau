@@ -46,6 +46,8 @@ function Items.Detail(item)
 		NameY = 211,
 		Gap = 7,
 		Divider = true,
+		DividerLine = true, -- the ref draws a plain thin line here
+		DescSize = 26,
 		StepInline = true,
 		Icon = item.Icon,
 		Subline = {
@@ -58,7 +60,14 @@ function Items.Detail(item)
 		Description = item.Description,
 		Stepper = { Qty = 1, Max = item.Quantity, Enabled = false },
 		Buttons = {
-			{ Id = "Use", Label = "USE", Style = "Green", Enabled = false, Hint = "Coming soon" },
+			{
+				Id = "Use",
+				Label = "USE",
+				Style = "Green",
+				Icon = "IconFlaskWhite",
+				Enabled = false,
+				Hint = "Coming soon",
+			},
 			{ Id = "Lock", Label = "LOCK", Style = "Purple", Icon = "Lock", Enabled = false, Hint = "Coming soon" },
 			{ Id = "Sell", Label = "SELL", Style = "Red", Icon = "Coins", Enabled = false, Hint = "Coming soon" },
 		},
