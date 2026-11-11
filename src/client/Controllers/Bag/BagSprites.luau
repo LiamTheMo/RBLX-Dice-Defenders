@@ -251,7 +251,7 @@ return {
 		Size = Vector2.new(547, 125),
 		Ink = Rect.new(5, 5, 542, 120),
 	},
-	DividerGold = { Image = "rbxassetid://76841838528551", Size = Vector2.new(709, 54), Ink = Rect.new(5, 5, 704, 49) },
+	DividerGold = { Image = "rbxassetid://109715124095809", Size = Vector2.new(709, 54), Ink = Rect.new(5, 5, 704, 49) },
 	StatRow = {
 		Image = "rbxassetid://86132904333076",
 		Size = Vector2.new(367, 58),
@@ -368,4 +368,14 @@ return {
 		Size = Vector2.new(512, 506),
 		Ink = Rect.new(144, 136, 366, 354),
 	},
+	-- Loop 3
+	CheckWhite = { Image = "rbxassetid://114116013993489", Size = Vector2.new(53, 47), Ink = Rect.new(8, 8, 46, 37) },
+	StepMinus = { Image = "rbxassetid://117801302967018", Size = Vector2.new(94, 93), Ink = Rect.new(5, 5, 89, 88) },
+	StepPlus = { Image = "rbxassetid://112776734134955", Size = Vector2.new(95, 93), Ink = Rect.new(5, 5, 90, 88) },
+	IconFlaskWhite = {
+		Image = "rbxassetid://76935573916483",
+		Size = Vector2.new(104, 128),
+		Ink = Rect.new(5, 5, 99, 123),
+	},
+	BannerWide = { Image = "rbxassetid://96791195089932", Size = Vector2.new(701, 219), Ink = Rect.new(5, 5, 696, 214) },
 }
