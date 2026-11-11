@@ -5,12 +5,12 @@
 -- world / mode cards, die icons (colour squares now), rarity badges, results banner, toast frame.
 
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
 
 local NetClient = require(script.Parent.NetClient)
 local UiKit = require(script.Parent.UiKit)
 local LobbyHud = require(script.Parent.LobbyHud)
 local Bag = require(script.Parent.Bag.Bag)
+local QuestLog = require(script.Parent.QuestLog.QuestLog)
 local Display = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Display"))
 
 local make, panel, label, button = UiKit.make, UiKit.panel, UiKit.label, UiKit.button
@@ -42,7 +42,7 @@ local TOASTS = {
 	Network = "Connection problem",
 }
 local RESULT_TITLES = { Won = "Victory!", Lost = "Defeat", Aborted = "Run Ended", Error = "Something went wrong" }
-local PANELS = { "Play", "Deck", "Quests", "Profile" }
+local PANELS = { "Play", "Deck", "Profile" }
 
 local Lobby = {}
 
@@ -54,14 +54,13 @@ local draft = {} -- unsaved deck edit (client-only UI state)
 local selectedSlot = 1
 local dismissed = false
 local lobbyActive = false
-local questTimers = {} -- { label, base, resetAt }
 
 local function toast(text: string)
 	toastToken += 1
 	local token = toastToken
 	ui.Toast.Text = text
-	-- Bag open: sit over the HUD currency block so the bag banner, X and tabs stay visible.
-	if ui.Bag:IsOpen() then
+	-- Bag or Quest Log open: sit over the HUD currency block so the bag banner, X and tabs stay visible.
+	if ui.Bag:IsOpen() or ui.QuestLog:IsOpen() then
 		ui.ToastFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 		-- Clamped: on phones the HUD block is hidden and bottomTopReal is the screen height.
 		local y = math.min(ui.LobbyHud:GetBagInsets().bottomTopReal + 26, UiKit.screenSize(ui.Root).Y - 26)
@@ -135,11 +134,17 @@ local function outline(lbl)
 end
 
 local function showPanel(name: string?)
-	if name == "Bag" then -- the bag is its own window, not one of the placeholder panels
+	if name == "Bag" then -- the bag and quest log are their own windows, not placeholder panels
+		ui.QuestLog:Close()
 		ui.Bag:Toggle()
+		return
+	elseif name == "Quests" then
+		ui.Bag:Close()
+		ui.QuestLog:Toggle()
 		return
 	end
 	ui.Bag:Close()
+	ui.QuestLog:Close()
 	openPanel = name
 	for key, p in ui.Panels do
 		p.Frame.Visible = key == name
@@ -313,64 +318,6 @@ local function renderDeck()
 	end
 end
 
-local function formatReset(resetAt: number): string
-	local left = math.max(0, math.floor(resetAt - workspace:GetServerTimeNow()))
-	return ("Resets in %02d:%02d"):format(left // 3600, (left % 3600) // 60)
-end
-
-local function renderQuests()
-	local body = ui.Panels.Quests.Body
-	clear(body)
-	table.clear(questTimers)
-	local meta = NetClient.LastMeta
-	if not meta then
-		return
-	end
-	for i, quest in meta.Quests do
-		local r = row(body, i, 72)
-		text(r, quest.Name, UDim2.new(0.5, -8, 0, 28), UDim2.fromOffset(8, 6), 22)
-		local desc = text(r, quest.Desc, UDim2.new(0.5, -8, 0, 28), UDim2.fromOffset(8, 38), 18, CREAM)
-		if quest.Daily then
-			table.insert(questTimers, { Label = desc, Base = quest.Desc, ResetAt = meta.DailyResetAt })
-			desc.Text = quest.Desc .. " \u{00B7} " .. formatReset(meta.DailyResetAt)
-		end
-		label({
-			Text = ("%d/%d"):format(quest.Progress, quest.Goal),
-			Size = UDim2.new(0.16, 0, 0, 28),
-			Position = UDim2.new(0.5, 0, 0, 6),
-		}, r, 22)
-		text(r, ("+%d Gold"):format(quest.Gold), UDim2.new(0.18, 0, 0, 28), UDim2.new(0.5, 0, 0, 38), 18, GOLD)
-		local canClaim = quest.Progress >= quest.Goal and not quest.Claimed
-		if quest.Claimed then
-			label({
-				Text = "Claimed",
-				Size = UDim2.new(0.3, -8, 0, ROW),
-				AnchorPoint = Vector2.new(1, 0.5),
-				Position = UDim2.new(1, -8, 0.5, 0),
-				TextColor3 = GREEN,
-			}, r, 22)
-		else
-			local claim = button(
-				{
-					AnchorPoint = Vector2.new(1, 0.5),
-					Position = UDim2.new(1, -8, 0.5, 0),
-					Size = UDim2.new(0.3, -8, 0, ROW),
-					Text = "Claim",
-				},
-				r,
-				COPPER,
-				function()
-					if canClaim then
-						send("ClaimQuest", nil, quest.Id)
-					end
-				end
-			)
-			setEnabled(claim, canClaim, COPPER)
-			make("UISizeConstraint", { MinSize = Vector2.new(84, ROW) }, claim)
-		end
-	end
-end
-
 local function renderProfile(snap)
 	local body = ui.Panels.Profile.Body
 	clear(body)
@@ -406,7 +353,7 @@ local function renderState(snap)
 	ui.Root.Visible = active
 	if not active then
 		if lobbyActive then
-			showPanel(nil) -- also closes the bag; only on the transition, not every State tick
+			showPanel(nil) -- also closes the bag and quest log; only on the transition, not every State tick
 		end
 		lobbyActive = false
 		ui.ResultBackdrop.Visible = false
@@ -422,18 +369,8 @@ end
 local function renderMeta()
 	resetDraft()
 	renderDeck()
-	renderQuests()
 	local meta = NetClient.LastMeta
 	ui.LobbyHud:SetDeck(meta and meta.Deck)
-end
-
-local function tick()
-	if not ui.Root.Visible then
-		return
-	end
-	for _, timer in questTimers do
-		timer.Label.Text = timer.Base .. " \u{00B7} " .. formatReset(timer.ResetAt)
-	end
 end
 
 local function build()
@@ -451,6 +388,7 @@ local function build()
 	ui.Hud = ui.LobbyHud.Hud
 	-- Sibling of Hud (so Hud.Visible never hides it); Toast lives on the gui and stays above.
 	ui.Bag = Bag.new(ui.Root, { hud = ui.LobbyHud, toast = toast })
+	ui.QuestLog = QuestLog.new(ui.Root, { hud = ui.LobbyHud, toast = toast })
 
 	for _, name in PANELS do
 		newPanel(name)
@@ -531,7 +469,6 @@ function Lobby.Start()
 			end
 		end)
 	)
-	table.insert(connections, RunService.Heartbeat:Connect(tick))
 
 	renderMeta()
 	renderState(NetClient.Last or { Phase = "Loading" })
@@ -544,6 +481,9 @@ function Lobby.Destroy()
 	table.clear(connections)
 	if ui and ui.Bag then
 		ui.Bag:Destroy()
+	end
+	if ui and ui.QuestLog then
+		ui.QuestLog:Destroy()
 	end
 	if gui then
 		gui:Destroy()
