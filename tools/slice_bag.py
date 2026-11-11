@@ -4,6 +4,7 @@ Usage: python tools/slice_bag.py
 Reads Assets/UI/bag menu/<Folder>/<sheet>.png, writes Assets/UI/bag menu/export/Bag_<Name>.png
 plus export/manifest.json (name, w, h, slice) -> copy into src/client/Controllers/Bag/BagSprites.luau.
 Rects are alpha>=160 bounding boxes measured from the sheets (x, y, w, h). Needs Pillow + numpy.
+Usage: python tools/slice_bag.py [Name ...] cuts only the named sprites (and merges into manifest.json). Every entry gets "ink" = [l, t, r, b], the alpha>=160 box.
 Sprites in SLICED get a SliceCenter measured on the export, then moved inward until the art is flat across each line,
 and their stretch regions are rebuilt as plain interpolations (Roblox's 9-slice does not sample its pieces continuously,
 so any variation across a slice line renders as a hard step).
@@ -11,6 +12,7 @@ so any variation across a slice line renders as a hard step).
 
 import json
 import math
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -90,15 +92,27 @@ SPRITES = {
     "IconTarget": ("Dice/icons-badges-and-effects.png", (1130, 293, 117, 119), 128, 12),
     "IconHourglass": ("Dice/icons-badges-and-effects.png", (1277, 296, 84, 110), 128, 12),
     "IconFlame": ("Dice/icons-badges-and-effects.png", (1401, 291, 102, 113), 128, 12),
+    # Loop 2: items name ribbon, selected copper cards (glow incl.), badge, stats side lines (L: diamond at its right end; R = mirror),
+    # cosmetics flags, wide pill, portal ring. Rects are alpha>=160 boxes (the ring's soft halo is feathered out over the margin).
+    "ItemsNameRibbon": ("Items/icons-effects-regenerated-v2.png", (371, 536, 761, 146), 720, SHEET_MARGIN),
+    "CardCopperSelected": ("Cosmetics/controls-regenerated.png", (436, 42, 353, 353), 285, 14),  # same scale as CardCopper; 14 px glow, neighbours sit 17 px away
+    "CardCopperSelectedMaroon": ("Cosmetics/controls-regenerated.png", (436, 42, 353, 353), 285, 14),
+    "CheckBadge": ("Materials/icons-badges-and-effects.png", (1043, 266, 97, 99), 72, SHEET_MARGIN),
+    "StatsLineL": ("Dice/icons-badges-and-effects.png", (1172, 831, 267, 27), 190, SHEET_MARGIN),
+    "StatsLineR": ("Dice/icons-badges-and-effects.png", (1172, 831, 267, 27), 190, SHEET_MARGIN),
+    "CosFlagLeft": ("Cosmetics/icons-badges-and-effects.png", (41, 439, 184, 297), 250, SHEET_MARGIN),
+    "CosFlagRight": ("Cosmetics/icons-badges-and-effects.png", (259, 439, 183, 297), 250, SHEET_MARGIN),
+    "PillWide": ("Cosmetics/controls-regenerated.png", (1020, 900, 453, 92), 453, SHEET_MARGIN),
+    "GlowRing": ("Cosmetics/icons-badges-and-effects.png", (473, 788, 568, 212), 560, 24),
 }
 # Sliced, height-fitted controls: export height (px, margin included) ~2x the largest full-tier draw height.
 HEIGHTS = {
     "TabPurple": 120, "TabGold": 120, "BtnGreen": 112, "BtnRed": 112, "BtnGold": 112, "BtnPurple": 112, "Search": 112,
     "Sort": 112, "PillGold": 60, "PillPurple": 60, "PillBlue": 60, "PillGreen": 60, "PillGrey": 60, "PillPink": 60,
-    "QtyMinus": 112, "QtyField": 112, "QtyPlus": 112, "LevelTrack": 52,
+    "QtyMinus": 112, "QtyField": 112, "QtyPlus": 112, "LevelTrack": 52, "PillWide": 76,
 }
 VERTICAL = {"ScrollTrack", "ScrollThumb"}  # sliced top/bottom only: Slice = Rect(0, t, w, h - b); draw with SliceScale = draw width / Size.X
-FEATHER = {"EquippedPill"}  # baked halo runs into the next element on the sheet: fade it to nothing over the margin
+FEATHER = {"EquippedPill", "GlowRing", "CardCopperSelected", "CardCopperSelectedMaroon"}  # baked halo runs into the next element on the sheet: fade it to nothing over the margin
 ERASE_GLYPH = {"QtyMinus": (11, 3), "QtyPlus": (7, 0)}  # the baked -/+ is drawn live; fill its area (pad, extra pad below) from the art around it
 # Keep the baked chevron / check mark: the right-hand band is neither rebuilt nor checked. Value = (t_max, b_min) rows that bracket the
 # glyph and its outline so no slice line crosses it (None where the pill's own corner arc forbids that: the line crosses the glyph).
@@ -123,6 +137,7 @@ SLICED = {
     "PillGold": None, "PillPurple": None, "PillBlue": None, "PillGreen": None, "PillGrey": None, "PillPink": None,
     "QtyMinus": None, "QtyField": None, "QtyPlus": None, "EquippedPill": (0, 0, 76, 0),
     **{f"Card{r}": None for r in CARD_FILL}, "CardCopper": None, "CardCopperMaroon": None, "StatRow": None,
+    "CardCopperSelected": None, "CardCopperSelectedMaroon": None, "PillWide": None,
     "ScrollTrack": None, "ScrollThumb": None,
 }
 
@@ -318,6 +333,31 @@ def recolor_close(arr: np.ndarray) -> np.ndarray:
     return arr
 
 
+def recolor_tone(arr: np.ndarray, pairs: list[tuple[str, str, float]]) -> np.ndarray:
+    """Shift colours near each src hex by (dst - src), full strength within tol / 2, fading out by `tol` RGB distance, so the art's own shading survives.
+    Overlapping pairs blend their shifts (weights normalised, total strength capped at 1). Alpha is untouched."""
+    rgb = arr[..., :3].astype(np.float32)
+    num = np.zeros_like(rgb)
+    tot = np.zeros(rgb.shape[:2], np.float32)
+    for src, dst, tol in pairs:
+        w = np.clip(2 - 2 * np.linalg.norm(rgb - _hexrgb(src), axis=-1) / tol, 0, 1)  # full shift inside tol / 2
+        w = w * w * (3 - 2 * w)
+        num += w[..., None] * (_hexrgb(dst) - _hexrgb(src))
+        tot += w
+    arr[..., :3] = np.clip(rgb + num / np.maximum(tot, 1)[..., None], 0, 255).astype(np.uint8)
+    return arr
+
+
+def strip_left_diamond(px: np.ndarray, margin: int) -> np.ndarray:
+    """StatsLine: drop the left diamond (columns where > 12 rows are opaque) and crop to the line plus margin; the right diamond stays."""
+    cols = (px[..., 3] >= 160).sum(0)
+    wide = np.where(cols > 12)[0]
+    x = int(wide[wide < px.shape[1] // 3].max()) + 1
+    px = px[:, x - margin :].copy()
+    px[:, :margin, 3] = 0
+    return px
+
+
 def recolor_card(arr: np.ndarray, rim: str | None, fill: str | None, d: int, white: float = 0.5) -> np.ndarray:
     """Recolour a frame by region: the rim (every pixel within d px of the silhouette edge, outlines included) takes the rim colour
     scaled by its grey level (highlights go toward white by `white`), the interior takes the fill colour scaled the same way, so the
@@ -348,9 +388,16 @@ def recolor_card(arr: np.ndarray, rim: str | None, fill: str | None, d: int, whi
 TAB_REF = ("dice-reference.png", (1075, 147, 20, 48))
 RECOLOR = {f"Card{r}": (lambda a, c=c: recolor_card(a, c[0], c[1], 17)) for r, c in CARD_FILL.items()}
 RECOLOR["CardCopperMaroon"] = lambda a: recolor_card(a, None, "421717", 18)
-RECOLOR["Window"] = recolor_window
-RECOLOR["Close"] = recolor_close
-RECOLOR["StatRow"] = lambda a: recolor_card(a, "8A3C86", "320E2B", 12, 0)  # reference row: #320E2B fill, faint #5A2A58 rim
+RECOLOR["CardCopperSelectedMaroon"] = lambda a: recolor_card(a, None, "421717", 24)
+RECOLOR["Window"] = lambda a: recolor_tone(
+    recolor_window(a),  # loop 2: rim top #FE8805 -> #FDA828, bottom #E16002 -> #FC8C23; fill #361422 / #411415 -> ref red-brown #3E130E / #44150D
+    [("FE8805", "FDA828", 32), ("E16002", "FC8C23", 32), ("361422", "3E130E", 28), ("411415", "44150D", 20)],
+)
+RECOLOR["Close"] = lambda a: recolor_tone(recolor_close(a), [("F8B695", "FDE9C3", 30)])  # outer highlight -> ref cream
+RECOLOR["LeftPanel"] = lambda a: recolor_tone(a, [("FFB465", "FAFAEC", 30)])  # rim highlight -> ref cream
+RECOLOR["Detail"] = lambda a: recolor_tone(a, [("E76E28", "F2855D", 28)])
+RECOLOR["Strip"] = lambda a: recolor_tone(a, [("CE1FA1", "A82B8B", 30)])
+RECOLOR["StatRow"] = lambda a: recolor_card(a, "663064", "320E2B", 12, 0)  # reference row: #320E2B fill, subtle #5A2A58 rim
 
 
 def cut(img: Image.Image, rect, base: int, k: float, m: int, recolor=None, feather: bool = False):
@@ -484,10 +531,17 @@ def seamproof(px: np.ndarray, lines: list[int], keep_right: bool = False, bracke
     raise RuntimeError("seamproof did not converge")
 
 
+def ink_box(px: np.ndarray) -> list[int]:
+    ys, xs = np.where(px[..., 3] >= 160)
+    return [int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1]
+
+
 def main() -> None:
     OUT.mkdir(exist_ok=True)
+    only = set(sys.argv[1:])
     sheets: dict[str, Image.Image] = {}
-    manifest = {}
+    old = OUT / "manifest.json"
+    manifest = json.loads(old.read_text()) if only and old.exists() else {}
     ref = np.array(Image.open(SRC / PILL_PINK_REF[0]).convert("RGB"))
     x0, y0, x1, y1 = PILL_PINK_REF[1]
     pink_ref = np.median(ref[y0:y1, x0:x1].reshape(-1, 3), 0)
@@ -496,11 +550,19 @@ def main() -> None:
     RECOLOR["TabPurple"] = lambda a: recolor_pink(a, tab_ref, (0.15, 0.8))
     shared: dict[str, tuple[float, int]] = {}
     for name, (sheet, rect, side, margin) in SPRITES.items():
+        if only and name not in only:
+            continue
         img = sheets.setdefault(sheet, Image.open(SRC / sheet).convert("RGBA"))
         k, m = shared[SHARED_SCALE[name]] if name in SHARED_SCALE else fit(rect[2], rect[3], margin, side=side, height=HEIGHTS.get(name))
         shared[name] = (k, m)
         recolor = (lambda a: recolor_pink(a, pink_ref)) if name == "PillPink" else RECOLOR.get(name)
         px, masked = cut(img, rect, margin, k, m, recolor, name in FEATHER)
+        if name == "GlowRing":  # a faint streak of the neighbouring art survives at alpha <= 25: the halo below that is invisible anyway
+            px[..., 3][px[..., 3] < 28] = 0
+        if name.startswith("StatsLine"):
+            px = strip_left_diamond(px, m)
+            if name == "StatsLineR":
+                px = px[:, ::-1].copy()
         assert px.shape[0] <= 1024 and px.shape[1] <= 1024, name
         info = {"w": px.shape[1], "h": px.shape[0]}
         note = f"k={k:.3f} m={m}" + (f" MASKED {masked} opaque neighbour px" if masked else "")
@@ -515,9 +577,13 @@ def main() -> None:
             note += f" {line}" + "".join(f" WARN {n}" for n in notes)
         if name == "Window":
             px = trim_outline(px)
+        info["ink"] = ink_box(px)
         Image.fromarray(px).save(OUT / f"Bag_{name}.png", optimize=True)
         manifest[name] = info
         print(f"{name}: {px.shape[1]}x{px.shape[0]} {note}")
+    if only:
+        old.write_text(json.dumps(manifest, indent=1))
+        return
     gx, gy, gw, gh = GLOW_BBOX
     glow = Image.open(GLOW_SRC).convert("RGBA").crop((gx, gy, gx + gw, gy + gh))
     size = (round(gw * GLOW_SIDE / max(gw, gh)), round(gh * GLOW_SIDE / max(gw, gh)))

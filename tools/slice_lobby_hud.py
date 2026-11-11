@@ -1,6 +1,6 @@
 """Cut the lobby HUD sprites out of the source sheets into clean, upload-ready PNGs.
 
-Usage: python tools/slice_lobby_hud.py
+Usage: python tools/slice_lobby_hud.py [Name ...]  (names given: cut only those, merge into manifest.json)
 Reads Assets/UI/lobby HUD/*.png, writes Assets/UI/lobby HUD/export/<Name>.png
 (names match the keys in src/client/Controllers/Sprites.luau). Needs Pillow + numpy.
 Rects are alpha>16 bounding boxes measured from the sheets (x, y, w, h); Icon_Roll is its own file, alpha>=8 bbox.
@@ -11,11 +11,12 @@ get their SliceCenter in export/manifest.json.
 
 import json
 import math
+import sys
 from pathlib import Path
 
 from PIL import Image
 
-from slice_bag import cut, fit, seamproof, measure
+from slice_bag import cut, fit, measure, recolor_tone, seamproof
 
 SRC = Path(__file__).resolve().parent.parent / "Assets" / "UI" / "lobby HUD"
 OUT = SRC / "export"
@@ -47,6 +48,7 @@ SPRITES = {
 }
 HEIGHTS = {"XpTrack": 24}  # export height (margin included) ~2x the drawn 12 px
 SLICED = {"XpTrack", "XpFill"}
+RECOLOR = {"Icon_Settings": lambda a: recolor_tone(a, [("F99E09", "FCBB13", 45)])}  # gear body -> the HUD reference gold
 PAD = {"xptrack.png": 64}  # transparent border added to the sheet: its art runs to 13 px from the edge, less than the margin
 XP_CHANNEL = (70, 273, 2032, 163)  # xptrack.png: the purple channel inside the copper rim (x, y, w, h)
 XP_FILL_INSET = 4  # source px of dark channel kept around the fill, as in the xpbar.png mock-up
@@ -55,9 +57,13 @@ XP_FILL_INSET = 4  # source px of dark channel kept around the fill, as in the x
 def main() -> None:
     OUT.mkdir(exist_ok=True)
     sheets: dict[str, Image.Image] = {}
-    manifest = {}
+    only = set(sys.argv[1:])
+    old = OUT / "manifest.json"
+    manifest = json.loads(old.read_text()) if only and old.exists() else {}
     shared = None
     for name, (sheet, rect, side) in SPRITES.items():
+        if only and name not in only:
+            continue
         if sheet not in sheets:
             img = Image.open(SRC / sheet).convert("RGBA")
             p = PAD.get(sheet, 0)
@@ -71,7 +77,7 @@ def main() -> None:
             m = max(MARGIN, math.ceil(3 / k) + 2)
         else:
             k, m = fit(rect[2], rect[3], MARGIN, side=side, height=HEIGHTS.get(name), inc_margin=True)
-        px, masked = cut(img, rect, MARGIN, k, m)
+        px, masked = cut(img, rect, MARGIN, k, m, RECOLOR.get(name))
         if name == "XpTrack":
             shared = (px.shape[1] / (rect[2] + 2 * m), m)  # effective x scale after rounding, margin
         info = {"w": px.shape[1], "h": px.shape[0]}
