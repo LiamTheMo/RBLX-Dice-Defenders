@@ -7,6 +7,12 @@
 -- Ink = the opaque (alpha >= 160) box inside the export: the art is drawn smaller than its Size by this transparent margin.
 
 return {
+	-- BannerScroll: the one-piece bag banner (cut whole from New/reference.png), sized like the Quest Log scroll
+	BannerScroll = {
+		Image = "rbxassetid://75285930298271",
+		Size = Vector2.new(1023, 217),
+		Ink = Rect.new(5, 5, 1018, 212),
+	},
 	Banner = { Image = "rbxassetid://76738978316837", Size = Vector2.new(615, 218), Ink = Rect.new(5, 5, 610, 213) },
 	Window = {
 		Image = "rbxassetid://84082480203360",
