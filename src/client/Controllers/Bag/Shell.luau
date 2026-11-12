@@ -2,7 +2,8 @@
 -- Design px under one UIScale. Switching tabs never touches anything here except the tab sprites.
 -- Shell.new(parent, { fit = () -> { leftReal, bottomTopReal } }) -> shell (see :methods below).
 -- Optional deps for other menus (defaults = the Bag): name, banner { sprite, full, compact, top, topCompact, text, textPos,
--- textSize, textFull, textCompact }, detail (sprite key or record), fullDetail (detail panel as tall as the left one).
+-- textSize, textFull, textCompact }, detail (sprite key or record), fullDetail (detail panel as tall as the left one),
+-- free (no tabs or panels: one Slots.Content box from freeTop; window, banner and close run the same code as the Bag).
 
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
@@ -36,6 +37,7 @@ local TIER = {
 		detailCut = -6, -- both panels reach the window's content bottom on every tab (Dice: level with the footer strip's bottom rim, 830)
 		detailInset = 35, -- detail slot ends above the panel bottom: action row top ~688
 		contentTop = 119.5,
+		freeTop = 59, -- free mode (no tab bar): content top, the Play reference's columns at y 156
 		bottomPad = 32, -- + my: content bottom to window box bottom (rim inner edge 10 px below the content)
 		pitch = 142,
 	},
@@ -58,6 +60,7 @@ local TIER = {
 		detailCut = 0,
 		detailInset = 8,
 		contentTop = 92,
+		freeTop = 38,
 		bottomPad = 16,
 		pitch = 120,
 	},
@@ -116,30 +119,35 @@ function Shell.new(parent, deps)
 	Parts.skin(chrome, "Window", TIER.Full.rim)
 	self.Chrome = chrome
 
-	-- Content: left column (toolbar, grid, footer) + detail.
+	-- Content: left column (toolbar, grid, footer) + detail; free mode: the bare content box only.
+	local free = deps.free
 	local content = frame("Content", window, Z + 2)
-	local left = frame("Left", content, Z + 3)
-	local leftPanel = make("ImageLabel", {
-		Name = "LeftPanel",
-		BackgroundTransparency = 1,
-		Size = UDim2.fromScale(1, 1),
-		ZIndex = Z + 2,
-	}, left)
-	Parts.skin(leftPanel, "LeftPanel", 0.5)
-	local toolbar = frame("Toolbar", left, Z + 5)
-	local grid = frame("Grid", left, Z + 3)
-	local footer = frame("Footer", left, Z + 14) -- above grid and detail (Global ZIndex gui); below popups (45)
-	local detail = make("ImageLabel", {
-		Name = "Detail",
-		BackgroundTransparency = 1,
-		ZIndex = Z + 2,
-	}, content)
-	Parts.skin(detail, deps.detail or "Detail", 0.5)
-	local detailSlot = frame("Slot", detail, Z + 3)
-	detailSlot.Size = UDim2.fromScale(1, 1)
-	self.LeftPanel, self.Content, self.Left = leftPanel, content, left
-	self.Slots = { Toolbar = toolbar, Grid = grid, Footer = footer, Detail = detailSlot }
-	self._detail = detail
+	self.Content, self.Slots = content, { Content = content }
+	local left, leftPanel, toolbar, grid, footer, detail, detailSlot
+	if not free then
+		left = frame("Left", content, Z + 3)
+		leftPanel = make("ImageLabel", {
+			Name = "LeftPanel",
+			BackgroundTransparency = 1,
+			Size = UDim2.fromScale(1, 1),
+			ZIndex = Z + 2,
+		}, left)
+		Parts.skin(leftPanel, "LeftPanel", 0.5)
+		toolbar = frame("Toolbar", left, Z + 5)
+		grid = frame("Grid", left, Z + 3)
+		footer = frame("Footer", left, Z + 14) -- above grid and detail (Global ZIndex gui); below popups (45)
+		detail = make("ImageLabel", {
+			Name = "Detail",
+			BackgroundTransparency = 1,
+			ZIndex = Z + 2,
+		}, content)
+		Parts.skin(detail, deps.detail or "Detail", 0.5)
+		detailSlot = frame("Slot", detail, Z + 3)
+		detailSlot.Size = UDim2.fromScale(1, 1)
+		self.LeftPanel, self.Left = leftPanel, left
+		self.Slots = { Toolbar = toolbar, Grid = grid, Footer = footer, Detail = detailSlot }
+		self._detail = detail
+	end
 
 	-- Tab bar.
 	local tabBar = frame("TabBar", window, Z + 3)
@@ -224,7 +232,8 @@ function Shell.new(parent, deps)
 		else
 			winW = 2 * side + gap + leftW + detailW
 		end
-		local contentTop, bottomPad = t.contentTop + t.my, t.bottomPad + (if compact then 0 else t.my)
+		local contentTop = (if free then t.freeTop else t.contentTop) + t.my
+		local bottomPad = t.bottomPad + (if compact then 0 else t.my)
 		local contentH = hf - contentTop - bottomPad
 		-- Left column is one box on every tab: the panel fills it, minus the footer strip when the Dice footer shows
 		-- (compact: the footer overlays the panel bottom).
@@ -246,32 +255,34 @@ function Shell.new(parent, deps)
 
 		content.Position = UDim2.fromOffset(side, contentTop)
 		content.Size = UDim2.fromOffset(winW - 2 * side, contentH)
-		left.Size = UDim2.fromOffset(leftW, contentH)
-		-- Full: the panel rim shows 1 px in from its box on the left and 3 px on the right (visible 239-1012)
-		leftPanel.Position = UDim2.fromOffset(if compact then 0 else 1, 0)
-		leftPanel.Size = UDim2.fromOffset(if compact then leftW else leftW + 2, leftH)
-		toolbar.Size = UDim2.fromOffset(leftW, TOOLBAR_H)
-		grid:SetAttribute("FooterInset", FOOTER_H + GAP - cut) -- Cosmetics sizes its cards as if the Dice footer were shown
-		grid.Position = UDim2.fromOffset(3, TOOLBAR_H)
-		grid.Size = UDim2.fromOffset(leftW - 6, leftH - bump - TOOLBAR_H - GRID_INSET)
-		-- Compact: an overlay (own strip background) over the panel bottom, wide enough for 5 slots + button;
-		-- the controller decides when it is visible (Footer:SetVisible).
-		if compact then
-			footer.Position = UDim2.fromOffset(0, contentH - FOOTER_H)
-			footer.Size = UDim2.fromOffset(leftW, FOOTER_H)
-		else
-			-- FOOTER_BOX is the reference-frame size; a narrower window narrows the left column, so the strip
-			-- loses the same width (else it runs over the detail panel).
-			local fullLeftW = fullW - 2 * side - gap - DETAIL_MAX
-			-- Strip rim lines up with the left panel's (its box margins are 4 left / 6 right) and ends level with the
-			-- detail panel's bottom rim.
-			footer.Position = UDim2.fromOffset(-1, contentH + 8 - (FOOTER_BOX.Y - 2))
-			footer.Size = UDim2.fromOffset(FOOTER_BOX.X - math.max(0, fullLeftW - leftW) + 2.5, FOOTER_BOX.Y - 2)
+		if not free then -- the Bag / Quest Log panels (free mode has only the content box)
+			left.Size = UDim2.fromOffset(leftW, contentH)
+			-- Full: the panel rim shows 1 px in from its box on the left and 3 px on the right (visible 239-1012)
+			leftPanel.Position = UDim2.fromOffset(if compact then 0 else 1, 0)
+			leftPanel.Size = UDim2.fromOffset(if compact then leftW else leftW + 2, leftH)
+			toolbar.Size = UDim2.fromOffset(leftW, TOOLBAR_H)
+			grid:SetAttribute("FooterInset", FOOTER_H + GAP - cut) -- Cosmetics sizes its cards as if the Dice footer were shown
+			grid.Position = UDim2.fromOffset(3, TOOLBAR_H)
+			grid.Size = UDim2.fromOffset(leftW - 6, leftH - bump - TOOLBAR_H - GRID_INSET)
+			-- Compact: an overlay (own strip background) over the panel bottom, wide enough for 5 slots + button;
+			-- the controller decides when it is visible (Footer:SetVisible).
+			if compact then
+				footer.Position = UDim2.fromOffset(0, contentH - FOOTER_H)
+				footer.Size = UDim2.fromOffset(leftW, FOOTER_H)
+			else
+				-- FOOTER_BOX is the reference-frame size; a narrower window narrows the left column, so the strip
+				-- loses the same width (else it runs over the detail panel).
+				local fullLeftW = fullW - 2 * side - gap - DETAIL_MAX
+				-- Strip rim lines up with the left panel's (its box margins are 4 left / 6 right) and ends level with the
+				-- detail panel's bottom rim.
+				footer.Position = UDim2.fromOffset(-1, contentH + 8 - (FOOTER_BOX.Y - 2))
+				footer.Size = UDim2.fromOffset(FOOTER_BOX.X - math.max(0, fullLeftW - leftW) + 2.5, FOOTER_BOX.Y - 2)
+			end
+			local detailH = contentH - cut
+			detail.Position = UDim2.fromOffset(leftW + gap, 0)
+			detail.Size = UDim2.fromOffset(detailW, detailH)
+			detailSlot.Size = UDim2.fromOffset(detailW, detailH - t.detailInset) -- offsets: Parts read slot widths in design px
 		end
-		local detailH = contentH - cut
-		detail.Position = UDim2.fromOffset(leftW + gap, 0)
-		detail.Size = UDim2.fromOffset(detailW, detailH)
-		detailSlot.Size = UDim2.fromOffset(detailW, detailH - t.detailInset) -- offsets: Parts read slot widths in design px
 		for _, slotFrame in self.Slots do
 			slotFrame:SetAttribute("Compact", compact)
 		end
