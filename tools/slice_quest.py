@@ -425,7 +425,10 @@ def write_luau() -> None:
     lines.append("}")
     LUAU.parent.mkdir(parents=True, exist_ok=True)
     LUAU.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")  # LF like the repo (stylua)
-    subprocess.run(["stylua", str(LUAU)], check=False)  # wrap long entries the way the repo's formatter wants
+    try:
+        subprocess.run(["stylua", str(LUAU)], check=False)  # wrap long entries the way the repo's formatter wants
+    except FileNotFoundError:
+        print("stylua not found: run it on", LUAU)
     print("wrote", LUAU)
 
 
