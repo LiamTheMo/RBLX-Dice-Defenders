@@ -51,6 +51,8 @@ COMP = {
     "LaurelL": ("H", (1140, 230, 1250, 375)),
     "LaurelR": ("H", (1283, 230, 1398, 375)),
 }
+INSET_R = {"WorldFrost": 3}  # right-side inset override: the Frost die's outline reaches 7 px from the rim, the default 10 cut its right face
+PAD_R = {"WorldFrost": 6}  # px mirrored onto the right edge so the die keeps >= 6 px to the card rim after the live stroke + corner
 INSET = {"WorldDice": 18, "WorldShadow": 11}  # px inside the rim's inner edge; default 10 (corner arc radius ~30 on the small cards, ~60 on the big one)
 WORLDS = {  # inner edge of the gold rim (x0,y0,x1,y1) measured on play-world-cards.png
     "WorldDice": (318, 44, 1221, 393),
@@ -79,7 +81,8 @@ def crop_rect(w: int, h: int, tw: int, th: int, ax: float = 0.5, ay: float = 0) 
 def world(name: str) -> tuple[np.ndarray, dict]:
     x0, y0, x1, y1 = WORLDS[name]
     d = INSET.get(name, 10)
-    px = np.array(Image.open(SRC / "play-world-cards.png").convert("RGBA"))[y0 + d : y1 - d, x0 + d : x1 - d].copy()
+    px = np.array(Image.open(SRC / "play-world-cards.png").convert("RGBA"))[y0 + d : y1 - d, x0 + d : x1 - INSET_R.get(name, d)].copy()
+    px = np.pad(px, ((0, 0), (0, PAD_R.get(name, 0)), (0, 0)), mode="reflect")
     px[..., 3] = 255
     h, w = px.shape[:2]
     return px, {"rects": {k: crop_rect(w, h, *t, *ALIGN.get(name, {}).get(k, (0.5, 0))) for k, t in TARGETS.items()}}

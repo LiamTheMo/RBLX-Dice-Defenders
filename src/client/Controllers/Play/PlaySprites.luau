@@ -52,12 +52,12 @@ return {
 		Preview = Rect.new(150, 0, 718, 313),
 	},
 	WorldFrost = {
-		Image = "rbxassetid://83351968763600",
-		Size = Vector2.new(318, 180),
-		Ink = Rect.new(0, 0, 318, 180),
-		Card = Rect.new(0, 0, 318, 130),
-		CardSel = Rect.new(0, 0, 318, 147),
-		Preview = Rect.new(0, 0, 318, 175),
+		Image = "rbxassetid://78301219301212",
+		Size = Vector2.new(331, 180),
+		Ink = Rect.new(0, 0, 331, 180),
+		Card = Rect.new(0, 0, 331, 135),
+		CardSel = Rect.new(0, 0, 331, 153),
+		Preview = Rect.new(2, 0, 329, 180),
 	},
 	WorldMagma = {
 		Image = "rbxassetid://77757739631030",

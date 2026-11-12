@@ -34,6 +34,29 @@ local function measure(str: string, size: number): number
 	return TextService:GetTextSize(str, size, Enum.Font.FredokaOne, Vector2.new(1e5, 1e5)).X
 end
 
+-- A-15: TextSize = min(size for the reference cap height, size whose ink width equals the reference ink width); these are the reference ink widths (ref px).
+local TITLE_REF = { ["DICE KINGDOM"] = 213, ["FROST PEAKS"] = 192, ["MAGMA CITADEL"] = 239, ["SHADOW REALM"] = 233 }
+local REW_REF = {
+	["+250"] = 55,
+	["+3"] = 27,
+	["+1"] = 20,
+	CRYSTALS = 79,
+	["LUCK POTIONS"] = 122,
+	["TREASURE CHEST"] = 121,
+	EXCLUSIVE = 82,
+	BANNER = 62,
+	["RARE DIE"] = 78,
+	["CROWN COSMETIC"] = 129,
+	["+5,000 GEMS"] = 100,
+}
+local function titleSize(s: number): number -- one size for every card title: the tightest of the four ref widths
+	local m = 40 * s
+	for name, ref in TITLE_REF do
+		m = math.min(m, ref * s * 100 / measure(name, 100))
+	end
+	return math.floor(m)
+end
+
 local function rec(name: string)
 	return PlaySprites[name] or Q[name]
 end
@@ -52,7 +75,7 @@ local function label(parent, o)
 		TextXAlignment = if o.AX == 0 then Enum.TextXAlignment.Left else Enum.TextXAlignment.Center,
 		ZIndex = o.Z,
 	}, o.Stroke or 3)
-	l.TextSize = Parts.fitSize(o.Plain or o.Text, o.W * 0.95, o.Size, o.Min or 12) -- 5% spare: hinting at fractional UI scales widens text
+	l.TextSize = Parts.fitSize(o.Plain or o.Text, o.Fit or o.W * 0.95, o.Size, o.Min or 12) -- 5% spare: hinting at fractional UI scales widens text
 	return l
 end
 
@@ -127,10 +150,10 @@ end
 
 local function cardPill(card, wd, L, s, w, h)
 	local compact = L.compact
-	local pw, ph = round(266 * s), round(43 * s)
+	local pw, ph = round(257 * s), round(43 * s) -- ink 266 draws ~275 visible: 257 lands the visible pill on the ref 266
 	local cx, cy = round(8 * s) + pw / 2, h - round(5 * s) - ph / 2
 	if compact then
-		pw, ph = w - 16 - (if wd.Locked then 24 else 0), 26 -- a locked card keeps its padlock beside the pill
+		pw, ph = w - 16 - (if wd.Locked then 30 else 0), 26 -- a locked card keeps its padlock beside the pill
 		cx, cy = 8 + pw / 2, h - 5 - ph / 2
 	end
 	local z = card.ZIndex
@@ -170,7 +193,7 @@ local function cardPill(card, wd, L, s, w, h)
 end
 
 local GLOW_K = 0.56 -- CellSelected: ~22 sprite px of glow outside its bright line -> ~12 px bloom outside the card edge
-local CARD_L, CARD_R = 12, 4 -- full-size cards sit inset so the glow (12 px) leaves a dark gap to the window rim and the mid panel
+local CARD_L, CARD_R = 8, 4 -- the 12 px glow then ends on the window's inner rim (never clipped) and 2 px short of the mid panel
 
 local function buildCard(self, host, wd, x, y, w, h, sel, crop, s, L)
 	local art = PlaySprites[wd.Art]
@@ -200,7 +223,7 @@ local function buildCard(self, host, wd, x, y, w, h, sel, crop, s, L)
 	label(card, {
 		Name = "Title",
 		Text = wd.Name,
-		Size = if L.compact then 18 else round(40 * s), -- cap 0.57 x size: ref cap 23
+		Size = if L.compact then 20 else titleSize(s), -- A-15: min(cap 23, ref ink width) = 33 at 1672
 		Min = if L.compact then 18 else 14,
 		AX = 0,
 		X = if L.compact then 8 else 12,
@@ -300,11 +323,11 @@ end
 
 -- Per-icon fit boxes (ref ink sizes); the sprite keeps its own aspect inside the box.
 local ICON_BOX = {
-	IconCrystals = { 82, 72 },
-	Potion = { 60, 70 },
-	IconChest = { 80, 66 },
-	RewardBanner = { 112, 70 },
-	IconGalaxyDie = { 84, 74 },
+	IconCrystals = { 67, 59 },
+	Potion = { 60, 62 },
+	IconChest = { 84, 62 },
+	RewardBanner = { 105, 58 },
+	IconGalaxyDie = { 68, 68 },
 }
 
 local function rewardLines(row, lines, cx, cy, w, sizes, z)
@@ -312,7 +335,7 @@ local function rewardLines(row, lines, cx, cy, w, sizes, z)
 	for i = 1, #lines do
 		total += sizes[i] + 1
 	end
-	local y = cy - total / 2
+	local y = cy - total / 2 - 2 -- caps sit ~2 px low in their em box: keep >= 5 px clear of the rim top and bottom
 	for i, str in lines do
 		local sz = sizes[i]
 		label(row, {
@@ -320,9 +343,10 @@ local function rewardLines(row, lines, cx, cy, w, sizes, z)
 			Text = str,
 			Size = sz,
 			Min = 12,
+			Fit = REW_REF[str],
 			X = cx,
 			Y = y + (sz + 1) / 2,
-			W = w,
+			W = w + 16, -- wider than the 126 text column so a ref-width line (CROWN COSMETIC 129) never truncates
 			H = sz + 2,
 			Stroke = 2,
 			Z = z,
@@ -377,12 +401,26 @@ local function buildRow(host, row, x, y, w, h, compact, f)
 		Size = UDim2.fromOffset(w, h),
 		ZIndex = host.ZIndex + 1,
 	}, "Frame")
-	skin(frame, Q.Row, w / 2, h / 2, w, h, nil, frame.ZIndex + 1, "Skin")
+	-- the Row sprite's ink includes ~3.7 sprite px of dark outer line each side: draw the ink bigger so the VISIBLE rim fills the row box (ref 397x72)
+	skin(
+		frame,
+		Q.Row,
+		w / 2,
+		h / 2,
+		w + (if compact then 0 else 7),
+		h + (if compact then 0 else 7),
+		nil,
+		frame.ZIndex + 1,
+		"Skin"
+	)
 	local z = frame.ZIndex + 3
 	local d = if compact then 32 else 46
 	local circle = Draw.img(frame, { Name = "Status", ZIndex = z })
 	local cx = if compact then 2 else -10
 	local ring = if row.Reached then 3 else 0 -- gold ring (#FDF201) round the checked circle; the circle shrinks so the total stays d
+	if not compact then
+		d = if row.Reached then 45 else 42.5 -- measured: the check draws ~2 over, the lock ~5 over its ink size; both land on ~47
+	end
 	Draw.apply(
 		circle,
 		if row.Reached then Q.CheckCircle else PlaySprites.LockCircle,
@@ -415,7 +453,7 @@ local function buildRow(host, row, x, y, w, h, compact, f)
 			Name = "Wave",
 			Text = "WAVE " .. row.Wave,
 			AX = 0,
-			Size = 18,
+			Size = 20,
 			Min = 18,
 			X = 24,
 			Y = y0 + 10,
@@ -445,15 +483,15 @@ local function buildRow(host, row, x, y, w, h, compact, f)
 		Name = "Wave",
 		Text = "WAVE " .. row.Wave,
 		AX = 0,
-		Size = 33,
-		Min = 20,
+		Size = 24, -- A-15: ref "WAVE 10" ink is 89 wide, which FredokaOne reaches at size 25 (cap 38 would be 2x too wide)
+		Min = 12,
 		X = 24,
 		Y = h / 2,
 		W = 132,
 		Z = z,
 		Stroke = 3,
 	})
-	local ix, dx, tx, tw = 192 * f, 257 * f, 323 * f, 126 * f
+	local ix, dx, tx, tw = 192 * f, 250 * f, 323 * f, 126 * f
 	local box = ICON_BOX[row.Icon] or { 67, 59 }
 	if row.Icon == "CrownGems" then
 		icon(frame, Q.IconCrown, ix, h / 2 - 8, 84, 62, z)
@@ -472,7 +510,7 @@ local function buildRow(host, row, x, y, w, h, compact, f)
 		icon(frame, rec(row.Icon), ix, h / 2, box[1], box[2], z)
 	end
 	divider(frame, dx, h / 2 - 27.5, 4, 55, z)
-	local sizes = if #row.Lines >= 3 then { 25, 17, 17 } else { 28, 20 }
+	local sizes = if #row.Lines >= 3 then { 24, 18, 18 } else { 26, 20 }
 	if h < 72 then
 		for i, v in sizes do
 			sizes[i] = math.floor(v * math.max(0.85, h / 72))
@@ -501,13 +539,13 @@ function View:_buildMid()
 	local rtop = if compact then 6 else 12
 	local bodyCy = rtop + rh * 0.38
 	skin(mid, Q.DetailRibbon, midW / 2, rtop + rh / 2, rw, rh, nil, base + 2, "Ribbon")
-	local tsz = if compact then (if midW < 250 then 24 else 28) else 46
-	local tdx = if compact then rw / 2 - tsz / 2 - 8 else 182
+	local tsz = if compact then (if midW < 250 then 24 else 28) else 40
+	local tdx = if compact then rw / 2 - tsz / 2 - 8 else 160 -- full: the trophies sit inside the ribbon body ends
 	local tcy = bodyCy + 2
-	icon(mid, Q.IconTabTrophy, midW / 2 - tdx, tcy, tsz, if compact then tsz else 42, base + 3)
-	icon(mid, Q.IconTabTrophy, midW / 2 + tdx, tcy, tsz, if compact then tsz else 42, base + 3)
+	icon(mid, Q.IconTabTrophy, midW / 2 - tdx, tcy, tsz, tsz, base + 3)
+	icon(mid, Q.IconTabTrophy, midW / 2 + tdx, tcy, tsz, tsz, base + 3)
 	local avail = 2 * tdx - tsz - (if compact then 10 else 4)
-	local title, tsize = "FIRST-TIME MILESTONES", if compact then 18 else 37 -- ref cap 21; the face is wider, so the fit settles ~31
+	local title, tsize = "FIRST-TIME MILESTONES", if compact then 18 else 26 -- A-15: ref ink 273 wide = size 26.8
 	if compact and measure(title, tsize) > avail then
 		title = "MILESTONES"
 	end
@@ -515,7 +553,7 @@ function View:_buildMid()
 		Name = "RibbonText",
 		Text = title,
 		Size = tsize,
-		Min = if compact then 18 else 20,
+		Min = if compact then 18 else 12,
 		X = midW / 2,
 		Y = bodyCy + 1,
 		W = avail,
@@ -569,8 +607,9 @@ function View:_buildMid()
 	label(mid, {
 		Name = "Text",
 		Text = "WORLD CLEAR",
-		Size = if compact then 22 else 37,
-		Min = if compact then 18 else 20,
+		Size = if compact then 22 else 39, -- A-15: ref ink 240 wide = size 39.8 (cap 47)
+		Min = if compact then 18 else 12,
+		Fit = if compact then nil else 240,
 		Color = if clearOn then YELLOW else GREY,
 		X = pcx,
 		Y = pcy - 1,
@@ -613,9 +652,9 @@ function View:_buildRight()
 	local col = self._right
 	clear(col)
 	local compact, rw = L.compact, L.rightW
-	local P, ohFull, thFull = 211, 144, 101 -- short windows (small desktops) shrink the preview first, then odds, then tiles
+	local P, ohFull, thFull = 203, 144, 101 -- short windows (small desktops) shrink the preview first, then odds, then tiles
 	if not compact then
-		local deficit = math.max(0, P + 441 - L.panelH)
+		local deficit = math.max(0, P + 441 - L.panelH + 8)
 		local cut = math.min(deficit, 62)
 		P -= cut
 		deficit -= cut
@@ -651,14 +690,15 @@ function View:_buildRight()
 			make("UICorner", { CornerRadius = UDim.new(0, 22) }, pv)
 			make("UIStroke", { Color = RIM_ORANGE, Thickness = 3, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, pv)
 		end
-		y = P - 1 + 4
+		y = P - 1 + 15 -- ribbon ink top >= 12 px under the preview's outer rim (3 px stroke)
 	end
-	-- ribbon (own aspect; the body is its top 76%)
-	local rh = round(rw * ASP)
+	-- ribbon (own aspect; the body is its top 76%): full tier fixes the ink height at 61 so the tails end at ref y 434, clear of the tiles (441)
+	local rh = if compact then round(rw * ASP) else 61
+	local rwR = if compact then rw else round(rh / ASP)
 	local rx = rw / 2 + (if compact then 0 else 2)
-	skin(col, Q.DetailRibbon, rx, y + rh / 2, rw, rh, nil, base + 1, "Ribbon")
+	skin(col, Q.DetailRibbon, rx, y + rh / 2, rwR, rh, nil, base + 1, "Ribbon")
 	local rtitle = if compact then "REPEAT REWARDS" else "REPEAT REWARDS \u{2022} EVERY 10 WAVES"
-	local rwid = if compact then rw * 0.75 - 14 else rw * 0.9 -- full: the ribbon body is wider than the old 75% box
+	local rwid = if compact then rw * 0.75 - 14 else rwR * 0.9
 	if compact and measure(rtitle, 18) > rwid then
 		rtitle = "REWARDS"
 	end
@@ -668,15 +708,15 @@ function View:_buildRight()
 		Text = rrich,
 		Plain = rtitle,
 		Rich = true,
-		Size = if compact then 18 else 28, -- ref cap 16; the face is wider, so the fit settles ~22
-		Min = if compact then 18 else 14,
+		Size = if compact then 18 else 19, -- A-15: ref ink 303 wide = size 19.8; the shorter ribbon body fits ~18
+		Min = if compact then 18 else 12,
 		X = rx,
 		Y = y + rh * 0.38 + 1,
 		W = rwid,
 		Z = base + 3,
 		Stroke = 2,
 	})
-	y += rh + 2
+	y += rh + (if compact then 2 else 13)
 
 	-- tiles
 	local tiles = self._tiles
@@ -687,9 +727,9 @@ function View:_buildRight()
 		tw, th = round((rw - tgap) / 2), 60
 	end
 	local hh = if compact then 24 else 25
-	local lsize = if compact then 18 else 22
+	local lsize = if compact then 18 else 24
 	for _, tile in tiles do -- one label size for every tile
-		lsize = math.min(lsize, Parts.fitSize(tile.Label, tw - 3, lsize, if compact then 18 else 11))
+		lsize = math.min(lsize, Parts.fitSize(tile.Label, tw - 5, lsize, if compact then 18 else 11))
 	end
 	for i, tile in tiles do
 		local c, r = (i - 1) % cols, (i - 1) // cols
@@ -700,13 +740,34 @@ function View:_buildRight()
 			Size = UDim2.fromOffset(tw, th),
 			ZIndex = base + 1,
 		}, "Frame")
-		skin(box, PlaySprites.PurpleBox, tw / 2, th / 2, tw, th, if compact then 0.2 else 0.3, box.ZIndex + 1, "Skin")
-		skin(box, Bag.PillPurple, tw / 2, hh / 2 + 1, tw - 4, hh, nil, box.ZIndex + 2, "Header")
+		skin(
+			box,
+			PlaySprites.PurpleBox,
+			tw / 2,
+			th / 2,
+			tw - 2,
+			th - 2,
+			if compact then 0.2 else 0.3,
+			box.ZIndex + 1,
+			"Skin"
+		)
+		skin(
+			box,
+			Bag.PillPurple,
+			tw / 2,
+			hh / 2 + 1,
+			tw - (if compact then 2 else 4),
+			hh,
+			nil,
+			box.ZIndex + 2,
+			"Header"
+		)
 		label(box, {
 			Name = "Label",
 			Text = tile.Label,
 			Size = lsize,
 			Min = if compact then 18 else 11,
+			Fit = tw - 5,
 			X = tw / 2,
 			Y = hh / 2 + 1,
 			W = tw - 3,
@@ -732,25 +793,28 @@ function View:_buildRight()
 	skin(odds, PlaySprites.PurpleBox, ow / 2, oh / 2, ow, oh, 0.4, odds.ZIndex + 1, "Skin")
 	local z = odds.ZIndex + 3
 	local textCx, textW = ow / 2, ow - 14
-	local ys, sizes = {}, {}
+	local ys, sizes, fits = {}, {}, {}
 	if compact then
 		for i = 1, #lines do
 			ys[i] = oh / 2 + (i - (#lines + 1) / 2) * 20
-			sizes[i] = 18
+			sizes[i] = 20
 		end
 	else
 		local dvx = 134
 		local dcy = oh * 68.5 / 144
-		local glow = Draw.img(odds, { Name = "DieGlow", ZIndex = z - 1 })
-		Draw.apply(glow, Q.GlowRadial, 61, dcy, 170, 170)
-		glow.ImageColor3 = Color3.fromRGB(255, 80, 235) -- pink bloom behind the die (set after apply: skin resets the tint)
-		glow.ImageTransparency = 0
-		icon(odds, Q.IconGalaxyDie, 61, dcy, 85, 95, z)
-		icon(odds, Q.Sparkle2, 27, oh * 0.38, 22, 22, z + 1).ImageColor3 = WARM
+		for i, d in { 190, 140 } do -- two stacked pink blooms behind the die (the sprite is faint; tint set after apply: skin resets it)
+			local glow = Draw.img(odds, { Name = "DieGlow" .. i, ZIndex = z - 1 })
+			Draw.apply(glow, Q.GlowRadial, 68, dcy, d, d)
+			glow.ImageColor3 = Color3.fromRGB(255, 80, 235)
+			glow.ImageTransparency = 0
+		end
+		icon(odds, Q.IconGalaxyDie, 68, dcy, 85, 95, z)
+		icon(odds, Q.Sparkle2, 29, oh * 0.38, 22, 22, z + 1).ImageColor3 = WARM
 		divider(odds, dvx, oh * 13 / 144, 4, oh * 112 / 144, z)
-		textCx, textW = (dvx + 4 + ow - 6) / 2 + 5, ow - 152
+		textCx, textW = 253, ow - 152 -- ref line centre x 1325
 		if #lines == 5 then
-			ys, sizes = { 16, 44, 73, 100, 124 }, { 30, 30, 30, 24, 26 } -- ref caps 18/18/18/16/15
+			ys, sizes = { 18, 46, 75, 103, 128 }, { 25, 25, 25, 21, 20 } -- ref cap centres; A-15 sizes (ref inks 160 / 160 / 160 / 207 / 135 wide)
+			fits = { 160, 160, 160, 207, 135 }
 			for i = 1, 5 do
 				ys[i] = ys[i] * oh / 144
 			end
@@ -770,6 +834,7 @@ function View:_buildRight()
 			Rich = true,
 			Size = sizes[i],
 			Min = if compact then 18 else 12,
+			Fit = fits[i],
 			X = textCx,
 			Y = ys[i],
 			W = textW,
@@ -781,15 +846,15 @@ function View:_buildRight()
 	y += oh + (if compact then 8 else 17)
 
 	-- START
-	local sw, sh = if compact then rw else 334, if compact then 58 else 90
+	local sw, sh = if compact then rw else 326, if compact then 58 else 90 -- full: 8 px under the ref 334 so the sparkles fit between the button and the window rim
 	local bw, bh = Parts.inkBox("BtnGreen", sw, sh)
 	local scy = if compact then math.min(L.H - sh / 2 - 2, y + sh / 2) else y + sh / 2
-	local scx = round(rw / 2) + (if compact then 0 else 6)
+	local scx = round(rw / 2) + (if compact then 0 else 2)
 	local btn = Parts.button(col, {
 		Name = "Start",
 		Style = "Green",
 		Label = "START",
-		TextSize = if compact then 28 else 63, -- ref cap 36 (0.57 x size)
+		TextSize = if compact then 28 else 60, -- A-15: ref ink 161 wide = size 60 (cap 36 would be 63)
 		Icon = if compact then PlaySprites.PlayArrow else nil,
 		Size = UDim2.fromOffset(round(bw), round(bh)),
 		Enabled = self._startState == "Ready",
@@ -802,14 +867,14 @@ function View:_buildRight()
 	if not compact then -- the button helper sizes its icon 45 px square: draw the 41x45 arrow and place the label by hand (ref: arrow -88, label +33 from centre)
 		local bcx, bcy = round(bw) / 2, round(bh) / 2
 		local arrow = Draw.img(btn, { Name = "Arrow", ZIndex = btn.Label.ZIndex })
-		Draw.apply(arrow, PlaySprites.PlayArrow, bcx - 88, bcy, 41, 45)
+		Draw.apply(arrow, PlaySprites.PlayArrow, bcx - 86, bcy, 40, 44) -- ref arrow reads ~45 wide; 34x37 looked far smaller
 		self._startArrow = arrow
 		local l = btn.Label
 		l.TextXAlignment = Enum.TextXAlignment.Center
 		l.AnchorPoint = Vector2.new(0.5, 0.5)
-		l.Position = UDim2.fromOffset(bcx + 33, bcy)
+		l.Position = UDim2.fromOffset(bcx + 32, bcy - 4) -- ref label centre sits 4.5 px higher than the button helper's
 		l.Size = UDim2.fromOffset(190, round(bh) - 8)
-		l.TextSize = 63
+		l.TextSize = 60
 		self:SetStartState(self._startState)
 	end
 	btn.Activated:Connect(function()
@@ -818,13 +883,13 @@ function View:_buildRight()
 		end
 	end)
 	for sgn = -1, 1, 2 do
-		if compact then
-			icon(col, Q.Sparkle1, scx + sgn * (sw / 2 - 8), scy - sh * 0.3, 16, 16, base + 5).ImageColor3 = WARM
-			icon(col, Q.Sparkle1, scx + sgn * (sw / 2 - 4), scy + 4, 18, 18, base + 5).ImageColor3 = WARM
-		else
-			icon(col, Q.Sparkle1, scx + sgn * 168, scy - 30, 24, 24, base + 5).ImageColor3 = WARM -- all inside the column
-			icon(col, Q.Sparkle1, scx + sgn * 172, scy - 6, 24, 24, base + 5).ImageColor3 = WARM
-			icon(col, Q.Sparkle1, scx + sgn * 168, scy + 17, 12, 12, base + 5).ImageColor3 = WARM
+		if compact then -- inside the column (the button is as wide as it), above the button in Z
+			icon(col, Q.Sparkle1, scx + sgn * (sw / 2 - 12), scy - sh * 0.3, 14, 14, base + 20).ImageColor3 = WARM
+			icon(col, Q.Sparkle1, scx + sgn * (sw / 2 - 12), scy + 6, 14, 14, base + 20).ImageColor3 = WARM
+		else -- outside the button ink (+-163), >= 6 px inside the column edge (= the window's inner rim), above the button in Z
+			icon(col, Q.Sparkle1, scx + sgn * 171, scy - 30, 14, 14, base + 20).ImageColor3 = WARM
+			icon(col, Q.Sparkle1, scx + sgn * 172, scy - 6, 14, 14, base + 20).ImageColor3 = WARM
+			icon(col, Q.Sparkle1, scx + sgn * 171, scy + 17, 12, 12, base + 20).ImageColor3 = WARM
 		end
 	end
 end
