@@ -50,6 +50,7 @@ return {
 		Card = Rect.new(0, 0, 768, 313),
 		CardSel = Rect.new(0, 0, 676, 313),
 		Preview = Rect.new(150, 0, 718, 313),
+		CardC = Rect.new(0, 0, 768, 313),
 	},
 	WorldFrost = {
 		Image = "rbxassetid://78301219301212",
@@ -58,6 +59,7 @@ return {
 		Card = Rect.new(0, 0, 331, 135),
 		CardSel = Rect.new(0, 0, 331, 153),
 		Preview = Rect.new(2, 0, 329, 180),
+		CardC = Rect.new(0, 26, 298, 148),
 	},
 	WorldMagma = {
 		Image = "rbxassetid://77757739631030",
@@ -66,14 +68,16 @@ return {
 		Card = Rect.new(0, 0, 317, 129),
 		CardSel = Rect.new(0, 0, 317, 147),
 		Preview = Rect.new(0, 0, 317, 175),
+		CardC = Rect.new(0, 0, 317, 129),
 	},
 	WorldShadow = {
 		Image = "rbxassetid://113653597909595",
 		Size = Vector2.new(319, 181),
 		Ink = Rect.new(0, 0, 319, 181),
-		Card = Rect.new(0, 31, 319, 161),
-		CardSel = Rect.new(0, 20, 319, 168),
+		Card = Rect.new(0, 6, 300, 128),
+		CardSel = Rect.new(0, 4, 300, 143),
 		Preview = Rect.new(0, 0, 319, 176),
+		CardC = Rect.new(0, 6, 300, 128),
 	},
 	PurpleBox = {
 		Image = "rbxassetid://105278600388247",

@@ -34,10 +34,10 @@ function Play.new(parent, deps)
 		free = true,
 		banner = {
 			text = "PLAY",
-			textX = 0.574, -- centred between the swords and the right laurel (ref centre x 878)
+			textX = 0.569, -- centred between the swords and the right laurel (equal ink gaps)
 			textY = 0.41,
 			textW = 0.5,
-			textFull = 62, -- A-15: ink <= 133 wide keeps >= 5 px to the swords and the laurel (ref 166 wide / cap 42 do not fit the shared scroll)
+			textFull = 68, -- ink ~147 wide toward the ref 166, ~9 px to the swords and the laurel (cap grows past the ref 42: the face is narrower)
 			textCompact = 22,
 			emblems = {
 				{ sprite = PlaySprites.LaurelL, box = { 0.1447, 0.1458, 0.1053, 0.6667 } },

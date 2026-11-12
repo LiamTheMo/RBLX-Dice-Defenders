@@ -61,19 +61,24 @@ WORLDS = {  # inner edge of the gold rim (x0,y0,x1,y1) measured on play-world-ca
     "WorldShadow": (1173, 766, 1514, 969),
 }
 REUSED = {"PurpleBox": {"w": 251, "h": 247, "ink": [14, 12, 238, 236], "slice": [48, 45, 204, 203], "asset": "105278600388247"}}
-TARGETS = {"Card": (363, 148), "CardSel": (363, 168), "Preview": (372, 205)}
+TARGETS = {"Card": (363, 148), "CardSel": (363, 168), "Preview": (372, 205), "CardC": (363, 148)}  # CardC = Card for the phone layout
 
 
 # Per-world framing (ax, ay) = share of the spare width / height left of / above the crop; default centred, top-aligned.
 # Dice: forest left, castle right (reference); Shadow: slide the crop down so the huge moon is partly cut (the sheet art is zoomed in).
 ALIGN = {
-    "WorldDice": {"Card": (0, 0), "CardSel": (0, 0)},
-    "WorldShadow": {"Card": (0.5, 0.6), "CardSel": (0.5, 0.6)},
+    "WorldDice": {"Card": (0, 0), "CardSel": (0, 0), "CardC": (0, 0)},
+    "WorldShadow": {"Card": (0, 0.1), "CardSel": (0, 0.1), "CardC": (0, 0.1)},
+    "WorldFrost": {"CardC": (0, 0.45)},  # phones: zoom 0.9 from the left + slide down: the die clears the 18 px title (>= 5 px) and the padlock under it (>= 4 px)
 }
+# Crop width as a share of the interior (zoom in): Shadow's moon (src x 218-292 of 319) must sit right of the card title (ends ~245 design px)
+# with >= 5 px clear and stay whole inside the card: 0.94 -> moon spans ~263-352 of the 368 px card.
+ZOOM = {"WorldShadow": {"Card": 0.94, "CardSel": 0.94, "CardC": 0.94}, "WorldFrost": {"CardC": 0.9}}
 
 
-def crop_rect(w: int, h: int, tw: int, th: int, ax: float = 0.5, ay: float = 0) -> list[int]:
+def crop_rect(w: int, h: int, tw: int, th: int, ax: float = 0.5, ay: float = 0, z: float = 1) -> list[int]:
     cw, ch = (w, round(w * th / tw)) if w / h <= tw / th else (round(h * tw / th), h)
+    cw, ch = round(cw * z), round(ch * z)
     x0, y0 = round((w - cw) * ax), round((h - ch) * ay)
     return [x0, y0, x0 + cw, y0 + ch]
 
@@ -85,7 +90,7 @@ def world(name: str) -> tuple[np.ndarray, dict]:
     px = np.pad(px, ((0, 0), (0, PAD_R.get(name, 0)), (0, 0)), mode="reflect")
     px[..., 3] = 255
     h, w = px.shape[:2]
-    return px, {"rects": {k: crop_rect(w, h, *t, *ALIGN.get(name, {}).get(k, (0.5, 0))) for k, t in TARGETS.items()}}
+    return px, {"rects": {k: crop_rect(w, h, *t, *ALIGN.get(name, {}).get(k, (0.5, 0)), ZOOM.get(name, {}).get(k, 1)) for k, t in TARGETS.items()}}
 
 
 def main() -> None:
