@@ -206,7 +206,12 @@ function Parts.Pill(parent, style: string, str: string, o)
 		local kk = h / sp.Size.Y
 		local inkL, inkR = sp.Ink.Min.X * kk, (sp.Size.X - sp.Ink.Max.X) * kk
 		local inkW = w - inkL - inkR
-		local markS, gap = o.InkH * (if equipped then o.MarkK or 0.75 else 0.58), if equipped then 4 else 12
+		-- the tick sprite is cut tight (its box is its ink): MarkK = tick height / InkH, width follows the sprite
+		local markH = o.InkH * (if equipped then o.MarkK or 0.5 else 0.58)
+		local markS = if equipped
+			then markH * Sprites[Parts.CheckKey].Size.X / Sprites[Parts.CheckKey].Size.Y
+			else markH
+		local gap = if equipped then 4 else 12
 		label.TextSize = Parts.fitSize(str, inkW - 12 - gap - markS, size, 11)
 		local tw = measure(str, label.TextSize)
 		local x0 = inkL + (inkW - (tw + gap + markS)) / 2
@@ -218,7 +223,7 @@ function Parts.Pill(parent, style: string, str: string, o)
 			Name = if equipped then "Check" else "Icon",
 			AnchorPoint = Vector2.new(0, 0.5),
 			Position = UDim2.new(0, x0 + (if left then 0 else tw + gap), 0.5, 0),
-			Size = UDim2.fromOffset(markS, markS),
+			Size = UDim2.fromOffset(markS, markH),
 		})
 		Parts.image(mark, if equipped then Parts.CheckKey else o.Icon)
 		return pill
@@ -837,12 +842,15 @@ function Parts.Grid(parent)
 			pill.AnchorPoint = if eq then Vector2.zero else Vector2.new(0.5, 0)
 			-- Equipped: its visible ink starts 7 px inside the card's visible rim (as in the reference), so it never
 			-- spills over the rim; both sprites carry a transparent margin. Rarity tags centred.
+			-- The card's rim + corner arc keep a fixed ~12 px (SliceScale 0.5 does not shrink with the card) while the pill
+			-- shrinks, so below the reference scale the inset grows (1.4 px per px(7) lost) instead of covering the arc.
+			local eqIn = math.max(px(7), 7 + 1.4 * (7 - px(7)))
 			local eqX = 0
 			if eq then
 				local cardInkL = Sprites[cardSprite].Ink.Min.X * cardK
-				eqX = cardInkL + px(7) - (pill.Size.X.Offset - px(100)) / 2
+				eqX = cardInkL + eqIn - (pill.Size.X.Offset - px(100)) / 2
 			end
-			pill.Position = UDim2.new(if eq then 0 else 0.5, eqX, 0, px(7))
+			pill.Position = UDim2.new(if eq then 0 else 0.5, eqX, 0, if eq then eqIn else px(7))
 		end
 		local icon = img(card, { Name = "Icon" })
 		local isz, itop
