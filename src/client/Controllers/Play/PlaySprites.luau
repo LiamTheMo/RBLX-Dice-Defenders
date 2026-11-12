@@ -71,8 +71,8 @@ return {
 		Image = "rbxassetid://113653597909595",
 		Size = Vector2.new(319, 181),
 		Ink = Rect.new(0, 0, 319, 181),
-		Card = Rect.new(0, 31, 319, 161),
-		CardSel = Rect.new(0, 20, 319, 168),
+		Card = Rect.new(0, 0, 319, 130),
+		CardSel = Rect.new(0, 0, 319, 148),
 		Preview = Rect.new(0, 0, 319, 176),
 	},
 	PurpleBox = {
