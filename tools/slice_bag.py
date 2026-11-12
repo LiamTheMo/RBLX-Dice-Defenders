@@ -111,6 +111,8 @@ SPRITES = {
     "StepPlus": ("Items/icons-badges-and-effects.png", (867, 392, 85, 83), 85, SHEET_MARGIN),
     "IconFlaskWhite": ("Items/icons-badges-and-effects.png", (39, 372, 94, 118), 118, SHEET_MARGIN),
     "BannerWide": ("Items/icons-badges-and-effects.png", (403, 147, 691, 209), 691, SHEET_MARGIN),
+    # Loop 7: the user's new bag banner, one whole piece (crowned die, scroll, clasp); native res, sized against the Quest Log scroll.
+    "BannerScroll": ("New/reference.png", (5, 5, 1013, 207), 1013, SHEET_MARGIN),
 }
 # Sliced, height-fitted controls: export height (px, margin included) ~2x the largest full-tier draw height.
 HEIGHTS = {
