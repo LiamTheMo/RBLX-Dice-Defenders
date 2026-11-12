@@ -167,7 +167,7 @@ function Mastery.new(parent)
 		end
 		local icon = Draw.img(btn, { Name = "Icon" .. m.Lv, ZIndex = z + 2 })
 		local irec = Q[m.Icon] or Q.Crystals
-		local iw, ih = Draw.fitIn(irec, s * 0.64, s * 0.56)
+		local iw, ih = Draw.fitIn(irec, s * 0.72, s * 0.64)
 		Draw.apply(icon, irec, cx, cy - s * 0.12, iw, ih)
 		local size = math.max(11, math.floor(s * 0.25)) -- ref tile label ink 33 wide
 		local label = Parts.text(btn, {

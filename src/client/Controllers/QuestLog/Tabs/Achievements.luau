@@ -13,8 +13,8 @@ local Draw = require(script.Parent.Parent.Draw)
 local make = UiKit.make
 local Bag, Q = Draw.Bag, Draw.Q
 
-local PAD_L, PAD_R, PAD_T, PAD_B = 10, 30, 4, 14 -- left/top >= the selected glow bleed; right = scrollbar gutter (only when the grid scrolls)
-local GAP, GAP_Y, GLOW = 8, 11, 10 -- ref: cells ~152x160 on a 160 / 171 pitch -- cell gap; selected cell ink grows by GLOW (5 per side) inside the sprite's own margin
+local PAD_L, PAD_R, PAD_T, PAD_B = 10, 30, 11, 14 -- left/top >= the selected glow bleed; right = scrollbar gutter (only when the grid scrolls)
+local GAP, GAP_Y, GLOW = 8, 13, 10 -- ref: cells ~152x160 on a 160 / 171 pitch -- cell gap; selected cell ink grows by GLOW (5 per side) inside the sprite's own margin
 local CARD_W, CARD_H = 146, 160 -- reference card (visible rim); cell height = width * 160 / 146
 local LOCKED_GREY = Color3.fromRGB(150, 138, 146)
 local BAR = { ScrollTrack = Rect.new(19, 65, 22, 227) }
@@ -69,7 +69,7 @@ function Achievements.pill(
 			Draw.apply(fill, Q.BarFillAch, inset + fw / 2, h / 2, fw, h - 2 * inset)
 		end
 		local text = if done then "COMPLETE" else QuestLogic.progressText(b.Progress, b.Goal, b.Unit)
-		local cs = if done then math.floor(h * 0.7) else 0
+		local cs = if done then math.floor(h * 0.8) else 0
 		local gap = if done then 4 else 0
 		local avail = w - 12 - cs - gap
 		label.Text = text
@@ -170,7 +170,7 @@ function Achievements.new(parent)
 		recs[item.Id] = rec
 		skinCell(rec, item.Id == selected)
 		local z = skin.ZIndex + 1
-		if isComplete(item) then -- ref: a warm radial glow behind a completed badge (Bag legendary glow, clipped to the cell)
+		do -- ref: a warm radial glow behind every unlocked badge, a neutral grey one behind locked ones (Bag legendary glow, clipped to the cell)
 			local box = Draw.img(
 				btn,
 				{ Name = "GlowBox", Size = UDim2.fromOffset(cw - 10, ch - 10), ClipsDescendants = true, ZIndex = z },
@@ -178,10 +178,12 @@ function Achievements.new(parent)
 			)
 			box.AnchorPoint = Vector2.new(0.5, 0.5)
 			box.Position = UDim2.fromOffset(cw / 2, ch / 2)
-			local g = Draw.img(
-				box,
-				{ Name = "Glow", ImageTransparency = 0.3, ImageColor3 = Color3.fromRGB(255, 140, 40), ZIndex = z }
-			)
+			local g = Draw.img(box, {
+				Name = "Glow",
+				ImageTransparency = if item.Locked then 0.55 else 0.3,
+				ImageColor3 = if item.Locked then Color3.fromRGB(190, 190, 200) else Color3.fromRGB(255, 140, 40),
+				ZIndex = z,
+			})
 			local gw, gh = Draw.fitIn(Bag.GlowLegendary, cw * 0.95, cw * 0.95)
 			Draw.apply(g, Bag.GlowLegendary, (cw - 10) / 2, ch * 0.31 - 5, gw, gh)
 		end
@@ -227,8 +229,10 @@ function Achievements.new(parent)
 		track.Position = UDim2.new(1, if W >= 360 then -7 else -6, 0, 0)
 		barSkin(track, "ScrollTrack", barW)
 		local cols = math.clamp(math.floor((W - 12) / 112), 2, 5)
+		local padL = if W < 560 then 14 else PAD_L -- phone: selected glow clear of the list's left rim
+		pad.PaddingLeft = UDim.new(0, padL)
 		local function cell(padR: number): (number, number)
-			local w = math.floor((W - PAD_L - padR - (cols - 1) * GAP) / cols)
+			local w = math.floor((W - padL - padR - (cols - 1) * GAP) / cols)
 			return w, math.floor(w * CARD_H / CARD_W + 0.5)
 		end
 		local padR = 10 -- the scrollbar gutter is only reserved when the grid overflows (ref: 3 rows fill the panel)
@@ -241,10 +245,14 @@ function Achievements.new(parent)
 		pad.PaddingRight = UDim.new(0, padR)
 		grid.CellSize = UDim2.fromOffset(cw, ch)
 		grid.FillDirectionMaxCells = cols
-		-- ref DICE KING ink 86 wide = 21 pt; longer names shrink to fit the cell (width - 16)
-		local base = math.max(12, math.floor(21 * cw / CARD_W + 0.5))
+		-- ONE name size for every cell (overseer decision, our font is ~20% wider than the ref's): the largest that fits
+		-- every name in cell width - 6, at most 21 (ref DICE KING = 21 pt)
+		local nameSize = math.max(12, math.floor(21 * cw / CARD_W + 0.5))
+		for _, item in items do
+			nameSize = math.min(nameSize, Parts.fitSize(string.upper(item.Name), cw - 6, nameSize, 8))
+		end
 		for i, item in items do
-			buildCell(item, i, cw, ch, Parts.fitSize(string.upper(item.Name), cw - 16, base, 8))
+			buildCell(item, i, cw, ch, nameSize)
 		end
 		empty.Visible = #items == 0
 		updateBar()

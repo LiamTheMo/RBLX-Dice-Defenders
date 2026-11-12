@@ -24,7 +24,7 @@ local BODY_H = 508
 local MAST_H = 601 -- Mastery body: no action button, so no bottom strip (the scroll is the slot + EXT, so it never scrolls)
 local ACH_H = 601 -- Achievement body: the CLAIM button sits in its reward row, so no bottom strip
 -- compact (phone) bodies: a separate stacked layout per kind that fits the panel without scrolling (hero art and description dropped)
-local COMPACT_BODY = { Quest = 216, Achievement = 245, Mastery = 276 }
+local COMPACT_BODY = { Quest = 216, Achievement = 245, Mastery = 284 }
 local REWARD_ICON = { Crystals = "Crystals", Die = "SkinFire" } -- Die: closest available die art
 local BOX_H, BOX_K = 55, 0.55 -- StatRow boxes: visible height and rim scale
 local COIN_TEXT = Color3.fromRGB(251, 243, 137)
@@ -144,6 +144,20 @@ function Detail.new(parent)
 	end
 	local objBox, progBox = boxed("ObjectiveBox"), boxed("ProgressBox")
 	local goldBox, gemBox = boxed("GoldBox"), boxed("GemsBox")
+	-- the StatRow art's own rim is near invisible: a rounded pink-brown outline (ref #9c579c) over each box's ink rect
+	local rims = {}
+	for _, n in { "Obj", "Prog", "Gold", "Gem" } do
+		local f = Draw.img(quest, { Name = n .. "Rim", AnchorPoint = Vector2.new(0.5, 0.5), ZIndex = z + 3 }, "Frame")
+		make("UICorner", { CornerRadius = UDim.new(0, 10) }, f)
+		make("UIStroke", { Color = Color3.fromRGB(156, 87, 156), Thickness = 2, Transparency = 0.1 }, f)
+		rims[n] = f
+	end
+	local function rimAt(n: string, x: number, y: number, w: number, h: number, on: boolean)
+		local f = rims[n]
+		f.Visible = on
+		f.Position = UDim2.fromOffset(math.floor(x + 0.5), math.floor(y + 0.5))
+		f.Size = UDim2.fromOffset(math.floor(w), math.floor(h))
+	end
 	local objText = Parts.text(quest, { Name = "ObjectiveText", TextSize = 22, TextWrapped = true, ZIndex = z + 4 }, 2)
 	objText.AnchorPoint = Vector2.new(0.5, 0.5)
 	local bar, barW -- rebuilt when the panel width changes (the track sprite is sized at build)
@@ -224,7 +238,13 @@ function Detail.new(parent)
 	local aRewards = {} -- up to two reward boxes: { box, icon, text }
 	for i = 1, 2 do
 		aRewards[i] = {
-			box = Draw.img(achievement, { Name = "RewardBox" .. i, ZIndex = az + 2 }),
+			box = Draw.img(achievement, { Name = "RewardBox" .. i, ImageTransparency = 0.45, ZIndex = az + 2 }),
+			glow = Draw.img(achievement, {
+				Name = "RewardGlow" .. i,
+				ImageTransparency = 0.5,
+				ImageColor3 = Color3.fromRGB(255, 150, 60),
+				ZIndex = az + 3,
+			}),
 			icon = Draw.img(achievement, { Name = "RewardIcon" .. i, ZIndex = az + 4 }),
 			text = Parts.text(
 				achievement,
@@ -375,10 +395,12 @@ function Detail.new(parent)
 			Draw.apply(inst, Bag.StatRow, x, y, w, h, BOX_K)
 		end
 		box(objBox, cx, 305, W, BOX_H)
+		rimAt("Obj", cx, 305, W, BOX_H, not compact)
 		at(objPill, cx, 283)
 		at(objText, cx, 307)
 		objText.Size = UDim2.fromOffset(W - 28, BOX_H - 10)
 		box(progBox, cx, 385, W, BOX_H)
+		rimAt("Prog", cx, 385, W, BOX_H, not compact)
 		at(progPill, cx, 354)
 		at(rewPill, cx, 430)
 		if barW ~= W - 30 then
@@ -440,12 +462,14 @@ function Detail.new(parent)
 		bar:Set(pct, QuestLogic.progressText(b.Progress, b.Goal), b.Goal > 0 and b.Progress >= b.Goal)
 		-- Rewards: two boxes; the gems box is hidden for real rows and the gold box then centres.
 		local W = body.Size.X.Offset
-		local cellW = math.floor((W - (if compact then 28 else 8)) / 2) -- compact: clear of the rims
+		local cellW = math.floor((W - (if compact then 36 else 8)) / 2) -- compact: >= 10 px clear of the rims
 		local hasGems = b.Gems ~= nil
 		local cy = if compact then 192 + math.max(0, math.floor((viewFor("Quest") - COMPACT_BODY.Quest) * 0.5)) else 471
 		local function cell(boxInst, ic, text, label: string, cx: number, w: number)
 			local isz = if compact then 30 else 46
-			Draw.apply(boxInst, Bag.StatRow, cx, cy, w, if compact then 46 else 70, BOX_K)
+			local bh = if compact then 46 else 70
+			Draw.apply(boxInst, Bag.StatRow, cx, cy, w, bh, BOX_K)
+			rimAt(if boxInst == goldBox then "Gold" else "Gem", cx, cy, w, bh, true)
 			local iconRight = cx - w / 2 + (if compact then 8 else 10) + isz
 			ic.Size = UDim2.fromOffset(isz, isz)
 			local textW = (cx + w / 2 - 12) - (iconRight + 6)
@@ -461,12 +485,20 @@ function Detail.new(parent)
 			coinIcon,
 			coinText,
 			"+" .. QuestLogic.format(b.Gold or 0),
-			if hasGems then cellW / 2 else W / 2,
+			if not hasGems then W / 2 elseif compact then W / 2 - cellW / 2 - 3 else cellW / 2,
 			cellW
 		)
 		gemBox.Visible, gemIcon.Visible, gemText.Visible = hasGems, hasGems, hasGems
+		rims.Gem.Visible = hasGems
 		if hasGems then
-			cell(gemBox, gemIcon, gemText, "+" .. QuestLogic.format(b.Gems), W - cellW / 2, cellW)
+			cell(
+				gemBox,
+				gemIcon,
+				gemText,
+				"+" .. QuestLogic.format(b.Gems),
+				if compact then W / 2 + cellW / 2 + 3 else W - cellW / 2,
+				cellW
+			)
 		end
 	end
 
@@ -534,12 +566,15 @@ function Detail.new(parent)
 		for i, r in aRewards do
 			local entry = b.Rewards[i]
 			r.box.Visible, r.icon.Visible, r.text.Visible = entry ~= nil, entry ~= nil, entry ~= nil
+			r.glow.Visible = entry ~= nil and not compact -- ref: borderless tiles with a glow behind the icon
 			if entry then
 				local rx = cx + (-122 + (i - 1) * 113) * k
 				Draw.apply(r.box, Bag.StatRow, rx, rowY, 112 * k, 116 * k, BOX_K)
 				local rec = Q[REWARD_ICON[entry.Name] or "Crystals"]
 				local iw, ih = Draw.fitIn(rec, 74 * k, 76 * k) -- ref crystals ~75x80
 				Draw.apply(r.icon, rec, rx + 2, rowY - 9 * k, iw, ih)
+				local rgw, rgh = Draw.fitIn(Bag.GlowLegendary, 100 * k, 100 * k)
+				Draw.apply(r.glow, Bag.GlowLegendary, rx + 2, rowY - 9 * k, rgw, rgh)
 				r.text.Text = "x" .. QuestLogic.format(entry.Amount)
 				r.text.Size = UDim2.fromOffset(104 * k, 28)
 				at(r.text, rx + 3, rowY + 38 * k)
@@ -665,7 +700,7 @@ function Detail.new(parent)
 				Parts.fit(r.name, bxw - 30, 21, 12)
 				local lw, lh = Draw.fitIn(Bag.Lock, 18, 18)
 				local gx = rx - (18 + 4 + 52) / 2 -- lock + "Lv. N" group centred in the box
-				Draw.apply(r.pill, Bag.Search, rx, cy + bxh * 0.4, math.min(bxw - 24, 130), 28) -- ref: dark pill behind lock + Lv.
+				Draw.apply(r.pill, Bag.Search, rx, cy + bxh * 0.4, math.min(bxw - 24, 146), 24) -- ref: dark plate behind lock + Lv. (~146x23)
 				Draw.apply(r.lock, Bag.Lock, gx + 9, cy + bxh * 0.4, lw, lh)
 				r.lv.Text = "Lv. " .. entry.Lv
 				r.lv.TextXAlignment = Enum.TextXAlignment.Left
@@ -686,7 +721,7 @@ function Detail.new(parent)
 			at(mBar.Frame, cx, 140 + slack * 0.7)
 			sized(mNext, Q.NextRewards, 172 + slack * 0.85, nw)
 			at(mNextText, cx, 172 + slack * 0.85)
-			local cw = math.min(88, math.floor((W - 8) / 2))
+			local cw = math.min(92, math.floor((W - 8) / 2))
 			local ch = cw * Q.RewardBoxPlain.Ink.Height / Q.RewardBoxPlain.Ink.Width
 			local cyc = 188 + slack + ch / 2
 			for i, r in mRewards do
@@ -697,9 +732,9 @@ function Detail.new(parent)
 					local irec = Q[entry.Icon] or Q.Crystals
 					local iw, ih = Draw.fitIn(irec, 36, 34)
 					Draw.apply(r.icon, irec, rx, cyc - 19, iw, ih)
-					r.name.Size = UDim2.fromOffset(cw - 10, 18)
+					r.name.Size = UDim2.fromOffset(cw - 8, 18)
 					at(r.name, rx, cyc + 8)
-					Parts.fit(r.name, cw - 10, 14, 11)
+					Parts.fit(r.name, cw - 8, 13, 10) -- smaller type so the label keeps >= 6 px per side
 					Draw.apply(r.pill, Bag.Search, rx, cyc + 27, cw - 12, 20)
 					local lw, lh = Draw.fitIn(Bag.Lock, 14, 14)
 					Draw.apply(r.lock, Bag.Lock, rx - 17, cyc + 27, lw, lh)

@@ -275,10 +275,10 @@ function Quests.new(parent)
 			-- ref: daily gem icon 79 left of CLAIM, coin 91 left of the gem; weekly rows (no button) gem at -96 from the edge, coin 118 left
 			local gemL = if wide then cw - 96 else claimLeft - 79
 			if gems then
-				reward(HudSprites.Gem, gems, Color3.new(1, 1, 1), gemL, cy, 20, 32)
+				reward(HudSprites.Gem, gems, Color3.new(1, 1, 1), gemL, cy, 22, 32, 56) -- ref "+25" ink 30 wide
 			end
 			rewardLeft = gemL - (if wide then 118 else 91)
-			reward(HudSprites.Coin, gold, COIN_TEXT, rewardLeft, cy, 20, 32)
+			reward(HudSprites.Coin, gold, COIN_TEXT, rewardLeft, cy, 22, 32, if wide then 70 else 54) -- ref "+500" ink 41 wide
 			rewardLeft -= if wide then 17 else 10
 		elseif not tiny then
 			rewardLeft = claimLeft - 10 - 86
@@ -381,9 +381,12 @@ function Quests.new(parent)
 		if W <= 0 then
 			return
 		end
-		local padR = if W - PAD_L - PAD_R < 360 then 22 else PAD_R -- phone: a slimmer scrollbar gutter
+		local phone = W - PAD_L - PAD_R < 360
+		local padR = if phone then 22 else PAD_R -- phone: a slimmer scrollbar gutter
+		local padL = if phone then 20 else PAD_L -- and a wider left inset, so the glow and ribbon tail clear the rim
 		pad.PaddingRight = UDim.new(0, padR)
-		local cw = W - PAD_L - padR
+		pad.PaddingLeft = UDim.new(0, padL)
+		local cw = W - padL - padR
 		mode = if cw >= 700 then "full" elseif cw >= 360 then "mid" else "tiny"
 		barW = if cw >= 360 then 21 else 12
 		track.Size = UDim2.fromOffset(barW, parent.Size.Y.Offset)
