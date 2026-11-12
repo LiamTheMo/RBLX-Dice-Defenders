@@ -35,31 +35,15 @@ function Play.new(parent, deps)
 		banner = {
 			text = "PLAY",
 			textX = 0.5715, -- the ref PLAY centre (+41.5 px of the 587 px scroll) scaled into the 489 px scroll, with >= 5 px to the swords and the right laurel
-			textY = 0.335, -- PLAY ends >= 5 px above the gem pin (full tier; phones are re-placed below)
 			textW = 0.5,
-			textFull = 64, -- ref ink 160-168 wide (cap 42): the font is narrower, so the size grows until the swords / laurel / scroll clearances (>= 5 px) bind
-			textCompact = 19,
 			emblems = {
 				{ sprite = PlaySprites.LaurelL, box = { 0.1538, 0.157, 0.1061, 0.645 } }, -- 0.83x the ref laurel (A-2 scale), drawn first: behind the swords
 				{ sprite = PlaySprites.LaurelR, box = { 0.7374, 0.157, 0.1061, 0.645 } },
-				{ sprite = SWORDS, box = { 0.21, -0.233, 0.2006, 0.89 } },
+				{ sprite = SWORDS, box = { 0.221, -0.077, 0.172, 0.765 } },
 			},
 		},
 	})
 	local view = View.new(shell.Slots.Content)
-
-	-- phones: the scroll is only ~26 real px between its top and the gem pin, so the title sits lower than the full tier's 0.35 (equal gaps above and below)
-	local bannerText = shell.Banner:FindFirstChild("Text")
-	local stroke = bannerText:FindFirstChildOfClass("UIStroke")
-	local function placeBannerText()
-		local compact = shell.Slots.Content:GetAttribute("Compact") == true
-		local frac = if compact then 0.329 else 0.335 -- of the scroll ink height
-		stroke.Thickness = if compact then 3 else 5 -- phones: a thinner outline so the title clears both the scroll top and the pin
-		bannerText.Position = UDim2.fromScale(bannerText.Position.X.Scale, 14 / 188 + frac * 162 / 188) -- ScrollBase ink 14 .. 176 of 188
-	end
-	bannerText:GetPropertyChangedSignal("TextSize"):Connect(placeBannerText)
-	shell.Slots.Content:GetAttributeChangedSignal("Compact"):Connect(placeBannerText)
-	placeBannerText()
 
 	local preloaded, busy = false, false
 	local function preload() -- first open only: stream the art so the first frame is not blank
@@ -141,7 +125,7 @@ function Play.new(parent, deps)
 		preload()
 		render()
 		shell:Open()
-		hud:SetBagMode(true)
+		hud:SetBagMode(true, "Play")
 		ContextActionService:BindActionAtPriority(ACTION, function(_, inputState)
 			if inputState == Enum.UserInputState.Begin then
 				shell:Close()

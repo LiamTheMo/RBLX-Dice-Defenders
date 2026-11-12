@@ -14,22 +14,21 @@ local STROKE = Color3.fromRGB(9, 14, 24)
 local GOLD_TEXT = Color3.fromRGB(249, 199, 53)
 local GEM_TEXT = Color3.fromRGB(243, 89, 232)
 local DIM = Color3.fromRGB(180, 180, 182) -- ~70% tint of the HUD icons/labels behind the bag (ref #B1B1B3 / #B4AFB4)
-local BAG_LABEL = Color3.fromRGB(236, 234, 236) -- the selected BAG label stays light (ref #ECEAEC)
+local SELECTED_LABEL = Color3.fromRGB(236, 234, 236) -- the open menu's label stays light (ref #ECEAEC)
 local DESIGN = Vector2.new(1672, 941)
 -- XP bar: design height / track export height (24) is the slice scale; the fill uses the same scale.
 local XP_FILL_CAPS = 112 - (89 - 24) -- narrowest fill: both caps, export px
 local XP_FILL_PAD = 3.95 -- fill box inset from each end of the track, export px, so the pill sits inside the rim (manifest XpFill.pad)
 local BAG_ROW = Vector2.new(880, 50) -- bag-mode bottom row (reference x 405-1285, y 872-922)
 local CELL = Vector2.new(124, 114)
+-- Left grid and QUESTS always use the menu references' size (pitch 104x110, centre x 114): nothing moves when a menu opens.
 local BAG_CELL, BAG_GRID_X, BAG_ICON_SCALE = UDim2.fromOffset(104, 110), 114, 0.88
 -- Icon art drawn at ref ink size: design px per export px (export 256 wide; the sprite margin is ~5 export px).
 local ICON_ART = {
 	Roll = Vector2.new(256, 185) * 0.415,
-	Quests = Vector2.new(256, 248) * 0.42, -- ink 97x80 as in the ref
 	Bag = Vector2.new(256, 239) * 0.345,
 }
 local LABEL_Y = 89.5 -- label centre in the 114 px cell (ref label rows y 432 / 547 / 660)
-local MARGIN = 20 -- side safe margin
 local PROFILE_H = 44 + 36 + 12 -- currencies, gap, XP bar (LVL / XP text overlays the bar)
 local DECK_H = 105
 local BOTTOM_H = PROFILE_H + DECK_H + 6
@@ -93,7 +92,7 @@ local function iconButton(parent, o)
 		Position = UDim2.fromScale(0.5, 0.5),
 		Size = UDim2.fromScale(1, 1),
 	}, btn)
-	make("UIScale", { Name = "BagScale" }, content) -- bag mode shrinks the left grid
+	make("UIScale", { Name = "BagScale", Scale = o.Scale or 1 }, content)
 	-- Fixed-size holder, absolutely placed: scaling the icon directly would move the label.
 	local holder = make("Frame", {
 		Name = "IconHolder",
@@ -191,7 +190,7 @@ function LobbyHud.build(parent, cb)
 		uiScale.Scale = s
 		hud.Size = UDim2.fromScale(1 / s, 1 / s)
 		if self.BagOn then
-			self:SetBagMode(true) -- re-apply the phone-height Bottom rule after a resize/rotation
+			self:SetBagMode(true, self.BagMenu) -- re-apply the phone-height Bottom rule after a resize/rotation
 		end
 	end
 	parent:GetPropertyChangedSignal("AbsoluteSize"):Connect(rescale)
@@ -202,12 +201,12 @@ function LobbyHud.build(parent, cb)
 		Name = "LeftGrid",
 		BackgroundTransparency = 1,
 		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(0, MARGIN + CELL.X, 0.5, 44), -- reference icon rows y 347 / 462 / 582
+		Position = UDim2.new(0, BAG_GRID_X, 0.5, 38),
 		Size = UDim2.fromOffset(CELL.X * 2, CELL.Y * 3),
 	}, hud)
 	self.LeftGrid = grid
 	self.LeftCells = make("UIGridLayout", {
-		CellSize = UDim2.fromOffset(CELL.X, CELL.Y),
+		CellSize = BAG_CELL,
 		CellPadding = UDim2.fromOffset(0, 0),
 		FillDirectionMaxCells = 2,
 		HorizontalAlignment = Enum.HorizontalAlignment.Center,
@@ -235,28 +234,34 @@ function LobbyHud.build(parent, cb)
 		{ "Codes", I.Codes, soon("Codes") },
 		{ "Daily", I.Daily, soon("Daily") },
 	}
+	local buttons = {} -- by name: the open menu's button is highlighted (SetBagMode)
 	for i, t in left do
-		local btn = iconButton(
-			grid,
-			{ Name = t[1], Order = i, Icon = t[2], Label = string.upper(t[1]), OnClick = t[3], Art = ICON_ART[t[1]] }
-		)
-		if t[1] == "Bag" then
-			self.BagButton = btn
-		end
+		buttons[t[1]] = iconButton(grid, {
+			Name = t[1],
+			Order = i,
+			Icon = t[2],
+			Label = string.upper(t[1]),
+			OnClick = t[3],
+			Art = ICON_ART[t[1]],
+			Scale = BAG_ICON_SCALE,
+		})
 	end
 
 	local quests = iconButton(hud, {
 		Name = "Quests",
 		Icon = I.Quests,
 		Label = "QUESTS",
-		LabelW = 140, -- QUESTS at 37 px is as wide as the 124 cell: the box needs slack for TextFits
-		LabelDrop = 8, -- ref QUESTS ink top 520 (was 511 at the shared label row)
-		Art = ICON_ART.Quests,
+		LabelW = 140, -- QUESTS at 37 px is wider than the cell: the box needs slack for TextFits
+		Size = BAG_CELL, -- same cell, icon box and scale as the left grid icons
+		Scale = BAG_ICON_SCALE,
 		OnClick = function()
 			open("Quests")
 		end,
 	})
-	quests.Position = UDim2.new(1, -(MARGIN + CELL.X / 2), 0.5, 20)
+	-- mirrors the left grid's outer column; QUESTS is ~16 px wider than CODES, so +8 keeps the same outer label gap
+	quests.Position = UDim2.new(1, -(BAG_GRID_X - BAG_CELL.X.Offset / 2 + 8), 0.5, 20)
+	buttons.Quests = quests
+	self.Buttons = buttons
 
 	-- 88 px hit area, 60 px icon, no label.
 	local gear = iconButton(hud, {
@@ -459,10 +464,11 @@ function LobbyHud:_layoutXp(w: number, h: number)
 	self.XpFill.Visible = self.XpFraction > 0
 end
 
--- Bag open: the deck row and Bottom block hide; currencies, LVL / XP text and the XP bar are re-parented into one
--- inline centred row (reference y 872-922). Phones: the bag takes that strip too, so the row hides. BAG keeps the hover look.
-function LobbyHud:SetBagMode(on: boolean)
-	self.BagOn = on
+-- A menu open: the deck row and Bottom block hide; currencies, LVL / XP text and the XP bar are re-parented into one
+-- inline centred row (reference y 872-922). Phones: the menu takes that strip too, so the row hides.
+-- menu = the HUD button of the open menu ("Bag", "Play", "Quests", "Roll"): it keeps the hover look, the rest dim.
+function LobbyHud:SetBagMode(on: boolean, menu: string?)
+	self.BagOn, self.BagMenu = on, menu
 	local phone = UiKit.screenSize(self.Hud.Parent).Y < UiKit.PHONE_H
 	self.DeckBar.Visible = not on
 	self.Bottom.Visible = not on
@@ -508,35 +514,23 @@ function LobbyHud:SetBagMode(on: boolean)
 		xp.Size = UDim2.fromOffset(584, 12)
 		self:_layoutXp(584, 12)
 	end
-	-- Bag refs draw the icon grid smaller and further left (pitch 104x110, centre x 114) so column 2 clears the window.
-	local grid = self.LeftGrid
-	grid.Visible = not (on and phone) -- modal bag covers column 2 on phones: hide the grid, restore on close
-	grid.Position = UDim2.new(0, if on then BAG_GRID_X else MARGIN + CELL.X, 0.5, if on then 38 else 44)
-	self.LeftCells.CellSize = if on then BAG_CELL else UDim2.fromOffset(CELL.X, CELL.Y)
-	for _, btn in grid:GetChildren() do
-		local c = btn:FindFirstChild("Content")
-		if c then
-			c.BagScale.Scale = if on then BAG_ICON_SCALE else 1
-		end
-	end
-	-- HUD behind the bag is dimmed to ~70%; the selected BAG label stays light and holds the hover scale.
-	local quests = self.Quests
-	quests.Position = UDim2.new(1, -(MARGIN + CELL.X / 2) + (if on then 9 else 0), 0.5, 20) -- bag ref label centre 1599
-	local all = grid:GetChildren()
+	self.LeftGrid.Visible = not (on and phone) -- the modal menu covers column 2 on phones: hide the grid, restore on close
+	-- HUD behind the menu is dimmed to ~70%; the open menu's label stays light and holds the hover scale.
+	local selected = on and menu and self.Buttons[menu]
+	local all = self.LeftGrid:GetChildren()
 	table.insert(all, self.Gear)
-	table.insert(all, quests)
+	table.insert(all, self.Quests)
 	for _, btn in all do
 		local c = btn:FindFirstChild("Content")
 		if c then
-			c.IconHolder.Icon.ImageColor3 = if on and btn ~= self.BagButton then DIM else UiKit.WHITE
+			c.IconHolder.Icon.ImageColor3 = if on and btn ~= selected then DIM else UiKit.WHITE
 			local label = c:FindFirstChild("Label")
 			if label then
-				label.TextColor3 = if on then DIM else UiKit.WHITE
+				label.TextColor3 = if btn == selected then SELECTED_LABEL elseif on then DIM else UiKit.WHITE
 			end
+			btn:SetAttribute("DebugState", if btn == selected then "Hover" else nil)
 		end
 	end
-	self.BagButton:SetAttribute("DebugState", if on then "Hover" else nil)
-	self.BagButton.Content.Label.TextColor3 = if on then BAG_LABEL else UiKit.WHITE
 end
 
 -- Real px (Root space) the bag window must stay clear of: icon columns on the left (the window overlaps the

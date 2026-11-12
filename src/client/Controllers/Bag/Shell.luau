@@ -1,11 +1,13 @@
 -- Bag shell: the one window every tab shares (banner, close, tab bar, panel slots) plus Fit(). Visual only.
 -- Design px under one UIScale. Switching tabs never touches anything here except the tab sprites.
 -- Shell.new(parent, { fit = () -> { leftReal, bottomTopReal } }) -> shell (see :methods below).
--- Optional deps for other menus (defaults = the Bag): name, banner { text, textX, textY, textW, textFull, textCompact,
--- emblems = { { sprite = record or id, box = {x, y, w, h} } } } (x/y/w/h = fractions of the scroll ink; the scroll and the
--- gem pin are the same for every menu, title centre textX/textY and width textW are scroll-ink fractions), detail (sprite key or record), fullDetail (detail panel as tall as the left one),
+-- Optional deps for other menus (defaults = the Bag): name, banner { text, textX, textW, emblems = { { sprite = record or id, box = {x, y, w, h} } } } (x/y/w/h = fractions of the scroll ink; the scroll and the
+-- gem pin and the title size/height (TITLE) are the same for every menu; title centre textX and width textW are scroll-ink
+-- fractions, a longer title shrinks to fit), detail (sprite key or record), fullDetail (detail panel as tall as the left one),
 -- free (no tabs or panels: one Slots.Content box from freeTop; window, banner and close run the same code as the Bag),
--- tabIconScale (tab icon box multiplier, default 1).
+-- tabIconScale (tab icon box multiplier, default 1), tabW (tabs keep this design-px width instead of stretching (compact: scaled with the tab height, and shrunk to leave deps.tabReserve design px free in the row);
+-- the tab bar keeps the Bag's span so another child with a high LayoutOrder shares the row; a tab without Icon centres its label;
+-- free mode with tabs puts Content under the tab bar).
 
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
@@ -67,6 +69,10 @@ local TIER = {
 	},
 }
 local SB, GEM = PlaySprites.ScrollBase, PlaySprites.GemPin
+local TITLE = { -- banner title: font size, outline, centre height (scroll-ink fraction) per tier
+	Full = { size = 64, stroke = 5, y = 0.395 },
+	Compact = { size = 19, stroke = 3, y = 0.329 },
+}
 local GEM_BOX = { 0.4261, 0.7153, 0.1488, 0.3167 }
 local GAP = 10 -- vertical gap left panel to footer
 local FULL_INK = Vector2.new(1251, 770) -- window box minus the transparent mx/my margin: visible rim 213-1459 x 98-861
@@ -195,9 +201,9 @@ function Shell.new(parent, deps)
 		Text = bn.text or "BAG",
 		TextTruncate = Enum.TextTruncate.None,
 		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(sbInk[1] + (bn.textX or 0.5) * sbInk[3], sbInk[2] + (bn.textY or 0.5) * sbInk[4]),
 		ZIndex = Z + 12,
 	}, 5)
+	local bannerStroke = bannerText:FindFirstChildOfClass("UIStroke")
 	self.Banner = banner
 
 	local close = make("ImageButton", {
@@ -252,7 +258,7 @@ function Shell.new(parent, deps)
 		else
 			winW = 2 * side + gap + leftW + detailW
 		end
-		local contentTop = (if free then t.freeTop else t.contentTop) + t.my
+		local contentTop = (if free and #self._tabs == 0 then t.freeTop else t.contentTop) + t.my
 		local bottomPad = t.bottomPad + (if compact then 0 else t.my)
 		local contentH = hf - contentTop - bottomPad
 		-- Left column is one box on every tab: the panel fills it, minus the footer strip when the Dice footer shows
@@ -311,7 +317,15 @@ function Shell.new(parent, deps)
 		local k = t.inkW / SB.Ink.Width -- sprite px -> design px
 		banner.Position = UDim2.new(0.5, 0, 0, t.inkCy - (SB.Ink.Min.Y + SB.Ink.Max.Y) / 2 * k)
 		banner.Size = UDim2.fromOffset(SB.Size.X * k, SB.Size.Y * k)
-		bannerText.TextSize = (if compact then bn.textCompact else bn.textFull) or (if compact then 20 else 34)
+		local title = if compact then TITLE.Compact else TITLE.Full
+		bannerStroke.Thickness = title.stroke
+		bannerText.TextSize = Parts.fitSize(
+			bannerText.Text,
+			(bn.textW or 0.5) * sbInk[3] * banner.Size.X.Offset - title.stroke,
+			title.size,
+			12
+		)
+		bannerText.Position = UDim2.fromScale(sbInk[1] + (bn.textX or 0.5) * sbInk[3], sbInk[2] + title.y * sbInk[4])
 		bannerText.Size = UDim2.new((bn.textW or 0.5) * sbInk[3], 0, 0, math.ceil(bannerText.TextSize * 1.2))
 		-- ~85% of the reference X (visible 74x72 at full): same centre, so it still sits on the window's corner
 		close.Size = if compact then UDim2.fromOffset(61, 58) else UDim2.fromOffset(72, 68) -- visible ~63x61 (the sprite shows ~0.87 of its box)
@@ -323,7 +337,7 @@ function Shell.new(parent, deps)
 		local barW = winW - 2 * (t.mx + 47)
 		local n = math.max(1, #self._tabs)
 		local fixedW = not compact and n == #TAB_W
-		local equalW = not compact and not fixedW and #self._tabs > 0 -- other tab counts fill the Bag's tab-row span
+		local equalW = not compact and not fixedW and #self._tabs > 0 -- other tab counts fill the Bag's tab-row span (or keep deps.tabW)
 		local tabW = math.floor((barW - (n - 1) * t.tabGap) / n)
 		local tabK = 1
 		if fixedW or equalW then
@@ -343,13 +357,21 @@ function Shell.new(parent, deps)
 		tabBar.UIListLayout.Padding = UDim.new(0, t.tabGap)
 		local icon = t.icon * (deps.tabIconScale or 1)
 		for i, tab in self._tabButtons do
-			local w = if fixedW then TAB_W[i] * tabK else tabW
+			local w = if fixedW
+				then TAB_W[i] * tabK
+				elseif equalW and deps.tabW then math.min(deps.tabW * tabK, tabW)
+				elseif compact and deps.tabW then math.min(
+					deps.tabW * t.tabH / TIER.Full.tabH,
+					(barW - (deps.tabReserve or 0) - (n - 1) * t.tabGap) / n
+				) -- phones: scaled with the tab height, leaving tabReserve for other row children
+				else tabW
+			local hasIcon = self._tabs[i].Icon ~= nil
 			tab.Size = UDim2.fromOffset(w, t.tabH)
 			tab.Row.Position = UDim2.fromOffset(0, if compact then 0 else -4) -- ref label y 159-178: above the tab centre
 			tab.Row.UIListLayout.Padding = UDim.new(0, t.iconGap)
 			tab.Row.Icon.Size = UDim2.fromOffset(icon, icon)
-			tab.Row.Icon.Visible = w >= 150
-			local avail = w - 24 - (if w >= 150 then icon + t.iconGap else 0)
+			tab.Row.Icon.Visible = hasIcon and w >= 150
+			local avail = w - 24 - (if hasIcon and w >= 150 then icon + t.iconGap else 0)
 			tab.Row.Label.UISizeConstraint.MaxSize = Vector2.new(avail, t.tabH)
 			Parts.fit(tab.Row.Label, avail, if w < 170 then 18 else t.tabText, 15)
 		end
@@ -420,7 +442,9 @@ function Shell:SetTabs(tabs)
 			LayoutOrder = 1,
 			ZIndex = Z + 6,
 		}, row)
-		Parts.image(icon, tab.Icon)
+		if tab.Icon then
+			Parts.image(icon, tab.Icon)
+		end
 		local label = Parts.text(row, {
 			Name = "Label",
 			Text = tab.Label,

@@ -126,10 +126,7 @@ function QuestLog.new(parent, deps)
 		banner = {
 			text = "QUEST LOG",
 			textX = 0.5394,
-			textY = 0.543,
 			textW = 0.523,
-			textFull = 34,
-			textCompact = 20,
 			emblems = {
 				{ sprite = Q.BannerSeal, box = { 0.1085, 0.1111, 0.1382, 0.8148 } },
 				{ sprite = Q.BannerQuill, box = { 0.1925, -0.3827, 0.5904, 0.4938 } },
@@ -418,7 +415,7 @@ function QuestLog.new(parent, deps)
 		end
 		preload()
 		shell:Open()
-		hud:SetBagMode(true)
+		hud:SetBagMode(true, "Quests")
 		timerToken += 1
 		local token = timerToken
 		task.spawn(function()

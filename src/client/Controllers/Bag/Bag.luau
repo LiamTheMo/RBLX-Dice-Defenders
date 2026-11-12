@@ -34,10 +34,7 @@ function Bag.new(parent, deps)
 		banner = {
 			text = "BAG",
 			textX = 0.5, -- centred over the gem pin (the shared scroll has no right-hand art to dodge)
-			textY = 0.527,
 			textW = 0.525,
-			textFull = 34,
-			textCompact = 20,
 			emblems = { { sprite = Sprites.BannerEmblem, box = { 0.1085, 0.0617, 0.124, 0.8951 } } },
 		},
 	})
@@ -296,7 +293,7 @@ function Bag.new(parent, deps)
 			return
 		end
 		shell:Open()
-		hud:SetBagMode(true)
+		hud:SetBagMode(true, "Bag")
 		ContextActionService:BindActionAtPriority(ACTION, function(_, inputState)
 			if inputState == Enum.UserInputState.Begin then
 				shell:Close()
