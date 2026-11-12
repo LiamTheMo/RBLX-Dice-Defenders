@@ -746,7 +746,9 @@ function Parts.Grid(parent)
 		local card = img(scroll, { Name = "Card_" .. item.Id, LayoutOrder = order }, "ImageButton")
 
 		local copper = COPPER_CARD[kind]
-		Parts.skin(card, copper or RARITY_CARD[item.Rarity] or "CardCommon", if copper then 0.4 else 0.5)
+		local cardSprite = copper or RARITY_CARD[item.Rarity] or "CardCommon"
+		local cardK = if copper then 0.4 else 0.5
+		Parts.skin(card, cardSprite, cardK)
 		Parts.interact(card)
 		-- Selected, toggled by SetSelected: glowing copper card (Items/Cosmetics) or a thick gold rim ON the card rim
 		-- (inset by the sprite margin) over the rarity fill.
@@ -833,8 +835,14 @@ function Parts.Grid(parent)
 				TextSize = if compactNow and kind == "Dice" then 11 else px(tsize(20, 15)),
 			})
 			pill.AnchorPoint = if eq then Vector2.zero else Vector2.new(0.5, 0)
-			-- Equipped: left-aligned 5 px inside the card; rarity tags centred
-			pill.Position = UDim2.new(if eq then 0 else 0.5, if eq then 3 else 0, 0, px(7))
+			-- Equipped: its visible ink starts 7 px inside the card's visible rim (as in the reference), so it never
+			-- spills over the rim; both sprites carry a transparent margin. Rarity tags centred.
+			local eqX = 0
+			if eq then
+				local cardInkL = Sprites[cardSprite].Ink.Min.X * cardK
+				eqX = cardInkL + px(7) - (pill.Size.X.Offset - px(100)) / 2
+			end
+			pill.Position = UDim2.new(if eq then 0 else 0.5, eqX, 0, px(7))
 		end
 		local icon = img(card, { Name = "Icon" })
 		local isz, itop
