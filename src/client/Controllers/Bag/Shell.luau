@@ -8,6 +8,8 @@
 -- tabIconScale (tab icon box multiplier, default 1), tabW (tabs keep this design-px width instead of stretching (compact: scaled with the tab height, and shrunk to leave deps.tabReserve design px free in the row);
 -- the tab bar keeps the Bag's span so another child with a high LayoutOrder shares the row; a tab without Icon centres its label;
 -- free mode with tabs puts Content under the tab bar).
+-- Opt-in banner options (default = unchanged): banner.noGem = true skips the gem pin; banner.titleY = { full = f, compact = f } overrides the title
+-- centre height (scroll-ink fraction); an emblem box may be { full = box, compact = box } to size the emblem per tier.
 
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
@@ -179,20 +181,33 @@ function Shell.new(parent, deps)
 	Parts.skin(banner, SB)
 	local sbInk =
 		{ SB.Ink.Min.X / SB.Size.X, SB.Ink.Min.Y / SB.Size.Y, SB.Ink.Width / SB.Size.X, SB.Ink.Height / SB.Size.Y }
+	local placers = {}
 	local function addEmblem(sprite, box)
-		local x, y, w, h = box[1], box[2], box[3], box[4] -- scroll-ink fractions
-		x, y, w, h = sbInk[1] + x * sbInk[3], sbInk[2] + y * sbInk[4], w * sbInk[3], h * sbInk[4] -- banner fractions
+		local tiered = box.full ~= nil
 		local e = make("ImageLabel", { Name = "Emblem", BackgroundTransparency = 1, ZIndex = Z + 11 }, banner)
 		Parts.image(e, sprite)
-		if type(sprite) == "table" then -- draw by ink: the sprite's transparent margin extends the box
-			local r = sprite
-			local ix, iy, iw, ih =
-				r.Ink.Min.X / r.Size.X, r.Ink.Min.Y / r.Size.Y, r.Ink.Width / r.Size.X, r.Ink.Height / r.Size.Y
-			x, y, w, h = x - ix / iw * w, y - iy / ih * h, w / iw, h / ih
+		local function place(b)
+			local x, y, w, h = b[1], b[2], b[3], b[4] -- scroll-ink fractions
+			x, y, w, h = sbInk[1] + x * sbInk[3], sbInk[2] + y * sbInk[4], w * sbInk[3], h * sbInk[4] -- banner fractions
+			if type(sprite) == "table" then -- draw by ink: the sprite's transparent margin extends the box
+				local r = sprite
+				local ix, iy, iw, ih =
+					r.Ink.Min.X / r.Size.X, r.Ink.Min.Y / r.Size.Y, r.Ink.Width / r.Size.X, r.Ink.Height / r.Size.Y
+				x, y, w, h = x - ix / iw * w, y - iy / ih * h, w / iw, h / ih
+			end
+			e.Position, e.Size = UDim2.fromScale(x, y), UDim2.fromScale(w, h)
 		end
-		e.Position, e.Size = UDim2.fromScale(x, y), UDim2.fromScale(w, h)
+		if tiered then
+			table.insert(placers, function(compact)
+				place(if compact then box.compact else box.full)
+			end)
+		else
+			place(box)
+		end
 	end
-	addEmblem(GEM, GEM_BOX)
+	if not bn.noGem then
+		addEmblem(GEM, GEM_BOX)
+	end
 	for _, e in bn.emblems or {} do
 		addEmblem(e.sprite, e.box)
 	end
@@ -318,6 +333,13 @@ function Shell.new(parent, deps)
 		banner.Position = UDim2.new(0.5, 0, 0, t.inkCy - (SB.Ink.Min.Y + SB.Ink.Max.Y) / 2 * k)
 		banner.Size = UDim2.fromOffset(SB.Size.X * k, SB.Size.Y * k)
 		local title = if compact then TITLE.Compact else TITLE.Full
+		if bn.titleY then
+			title = table.clone(title)
+			title.y = if compact then bn.titleY.compact else bn.titleY.full
+		end
+		for _, place in placers do
+			place(compact)
+		end
 		bannerStroke.Thickness = title.stroke
 		bannerText.TextSize = Parts.fitSize(
 			bannerText.Text,

@@ -34,7 +34,7 @@ local ROW_ICON = {
 	Rare = RollSprites.StarsRare,
 	Common = RollSprites.StarCommon,
 }
-local ICON_W = { Rare = 53, Common = 26 } -- reference icon box widths; the crowns (Epic too) share the 44 x 25 box
+local ICON_W = { Rare = 46, Common = 23 } -- desktop icon box widths (scaled with the 34 px bar); the crowns (Epic too) share the 38 x 24 box
 local MYTHIC_K = 1.14 -- the Mythic die is 1.14x the side dice (ref 204 vs 179)
 
 local function round(n: number): number
@@ -173,17 +173,27 @@ local function compute(W: number, H: number, compact: boolean)
 	if compact then
 		L.padTop = 8 -- the scroll frame reaches this far above the content so the rule is never clipped
 		L.ruleH, L.ruleY = 12, -1
-		L.gap, L.btnGap, L.pad = 6, 8, 20 -- pad: >= 8 real px from the buttons to the window rim's inner face
-		L.plateTop, L.plateH, L.pityH, L.btnH = if W >= 700 then 13 else 8, if W >= 700 then 24 else 26, 50, 56 -- plateTop: >= 4 real px under the panel's double top rim at 844
-		L.panelY = 5
+		L.gap, L.btnGap, L.pad = 4, 6, 19 -- pad: >= 8 real px from the buttons to the window rim's inner face
+		L.plateTop, L.plateH, L.pityH, L.btnH = if W >= 700 then 13 else 8, if W >= 700 then 24 else 26, 44, 56 -- plateTop: >= 4 real px under the panel's double top rim at 844
+		L.panelY = 4
 		L.noRarPlate = W < 700 -- 667: the title can't clear the diamonds inside the row span, so it is plain outlined text
 		L.panelH = math.max(150, H - L.panelY - L.pityH - L.btnH - L.gap - L.btnGap - L.pad)
 		L.minText = math.max(math.ceil(14 / K), 12)
-		L.sizes = { head = 20, headR = 20, row = 18, pity = 18, count = 20, btn = 24, price = 18, pill = 18, msg = 28 }
-		L.rowH, L.rowGapTop, L.rowBot = 15, 0, if W >= 700 then 6 else 8
-		-- the bar is as tall as the room allows (<= 19 design = 15 real): six bars + five gaps of >= 3.75 design (3 real) px
-		local rowsTop = if L.noRarPlate then L.plateTop + 25 else L.plateTop + L.plateH + L.rowGapTop
-		L.rowH = math.clamp(math.round((L.panelH - rowsTop - L.rowBot - 18.75) / 6), 14, 19)
+		L.sizes = {
+			head = 20,
+			headR = if W < 700 then 18 else 20,
+			row = 18,
+			pity = 18,
+			count = 20,
+			btn = 24,
+			price = 18,
+			pill = 18,
+			msg = 28,
+		}
+		L.rowH, L.rowGapTop, L.rowBot = 15, 5, 8
+		-- the bar is as tall as the room allows once the five gaps keep >= 5 design (4 real) px between the INK edges (the outline + glow add ~3.5 design to the visible-box height)
+		local rowsTop = if L.noRarPlate then L.plateTop + 22 else L.plateTop + L.plateH + L.rowGapTop
+		L.rowH = math.clamp(math.round((L.panelH - rowsTop - L.rowBot - 42.5) / 6), 12, 20)
 		-- the three featured pills side by side: >= 8 px between them and >= 6 px to the panel rims
 		local pillMargin = if W >= 700 then 17 else 18 -- design px to the panel box: ~6 real px to the rim's inner face
 		local wide = round(measure("LEGENDARY", L.sizes.pill) + 18) -- the panel width stays what the 18 px padding gave
@@ -203,14 +213,14 @@ local function compute(W: number, H: number, compact: boolean)
 			pillX = rowW * 0.02,
 			pillW = pillW,
 			pillH = 34,
-			pillCy = 25,
+			pillCy = 22,
 			infoX = infoX,
 			barL = barL,
 			barW = rowW * 0.97 - barL,
-			barH = 20,
-			tY = 12,
-			cY = 12,
-			bY = 32,
+			barH = 18,
+			tY = 11,
+			cY = 11,
+			bY = 30,
 			textX = 0.373,
 			crown = 24,
 		}
@@ -219,7 +229,7 @@ local function compute(W: number, H: number, compact: boolean)
 		L.featPlateW = round(L.fw * 0.7)
 		L.rowW = L.rw - 32 -- >= 6 real px to the rim's inner face (pixel scan: the rim face sits ~5 px inside the panel box)
 		L.rarPlateW = if L.noRarPlate then L.rowW + 2 * 18 else L.rowW - 6 -- the plate stays inside the row span (reference: plate 290 in rows 296)
-		L.rowIcon, L.rowNameX, L.rowNameW, L.rowPctW = 0.1, 0.2, 0.6, 0.5 -- phones: name and percent share the narrow row
+		L.rowIcon, L.rowNameX, L.rowNameW, L.rowPctW = 0.1, 0.205, 0.6, 0.5 -- phones: name and percent share the narrow row
 		L.plateClear = 2 * 18 -- both plate ends (diamond + bevel) at plateH 28
 	else
 		L.padTop = 12 -- the scroll frame reaches this far above the content top, so the rule can sit just under the tabs
@@ -232,8 +242,8 @@ local function compute(W: number, H: number, compact: boolean)
 		L.panelH = H - L.panelY - L.gap - L.pityH - L.btnGap - L.btnH - L.pad
 		L.minText = 14
 		-- one size per text role; FredokaOne caps are 0.58 x TextSize (measured) and match the reference caps
-		L.sizes = { head = 34, headR = 32, row = 31, pity = 27, count = 34, btn = 37, price = 28, pill = 33, msg = 40 }
-		L.rowH, L.rowGapTop, L.rowBot = 41.5, 7, 22 -- ink height; rows spread evenly, the gap is what is left (~9-10)
+		L.sizes = { head = 34, headR = 32, row = 28, pity = 27, count = 34, btn = 37, price = 28, pill = 33, msg = 40 }
+		L.rowH, L.rowGapTop, L.rowBot = 33, 6, 6 -- ink height; rows spread evenly, the visible-edge gap is ~17 (outline + glow included)
 		-- the Bag's panel boxes (left box x + 1, width + 2, detail box right after it) inset by their 2.5 px sprite margin
 		local leftW = round((W - 3) * 0.696)
 		L.fx, L.fw = 3, leftW + 1 - 3
@@ -400,12 +410,12 @@ function View:_drawRarity(L, z, Pw: number, Ph: number)
 		Stroke = if L.noRarPlate then 2 else nil,
 		Size = self._headR,
 		X = Pw / 2,
-		Y = if L.noRarPlate then L.plateTop + 10.5 else L.plateTop + L.plateH / 2, -- plain title: sits above the rows
+		Y = if L.noRarPlate then L.plateTop + 9 else L.plateTop + L.plateH / 2, -- plain title: sits above the rows
 		W = plateW - L.plateClear,
 		Z = z + 2,
 	})
 	-- six rows spread evenly between the plate and the panel bottom: row height fixed, the gap is what is left
-	local top = if L.noRarPlate then L.plateTop + 25 else L.plateTop + L.plateH + L.rowGapTop
+	local top = if L.noRarPlate then L.plateTop + 22 else L.plateTop + L.plateH + L.rowGapTop
 	local rowH = L.rowH
 	local pitch = (Ph - top - L.rowBot - rowH) / 5
 	local rowW = L.rowW
@@ -414,13 +424,14 @@ function View:_drawRarity(L, z, Pw: number, Ph: number)
 	local nameW, pctW = rowW * L.rowNameW, rowW * L.rowPctW
 	for i, row in self._rows do
 		local cy = top + (i - 1) * pitch + rowH / 2
+		local textLift = if L.compact then 2.5 else 0 -- phones: descenders (g y p) sit in the bar, not on its edge
 		local bg = Draw.img(panel, { Name = "Row_" .. row.Rarity, ZIndex = z + 1 })
 		vis(bg, ROW_ART[row.Rarity] or RollSprites.RowCommon, Pw / 2 + rowShift, cy, rowW, rowH)
 		local icon = Draw.img(panel, { Name = "Icon", ZIndex = z + 2 })
 		local rec = ROW_ICON[row.Rarity] or RollSprites.CrownGold
-		local boxW, boxH = ICON_W[row.Rarity] or 44, 25 -- reference: crowns 44x25, Rare stars 53 wide, Common star 26
+		local boxW, boxH = ICON_W[row.Rarity] or 38, 24
 		if L.compact then
-			boxW, boxH = boxW * 0.55, 15
+			boxW, boxH = ({ Rare = 29, Common = 14 })[row.Rarity] or 24, 15
 		end
 		-- ink-fitted into the box (width first), centred on the icon column
 		local ins = INS[rec]
@@ -434,7 +445,7 @@ function View:_drawRarity(L, z, Pw: number, Ph: number)
 			Size = self._rowSize,
 			AX = 0,
 			X = inset + rowW * L.rowNameX,
-			Y = cy,
+			Y = cy - textLift,
 			W = nameW,
 			Z = z + 2,
 			Stroke = 2.5,
@@ -444,8 +455,8 @@ function View:_drawRarity(L, z, Pw: number, Ph: number)
 			Text = row.Text,
 			Size = self._rowSize,
 			AX = 1,
-			X = inset + rowW - (if L.compact then 9 else 5), -- phones: >= 4 real px inside the row's rounded end
-			Y = cy,
+			X = inset + rowW - (if L.compact then 5 else 5), -- phones: >= 4 real px inside the row's rounded end
+			Y = cy - textLift,
 			W = pctW,
 			Z = z + 2,
 			Stroke = 2.5,

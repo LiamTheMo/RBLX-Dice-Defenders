@@ -42,11 +42,6 @@ return {
 		Size = Vector2.new(206, 208),
 		Ink = Rect.new(11, 12, 196, 197),
 	},
-	BannerDie = {
-		Image = "rbxassetid://87125271086620",
-		Size = Vector2.new(537, 257),
-		Ink = Rect.new(24, 11, 515, 244),
-	},
 	PityPill = {
 		Image = "rbxassetid://140611114727062",
 		Size = Vector2.new(341, 142),
@@ -141,6 +136,16 @@ return {
 		Size = Vector2.new(288, 105),
 		Ink = Rect.new(12, 11, 276, 94),
 		Slice = Rect.new(66, 51, 228, 52),
+	},
+	BannerDieSolo = {
+		Image = "rbxassetid://92798359066670",
+		Size = Vector2.new(225, 242),
+		Ink = Rect.new(11, 11, 214, 231),
+	},
+	BannerRing = {
+		Image = "rbxassetid://114250841752433",
+		Size = Vector2.new(523, 227),
+		Ink = Rect.new(23, 22, 499, 204),
 	},
 	Die1 = {
 		Image = "rbxassetid://139886553638643",

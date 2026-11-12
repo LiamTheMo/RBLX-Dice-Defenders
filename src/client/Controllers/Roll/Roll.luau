@@ -20,10 +20,20 @@ local View = require(script.Parent.View)
 
 local ACTION = "RollClose"
 local POOLS = { "Standard", "Event" }
--- Roll_BannerDie (gold die + pink orbit ring + sparkles) over the scroll top as in the reference: ink 93 x 44 design px on the
--- title axis, its top 33 px above the scroll ink top (on-screen at every size) and its bottom above the ROLL cap. Box = scroll-ink fractions.
-local SCROLL_H = 488.5 * PlaySprites.ScrollBase.Ink.Height / PlaySprites.ScrollBase.Ink.Width -- design px
-local ICON_BOX = { 0.4, -33 / SCROLL_H, 0.19, 44 / SCROLL_H }
+-- Banner emblems (Roll only, no gem pin): Roll_BannerRing (ink 476 x 182 src px) behind Roll_BannerDieSolo (ink 203 x 220), the ring ~2.9x the die width centred on the die.
+-- Boxes = scroll-ink fractions per tier. The die's top is >= 2 screen px down; its bottom is >= 6 px above the ROLL outline (title y 0.66).
+local INK = PlaySprites.ScrollBase.Ink.Height / PlaySprites.ScrollBase.Ink.Width
+local function dieBoxes(h, top, inkW)
+	local scrollH = inkW * INK
+	local w = h * 203 / 220
+	local rw = 2.9 * w
+	local rh = rw * 182 / 476
+	local ring = { 0.5 - rw / 2 / inkW, (top + h / 2 - rh / 2) / scrollH, rw / inkW, rh / scrollH }
+	local die = { 0.5 - w / 2 / inkW, top / scrollH, w / inkW, h / scrollH }
+	return ring, die
+end
+local RING_FULL, DIE_FULL = dieBoxes(75, -34.5, 488.5)
+local RING_COMPACT, DIE_COMPACT = dieBoxes(34.5, -17.5, 220)
 local TIMER_W, SEP_W = 223, 30 -- the Quest Log pill width (full tier)
 local PRESS_COOLDOWN = 0.5 -- UX throttle only
 
@@ -46,7 +56,12 @@ function Roll.new(parent, deps)
 			text = "ROLL",
 			textX = 0.5,
 			textW = 0.45,
-			emblems = { { sprite = RollSprites.BannerDie, box = ICON_BOX } },
+			noGem = true,
+			titleY = { full = 0.66, compact = 0.66 },
+			emblems = {
+				{ sprite = RollSprites.BannerRing, box = { full = RING_FULL, compact = RING_COMPACT } },
+				{ sprite = RollSprites.BannerDieSolo, box = { full = DIE_FULL, compact = DIE_COMPACT } },
+			},
 		},
 	})
 	shell:SetTabs({ { Id = "Standard", Label = "STANDARD" }, { Id = "Event", Label = "EVENT" } })
