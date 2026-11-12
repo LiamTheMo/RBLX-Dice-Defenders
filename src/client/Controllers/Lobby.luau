@@ -59,7 +59,7 @@ local function toast(text: string)
 	toastToken += 1
 	local token = toastToken
 	ui.Toast.Text = text
-	-- Bag or Quest Log open: sit over the HUD currency block so the bag banner, X and tabs stay visible.
+	-- Bag, Quest Log or Play open: sit over the HUD currency block so the banner, X and tabs stay visible.
 	if ui.Bag:IsOpen() or ui.QuestLog:IsOpen() or ui.Play:IsOpen() then
 		ui.ToastFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 		-- Clamped: on phones the HUD block is hidden and bottomTopReal is the screen height.

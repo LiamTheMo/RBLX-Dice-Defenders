@@ -1,7 +1,7 @@
 -- Play menu controller: one Shell (banner, close; no tabs) hosting the Play View.
 -- Play.new(parent, { hud = LobbyHud, toast = (string) -> () }) -> :Open() :Close() :Toggle() :IsOpen() :Destroy()
--- Exposes .View and .Shell so the behaviour layer (Start, State) can wire View:OnStart / OnSelect / OnLocked next.
--- Renders once on open from PlayLogic with NetClient.Last and the client-only SampleData (Studio shows the full reference).
+-- Renders from PlayLogic with NetClient.Last and the client-only SampleData (Studio shows the full reference) on open and
+-- whenever the phase, best wave or clear state changes; START sends the guarded Start request, one at a time.
 
 local ContentProvider = game:GetService("ContentProvider")
 local ContextActionService = game:GetService("ContextActionService")
@@ -34,19 +34,32 @@ function Play.new(parent, deps)
 		free = true,
 		banner = {
 			text = "PLAY",
-			textX = 0.569, -- centred between the swords and the right laurel (equal ink gaps)
-			textY = 0.41,
+			textX = 0.5715, -- the ref PLAY centre (+41.5 px of the 587 px scroll) scaled into the 489 px scroll, with >= 5 px to the swords and the right laurel
+			textY = 0.35, -- PLAY ends >= 5 px above the gem pin (full tier; phones are re-placed below)
 			textW = 0.5,
-			textFull = 68, -- ink ~147 wide toward the ref 166, ~9 px to the swords and the laurel (cap grows past the ref 42: the face is narrower)
-			textCompact = 22,
+			textFull = 60, -- cap 43 = the ref 42; ink ~135 wide + 5 px outline: >= 5 px to the swords and the laurel
+			textCompact = 19,
 			emblems = {
-				{ sprite = PlaySprites.LaurelL, box = { 0.1447, 0.1458, 0.1053, 0.6667 } },
-				{ sprite = PlaySprites.LaurelR, box = { 0.7409, 0.1458, 0.1053, 0.6667 } },
+				{ sprite = PlaySprites.LaurelL, box = { 0.1538, 0.157, 0.1061, 0.645 } }, -- 0.83x the ref laurel (A-2 scale), drawn first: behind the swords
+				{ sprite = PlaySprites.LaurelR, box = { 0.7374, 0.157, 0.1061, 0.645 } },
 				{ sprite = SWORDS, box = { 0.21, -0.233, 0.2006, 0.89 } },
 			},
 		},
 	})
 	local view = View.new(shell.Slots.Content)
+
+	-- phones: the scroll is only ~26 real px between its top and the gem pin, so the title sits lower than the full tier's 0.35 (equal gaps above and below)
+	local bannerText = shell.Banner:FindFirstChild("Text")
+	local stroke = bannerText:FindFirstChildOfClass("UIStroke")
+	local function placeBannerText()
+		local compact = shell.Slots.Content:GetAttribute("Compact") == true
+		local frac = if compact then 0.329 else 0.35 -- of the scroll ink height
+		stroke.Thickness = if compact then 3 else 5 -- phones: a thinner outline so the title clears both the scroll top and the pin
+		bannerText.Position = UDim2.fromScale(bannerText.Position.X.Scale, 14 / 188 + frac * 162 / 188) -- ScrollBase ink 14 .. 176 of 188
+	end
+	bannerText:GetPropertyChangedSignal("TextSize"):Connect(placeBannerText)
+	shell.Slots.Content:GetAttributeChangedSignal("Compact"):Connect(placeBannerText)
+	placeBannerText()
 
 	local preloaded, busy = false, false
 	local function preload() -- first open only: stream the art so the first frame is not blank
@@ -57,8 +70,10 @@ function Play.new(parent, deps)
 		task.spawn(pcall, ContentProvider.PreloadAsync, ContentProvider, { shell.Bag }) -- Bag draws every Play sprite
 	end
 
+	local shown -- the State fields the last render drew
 	local function render()
 		local snap = NetClient.Last
+		shown = snap and `{snap.Phase}|{snap.BestWave}|{snap.TrialCleared}`
 		local sample = SampleData.get(RunService:IsStudio())
 		view:SetWorlds(PlayLogic.worlds(snap, sample))
 		view:SetSelected(PlayLogic.WORLD.Id)
@@ -98,7 +113,10 @@ function Play.new(parent, deps)
 			if snap.Phase ~= "Lobby" and snap.Phase ~= "Ended" then
 				shell:Close()
 			else
-				render()
+				local key = `{snap.Phase}|{snap.BestWave}|{snap.TrialCleared}` -- State ticks often; rebuild only on a visible change
+				if key ~= shown then
+					render()
+				end
 			end
 		end)
 	)

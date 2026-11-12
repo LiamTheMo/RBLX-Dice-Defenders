@@ -2,7 +2,7 @@
 -- Source PNGs: Assets/UI/play menu/export/Play_<Name>.png, cut from the sheets by tools/slice_play.py (Size, Ink and the Rects below
 -- are copied from its export/manifest.json; all are export pixels). Same entry format as QuestSprites.
 -- Images must be owned by the experience's group (33284082). An empty id renders blank; never guess an id.
--- Slice = SliceCenter for 9-slice sprites only; no Slice = ornate art, draw unsliced by its aspect (none here: all unsliced).
+-- Slice = SliceCenter for 9-slice sprites only; no Slice = ornate art, draw unsliced by its aspect (PurpleBox is the only 9-slice).
 -- Ink = the opaque (alpha >= 160) box inside the export: the art is drawn smaller than its Size by this transparent margin.
 -- World* = opaque landscape interiors (no rim; the rim is a live UIStroke). Card / CardSel / Preview = ImageRectOffset/Size crops
 -- (x0, y0, x1, y1) for the left-column card (363x148), the selected card (363x168) and the right preview (372x205).
@@ -74,10 +74,10 @@ return {
 		Image = "rbxassetid://113653597909595",
 		Size = Vector2.new(319, 181),
 		Ink = Rect.new(0, 0, 319, 181),
-		Card = Rect.new(0, 6, 300, 128),
-		CardSel = Rect.new(0, 4, 300, 143),
+		Card = Rect.new(0, 82, 242, 181),
+		CardSel = Rect.new(0, 80, 217, 181),
 		Preview = Rect.new(0, 0, 319, 176),
-		CardC = Rect.new(0, 6, 300, 128),
+		CardC = Rect.new(0, 82, 242, 181),
 	},
 	PurpleBox = {
 		Image = "rbxassetid://105278600388247",

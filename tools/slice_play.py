@@ -68,12 +68,12 @@ TARGETS = {"Card": (363, 148), "CardSel": (363, 168), "Preview": (372, 205), "Ca
 # Dice: forest left, castle right (reference); Shadow: slide the crop down so the huge moon is partly cut (the sheet art is zoomed in).
 ALIGN = {
     "WorldDice": {"Card": (0, 0), "CardSel": (0, 0), "CardC": (0, 0)},
-    "WorldShadow": {"Card": (0, 0.1), "CardSel": (0, 0.1), "CardC": (0, 0.1)},
+    "WorldShadow": {"Card": (0, 1), "CardSel": (0, 1), "CardC": (0, 1)},
     "WorldFrost": {"CardC": (0, 0.45)},  # phones: zoom 0.9 from the left + slide down: the die clears the 18 px title (>= 5 px) and the padlock under it (>= 4 px)
 }
 # Crop width as a share of the interior (zoom in): Shadow's moon (src x 218-292 of 319) must sit right of the card title (ends ~245 design px)
 # with >= 5 px clear and stay whole inside the card: 0.94 -> moon spans ~263-352 of the 368 px card.
-ZOOM = {"WorldShadow": {"Card": 0.94, "CardSel": 0.94, "CardC": 0.94}, "WorldFrost": {"CardC": 0.9}}
+ZOOM = {"WorldShadow": {"Card": 0.76, "CardSel": 0.68, "CardC": 0.76}, "WorldFrost": {"CardC": 0.9}}  # Shadow: crop stops left of / below the baked-in 85 px moon (View draws a ~38 px disc over it)
 
 
 def crop_rect(w: int, h: int, tw: int, th: int, ax: float = 0.5, ay: float = 0, z: float = 1) -> list[int]:
@@ -126,7 +126,7 @@ def write_luau() -> None:
         "-- Source PNGs: Assets/UI/play menu/export/Play_<Name>.png, cut from the sheets by tools/slice_play.py (Size, Ink and the Rects below",
         "-- are copied from its export/manifest.json; all are export pixels). Same entry format as QuestSprites.",
         "-- Images must be owned by the experience's group (33284082). An empty id renders blank; never guess an id.",
-        "-- Slice = SliceCenter for 9-slice sprites only; no Slice = ornate art, draw unsliced by its aspect (none here: all unsliced).",
+        "-- Slice = SliceCenter for 9-slice sprites only; no Slice = ornate art, draw unsliced by its aspect (PurpleBox is the only 9-slice).",
         "-- Ink = the opaque (alpha >= 160) box inside the export: the art is drawn smaller than its Size by this transparent margin.",
         "-- World* = opaque landscape interiors (no rim; the rim is a live UIStroke). Card / CardSel / Preview = ImageRectOffset/Size crops",
         "-- (x0, y0, x1, y1) for the left-column card (363x148), the selected card (363x168) and the right preview (372x205).",

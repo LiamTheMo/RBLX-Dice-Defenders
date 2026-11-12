@@ -150,6 +150,7 @@ function QuestLog.new(parent, deps)
 				table.insert(list, rec.Image)
 			end
 		end
+		table.insert(list, shell.Banner) -- the shared scroll, gem and emblems (PreloadAsync takes the instance's descendants)
 		task.spawn(pcall, ContentProvider.PreloadAsync, ContentProvider, list)
 	end
 	local toolbar = Toolbar.new(shell.Slots.Toolbar)
