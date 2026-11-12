@@ -15,7 +15,6 @@ local Bag, Q = Draw.Bag, Draw.Q
 local PAD_L, PAD_R, PAD_T, PAD_B = 14, 28, 2, 16 -- left/top >= the selected glow; right = scrollbar gutter
 local ROW_H, GAP, HEAD_H = 60, 5, 54 -- ref: rows ~60 tall on a 65 pitch; ribbon top -> first row top 61
 local COIN_TEXT = Color3.fromRGB(251, 243, 137)
-local GOLD_HEX = "#FCD51A"
 local GREEN_TEXT = Color3.fromRGB(120, 235, 90)
 local SECTIONS = {
 	{ Id = "Daily", Title = "DAILY QUESTS", Icon = Q.IconCalendar, Reset = true },
@@ -98,10 +97,9 @@ function Quests.new(parent)
 	table.insert(conns, scroll:GetPropertyChangedSignal("AbsoluteCanvasSize"):Connect(updateBar))
 
 	local function setReset(head, text: string?)
-		head.group.Visible = text ~= nil and text ~= "" and head.fits
+		head.timer.Group.Visible = text ~= nil and text ~= "" and head.fits
 		if text and text ~= "" then
-			head.label.Text = `Resets in: <font color="{GOLD_HEX}">{text}</font>`
-			head.label.TextSize = Parts.fitSize("Resets in: " .. text, head.avail, 20, 12)
+			head.timer:Set("Resets in:", text)
 		end
 	end
 
@@ -138,37 +136,9 @@ function Quests.new(parent)
 			UDim2.fromOffset(math.floor(textL + textW / 2), math.floor(Draw.ribbonTextY(cy, bh, title.TextSize) + 0.5))
 		if sec.Reset then
 			local pw = if small then 170 else 223 -- ref pill ~223 wide
-			local group = Draw.img(f, { Name = "Reset", Size = UDim2.fromScale(1, 1), ZIndex = banner.ZIndex }, "Frame")
-			local pill = Draw.img(group, { Name = "Pill" })
-			Draw.apply(pill, Bag.Search, cw - pw / 2, cy, pw, 40)
-			local halo = Draw.img(group, { -- ref: the clock glows bright gold
-				Name = "StopwatchGlow",
-				Image = Q.GlowRadial.Image,
-				ImageColor3 = Color3.fromRGB(255, 190, 40),
-				ImageTransparency = 0.35,
-				Size = UDim2.fromOffset(44, 44),
-				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.fromOffset(cw - pw + 22, cy),
-				ZIndex = pill.ZIndex + 1,
-			})
-			local sw = Draw.img(
-				group,
-				{ Name = "Stopwatch", ImageColor3 = Color3.fromRGB(255, 225, 120), ZIndex = halo.ZIndex + 1 }
-			)
-			local sww, swh = Draw.fitIn(Q.Stopwatch, 28, 28)
-			Draw.apply(sw, Q.Stopwatch, cw - pw + 22, cy, sww, swh)
-			local avail = pw - 56
-			local label = Parts.text(group, {
-				Name = "Resets",
-				RichText = true,
-				TextSize = 20,
-				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.fromOffset(math.floor(cw - pw + 40 + avail / 2), cy),
-				Size = UDim2.fromOffset(avail, 40),
-				ZIndex = pill.ZIndex + 1,
-			}, 2)
+			local timer = Draw.timerPill(f, cw - pw, cy, pw, banner.ZIndex)
 			-- the pill and the banner must not collide on narrow slots
-			local head = { group = group, label = label, avail = avail, fits = cw - pw - bw >= 6 }
+			local head = { timer = timer, fits = cw - pw - bw >= 6 }
 			heads[sec.Id] = head
 			setReset(head, resetText[sec.Id])
 		end

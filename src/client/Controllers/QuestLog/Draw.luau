@@ -104,4 +104,48 @@ function Draw.bar(parent, name: string, W: number, H: number, z: number, textSiz
 	return bar
 end
 
+-- "Resets in" style timer pill (Search pill + glowing stopwatch + rich label), `w` ink wide and 40 tall, left edge x, centre y.
+-- t = Draw.timerPill(parent, x, y, w, z); t.Group is the pill's frame (z = its ZIndex); t:Set("Resets in:", "13d 4h") shows the
+-- value in gold, shrunk to fit; t.Avail is the label width.
+local GOLD_HEX = "#FCD51A"
+function Draw.timerPill(parent, x: number, y: number, w: number, z: number)
+	local group = Draw.img(
+		parent,
+		{ Name = "Reset", Position = UDim2.fromOffset(x, y - 20), Size = UDim2.fromOffset(w, 40), ZIndex = z },
+		"Frame"
+	)
+	local pill = Draw.img(group, { Name = "Pill" })
+	Draw.apply(pill, Bag.Search, w / 2, 20, w, 40)
+	local halo = Draw.img(group, { -- ref: the clock glows bright gold
+		Name = "StopwatchGlow",
+		Image = Q.GlowRadial.Image,
+		ImageColor3 = Color3.fromRGB(255, 190, 40),
+		ImageTransparency = 0.35,
+		Size = UDim2.fromOffset(44, 44),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromOffset(22, 20),
+		ZIndex = pill.ZIndex + 1,
+	})
+	local sw =
+		Draw.img(group, { Name = "Stopwatch", ImageColor3 = Color3.fromRGB(255, 225, 120), ZIndex = halo.ZIndex + 1 })
+	local sww, swh = Draw.fitIn(Q.Stopwatch, 28, 28)
+	Draw.apply(sw, Q.Stopwatch, 22, 20, sww, swh)
+	local avail = w - 56
+	local label = Parts.text(group, {
+		Name = "Resets",
+		RichText = true,
+		TextSize = 20,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromOffset(math.floor(40 + avail / 2), 20),
+		Size = UDim2.fromOffset(avail, 40),
+		ZIndex = pill.ZIndex + 1,
+	}, 2)
+	local timer = { Group = group, Label = label, Avail = avail }
+	function timer:Set(prefix: string, value: string)
+		label.Text = `{prefix} <font color="{GOLD_HEX}">{value}</font>`
+		label.TextSize = Parts.fitSize(`{prefix} {value}`, avail, 20, 12)
+	end
+	return timer
+end
+
 return Draw
