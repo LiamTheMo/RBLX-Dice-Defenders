@@ -104,15 +104,20 @@ function Detail.new(parent)
 	end
 	-- The scroll reaches EXT below the slot only while the whole body fits there; otherwise it stops at the slot edge
 	-- (a little above the rim for the tall kinds) and scrolls.
-	local function fitScroll()
-		compact = parent.Size.Y.Offset < COMPACT_H
-		local kind = current and current.Kind
+	-- visible body height, scroll reach and action-strip height for a kind at the current slot size (compact must be current)
+	local function viewFor(kind: string?): (number, number, number)
 		local tall = kind == "Achievement" or kind == "Mastery"
 		local strip = if tall then 0 else actionH() + (if compact then 8 else 0) -- compact: the button floats 8 above the rim
 		local ext = if bodyH(kind) <= parent.Size.Y.Offset - strip + EXT then EXT elseif tall then -10 else 0
+		return parent.Size.Y.Offset - strip, ext, strip -- visible height without the scroll's reach below the slot
+	end
+	local function fitScroll()
+		compact = parent.Size.Y.Offset < COMPACT_H
+		local view, ext, strip = viewFor(current and current.Kind)
+		scroll.CanvasSize = UDim2.fromOffset(0, bodyH(current and current.Kind)) -- keep it in step when only the window size changes
 		scroll.Position = UDim2.fromOffset(INSET, 0)
 		scroll.Size = UDim2.new(1, -2 * INSET, 1, ext - strip)
-		viewH = parent.Size.Y.Offset + ext - strip
+		viewH = view + ext -- this kind's
 		track.Position = UDim2.fromOffset(parent.Size.X.Offset - INSET - 17, 0)
 		track.Size = UDim2.fromOffset(16, viewH)
 		task.defer(updateThumb) -- after the canvas size of this kind is set
@@ -192,7 +197,7 @@ function Detail.new(parent)
 		{ Name = "Name", TextSize = 34, AnchorPoint = Vector2.new(0.5, 0.5), ZIndex = az + 4 },
 		3
 	)
-	local aPill = Achievements.pill(achievement, "Status", 188, 36, az + 4)
+	local aPill = Achievements.pill(achievement, "Status", 188, 36, az + 4, { Done = 24, Prog = 22 }) -- ref COMPLETE ink 111 wide
 	aPill.Frame.AnchorPoint = Vector2.new(0.5, 0.5)
 	local aDesc = Parts.text(achievement, {
 		Name = "Desc",
@@ -206,7 +211,7 @@ function Detail.new(parent)
 	local aLabel = Parts.text(achievement, {
 		Name = "ProgressLabel",
 		Text = "PROGRESS",
-		TextSize = 20,
+		TextSize = 25, -- ref ink 108 wide
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		ZIndex = az + 4,
 	}, 2)
@@ -223,7 +228,7 @@ function Detail.new(parent)
 			icon = Draw.img(achievement, { Name = "RewardIcon" .. i, ZIndex = az + 4 }),
 			text = Parts.text(
 				achievement,
-				{ Name = "RewardText" .. i, TextSize = 22, AnchorPoint = Vector2.new(0.5, 0.5), ZIndex = az + 4 },
+				{ Name = "RewardText" .. i, TextSize = 30, AnchorPoint = Vector2.new(0.5, 0.5), ZIndex = az + 4 },
 				3
 			),
 		}
@@ -388,19 +393,20 @@ function Detail.new(parent)
 			v.Visible = not compact
 		end
 		if compact then -- stack: ribbon, name, objective line, progress bar, rewards (see showQuest), CLAIM strip
-			at(name, cx, 74)
+			local sp = math.max(0, math.floor((viewFor("Quest") - COMPACT_BODY.Quest) * 0.5))
+			at(name, cx, 74 + sp * 0.3)
 			name.Size = UDim2.fromOffset(W - 10, 34)
 			Draw.apply(
 				divider,
 				Bag.DividerGold,
 				cx,
-				96,
+				96 + sp * 0.4,
 				rw,
 				rw * Bag.DividerGold.Ink.Height / Bag.DividerGold.Ink.Width
 			)
-			at(objText, cx, 114)
+			at(objText, cx, 114 + sp * 0.5)
 			objText.Size = UDim2.fromOffset(W - 20, 34)
-			at(bar.Frame, cx, 152)
+			at(bar.Frame, cx, 152 + sp * 0.7)
 		end
 		if current and current.Kind == "Quest" then
 			showQuest(current)
@@ -434,9 +440,9 @@ function Detail.new(parent)
 		bar:Set(pct, QuestLogic.progressText(b.Progress, b.Goal), b.Goal > 0 and b.Progress >= b.Goal)
 		-- Rewards: two boxes; the gems box is hidden for real rows and the gold box then centres.
 		local W = body.Size.X.Offset
-		local cellW = math.floor((W - 8) / 2)
+		local cellW = math.floor((W - (if compact then 28 else 8)) / 2) -- compact: clear of the rims
 		local hasGems = b.Gems ~= nil
-		local cy = if compact then 192 else 471
+		local cy = if compact then 192 + math.max(0, math.floor((viewFor("Quest") - COMPACT_BODY.Quest) * 0.5)) else 471
 		local function cell(boxInst, ic, text, label: string, cx: number, w: number)
 			local isz = if compact then 30 else 46
 			Draw.apply(boxInst, Bag.StatRow, cx, cy, w, if compact then 46 else 70, BOX_K)
@@ -498,13 +504,14 @@ function Detail.new(parent)
 		at(aName, cx, 216)
 		aName.Size = UDim2.fromOffset(W - 10, 44)
 		aName.Text = string.upper(m.Name or "")
-		Parts.fit(aName, W - 10, 34, 20)
+		Parts.fit(aName, W - 10, 45, 20) -- ref DICE KING ink 182 wide
 		aPill:Set(b)
 		at(aPill.Frame, cx, 259)
 		at(aDesc, cx, 321)
-		aDesc.Size = UDim2.fromOffset(268, 68)
+		aDesc.Size = UDim2.fromOffset(268, 76)
+		aDesc.LineHeight = 0.85 -- ref line pitch ~22.5 at a 24 pt glyph
 		aDesc.Text = b.Desc or ""
-		aDesc.TextSize = Parts.fitSize(aDesc.Text, 268 * 3, 21, 14)
+		aDesc.TextSize = Parts.fitSize(aDesc.Text, 268 * 3, 23, 14) -- ref line 1 ink 239 wide
 		sized(aDiv1, Bag.DividerGold, 364, math.min(330, W))
 		at(aLabel, cx, 390)
 		aLabel.Size = UDim2.fromOffset(W, 26)
@@ -514,7 +521,7 @@ function Detail.new(parent)
 			if aBar then
 				aBar.Frame:Destroy()
 			end
-			aBar = Draw.bar(achievement, "ProgressBar", aBarW, 30, az + 4)
+			aBar = Draw.bar(achievement, "ProgressBar", aBarW, 30, az + 4, 27) -- ref "LVL 10 / 10" ink 120 wide
 		end
 		at(aBar.Frame, cx, 418)
 		local done = not b.Locked and b.Goal > 0 and b.Progress >= b.Goal
@@ -531,12 +538,12 @@ function Detail.new(parent)
 				local rx = cx + (-122 + (i - 1) * 113) * k
 				Draw.apply(r.box, Bag.StatRow, rx, rowY, 112 * k, 116 * k, BOX_K)
 				local rec = Q[REWARD_ICON[entry.Name] or "Crystals"]
-				local iw, ih = Draw.fitIn(rec, 60 * k, 64 * k)
-				Draw.apply(r.icon, rec, rx + 2, rowY - 12 * k, iw, ih)
+				local iw, ih = Draw.fitIn(rec, 74 * k, 76 * k) -- ref crystals ~75x80
+				Draw.apply(r.icon, rec, rx + 2, rowY - 9 * k, iw, ih)
 				r.text.Text = "x" .. QuestLogic.format(entry.Amount)
 				r.text.Size = UDim2.fromOffset(104 * k, 28)
 				at(r.text, rx + 3, rowY + 38 * k)
-				Parts.fit(r.text, 104 * k, 22, 14)
+				Parts.fit(r.text, 104 * k, 30, 14) -- ref "x500" ink 59 wide
 			end
 		end
 		hit.Parent = achievement
@@ -548,12 +555,13 @@ function Detail.new(parent)
 			v.Visible = not compact
 		end
 		if compact then -- stack: ribbon, name, status pill, progress bar, reward boxes + action button
-			at(aName, cx, 72)
+			local slack = math.max(0, math.floor((viewFor("Achievement") - COMPACT_BODY.Achievement) * 0.5)) -- spread the slack, ribbon stays put
+			at(aName, cx, 72 + slack * 0.3)
 			aName.Size = UDim2.fromOffset(W - 10, 34)
 			Parts.fit(aName, W - 10, 28, 16)
-			at(aPill.Frame, cx, 106)
-			at(aBar.Frame, cx, 146)
-			local y = 206
+			at(aPill.Frame, cx, 106 + slack * 0.5)
+			at(aBar.Frame, cx, 146 + slack * 0.7)
+			local y = 206 + slack
 			for i, r in aRewards do
 				if b.Rewards[i] then
 					local rx = cx - 93 + (i - 1) * 76
@@ -614,7 +622,7 @@ function Detail.new(parent)
 		at(mName, cx, 206)
 		mName.Size = UDim2.fromOffset(W - 10, 40)
 		mName.Text = string.upper(m.Name or "")
-		Parts.fit(mName, W - 10, 32, 18)
+		Parts.fit(mName, W - 10, 38, 18) -- ref FIRE DICE ink 150 wide
 		mPill:Set(b.Level)
 		at(mPill.Frame, cx, 248)
 		if mBarW ~= math.min(321, W - 20) then
@@ -622,7 +630,7 @@ function Detail.new(parent)
 			if mBar then
 				mBar.Frame:Destroy()
 			end
-			mBar = Mastery.bar(mastery, "XpBar", mBarW, 32, mz + 4, 20) -- ref digits cap ~14
+			mBar = Mastery.bar(mastery, "XpBar", mBarW, 32, mz + 4, 29) -- ref "6,540 / 8,000" ink 150 wide
 		end
 		at(mBar.Frame, cx, 291)
 		mBar:Set(b.Xp, b.XpGoal)
@@ -634,8 +642,8 @@ function Detail.new(parent)
 		local nw = math.min(210, W)
 		sized(mNext, Q.NextRewards, 412, nw)
 		at(mNextText, cx, 412)
-		mNextText.Size = UDim2.fromOffset(nw * 0.6, 30)
-		Parts.fit(mNextText, nw * 0.6, 18, 12)
+		mNextText.Size = UDim2.fromOffset(nw * 0.75, 30)
+		Parts.fit(mNextText, nw * 0.75, 22, 12) -- ref ink 148 wide
 		local rewards = QuestLogic.nextRewards(b)
 		local bxw = math.min(170, math.floor((W + 4) / 2))
 		local bxh = bxw * Q.RewardBoxPlain.Ink.Height / Q.RewardBoxPlain.Ink.Width -- plain: the baked sparkles of RewardBox sat over the text
@@ -654,32 +662,33 @@ function Detail.new(parent)
 				r.name.Text = entry.Name
 				r.name.Size = UDim2.fromOffset(bxw - 30, 22)
 				at(r.name, rx, cy + bxh * 0.2)
-				Parts.fit(r.name, bxw - 30, 20, 12)
+				Parts.fit(r.name, bxw - 30, 21, 12)
 				local lw, lh = Draw.fitIn(Bag.Lock, 18, 18)
-				local gx = rx - (18 + 4 + 40) / 2 -- lock + "Lv. N" group centred in the box
+				local gx = rx - (18 + 4 + 52) / 2 -- lock + "Lv. N" group centred in the box
 				Draw.apply(r.pill, Bag.Search, rx, cy + bxh * 0.4, math.min(bxw - 24, 130), 28) -- ref: dark pill behind lock + Lv.
 				Draw.apply(r.lock, Bag.Lock, gx + 9, cy + bxh * 0.4, lw, lh)
 				r.lv.Text = "Lv. " .. entry.Lv
 				r.lv.TextXAlignment = Enum.TextXAlignment.Left
-				r.lv.TextSize = 19
-				r.lv.Size = UDim2.fromOffset(44, 22)
-				at(r.lv, gx + 18 + 4 + 22, cy + bxh * 0.4)
+				r.lv.TextSize = 26 -- ref "Lv. 15" ink 52 wide
+				r.lv.Size = UDim2.fromOffset(60, 30)
+				at(r.lv, gx + 18 + 4 + 30, cy + bxh * 0.4)
 			end
 		end
 		for _, v in { mFlagL, mFlagR, mRays, mHalo, mDie, mDesc, mDiv } do
 			v.Visible = not compact
 		end
 		if compact then -- stack: ribbon, name, level pill, XP bar, NEXT REWARDS and two small cards
-			at(mName, cx, 70)
+			local slack = math.max(0, math.floor((viewFor("Mastery") - COMPACT_BODY.Mastery) * 0.5))
+			at(mName, cx, 70 + slack * 0.3)
 			mName.Size = UDim2.fromOffset(W - 10, 34)
 			Parts.fit(mName, W - 10, 28, 16)
-			at(mPill.Frame, cx, 104)
-			at(mBar.Frame, cx, 140)
-			sized(mNext, Q.NextRewards, 172, nw)
-			at(mNextText, cx, 172)
+			at(mPill.Frame, cx, 104 + slack * 0.5)
+			at(mBar.Frame, cx, 140 + slack * 0.7)
+			sized(mNext, Q.NextRewards, 172 + slack * 0.85, nw)
+			at(mNextText, cx, 172 + slack * 0.85)
 			local cw = math.min(88, math.floor((W - 8) / 2))
 			local ch = cw * Q.RewardBoxPlain.Ink.Height / Q.RewardBoxPlain.Ink.Width
-			local cyc = 188 + ch / 2
+			local cyc = 188 + slack + ch / 2
 			for i, r in mRewards do
 				local entry = rewards[i]
 				if entry then

@@ -12,7 +12,7 @@ local Draw = require(script.Parent.Parent.Draw)
 local make = UiKit.make
 local Bag, Q = Draw.Bag, Draw.Q
 
-local PAD_L, PAD_R, PAD_T, PAD_B = 14, 34, 2, 16 -- left/top >= the selected glow; right = scrollbar gutter
+local PAD_L, PAD_R, PAD_T, PAD_B = 14, 28, 2, 16 -- left/top >= the selected glow; right = scrollbar gutter
 local ROW_H, GAP, HEAD_H = 60, 5, 54 -- ref: rows ~60 tall on a 65 pitch; ribbon top -> first row top 61
 local COIN_TEXT = Color3.fromRGB(251, 243, 137)
 local GOLD_HEX = "#FCD51A"
@@ -101,7 +101,7 @@ function Quests.new(parent)
 		head.group.Visible = text ~= nil and text ~= "" and head.fits
 		if text and text ~= "" then
 			head.label.Text = `Resets in: <font color="{GOLD_HEX}">{text}</font>`
-			head.label.TextSize = Parts.fitSize("Resets in: " .. text, head.avail, 18, 12)
+			head.label.TextSize = Parts.fitSize("Resets in: " .. text, head.avail, 20, 12)
 		end
 	end
 
@@ -146,7 +146,7 @@ function Quests.new(parent)
 			local label = Parts.text(group, {
 				Name = "Resets",
 				RichText = true,
-				TextSize = 18,
+				TextSize = 20,
 				AnchorPoint = Vector2.new(0.5, 0.5),
 				Position = UDim2.fromOffset(math.floor(cw - pw + 40 + avail / 2), cy),
 				Size = UDim2.fromOffset(avail, 40),
@@ -313,7 +313,7 @@ function Quests.new(parent)
 		if full then
 			barW2, barH = if wide then 178 else 163, 27
 			colR = rewardLeft - barW2 - 4
-			local bar = Draw.bar(btn, "Progress", barW2, barH, z + 1)
+			local bar = Draw.bar(btn, "Progress", barW2, barH, z + 1, 19) -- ref value cap ~14
 			bar.Frame.AnchorPoint = Vector2.new(0.5, 0.5)
 			bar.Frame.Position = UDim2.fromOffset(rewardLeft - 4 - barW2 / 2, cy + 1)
 			bar:Set(pct, QuestLogic.progressText(row.Progress, row.Goal), complete)
@@ -352,14 +352,14 @@ function Quests.new(parent)
 			local desc = Parts.text(btn, {
 				Name = "Desc",
 				Text = row.Desc,
-				TextSize = 18,
+				TextSize = 19,
 				TextXAlignment = Enum.TextXAlignment.Left,
 				AnchorPoint = Vector2.new(0, 0.5),
 				Position = UDim2.fromOffset(textL + 2, 43),
 				Size = UDim2.fromOffset(colW, 22),
 				ZIndex = z + 1,
 			}, 2)
-			Parts.fit(desc, colW, 18, 12)
+			Parts.fit(desc, colW, 19, 12)
 		end
 		btn.Activated:Connect(function()
 			if onSelect then

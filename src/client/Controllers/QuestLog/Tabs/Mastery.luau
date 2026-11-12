@@ -33,7 +33,7 @@ function Mastery.pill(parent, name: string, w: number, z: number)
 	local frame = Draw.img(parent, { Name = name, Size = UDim2.fromOffset(w, h), ZIndex = z }, "Frame")
 	local skin = Draw.img(frame, { Name = "Skin", ZIndex = z + 1 })
 	Draw.apply(skin, rec, w / 2, h / 2, w, h)
-	local size = math.max(11, math.floor(h * 0.5))
+	local size = math.max(11, math.floor(w * 0.112)) -- ref "Mastery Lv. 12" ink 114-126 wide
 	local avail = math.floor(w * 0.66)
 	local label = Parts.text(frame, {
 		Name = "Text",
@@ -169,7 +169,7 @@ function Mastery.new(parent)
 		local irec = Q[m.Icon] or Q.Crystals
 		local iw, ih = Draw.fitIn(irec, s * 0.64, s * 0.56)
 		Draw.apply(icon, irec, cx, cy - s * 0.12, iw, ih)
-		local size = math.max(11, math.floor(s * 0.21))
+		local size = math.max(11, math.floor(s * 0.25)) -- ref tile label ink 33 wide
 		local label = Parts.text(btn, {
 			Name = "Lv" .. m.Lv,
 			Text = "Lv. " .. m.Lv,
@@ -231,7 +231,7 @@ function Mastery.new(parent)
 			nameLabel = Parts.text(btn, {
 				Name = "Name",
 				Text = row.Name,
-				TextSize = 24,
+				TextSize = 27,
 				TextWrapped = true,
 				TextXAlignment = Enum.TextXAlignment.Left,
 				AnchorPoint = Vector2.new(0, 0.5),
@@ -245,8 +245,8 @@ function Mastery.new(parent)
 					longest = word
 				end
 			end
-			local one = Parts.fitSize(row.Name, nameW, 24, 1)
-			nameLabel.TextSize = if one >= 19 then one else Parts.fitSize(longest, nameW, 24, 12) -- one line, else two (never mid-word)
+			local one = Parts.fitSize(row.Name, nameW, 27, 1)
+			nameLabel.TextSize = if one >= 19 then one else Parts.fitSize(longest, nameW, 27, 12) -- one line, else two (never mid-word)
 		else
 			nameLabel = Parts.text(btn, {
 				Name = "Name",
@@ -266,7 +266,7 @@ function Mastery.new(parent)
 			pill.Frame.AnchorPoint = Vector2.new(0.5, 0.5)
 			pill.Frame.Position = UDim2.fromOffset(clusterL + clusterW / 2, cy - 18)
 			pill:Set(row.Level)
-			local bar = Mastery.bar(btn, "XpBar", clusterW, 25, z)
+			local bar = Mastery.bar(btn, "XpBar", clusterW, 25, z, 21)
 			bar.Frame.AnchorPoint = Vector2.new(0.5, 0.5)
 			bar.Frame.Position = UDim2.fromOffset(clusterL + clusterW / 2, cy + 21)
 			bar:Set(row.Xp, row.XpGoal)

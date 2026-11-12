@@ -68,7 +68,7 @@ end
 
 -- Progress bar: Track + FillGold (also when complete) with "x / y" centred over the whole bar.
 -- bar = Draw.bar(parent, W, H, z); bar.Frame is W x H (the ink); bar:Set(pct 0..1, text, complete).
-function Draw.bar(parent, name: string, W: number, H: number, z: number)
+function Draw.bar(parent, name: string, W: number, H: number, z: number, textSize: number?)
 	local frame = Draw.img(parent, { Name = name, Size = UDim2.fromOffset(W, H), ZIndex = z }, "Frame")
 	local track = Draw.img(frame, { Name = "Track", ZIndex = z + 1 })
 	Draw.apply(track, Q.Track, W / 2, H / 2, W, H)
@@ -78,7 +78,7 @@ function Draw.bar(parent, name: string, W: number, H: number, z: number)
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
 		Size = UDim2.new(1, -12, 1, 0),
-		TextSize = math.max(12, math.floor(H * 0.55)),
+		TextSize = textSize or math.max(12, math.floor(H * 0.55)),
 		ZIndex = z + 3,
 	}, 2)
 	local base = label.TextSize

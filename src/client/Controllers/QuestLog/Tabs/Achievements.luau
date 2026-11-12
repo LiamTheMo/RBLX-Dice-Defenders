@@ -35,7 +35,14 @@ local Achievements = {}
 
 -- Status pill w x h: COMPLETE (sliced green + check), progress (track + fill, "8 / 10" / "LVL 12 / 20") or locked (grey track).
 -- pill.Frame; pill:Set(b) with b = { Progress, Goal, Unit?, Locked? }.
-function Achievements.pill(parent, name: string, w: number, h: number, z: number)
+function Achievements.pill(
+	parent,
+	name: string,
+	w: number,
+	h: number,
+	z: number,
+	sizes: { Done: number, Prog: number }?
+)
 	local frame = Draw.img(parent, { Name = name, Size = UDim2.fromOffset(w, h), ZIndex = z }, "Frame")
 	local skin = Draw.img(frame, { Name = "Skin", ZIndex = z + 1 })
 	local fill = Draw.img(frame, { Name = "Fill", ZIndex = z + 2 })
@@ -66,7 +73,8 @@ function Achievements.pill(parent, name: string, w: number, h: number, z: number
 		local gap = if done then 4 else 0
 		local avail = w - 12 - cs - gap
 		label.Text = text
-		label.TextSize = Parts.fitSize(text, avail, size, 10)
+		label.TextSize =
+			Parts.fitSize(text, avail, if sizes then (if done then sizes.Done else sizes.Prog) else size, 10)
 		local tw = TextService:GetTextSize(text, label.TextSize, label.Font, Vector2.new(1e5, 1e5)).X + 2
 		local x0 = (w - (cs + gap + tw)) / 2
 		check.Visible = done
@@ -162,9 +170,24 @@ function Achievements.new(parent)
 		recs[item.Id] = rec
 		skinCell(rec, item.Id == selected)
 		local z = skin.ZIndex + 1
-		local badge = Draw.img(btn, { Name = "Badge", ZIndex = z })
+		if isComplete(item) then -- ref: a warm radial glow behind a completed badge (Bag legendary glow, clipped to the cell)
+			local box = Draw.img(
+				btn,
+				{ Name = "GlowBox", Size = UDim2.fromOffset(cw - 10, ch - 10), ClipsDescendants = true, ZIndex = z },
+				"Frame"
+			)
+			box.AnchorPoint = Vector2.new(0.5, 0.5)
+			box.Position = UDim2.fromOffset(cw / 2, ch / 2)
+			local g = Draw.img(
+				box,
+				{ Name = "Glow", ImageTransparency = 0.3, ImageColor3 = Color3.fromRGB(255, 140, 40), ZIndex = z }
+			)
+			local gw, gh = Draw.fitIn(Bag.GlowLegendary, cw * 0.95, cw * 0.95)
+			Draw.apply(g, Bag.GlowLegendary, (cw - 10) / 2, ch * 0.31 - 5, gw, gh)
+		end
+		local badge = Draw.img(btn, { Name = "Badge", ZIndex = z + 1 })
 		local brec = Q[item.Badge] or Q.BadgeKing
-		local bw, bh = Draw.fitIn(brec, cw * 0.84, ch * 0.5)
+		local bw, bh = Draw.fitIn(brec, cw * 0.92, ch * 0.52) -- ref crown + laurels ~122 wide in a 146 cell
 		Draw.apply(badge, brec, cw / 2, ch * 0.31, bw, bh)
 		Parts.text(btn, {
 			Name = "Name",
@@ -172,12 +195,12 @@ function Achievements.new(parent)
 			TextSize = nameSize,
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			Position = UDim2.fromOffset(cw / 2, math.floor(ch * 0.65)),
-			Size = UDim2.fromOffset(cw - 12, 20),
+			Size = UDim2.fromOffset(cw - 6, 26),
 			ZIndex = z,
 		}, 2)
 		local ph = math.max(22, math.floor(ch * 0.17 + 0.5))
 		local pw = math.floor(cw * 0.8)
-		local pill = Achievements.pill(btn, "Status", pw, ph, z)
+		local pill = Achievements.pill(btn, "Status", pw, ph, z, { Done = 16, Prog = 19 }) -- ref ink widths 76 / 43
 		pill.Frame.AnchorPoint = Vector2.new(0.5, 0.5)
 		pill.Frame.Position = UDim2.fromOffset(cw / 2, math.floor(ch * 0.86))
 		pill:Set(item)
@@ -218,12 +241,10 @@ function Achievements.new(parent)
 		pad.PaddingRight = UDim.new(0, padR)
 		grid.CellSize = UDim2.fromOffset(cw, ch)
 		grid.FillDirectionMaxCells = cols
-		local nameSize = math.max(12, math.floor(18 * cw / CARD_W + 0.5)) -- one size for every cell (the longest name decides)
-		for _, item in items do
-			nameSize = math.min(nameSize, Parts.fitSize(string.upper(item.Name), cw - 12, nameSize, 8))
-		end
+		-- ref DICE KING ink 86 wide = 21 pt; longer names shrink to fit the cell (width - 16)
+		local base = math.max(12, math.floor(21 * cw / CARD_W + 0.5))
 		for i, item in items do
-			buildCell(item, i, cw, ch, nameSize)
+			buildCell(item, i, cw, ch, Parts.fitSize(string.upper(item.Name), cw - 16, base, 8))
 		end
 		empty.Visible = #items == 0
 		updateBar()
