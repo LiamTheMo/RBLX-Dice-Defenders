@@ -58,7 +58,7 @@ function Quests.new(parent)
 		ScrollBarThickness = 0, -- the styled bar below replaces the native one; wheel, touch and drag still scroll
 		ZIndex = root.ZIndex + 1,
 	}, root)
-	make("UIPadding", {
+	local pad = make("UIPadding", {
 		PaddingLeft = UDim.new(0, PAD_L),
 		PaddingRight = UDim.new(0, PAD_R),
 		PaddingTop = UDim.new(0, PAD_T),
@@ -113,7 +113,7 @@ function Quests.new(parent)
 		}, "Frame")
 		local cy = pre + HEAD_H / 2
 		local small = mode ~= "full"
-		local bw = if small then 230 else 300
+		local bw = math.min(if small then 230 else 300, cw - 6)
 		local bh = bw * Q.SectionBanner.Ink.Height / Q.SectionBanner.Ink.Width
 		local banner = Draw.img(f, { Name = "Banner" })
 		Draw.apply(banner, Q.SectionBanner, bw / 2, cy, bw, bh)
@@ -126,7 +126,7 @@ function Quests.new(parent)
 		local title = Parts.text(f, {
 			Name = "Title",
 			Text = sec.Title,
-			TextSize = if small then 22 else 26,
+			TextSize = if small then 22 else 29, -- ref label cap ~19
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			Position = UDim2.fromOffset(math.floor(textL + textW / 2), math.floor(cy - 2)),
 			Size = UDim2.fromOffset(textW, 40),
@@ -134,7 +134,7 @@ function Quests.new(parent)
 		}, 3)
 		Parts.fit(title, textW, title.TextSize, 14)
 		if sec.Reset then
-			local pw = if small then 170 else 210
+			local pw = if small then 170 else 223 -- ref pill ~223 wide
 			local group = Draw.img(f, { Name = "Reset", Size = UDim2.fromScale(1, 1), ZIndex = banner.ZIndex }, "Frame")
 			local pill = Draw.img(group, { Name = "Pill" })
 			Draw.apply(pill, Bag.Search, cw - pw / 2, cy, pw, 40)
@@ -184,7 +184,7 @@ function Quests.new(parent)
 		local cy = ROW_H / 2
 
 		-- Right to left: claim, gem, coin, bar; the left column keeps the rest.
-		local claimW, claimH = (if full then 97 elseif tiny then 62 else 72), (if full then 48 else 42)
+		local claimW, claimH = (if full then 97 elseif tiny then 56 else 72), (if full then 48 else 42)
 		local right = cw - (if full then 5 else 6)
 		local claimLeft = right - claimW
 		local regionCx = claimLeft + claimW / 2
@@ -233,7 +233,16 @@ function Quests.new(parent)
 			Parts.fit(l, l.Size.X.Offset, l.TextSize, 10)
 		end
 
-		local function reward(icon, text: string, color: Color3, cx: number, y: number, size: number, iconSize: number)
+		local function reward(
+			icon,
+			text: string,
+			color: Color3,
+			cx: number,
+			y: number,
+			size: number,
+			iconSize: number,
+			tw: number?
+		)
 			local ic = Draw.img(btn, {
 				Name = "RewardIcon",
 				AnchorPoint = Vector2.new(0.5, 0.5),
@@ -251,7 +260,7 @@ function Quests.new(parent)
 				TextXAlignment = Enum.TextXAlignment.Left,
 				AnchorPoint = Vector2.new(0, 0.5),
 				Position = UDim2.fromOffset(cx + iconSize + 4, y),
-				Size = UDim2.fromOffset(if full then 54 else 64, 28),
+				Size = UDim2.fromOffset(tw or (if full then 54 else 64), 28),
 				ZIndex = z + 1,
 			}, 2)
 			Parts.fit(t, t.Size.X.Offset, size, 12)
@@ -260,14 +269,16 @@ function Quests.new(parent)
 		local gold = "+" .. QuestLogic.format(row.Gold or 0)
 		local gems = if row.Gems then "+" .. QuestLogic.format(row.Gems) else nil
 		local rewardLeft = claimLeft - 10
+		local wide = row.Section ~= "Daily" and state ~= "Claim" and state ~= "Soon" and state ~= "Claimed"
 		if full then
-			local gemL = claimLeft - 79 -- ref: gem icon 79 left of CLAIM, coin icon 91-96 left of the gem
+			-- ref: daily gem icon 79 left of CLAIM, coin 91 left of the gem; weekly rows (no button) gem at -96 from the edge, coin 118 left
+			local gemL = if wide then cw - 96 else claimLeft - 79
 			if gems then
 				reward(HudSprites.Gem, gems, Color3.new(1, 1, 1), gemL, cy, 20, 32)
 			end
-			rewardLeft = gemL - 91
+			rewardLeft = gemL - (if wide then 118 else 91)
 			reward(HudSprites.Coin, gold, COIN_TEXT, rewardLeft, cy, 20, 32)
-			rewardLeft -= 10
+			rewardLeft -= if wide then 17 else 10
 		elseif not tiny then
 			rewardLeft = claimLeft - 10 - 86
 			reward(HudSprites.Coin, gold, COIN_TEXT, rewardLeft, cy - 14, 15, 24)
@@ -277,20 +288,30 @@ function Quests.new(parent)
 			rewardLeft -= 8
 		else
 			rewardLeft = claimLeft - 6
+			if state == "Progress" then -- the claim column carries the coin reward instead of staying empty
+				reward(HudSprites.Coin, gold, COIN_TEXT, claimLeft + 2, cy, 14, 20, claimW - 26)
+			end
 		end
 
 		-- Left column: icon, name (+ desc), progress bar.
-		local iconBox = if full then 56 elseif tiny then 34 else 44
+		local iconBox = if full then 56 elseif tiny then 28 else 44
 		local icon = Draw.img(btn, { Name = "Icon", ZIndex = z + 1 })
 		local iw, ih = Draw.fitIn(Q[row.Icon] or Q.IconQuestScroll, iconBox, math.min(52, iconBox))
-		Draw.apply(icon, Q[row.Icon] or Q.IconQuestScroll, (if full then 18 else 8) + iconBox / 2, cy, iw, ih)
-		local textL = (if full then 18 else 8) + iconBox + 19
+		Draw.apply(
+			icon,
+			Q[row.Icon] or Q.IconQuestScroll,
+			(if full then 18 else if tiny then 6 else 8) + iconBox / 2,
+			cy,
+			iw,
+			ih
+		)
+		local textL = (if full then 18 else if tiny then 6 else 8) + iconBox + (if full then 19 else 8)
 		local pct = QuestLogic.percent(row.Progress, row.Goal)
 		local complete = row.Goal > 0 and row.Progress >= row.Goal
 		local nameY, barW2, barH
 		local colR
 		if full then
-			barW2, barH = 163, 27
+			barW2, barH = if wide then 178 else 163, 27
 			colR = rewardLeft - barW2 - 4
 			local bar = Draw.bar(btn, "Progress", barW2, barH, z + 1)
 			bar.Frame.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -352,11 +373,15 @@ function Quests.new(parent)
 		if W <= 0 then
 			return
 		end
-		local cw = W - PAD_L - PAD_R
+		local padR = if W - PAD_L - PAD_R < 360 then 22 else PAD_R -- phone: a slimmer scrollbar gutter
+		pad.PaddingRight = UDim.new(0, padR)
+		local cw = W - PAD_L - padR
 		mode = if cw >= 700 then "full" elseif cw >= 360 then "mid" else "tiny"
 		barW = if cw >= 360 then 21 else 12
 		track.Size = UDim2.fromOffset(barW, parent.Size.Y.Offset)
-		track.Position = UDim2.new(1, if cw >= 360 then -7 else -3, 0, 0)
+		track.Position = UDim2.new(1, if cw >= 360 then -7 else -6, 0, 0)
+		scroll.Position = UDim2.fromOffset(0, if cw >= 360 then 0 else -10) -- phone: the list starts under the toolbar's free strip
+		scroll.Size = UDim2.new(1, 0, 1, if cw >= 360 then 0 else 10)
 		barSkin(track, "ScrollTrack", barW)
 		local order, shown = 0, 0
 		for _, sec in SECTIONS do

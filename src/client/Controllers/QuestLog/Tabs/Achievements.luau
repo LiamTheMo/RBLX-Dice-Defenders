@@ -13,7 +13,7 @@ local Draw = require(script.Parent.Parent.Draw)
 local make = UiKit.make
 local Bag, Q = Draw.Bag, Draw.Q
 
-local PAD_L, PAD_R, PAD_T, PAD_B = 10, 30, 12, 14 -- left/top >= the selected glow bleed; right = scrollbar gutter (only when the grid scrolls)
+local PAD_L, PAD_R, PAD_T, PAD_B = 10, 30, 4, 14 -- left/top >= the selected glow bleed; right = scrollbar gutter (only when the grid scrolls)
 local GAP, GAP_Y, GLOW = 8, 11, 10 -- ref: cells ~152x160 on a 160 / 171 pitch -- cell gap; selected cell ink grows by GLOW (5 per side) inside the sprite's own margin
 local CARD_W, CARD_H = 146, 160 -- reference card (visible rim); cell height = width * 160 / 146
 local LOCKED_GREY = Color3.fromRGB(150, 138, 146)
@@ -153,7 +153,7 @@ function Achievements.new(parent)
 		Draw.apply(rec.skin, spr, rec.w / 2, rec.h / 2, rec.w + ex, rec.h + ex, rec.w / Q.CellCopper.Ink.Width)
 	end
 
-	local function buildCell(item, order: number, cw: number, ch: number)
+	local function buildCell(item, order: number, cw: number, ch: number, nameSize: number)
 		local btn = Draw.img(scroll, { Name = "Cell_" .. item.Id, LayoutOrder = order }, "ImageButton")
 		Parts.interact(btn)
 		local skin = Draw.img(btn, { Name = "Skin" })
@@ -161,22 +161,19 @@ function Achievements.new(parent)
 		recs[item.Id] = rec
 		skinCell(rec, item.Id == selected)
 		local z = skin.ZIndex + 1
-		local k = cw / CARD_W
 		local badge = Draw.img(btn, { Name = "Badge", ZIndex = z })
 		local brec = Q[item.Badge] or Q.BadgeKing
 		local bw, bh = Draw.fitIn(brec, cw * 0.84, ch * 0.5)
 		Draw.apply(badge, brec, cw / 2, ch * 0.31, bw, bh)
-		local size = math.max(12, math.floor(18 * k + 0.5))
-		local name = Parts.text(btn, {
+		Parts.text(btn, {
 			Name = "Name",
 			Text = string.upper(item.Name),
-			TextSize = size,
+			TextSize = nameSize,
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			Position = UDim2.fromOffset(cw / 2, math.floor(ch * 0.65)),
 			Size = UDim2.fromOffset(cw - 12, 20),
 			ZIndex = z,
 		}, 2)
-		Parts.fit(name, cw - 12, size, 12)
 		local ph = math.max(22, math.floor(ch * 0.17 + 0.5))
 		local pw = math.floor(cw * 0.8)
 		local pill = Achievements.pill(btn, "Status", pw, ph, z)
@@ -203,7 +200,7 @@ function Achievements.new(parent)
 		end
 		barW = if W >= 360 then 21 else 12
 		track.Size = UDim2.fromOffset(barW, parent.Size.Y.Offset)
-		track.Position = UDim2.new(1, if W >= 360 then -7 else -3, 0, 0)
+		track.Position = UDim2.new(1, if W >= 360 then -7 else -6, 0, 0)
 		barSkin(track, "ScrollTrack", barW)
 		local cols = math.clamp(math.floor((W - 12) / 112), 2, 5)
 		local function cell(padR: number): (number, number)
@@ -220,8 +217,12 @@ function Achievements.new(parent)
 		pad.PaddingRight = UDim.new(0, padR)
 		grid.CellSize = UDim2.fromOffset(cw, ch)
 		grid.FillDirectionMaxCells = cols
+		local nameSize = math.max(12, math.floor(18 * cw / CARD_W + 0.5)) -- one size for every cell (the longest name decides)
+		for _, item in items do
+			nameSize = math.min(nameSize, Parts.fitSize(string.upper(item.Name), cw - 12, nameSize, 8))
+		end
 		for i, item in items do
-			buildCell(item, i, cw, ch)
+			buildCell(item, i, cw, ch, nameSize)
 		end
 		empty.Visible = #items == 0
 		updateBar()

@@ -311,7 +311,7 @@ function Mastery.new(parent)
 		cw = W - PAD_L - padR
 		barW = if cw >= 360 then 21 else 12
 		track.Size = UDim2.fromOffset(barW, parent.Size.Y.Offset)
-		track.Position = UDim2.new(1, if cw >= 360 then -7 else -3, 0, 0)
+		track.Position = UDim2.new(1, if cw >= 360 then -7 else -6, 0, 0)
 		barSkin(track, "ScrollTrack", barW)
 		for i, row in rows do
 			buildRow(row, i, cw, mode)

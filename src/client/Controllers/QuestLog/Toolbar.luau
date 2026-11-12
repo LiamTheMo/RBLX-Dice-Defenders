@@ -16,6 +16,9 @@ local INK_H = 43 -- visible control height (reference)
 local PAD_L, PAD_R = 24, 20
 local HIT_H, ROW_H = 56, 56
 local WHITE = Color3.new(1, 1, 1)
+-- Q.Dropdown with tight stretch caps (round end 50, chevron cap 90): the measured 114 / 189 caps squeezed the chevron into a tall V on narrow pills
+local DROPDOWN =
+	{ Image = Q.Dropdown.Image, Size = Q.Dropdown.Size, Ink = Q.Dropdown.Ink, Slice = Rect.new(50, 38, 280, 48) }
 
 local Toolbar = {}
 
@@ -57,12 +60,13 @@ function Toolbar.new(parent)
 		AnchorPoint = Vector2.new(1, 0.5),
 		TextXAlignment = Enum.TextXAlignment.Right,
 	}, 2)
+	local countPill = Draw.img(root, { Name = "CountPill", Visible = false }) -- ref: the count sits in a dark rounded pill
 	local count = Parts.text(root, {
 		Name = "Count",
 		TextSize = 22,
-		AnchorPoint = Vector2.new(1, 0.5),
-		TextXAlignment = Enum.TextXAlignment.Right,
+		AnchorPoint = Vector2.new(0.5, 0.5),
 		Visible = false,
+		ZIndex = countPill.ZIndex + 1,
 	}, 2)
 
 	-- Dropdown: a transparent touch-size button (hover/press scale applies to its children) over the sliced sprite.
@@ -99,10 +103,10 @@ function Toolbar.new(parent)
 		ddText.Text = ""
 		for _, o in options do
 			if o.Id == active then
-				ddText.Text = (if compactNow then "" else prefix) .. o.Label
+				ddText.Text = if compactNow then string.match(o.Label, "^[^(]+"):gsub("%s+$", "") else prefix .. o.Label -- compact: "Progress", not "Progress (High → Low)"
 			end
 		end
-		Parts.fit(ddText, ddText.Size.X.Offset, 22, 13)
+		Parts.fit(ddText, ddText.Size.X.Offset, 22, if compactNow then 10 else 13)
 	end
 
 	local function layout()
@@ -113,9 +117,10 @@ function Toolbar.new(parent)
 		local inner = W - PAD_L - PAD_R
 		local compact = inner < 560
 		compactNow = compact
+		local iconOnly = compact and inner < 300 -- phone: the chevron alone, the menu names the options
 		local hasLabel = labelText ~= ""
 		ddW = if compact
-			then math.min(120, math.floor(inner * 0.45))
+			then (if iconOnly then 58 else 128)
 			elseif not hasLabel then 284 -- ref MASTERY: one wide "Sort: ..." pill
 			elseif countText then 245 -- ref ACHIEVEMENTS: SORT: + dropdown, then the count at the right end
 			else 203
@@ -123,23 +128,35 @@ function Toolbar.new(parent)
 		label.Text = labelText
 		label.Size = UDim2.fromOffset(60, HIT_H)
 		local edge = W - PAD_R
-		local right = if countText then edge - (if compact then 84 else 132) else edge -- ink right edge of the dropdown
+		local showCount = countText ~= nil and not iconOnly
+		local right = if showCount then edge - (if compact then 84 else 132) else edge -- ink right edge of the dropdown
 		hit.Size = UDim2.fromOffset(ddW + 8, HIT_H)
 		hit.Position = UDim2.fromOffset(right + 4, CY)
-		Draw.apply(skin, Q.Dropdown, (ddW + 8) / 2, HIT_H / 2, ddW, INK_H)
-		ddText.Position = UDim2.fromOffset(4 + 12 + (ddW - 62) / 2, HIT_H / 2)
-		ddText.Size = UDim2.fromOffset(ddW - 62, INK_H)
+		-- uniform scale only: when the pill is narrower than the art's caps the height shrinks with it (never stretches the chevron)
+		local capX = DROPDOWN.Slice.Min.X
+			+ DROPDOWN.Size.X
+			- DROPDOWN.Slice.Max.X
+			- (DROPDOWN.Size.X - DROPDOWN.Ink.Width)
+		local dk = math.min(INK_H / DROPDOWN.Ink.Height, ddW / capX)
+		Draw.apply(skin, DROPDOWN, (ddW + 8) / 2, HIT_H / 2, ddW, DROPDOWN.Ink.Height * dk, dk)
+		local textW = if compact then ddW - 60 else ddW - 62 -- compact: clear of the chevron
+		ddText.Visible = not iconOnly
+		ddText.Position = UDim2.fromOffset(4 + (if compact then 10 else 12) + textW / 2, HIT_H / 2)
+		ddText.Size = UDim2.fromOffset(textW, INK_H)
 		setLabelText()
 		local left = right - ddW -- running left edge of the right cluster
 		if hasLabel and not compact then
 			label.Position = UDim2.fromOffset(left - 14, CY)
 			left -= 14 + 58
 		end
-		count.Visible = countText ~= nil
-		if countText then
+		count.Visible = showCount
+		countPill.Visible = showCount
+		if showCount then
 			count.Text = countText
-			count.Size = UDim2.fromOffset(84, HIT_H)
-			count.Position = UDim2.fromOffset(edge - 8, CY)
+			local pw = if compact then 74 else 118
+			count.Size = UDim2.fromOffset(pw - 10, HIT_H)
+			count.Position = UDim2.fromOffset(edge - pw / 2, CY)
+			Draw.apply(countPill, Bag.Search, edge - pw / 2, CY, pw, 40)
 		end
 		local searchW = math.max(120, left - (if compact then 10 else 24) - PAD_L)
 		Draw.apply(search, Bag.Search, PAD_L + searchW / 2, CY, searchW, INK_H)
