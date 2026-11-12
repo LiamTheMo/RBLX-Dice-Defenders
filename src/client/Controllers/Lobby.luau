@@ -12,6 +12,7 @@ local LobbyHud = require(script.Parent.LobbyHud)
 local Bag = require(script.Parent.Bag.Bag)
 local QuestLog = require(script.Parent.QuestLog.QuestLog)
 local Play = require(script.Parent.Play.Play)
+local Roll = require(script.Parent.Roll.Roll)
 local Display = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Display"))
 
 local make, panel, label, button = UiKit.make, UiKit.panel, UiKit.label, UiKit.button
@@ -60,7 +61,7 @@ local function toast(text: string)
 	local token = toastToken
 	ui.Toast.Text = text
 	-- Bag, Quest Log or Play open: sit over the HUD currency block so the banner, X and tabs stay visible.
-	if ui.Bag:IsOpen() or ui.QuestLog:IsOpen() or ui.Play:IsOpen() then
+	if ui.Bag:IsOpen() or ui.QuestLog:IsOpen() or ui.Play:IsOpen() or ui.Roll:IsOpen() then
 		ui.ToastFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 		-- Clamped: on phones the HUD block is hidden and bottomTopReal is the screen height.
 		local y = math.min(ui.LobbyHud:GetBagInsets().bottomTopReal + 26, UiKit.screenSize(ui.Root).Y - 26)
@@ -130,22 +131,32 @@ local function showPanel(name: string?)
 	if name == "Bag" then -- the bag and quest log are their own windows, not placeholder panels
 		ui.QuestLog:Close()
 		ui.Play:Close()
+		ui.Roll:Close()
 		ui.Bag:Toggle()
 		return
 	elseif name == "Quests" then
 		ui.Bag:Close()
 		ui.Play:Close()
+		ui.Roll:Close()
 		ui.QuestLog:Toggle()
 		return
 	elseif name == "Play" then
 		ui.Bag:Close()
 		ui.QuestLog:Close()
+		ui.Roll:Close()
 		ui.Play:Toggle()
+		return
+	elseif name == "Roll" then
+		ui.Bag:Close()
+		ui.QuestLog:Close()
+		ui.Play:Close()
+		ui.Roll:Toggle()
 		return
 	end
 	ui.Bag:Close()
 	ui.QuestLog:Close()
 	ui.Play:Close()
+	ui.Roll:Close()
 	openPanel = name
 	for key, p in ui.Panels do
 		p.Frame.Visible = key == name
@@ -364,6 +375,7 @@ local function build()
 	ui.Bag = Bag.new(ui.Root, { hud = ui.LobbyHud, toast = toast })
 	ui.QuestLog = QuestLog.new(ui.Root, { hud = ui.LobbyHud, toast = toast })
 	ui.Play = Play.new(ui.Root, { hud = ui.LobbyHud, toast = toast })
+	ui.Roll = Roll.new(ui.Root, { hud = ui.LobbyHud, toast = toast })
 
 	for _, name in PANELS do
 		newPanel(name)
@@ -462,6 +474,9 @@ function Lobby.Destroy()
 	end
 	if ui and ui.Play then
 		ui.Play:Destroy()
+	end
+	if ui and ui.Roll then
+		ui.Roll:Destroy()
 	end
 	if gui then
 		gui:Destroy()

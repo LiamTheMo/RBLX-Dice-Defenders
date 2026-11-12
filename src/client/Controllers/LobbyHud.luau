@@ -216,7 +216,13 @@ function LobbyHud.build(parent, cb)
 	local I = Sprites.Icon
 	local left = {
 		{ "Shop", I.Shop, soon("Shop") },
-		{ "Roll", I.Roll, soon("Roll") },
+		{
+			"Roll",
+			I.Roll,
+			function()
+				open("Roll")
+			end,
+		},
 		{
 			"Bag",
 			I.Bag,
