@@ -20,7 +20,9 @@ local YELLOW = Color3.fromRGB(255, 242, 0)
 local YELLOW_HEX = "#FDEA0A"
 local GREY = Color3.fromRGB(205, 205, 215)
 local WARM = Color3.fromRGB(255, 248, 215) -- sparkle tint: near white, pale gold
-local BLOOM = Color3.fromRGB(255, 150, 30) -- warm bloom behind the big sparkles
+local BLOOM = Color3.fromRGB(255, 115, 0) -- warm orange bloom behind the big sparkles
+local GLOW_IN = Color3.fromRGB(253, 239, 10) -- selected card bloom: yellow #FDEF0A inside ...
+local GLOW_OUT = Color3.fromRGB(245, 119, 3) -- ... to orange #F57703 outside
 local RIM_WHITE = Color3.fromRGB(254, 219, 244)
 local RIM_ORANGE = Color3.fromRGB(248, 130, 20)
 local BAR = { ScrollTrack = Rect.new(19, 65, 22, 227), ScrollThumb = Rect.new(20, 37, 22, 133) } -- narrow centre columns: no horizontal stretch
@@ -97,7 +99,7 @@ local function label(parent, o)
 	l.TextTruncate = Enum.TextTruncate.None -- a label shrinks to fit, it never shows "..."
 	local plain = o.Plain or o.Text
 	local fit = math.min(o.Fit or 1e5, o.W * 0.95) -- 5% spare: hinting at fractional UI scales widens text
-	local size = fitSize(plain, fit, o.Size, o.Min or 12)
+	local size = if o.Fixed then o.Size else fitSize(plain, fit, o.Size, o.Min or math.ceil(mpx(12))) -- Fixed: a role size, fitted for every member by the caller
 	local w = measure(plain, size)
 	local hard = o.W * 0.97
 	if w > hard then -- below Min only as a last resort (a column squeezed by a small window): smaller beats truncated
@@ -114,13 +116,15 @@ local function icon(parent, r, cx, cy, maxW, maxH, z)
 	return Draw.apply(img, r, cx, cy, w, h)
 end
 
--- Bright four-point sparkle (near white, pale gold); sizes >= 20 get a warm orange bloom behind them.
+-- Bright four-point sparkle (near white, pale gold); sizes >= 10 get a warm orange bloom behind them.
 local function spark(parent, sprite, cx, cy, size, z, white)
-	if size >= 20 then
-		local g = Draw.img(parent, { Name = "SparkBloom", ZIndex = z - 1 })
-		Draw.apply(g, Q.GlowRadial, cx, cy, size * 1.7, size * 1.7)
-		g.ImageColor3 = BLOOM
-		g.ImageTransparency = 0
+	if size >= 10 then
+		for _, k in { 2.1, 1.5 } do -- two stacked orange blooms: warmer and denser than one
+			local g = Draw.img(parent, { Name = "SparkBloom", ZIndex = z - 1 })
+			Draw.apply(g, Q.GlowRadial, cx, cy, size * k, size * k)
+			g.ImageColor3 = BLOOM
+			g.ImageTransparency = 0
+		end
 	end
 	local sp = icon(parent, sprite, cx, cy, size, size, z)
 	sp.ImageColor3 = if white then WHITE else WARM
@@ -190,7 +194,8 @@ end
 
 -- Left column ----------------------------------------------------------------------------------------------
 
-local function cardPill(card, wd, L, s, w, h)
+-- BEST pill geometry + its text (the compact variants drop words until the text fits).
+local function pillGeom(wd, L, s, w, h)
 	local compact = L.compact
 	local pw, ph = round(255 * s), round(52 * s) -- 9-slice ink: visible width = pw + ~10, visible height = ph x 0.83 -> ref 266 x 43-46
 	local bm = math.max(round(5 * s), math.ceil(mpx(5) + 0.3)) -- >= 5 real px from the card's inner rim
@@ -199,13 +204,8 @@ local function cardPill(card, wd, L, s, w, h)
 		pw, ph = w - 16 - (if wd.Locked then 30 else 0), 33 -- a locked card keeps its padlock beside the pill; 33 holds the 18 px text with >= 5 real px
 		cx, cy = 8 + pw / 2, h - bm - ph / 2
 	end
-	local z = card.ZIndex
-	skin(card, Bag.PillGreen, cx, cy, pw, ph, nil, z + 1, "BestPill")
 	local crown = not compact or pw >= 150 -- narrowest phones drop the crown so the 18 px text fits
 	local tx0 = if crown then 56 * s else 12
-	if crown then
-		icon(card, Bag.IconCrown, cx - pw / 2 + 32 * s, cy, 36 * s, 28 * s, z + 2)
-	end
 	local avail = pw - tx0 - (if compact then 12 else 10 * s)
 	local size = if compact then 18 else round(25 * s)
 	local num = if wd.Best == "--" then wd.Best else `<font color="{YELLOW_HEX}">{wd.Best}</font>`
@@ -219,27 +219,79 @@ local function cardPill(card, wd, L, s, w, h)
 		plain = `{wd.Best}/{wd.Waves}`
 		rich = `{num}/{wd.Waves}`
 	end
+	return {
+		pw = pw,
+		ph = ph,
+		cx = cx,
+		cy = cy,
+		crown = crown,
+		tx0 = tx0,
+		avail = avail,
+		size = size,
+		plain = plain,
+		rich = rich,
+	}
+end
+
+-- One BEST text size for every card (the largest that fits the longest text), desktop tiers.
+local function pillRoleSize(worlds, L, s, w, h): number
+	local size = 1e5
+	for _, wd in worlds do
+		local g = pillGeom(wd, L, s, w, h)
+		size = math.min(size, fitSize(g.plain, g.avail * 0.95, g.size, 1))
+	end
+	return size
+end
+
+local function cardPill(card, wd, L, s, w, h, role)
+	local g = pillGeom(wd, L, s, w, h)
+	local cx, cy, pw, ph = g.cx, g.cy, g.pw, g.ph
+	local z = card.ZIndex
+	skin(card, Bag.PillGreen, cx, cy, pw, ph, nil, z + 1, "BestPill")
+	if g.crown then
+		icon(card, Bag.IconCrown, cx - pw / 2 + 32 * s, cy, 36 * s, 28 * s, z + 2)
+	end
 	label(card, {
 		Name = "BestText",
-		Text = rich,
-		Plain = plain,
+		Text = g.rich,
+		Plain = g.plain,
 		Rich = true,
-		Size = size,
-		Min = if compact then 18 else 12,
-		X = cx - pw / 2 + tx0 + avail / 2,
+		Size = if L.compact then g.size else role,
+		Fixed = true,
+		X = cx - pw / 2 + g.tx0 + g.avail / 2,
 		Y = cy,
-		W = avail,
+		W = g.avail,
 		H = ph,
 		Stroke = 2,
 		Z = z + 2,
 	})
 end
 
-local GLOW_TINT = Color3.fromRGB(255, 170, 40) -- saturated orange bloom
-local GOLD_BAND = Color3.fromRGB(255, 226, 60) -- yellow-gold inner band
-local GLOW_K = 0.56 -- CellSelected: ~22 sprite px of glow outside its bright line -> ~12 px bloom outside the card edge
 local MOON = { Min = Vector2.new(219, 7), Size = Vector2.new(73, 73) } -- the Shadow sheet's moon disc (WorldShadow export px)
-local CARD_L, CARD_R = 8, 4 -- the 12 px glow then ends on the window's inner rim (never clipped) and 2 px short of the mid panel
+local CARD_L, CARD_R = 8, 4 -- the bloom's outer ring then ends on the window's inner rim (never clipped) and short of the mid panel
+
+-- Selected card bloom from live strokes (no texture): frames hugging the card, yellow inside to orange outside, fading out.
+local function bloom(host, x, y, w, h, radius, z, compact)
+	local n, step = if compact then 3 else 6, if compact then 1.3 else 1.9
+	for i = 1, n do
+		local t = (i - 1) / (n - 1)
+		local e = 3 + (i - 1) * step -- the card's own 3 px white rim is the first 3 px
+		local f = make("Frame", {
+			Name = "Glow",
+			Position = UDim2.fromOffset(x - e, y - e),
+			Size = UDim2.fromOffset(w + 2 * e, h + 2 * e),
+			BackgroundTransparency = 1,
+			ZIndex = z,
+		}, host)
+		make("UICorner", { CornerRadius = UDim.new(0, radius + e) }, f)
+		make("UIStroke", {
+			Color = GLOW_IN:Lerp(GLOW_OUT, t),
+			Transparency = 0.02 + 0.45 * t,
+			Thickness = 2.4,
+			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		}, f)
+	end
+end
 
 local function buildCard(self, host, wd, x, y, w, h, sel, crop, s, L)
 	local art = PlaySprites[wd.Art]
@@ -260,29 +312,13 @@ local function buildCard(self, host, wd, x, y, w, h, sel, crop, s, L)
 		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
 	}, card)
 	if sel then
-		local g = if L.compact then 5 else 12
-		local gr = g
-		local k = if L.compact then 0.3 else GLOW_K
-		local glow = skin(host, Q.CellSelected, x + w / 2, y + h / 2, w + g + gr, h + 2 * g, k, host.ZIndex + 2, "Glow")
-		glow.Interactable = false
-		glow.ImageColor3 = GLOW_TINT
-		local gi = if L.compact then 3 else 6 -- a yellow-gold inner band inside the orange bloom (same sprite, half the reach)
-		local inner =
-			skin(host, Q.CellSelected, x + w / 2, y + h / 2, w + 2 * gi, h + 2 * gi, k / 2, host.ZIndex + 2, "GlowIn")
-		inner.Interactable = false
-		inner.ImageColor3 = GOLD_BAND
-		if not L.compact then -- a twin on the same geometry doubles the bloom's strength
-			local g2 =
-				skin(host, Q.CellSelected, x + w / 2, y + h / 2, w + g + gr, h + 2 * g, k, host.ZIndex + 2, "Glow2")
-			g2.Interactable = false
-			g2.ImageColor3 = GLOW_TINT
-		end
+		bloom(host, x, y, w, h, round(22 * s), host.ZIndex + 2, L.compact)
 	end
 	label(card, {
 		Name = "Title",
 		Text = wd.Name,
 		Size = if L.compact then 18 else titleSize(s), -- min(cap 23, ref ink width) = 33 at 1672
-		Min = if L.compact then 18 else 14,
+		Fixed = true,
 		AX = 0,
 		X = if L.compact then 10 else 12,
 		Y = if L.compact then 18 else round(12 * s) + 17 * s,
@@ -290,10 +326,14 @@ local function buildCard(self, host, wd, x, y, w, h, sel, crop, s, L)
 		Z = card.ZIndex + 1,
 		Stroke = 3,
 	})
-	cardPill(card, wd, L, s, w, h)
+	cardPill(card, wd, L, s, w, h, L.pillSize)
 	if wd.Art == "WorldShadow" and not L.compact then
 		-- the source art's moon is ~85 px at card scale (ref ~38): the card crop stops left of / below it and a small disc is cut from the same sheet
 		local d = round(38 * s)
+		local halo = Draw.img(card, { Name = "MoonHalo", ZIndex = card.ZIndex + 1 }) -- soft pale bloom: the disc's edge melts into the art
+		Draw.apply(halo, Q.GlowRadial, round(w * 0.855), round(h * 0.2), d * 2, d * 2)
+		halo.ImageColor3 = Color3.fromRGB(255, 226, 242)
+		halo.ImageTransparency = 0.1
 		local moon = Draw.img(card, {
 			Name = "Moon",
 			AnchorPoint = Vector2.new(0.5, 0.5),
@@ -368,6 +408,7 @@ function View:_buildLeft()
 	else
 		local s = L.leftW / 363
 		local f = math.min(1, (L.panelH - 3) / 659) -- short windows squash the card heights (crop keeps the art's aspect)
+		L.pillSize = pillRoleSize(worlds, L, math.min(s, f), L.leftW - CARD_L - CARD_R, 100)
 		local tops = { 22, 184, 347, 510 }
 		for i, wd in worlds do
 			if not tops[i] then
@@ -411,7 +452,7 @@ local ICON_BOX = {
 	IconGalaxyDie = { 66, 66 },
 }
 
-local function rewardLines(row, lines, cx, cy, w, sizes, z, free)
+local function rewardLines(row, lines, cx, cy, w, sizes, z)
 	local total = 0
 	for i = 1, #lines do
 		total += sizes[i] + 1
@@ -423,16 +464,79 @@ local function rewardLines(row, lines, cx, cy, w, sizes, z, free)
 			Name = "Reward" .. i,
 			Text = str,
 			Size = sz,
-			Min = 12,
-			Fit = math.min(REW_REF[str] or 1e5, free or 1e5),
+			Fixed = true,
 			X = cx,
 			Y = y + (sz + 1) / 2,
-			W = w + 16, -- wider than the 126 text column so a ref-width line (CROWN COSMETIC 129) never truncates
+			W = w,
 			H = sz + 2,
 			Stroke = 2,
 			Z = z,
 		})
 		y += sz + 1
+	end
+end
+
+local function iconInkW(row, h: number): number
+	if row.Icon == "CrownGems" then
+		return (Draw.fitIn(Q.IconCrown, 70, 46))
+	end
+	local box = ICON_BOX[row.Icon] or { 67, 59 }
+	return (Draw.fitIn(rec(row.Icon), box[1], math.min(box[2], h - 2 * mpx(3) - 2.5)))
+end
+
+-- Desktop rows: ONE size per text role (WAVE labels, reward first lines, reward sub-lines) = the largest that fits every row (A-15: the
+-- reference cap, <= 110% of the reference ink width); the icon / divider / text columns then follow from the sizes. Never under the 12 real px floor.
+local function rowRoles(rows, w: number, h: number, f: number)
+	local m5, fl = mpx(5), math.ceil(mpx(12))
+	local three = false
+	for _, r in rows do
+		three = three or #r.Lines >= 3
+	end
+	local hs = if h < 72 then math.max(0.85, h / 72) else 1
+	local sw, r1, rs = 26, math.floor((if three then 24 else 26) * hs), math.floor((if three then 18 else 20) * hs)
+	local half = 0
+	for _, row in rows do
+		sw = math.min(sw, fitSize("WAVE " .. row.Wave, if tostring(row.Wave):len() >= 3 then 121 else 98, sw, 1))
+		for i, str in row.Lines do
+			local lim = (REW_REF[str] or 1e5) * 1.1
+			if i == 1 then
+				r1 = math.min(r1, fitSize(str, lim, r1, 1))
+			else
+				rs = math.min(rs, fitSize(str, lim, rs, 1))
+			end
+		end
+		half = math.max(half, iconInkW(row, h) / 2)
+	end
+	local function place(a, b, c)
+		local wr, ixMin = 0, 0
+		for _, row in rows do
+			ixMin = math.max(ixMin, 31 + measure("WAVE " .. row.Wave, a) + m5 + 3 + iconInkW(row, h) / 2)
+			for i, str in row.Lines do
+				wr = math.max(wr, measure(str, if i == 1 then b else c))
+			end
+		end
+		wr += 5
+		local txMax = w - m5 - 2 - wr / 2
+		local dxMax = txMax - wr / 2 - 6 - m5
+		local ixMax = dxMax - m5 - 1 - half
+		if ixMin > ixMax then
+			return nil
+		end
+		local ix = math.clamp(192 * f, ixMin, ixMax)
+		local dx = math.clamp(250 * f, ix + half + m5 + 1, dxMax)
+		return { ix = ix, dx = dx, tx = math.clamp(323 * f, dx + 6 + m5 + wr / 2, txMax), wr = wr }
+	end
+	local t = 1
+	while true do
+		local a, b, c =
+			math.max(fl, math.floor(sw * t)), math.max(fl, math.floor(r1 * t)), math.max(fl, math.floor(rs * t))
+		local pos = place(a, b, c)
+		if pos or (a == fl and b == fl and c == fl) then
+			pos = pos or { ix = 192 * f, dx = 250 * f, tx = 323 * f, wr = 130 }
+			pos.sw, pos.r1, pos.rs = a, b, c
+			return pos
+		end
+		t -= 0.03
 	end
 end
 
@@ -475,7 +579,7 @@ local function compactRowH(row, rowW: number): number
 	return math.max(48, 16 + 20 * (1 + #compactLines(row, rowW - 38)))
 end
 
-local function buildRow(host, row, x, y, w, h, compact, f)
+local function buildRow(host, row, x, y, w, h, compact, R)
 	local frame = Draw.img(host, {
 		Name = "Row" .. row.Wave,
 		Position = UDim2.fromOffset(x, y),
@@ -560,17 +664,15 @@ local function buildRow(host, row, x, y, w, h, compact, f)
 		end
 		return
 	end
-	local ix, dx, tx, tw = 192 * f, 250 * f, 323 * f, 126 * f
+	local ix, dx = R.ix, R.dx
 	local box = ICON_BOX[row.Icon] or { 67, 59 }
 	local iconH = math.min(box[2], h - 2 * mpx(3) - 2.5) -- icon ink >= 3 real px inside the row
-	local iconW = if row.Icon == "CrownGems" then 70 else box[1]
 	label(frame, {
 		Name = "Wave",
 		Text = "WAVE " .. row.Wave,
 		AX = 0,
-		Size = 26, -- ref "WAVE 10" ink is 89 wide (cap 22 = size 30); <= 110% of it is size 26
-		Min = 12,
-		Fit = math.min(if tostring(row.Wave):len() >= 3 then 121 else 98, ix - iconW / 2 - 31 - mpx(5) - 3), -- >= 5 real px to the icon
+		Size = R.sw,
+		Fixed = true,
 		X = 31, -- ref text starts x 684
 		Y = h / 2,
 		W = 132,
@@ -594,15 +696,11 @@ local function buildRow(host, row, x, y, w, h, compact, f)
 		icon(frame, rec(row.Icon), ix, h / 2, box[1], iconH, z)
 	end
 	divider(frame, dx, h / 2 - 27.5, 4, 55, z)
-	local sizes = if #row.Lines >= 3 then { 24, 18, 18 } else { 26, 20 }
-	if h < 72 then
-		for i, v in sizes do
-			sizes[i] = math.floor(v * math.max(0.85, h / 72))
-		end
+	local sizes = {}
+	for i = 1, #row.Lines do
+		sizes[i] = if i == 1 then R.r1 else R.rs
 	end
-	local right, left = w - mpx(5) - 2, dx + 4 + mpx(5) + 2 -- >= 5 real px from the row rim and the divider (2 px text outline each side)
-	tx = math.max(tx, (left + right) / 2)
-	rewardLines(frame, row.Lines, tx, h / 2, tw, sizes, z, 2 * math.min(tx - left, right - tx) - 4)
+	rewardLines(frame, row.Lines, R.tx, h / 2, R.wr + 6, sizes, z)
 end
 
 function View:_buildMid()
@@ -668,7 +766,7 @@ function View:_buildMid()
 		scroll.Size = UDim2.fromOffset(midW - lead - 22, sh)
 		scroll.ZIndex = base + 2
 		for i, row in rows do
-			buildRow(scroll, row, 14, (i - 1) * pitch + 3, rowW, pitch - 6, true, 1)
+			buildRow(scroll, row, 14, (i - 1) * pitch + 3, rowW, pitch - 6, true)
 		end
 		scroll.CanvasSize = UDim2.fromOffset(0, #rows * pitch)
 	else
@@ -699,11 +797,12 @@ function View:_buildMid()
 				ZIndex = base + 1,
 			}, mid)
 		end
+		local R = rowRoles(rows, rowW, round(72 * g), rowW / 397)
 		for i, row in rows do
 			if not tops[i] then
 				break -- the full layout holds the reference's six rows
 			end
-			buildRow(mid, row, 46, round(tops[i] * g), rowW, round(72 * g), false, rowW / 397)
+			buildRow(mid, row, 46, round(tops[i] * g), rowW, round(72 * g), false, R)
 		end
 	end
 
@@ -754,15 +853,23 @@ function View:_buildRight()
 	clear(col)
 	local compact, rw = L.compact, L.rightW
 	local P, ohFull, thFull = 203, 144, 101 -- short windows (small desktops) shrink the preview first, then odds, then tiles
+	local floorD = math.ceil(mpx(12)) -- the 12 real px text floor, in design px
+	local grid2 = false -- narrow desktops: the four tiles go 2x2 (compact tile) when their labels cannot reach the floor in one row
 	if not compact then
-		local deficit = math.max(0, P + 441 - L.panelH + 8)
+		local tw4 = math.min(88, (rw - 8 - 12) // 4)
+		local l4 = 24
+		for _, tile in self._tiles do
+			l4 = math.min(l4, fitSize(tile.Label, tw4 - 15, 24, 1))
+		end
+		grid2 = l4 < floorD
+		local deficit = math.max(0, P + 441 - L.panelH + 8 + (if grid2 then 23 else 0)) -- 2x2 tiles: 2 x 60 + 4 = 124 tall instead of 101
 		local cut = math.min(deficit, 62)
 		P -= cut
 		deficit -= cut
 		cut = math.min(deficit, 30)
 		ohFull -= cut
 		deficit -= cut
-		thFull -= math.min(deficit, 15)
+		thFull -= if grid2 then 0 else math.min(deficit, 15)
 	end
 	col.Position = UDim2.fromOffset(L.rightX, 0)
 	col.Size = UDim2.fromOffset(rw, L.H)
@@ -821,19 +928,22 @@ function View:_buildRight()
 
 	-- tiles
 	local tiles = self._tiles
+	local tight = compact or grid2 -- compact tile: 2 x 2, 56 tall, 18 px labels
 	local tw, th, tgap = 88, thFull, if compact then 6 else 4 -- full: 4 px gaps (the skins draw 3 px over each box; >= 5 real px skin to the next header)
 	local cols = 4
 	if compact then
 		cols = 2
-		tw, th = (rw - tgap - 3) // 2, 56 -- the skins end >= 5 real px inside the window rim
+		tw, th = (rw - tgap - 3) // 2, if L.W < 700 then 56 else 60 -- the skins end >= 5 real px inside the window rim
+	elseif grid2 then
+		cols = 2
+		tw, th = (rw - 8 - tgap) // 2, 60
 	else
 		tw = math.min(88, (rw - 8 - 3 * tgap) // 4) -- the skins draw 3 px over the box: boxes span x 2 .. rw - 6
 	end
-	local hh = if compact then 26 else 25
-	local lsize = if compact then 18 else 24
-	for _, tile in tiles do -- one label size for every tile
-		lsize =
-			math.min(lsize, fitSize(tile.Label, tw - (if compact then 5 else 15), lsize, if compact then 18 else 11)) -- full: >= 5 px to the header pill ends
+	local hh = if tight then 26 else 25
+	local lsize = if tight then 18 else 24
+	for _, tile in tiles do -- one label size for every tile: the largest that fits them all
+		lsize = math.min(lsize, fitSize(tile.Label, tw - (if tight then 5 else 15), lsize, 1))
 	end
 	for i, tile in tiles do
 		local c, r = (i - 1) % cols, (i - 1) // cols
@@ -851,41 +961,31 @@ function View:_buildRight()
 			th / 2,
 			tw - 2,
 			th - 2,
-			if compact then 0.2 else 0.3,
+			if tight then 0.2 else 0.3,
 			box.ZIndex + 1,
 			"Skin"
 		)
-		skin(
-			box,
-			Bag.PillPurple,
-			tw / 2,
-			hh / 2 + 1,
-			tw - (if compact then 2 else 4),
-			hh,
-			nil,
-			box.ZIndex + 2,
-			"Header"
-		)
+		skin(box, Bag.PillPurple, tw / 2, hh / 2 + 1, tw - (if tight then 2 else 4), hh, nil, box.ZIndex + 2, "Header")
 		label(box, {
 			Name = "Label",
 			Text = tile.Label,
 			Size = lsize,
-			Min = if compact then 18 else 11,
-			Fit = tw - (if compact then 5 else 15),
+			Fixed = true,
 			X = tw / 2,
-			Y = if compact then hh / 2 - 0.5 else hh / 2 + 1, -- phones: equal >= 3 real px above and below the 18 px label
+			Y = if tight then hh / 2 - 0.5 else hh / 2 + 1, -- phones: equal >= 3 real px above and below the 18 px label
 			W = tw - 3,
-			Stroke = if compact then 1 else 2,
+			Stroke = if tight then 1 else 2,
 			Z = box.ZIndex + 3,
 		})
-		local iy = if compact then 39.8 else 61.2 * th / 101 -- icon ink >= 3 real px from the header pill and the skin rim
+		local top, bot = hh + 1, th - 4 -- the tile body between the header pill and the skin's inner rim
+		local iy = if tight then (top + bot) / 2 else 61.2 * th / 101 -- icon ink >= 3 real px from the header pill and the skin rim
 		icon(
 			box,
 			rec(tile.Icon),
 			tw / 2,
 			iy,
-			if compact then 34 else math.min(68, tw - 18),
-			if compact then 15 else 62 * th / 101,
+			if tight then tw - 12 else math.min(68, tw - 18),
+			if tight then bot - top - 2 * mpx(3) - 1 else 62 * th / 101,
 			box.ZIndex + 2
 		)
 	end
@@ -905,14 +1005,14 @@ function View:_buildRight()
 	skin(odds, PlaySprites.PurpleBox, ow / 2, oh / 2, ow, oh, 0.4, odds.ZIndex + 1, "Skin")
 	local z = odds.ZIndex + 3
 	local textCx, textW = ow / 2, ow - 14
-	local ys, sizes, fits = {}, {}, {}
+	local ys, sizes = {}, {}
 	if compact then
 		for i = 1, #lines do
 			ys[i] = oh / 2 - 0.7 + (i - (#lines + 1) / 2) * 18.2
 			sizes[i] = 18
 		end
 	else
-		local dvx = 134
+		local dvx = if ow < 340 then 120 else 134 -- narrow desktops: the divider moves toward the die to widen the text block
 		local dcy = oh * 68.5 / 144
 		for i, d in { 190, 140 } do -- two stacked pink blooms behind the die (the sprite is faint; tint set after apply: skin resets it)
 			local glow = Draw.img(odds, { Name = "DieGlow" .. i, ZIndex = z - 1 })
@@ -930,14 +1030,19 @@ function View:_buildRight()
 		local free = 2 * math.min(textCx - left, right - textCx)
 		textW = free + 4
 		if #lines == 5 then
-			sizes = { 25, 25, 25, 21, 20 } -- reference-cap sizes (ref inks 160 / 160 / 160 / 207 / 135 wide), never wider than the free span
-			fits = {
-				math.min(160, free),
-				math.min(160, free),
-				math.min(160, free),
-				math.min(207, free),
-				math.min(135, free),
-			}
+			-- two role sizes (A-15): lines 1-3 and lines 4-5 each take the largest size that fits every member, <= 110% of the reference ink width
+			local refW = { 160, 160, 160, 207, 135 }
+			local s13, s45 = 25, 21
+			for i = 1, 5 do
+				local plain = oddsText(lines[i])
+				local lim = math.min(refW[i] * 1.1, free) * 0.95
+				if i <= 3 then
+					s13 = math.min(s13, fitSize(plain, lim, s13, 1))
+				else
+					s45 = math.min(s45, fitSize(plain, lim, s45, 1))
+				end
+			end
+			sizes = { s13, s13, s13, s45, s45 }
 			local y1, y5 = 13.3 + m5, oh - 14.2 - m5 -- cap centres: line 1 and line 5 keep >= 5 real px to the rim, even spacing between
 			for i = 1, 5 do
 				ys[i] = y1 + (i - 1) * (y5 - y1) / 4
@@ -957,8 +1062,7 @@ function View:_buildRight()
 			Plain = plain,
 			Rich = true,
 			Size = sizes[i],
-			Min = if compact then 18 else math.ceil(mpx(12)), -- the 12 real px floor
-			Fit = fits[i],
+			Fixed = true,
 			X = textCx,
 			Y = ys[i],
 			W = textW,
@@ -1008,14 +1112,32 @@ function View:_buildRight()
 			self._onStart()
 		end
 	end)
-	for sgn = -1, 1, 2 do
-		if compact then -- 12 px sparkles in the 26 px bands beside the pill, mirrored, inside the column
+	if compact then -- 12 px sparkles in the 26 px bands beside the pill, mirrored, inside the column
+		for sgn = -1, 1, 2 do
 			local x = scx + sgn * (sw / 2 + 13)
 			spark(col, Q.Sparkle1, x, scy - 12, 12, base + 20)
 			spark(col, Q.Sparkle1, x, scy + 12, 12, base + 20)
-		else -- 18 px sparkles on the pill's rounded corners (45 degrees off the end circle, ~10 px clear), mirrored, inside the column rim
+		end
+		return
+	end
+	-- Three sparkles a side like the reference, each hugging the pill's end cap with >= 5 real px to it and to the window rim; any that
+	-- cannot fit is dropped (a column too narrow for all of them keeps one corner pair).
+	local hw, m5, drawn = (math.min(339, rw - 8) - 9) / 2, mpx(5), 0
+	for _, sp in { { -34, 18 }, { -12, 10 }, { 30, 16 } } do
+		local half = sp[2] / 2
+		local dy = math.clamp(sp[1], y - 8 + m5 + half - scy, L.H - 4.5 - half - scy) -- >= 5 real px under the odds box above, inside the window rim below
+		local xmin = hw - 43 + math.sqrt(math.max(0, 43 * 43 - dy * dy)) + half + m5 + 0.5
+		if xmin <= rw - 3 - m5 - half - scx then
+			drawn += 1
+			for sgn = -1, 1, 2 do
+				spark(col, Q.Sparkle1, scx + sgn * xmin, scy + dy, sp[2], base + 20)
+			end
+		end
+	end
+	if drawn == 0 then
+		for sgn = -1, 1, 2 do -- 18 px sparkles on the pill's rounded corners (45 degrees off the end circle, ~10 px clear), mirrored, inside the column rim
 			local x = scx + sgn * math.min(165.5, rw - 12.5 - scx) -- >= 5 real px inside the window rim (9 px half sparkle + 3 px rim)
-			spark(col, Q.Sparkle1, x, scy - 44, 18, base + 20)
+			spark(col, Q.Sparkle1, x, scy + math.max(-44, y - 8 + m5 + 9 - scy), 18, base + 20)
 			spark(col, Q.Sparkle1, x, scy + math.min(44, L.H - 13.5 - scy), 18, base + 20)
 		end
 	end
