@@ -167,8 +167,8 @@ function Mastery.new(parent)
 		end
 		local icon = Draw.img(btn, { Name = "Icon" .. m.Lv, ZIndex = z + 2 })
 		local irec = Q[m.Icon] or Q.Crystals
-		local iw, ih = Draw.fitIn(irec, s * 0.72, s * 0.64)
-		Draw.apply(icon, irec, cx, cy - s * 0.12, iw, ih)
+		local iw, ih = Draw.fitIn(irec, s * 0.78, s * 0.74) -- ref Lv.15 die ~48
+		Draw.apply(icon, irec, cx, cy - s * 0.13, iw, ih)
 		local size = math.max(11, math.floor(s * 0.25)) -- ref tile label ink 33 wide
 		local label = Parts.text(btn, {
 			Name = "Lv" .. m.Lv,
@@ -219,7 +219,7 @@ function Mastery.new(parent)
 		local clusterW, clusterL
 		local nameW
 		if full then
-			clusterW = 180
+			clusterW = 186 -- ref XP bar 186 wide
 			clusterL = clusterR - clusterW
 			nameW = math.max(40, clusterL - 8 - textL)
 		else

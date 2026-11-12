@@ -132,12 +132,13 @@ function Toolbar.new(parent)
 		hit.Size = UDim2.fromOffset(ddW + 8, HIT_H)
 		hit.Position = UDim2.fromOffset(right + 4, CY)
 		-- uniform scale only: when the pill is narrower than the art's caps the height shrinks with it (never stretches the chevron)
-		local capX = DROPDOWN.Slice.Min.X
-			+ DROPDOWN.Size.X
-			- DROPDOWN.Slice.Max.X
-			- (DROPDOWN.Size.X - DROPDOWN.Ink.Width)
-		local dk = math.min(INK_H / DROPDOWN.Ink.Height, ddW / capX)
-		Draw.apply(skin, DROPDOWN, (ddW + 8) / 2, HIT_H / 2, ddW, DROPDOWN.Ink.Height * dk, dk)
+		-- the sprite's own caps whenever the pill is wide enough for them at full height (a clean chevron); tight caps only on narrow pills
+		local function caps(rec)
+			return rec.Slice.Min.X + rec.Size.X - rec.Slice.Max.X - (rec.Size.X - rec.Ink.Width)
+		end
+		local rec = if ddW >= caps(Q.Dropdown) * INK_H / Q.Dropdown.Ink.Height then Q.Dropdown else DROPDOWN
+		local dk = math.min(INK_H / rec.Ink.Height, ddW / caps(rec))
+		Draw.apply(skin, rec, (ddW + 8) / 2, HIT_H / 2, ddW, rec.Ink.Height * dk, dk)
 		local textW = if compact then ddW - 58 else ddW - 62 -- compact: clear of the chevron
 		ddText.Position = UDim2.fromOffset(4 + (if compact then 10 else 12) + textW / 2, HIT_H / 2)
 		ddText.Size = UDim2.fromOffset(textW, INK_H)

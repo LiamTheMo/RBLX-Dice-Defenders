@@ -322,4 +322,9 @@ return {
 		Ink = Rect.new(10, 10, 34, 138),
 		Slice = Rect.new(21, 26, 23, 122),
 	},
+	GlowRadial = {
+		Image = "rbxassetid://128110272700921",
+		Size = Vector2.new(256, 256),
+		Ink = Rect.new(0, 0, 256, 256),
+	},
 }

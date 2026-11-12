@@ -16,7 +16,7 @@ local Bag, Q = Draw.Bag, Draw.Q
 local PAD_L, PAD_R, PAD_T, PAD_B = 10, 30, 11, 14 -- left/top >= the selected glow bleed; right = scrollbar gutter (only when the grid scrolls)
 local GAP, GAP_Y, GLOW = 8, 13, 10 -- ref: cells ~152x160 on a 160 / 171 pitch -- cell gap; selected cell ink grows by GLOW (5 per side) inside the sprite's own margin
 local CARD_W, CARD_H = 146, 160 -- reference card (visible rim); cell height = width * 160 / 146
-local LOCKED_GREY = Color3.fromRGB(150, 138, 146)
+local LOCKED_GREY = Color3.fromRGB(150, 146, 152) -- PillGrey toned toward the reference's dark charcoal pill; the rim stays light
 local BAR = { ScrollTrack = Rect.new(19, 65, 22, 227) }
 
 local function barSkin(inst, name: string, w: number)
@@ -59,7 +59,14 @@ function Achievements.pill(
 	local pill = { Frame = frame }
 	function pill:Set(b)
 		local done = isComplete(b)
-		Draw.apply(skin, if done then Q.PillComplete else Q.BarTrackAch, w / 2, h / 2, w, h)
+		Draw.apply(
+			skin,
+			if done then Q.PillComplete elseif b.Locked then Bag.PillGrey else Q.BarTrackAch,
+			w / 2,
+			h / 2,
+			w,
+			h
+		)
 		skin.ImageColor3 = if b.Locked then LOCKED_GREY else Color3.new(1, 1, 1)
 		local pct = if b.Locked then 0 else QuestLogic.percent(b.Progress, b.Goal)
 		local inset = math.max(2, math.floor(h * 0.1))
@@ -160,6 +167,7 @@ function Achievements.new(parent)
 		local ex = if on then GLOW else 0
 		-- rim keeps the thickness the whole-drawn 262 px ink had at this width (k = w / 262)
 		Draw.apply(rec.skin, spr, rec.w / 2, rec.h / 2, rec.w + ex, rec.h + ex, rec.w / Q.CellCopper.Ink.Width)
+		rec.glow.Visible = on
 	end
 
 	local function buildCell(item, order: number, cw: number, ch: number, nameSize: number)
@@ -167,26 +175,24 @@ function Achievements.new(parent)
 		Parts.interact(btn)
 		local skin = Draw.img(btn, { Name = "Skin" })
 		local rec = { skin = skin, w = cw, h = ch, locked = item.Locked }
+		local z = skin.ZIndex + 1
+		-- ref: the warm radial glow exists on the SELECTED cell only (Bag legendary glow, clipped to the cell's rounded interior)
+		local box = Draw.img(
+			btn,
+			{ Name = "GlowBox", Size = UDim2.fromOffset(cw - 12, ch - 12), ClipsDescendants = true, ZIndex = z },
+			"Frame"
+		)
+		box.AnchorPoint = Vector2.new(0.5, 0.5)
+		box.Position = UDim2.fromOffset(cw / 2, ch / 2)
+		make("UICorner", { CornerRadius = UDim.new(0, math.floor(cw * 0.1)) }, box)
+		local g = Draw.img(
+			box,
+			{ Name = "Glow", ImageTransparency = 0.05, ImageColor3 = Color3.fromRGB(255, 120, 25), ZIndex = z }
+		)
+		Draw.apply(g, Q.GlowRadial, (cw - 12) / 2, ch * 0.31 - 6, cw * 1.3, cw * 1.3)
+		rec.glow = box
 		recs[item.Id] = rec
 		skinCell(rec, item.Id == selected)
-		local z = skin.ZIndex + 1
-		do -- ref: a warm radial glow behind every unlocked badge, a neutral grey one behind locked ones (Bag legendary glow, clipped to the cell)
-			local box = Draw.img(
-				btn,
-				{ Name = "GlowBox", Size = UDim2.fromOffset(cw - 10, ch - 10), ClipsDescendants = true, ZIndex = z },
-				"Frame"
-			)
-			box.AnchorPoint = Vector2.new(0.5, 0.5)
-			box.Position = UDim2.fromOffset(cw / 2, ch / 2)
-			local g = Draw.img(box, {
-				Name = "Glow",
-				ImageTransparency = if item.Locked then 0.55 else 0.3,
-				ImageColor3 = if item.Locked then Color3.fromRGB(190, 190, 200) else Color3.fromRGB(255, 140, 40),
-				ZIndex = z,
-			})
-			local gw, gh = Draw.fitIn(Bag.GlowLegendary, cw * 0.95, cw * 0.95)
-			Draw.apply(g, Bag.GlowLegendary, (cw - 10) / 2, ch * 0.31 - 5, gw, gh)
-		end
 		local badge = Draw.img(btn, { Name = "Badge", ZIndex = z + 1 })
 		local brec = Q[item.Badge] or Q.BadgeKing
 		local bw, bh = Draw.fitIn(brec, cw * 0.92, ch * 0.52) -- ref crown + laurels ~122 wide in a 146 cell
@@ -200,7 +206,7 @@ function Achievements.new(parent)
 			Size = UDim2.fromOffset(cw - 6, 26),
 			ZIndex = z,
 		}, 2)
-		local ph = math.max(22, math.floor(ch * 0.17 + 0.5))
+		local ph = math.floor((if isComplete(item) then 27 else 30) * ch / CARD_H + 0.5) -- ref pills: COMPLETE 27 tall, progress / locked 30
 		local pw = math.floor(cw * 0.8)
 		local pill = Achievements.pill(btn, "Status", pw, ph, z, { Done = 16, Prog = 19 }) -- ref ink widths 76 / 43
 		pill.Frame.AnchorPoint = Vector2.new(0.5, 0.5)

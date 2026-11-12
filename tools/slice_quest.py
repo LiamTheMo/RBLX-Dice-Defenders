@@ -320,6 +320,18 @@ def chevron_cap(px: np.ndarray) -> int:
     return w - int(np.where(white.any(0))[0].min()) + 4
 
 
+def glow_radial(manifest: dict) -> None:
+    """GlowRadial: a smooth white radial falloff (no rays, no ring), tinted live; the selected achievement cell and the achievement detail backdrop."""
+    n = 256
+    yy, xx = np.mgrid[0:n, 0:n]
+    r = np.hypot(xx - (n - 1) / 2, yy - (n - 1) / 2) / (n / 2)
+    a = np.round(np.clip(1 - r, 0, 1) ** 1.7 * 255).astype(np.uint8)
+    px = np.dstack([np.full((n, n, 3), 255, np.uint8), a])
+    Image.fromarray(px).save(OUT / "Quest_GlowRadial.png", optimize=True)
+    manifest["GlowRadial"] = {"w": n, "h": n, "ink": [0, 0, n, n], "asset": manifest.get("GlowRadial", {}).get("asset", "")}
+    print(f"GlowRadial: {n}x{n}")
+
+
 def main() -> None:
     args = sys.argv[1:]
     if args == ["--luau"]:
@@ -352,6 +364,8 @@ def main() -> None:
         out["asset"] = manifest.get(name, {}).get("asset", "")
         manifest[name] = out
         print(f"{name}: {px.shape[1]}x{px.shape[0]}{note}")
+    if not args or "GlowRadial" in args:
+        glow_radial(manifest)
     mf.write_text(json.dumps(manifest, indent=1))
 
 

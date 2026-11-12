@@ -185,7 +185,7 @@ function Quests.new(parent)
 		local cy = ROW_H / 2
 
 		-- Right to left: claim, gem, coin, bar; the left column keeps the rest.
-		local claimW, claimH = (if full then 97 elseif tiny then 48 else 72), (if full then 48 else 42)
+		local claimW, claimH = (if full then 97 elseif tiny then 44 else 72), (if full then 48 else 42)
 		local right = cw - (if full then 5 else 6)
 		local claimLeft = right - claimW
 		local regionCx = claimLeft + claimW / 2
@@ -202,9 +202,9 @@ function Quests.new(parent)
 				Name = "Claim",
 				Style = "Green",
 				Label = if state == "Soon" then "SOON" else "CLAIM",
-				TextSize = if full then 22 elseif tiny then 15 else 18,
+				TextSize = if full then 22 elseif tiny then 13 else 18,
 				Enabled = state == "Claim",
-				Size = UDim2.fromOffset(claimW + 3, claimH + 2),
+				Size = UDim2.fromOffset(claimW + (if tiny then 8 else 3), claimH + 2),
 			})
 			visual.AnchorPoint = Vector2.new(0.5, 0.5)
 			visual.Position = UDim2.fromScale(0.5, 0.5)
@@ -265,8 +265,21 @@ function Quests.new(parent)
 				ZIndex = z + 1,
 			}, 2)
 			Parts.fit(t, t.Size.X.Offset, size, 12)
-			return ic
+			return ic, t
 		end
+		-- compact: centre a stack of reward groups (icon + text) as one block on cx; each group is left-aligned in it
+		local function centreOn(cx: number, groups)
+			local widest = 0
+			for _, g in groups do
+				widest = math.max(widest, g[1].Size.X.Offset + 4 + g[2].TextBounds.X)
+			end
+			for _, g in groups do
+				local left = cx - widest / 2
+				g[1].Position = UDim2.fromOffset(left + g[1].Size.X.Offset / 2, g[1].Position.Y.Offset)
+				g[2].Position = UDim2.fromOffset(left + g[1].Size.X.Offset + 4, g[2].Position.Y.Offset)
+			end
+		end
+		local nameR: number? -- phone: right edge of the name (above the coin on a button row, free to the rim otherwise)
 		local gold = "+" .. QuestLogic.format(row.Gold or 0)
 		local gems = if row.Gems then "+" .. QuestLogic.format(row.Gems) else nil
 		local rewardLeft = claimLeft - 10
@@ -281,16 +294,37 @@ function Quests.new(parent)
 			reward(HudSprites.Coin, gold, COIN_TEXT, rewardLeft, cy, 22, 32, if wide then 70 else 54) -- ref "+500" ink 41 wide
 			rewardLeft -= if wide then 17 else 10
 		elseif not tiny then
-			rewardLeft = claimLeft - 10 - 86
-			reward(HudSprites.Coin, gold, COIN_TEXT, rewardLeft, cy - 14, 15, 24)
+			rewardLeft = claimLeft - 10 - 86 -- every row reserves the button column; the reward sits left of it, or centred in it when the row has no button
+			local stack = { { reward(HudSprites.Coin, gold, COIN_TEXT, rewardLeft, cy - 14, 15, 24) } }
 			if gems then
-				reward(HudSprites.Gem, gems, Color3.new(1, 1, 1), rewardLeft, cy + 14, 15, 24)
+				table.insert(stack, { reward(HudSprites.Gem, gems, Color3.new(1, 1, 1), rewardLeft, cy + 14, 15, 24) })
+			end
+			if state == "Progress" then
+				centreOn(regionCx, stack)
 			end
 			rewardLeft -= 8
 		else
-			-- phone: the coin reward ends every row's bar line; the button column exists only when there is a button
-			rewardLeft = if state == "Progress" then cw - 8 else claimLeft - 6
-			reward(HudSprites.Coin, gold, COIN_TEXT, rewardLeft - 62, cy + 14, 13, 16, 40)
+			-- phone: every row reserves the button column (equal bars). A row with a button puts its coin on the name line
+			-- above the bar; a row without one centres the coin in that column.
+			rewardLeft = claimLeft - 14 -- the centred coin (wider than the column) must clear the bar end
+			local noBtn = state == "Progress"
+			local slot = if noBtn then 0 else 48 -- coin slot left of the name's right edge on a button row
+			local ic, t = reward(
+				HudSprites.Coin,
+				gold,
+				COIN_TEXT,
+				rewardLeft - slot,
+				if noBtn then cy + 14 else cy - 14,
+				13,
+				if noBtn then 14 else 12,
+				if noBtn then 40 else 33
+			)
+			if noBtn then
+				centreOn(regionCx, { { ic, t } })
+				nameR = cw - 8
+			else
+				nameR = rewardLeft - slot - 4
+			end
 		end
 
 		-- Left column: icon, name (+ desc), progress bar.
@@ -305,7 +339,9 @@ function Quests.new(parent)
 			iw,
 			ih
 		)
-		local textL = (if full then 18 else if tiny then 6 else 8) + iconBox + (if full then 19 else 8)
+		local textL = (if full then 18 else if tiny then 6 else 8)
+			+ iconBox
+			+ (if full then 19 elseif tiny then 5 else 8)
 		local pct = QuestLogic.percent(row.Progress, row.Goal)
 		local complete = row.Goal > 0 and row.Progress >= row.Goal
 		local nameY, barW2, barH
@@ -321,7 +357,7 @@ function Quests.new(parent)
 		else
 			barH = 18
 			colR = rewardLeft
-			barW2 = math.max(if tiny then 48 else 60, colR - textL - (if tiny then 64 else 0))
+			barW2 = math.max(if tiny then 40 else 60, colR - textL) -- phone: the coin is on the name line or in the button column, never beside the bar
 			local bar = Draw.bar(btn, "Progress", barW2, barH, z + 1)
 			bar.Frame.AnchorPoint = Vector2.new(0, 0.5)
 			bar.Frame.Position = UDim2.fromOffset(textL, cy + 14)
@@ -336,7 +372,7 @@ function Quests.new(parent)
 			)
 			nameY = 17
 		end
-		local colW = math.max(40, colR - textL - 8)
+		local colW = math.max(40, (nameR or colR - 8) - textL)
 		local name = Parts.text(btn, {
 			Name = "Name",
 			Text = row.Name,
@@ -347,7 +383,7 @@ function Quests.new(parent)
 			Size = UDim2.fromOffset(colW, 26),
 			ZIndex = z + 1,
 		}, 2)
-		Parts.fit(name, colW, name.TextSize, 12)
+		Parts.fit(name, colW, name.TextSize, if tiny then 9 else 12)
 		if full then
 			local desc = Parts.text(btn, {
 				Name = "Desc",
@@ -382,7 +418,7 @@ function Quests.new(parent)
 			return
 		end
 		local phone = W - PAD_L - PAD_R < 360
-		local padR = if phone then 22 else PAD_R -- phone: a slimmer scrollbar gutter
+		local padR = if phone then 32 else PAD_R -- phone: the selected glow (~15 px past the row) must end before the list's clip edge
 		local padL = if phone then 20 else PAD_L -- and a wider left inset, so the glow and ribbon tail clear the rim
 		pad.PaddingRight = UDim.new(0, padR)
 		pad.PaddingLeft = UDim.new(0, padL)
