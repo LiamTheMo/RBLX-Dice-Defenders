@@ -137,6 +137,7 @@ add("Sparkle4", "MR", (1657, 711, 1734, 796))
 add("GlowDie", "MR", (0, 0, 556, 598), "region", fade={"r": 44})
 add("Halo", "MR", (556, 96, 984, 282), "region", fade={"l": 44, "b": 16, "r": 16})
 add("Rays", "MR", (556, 282, 956, 598), "region", fade={"l": 44, "t": 16, "r": 16})
+add("CrownPlain", "MD", (1415, 322, 1595, 416), "region", fade={"b": 4})  # the plain gold crown above SkinSun (Lv.20 milestone tile)
 
 
 def label8(m: np.ndarray):
@@ -332,6 +333,31 @@ def glow_radial(manifest: dict) -> None:
     print(f"GlowRadial: {n}x{n}")
 
 
+def rays_burst(manifest: dict) -> None:
+    """RaysBurst: a white 360 degree ray burst fading outward (tinted live); the purple-magenta rays behind the quest/achievement hero."""
+    n = 256
+    yy, xx = np.mgrid[0:n, 0:n]
+    dx, dy = xx - (n - 1) / 2, yy - (n - 1) / 2
+    r = np.hypot(dx, dy) / (n / 2)
+    ray = (0.5 + 0.5 * np.cos(16 * np.arctan2(dy, dx))) ** 1.3
+    a = np.round(np.clip(1 - r, 0, 1) ** 1.1 * (0.25 + 0.75 * ray) * 255).astype(np.uint8)
+    px = np.dstack([np.full((n, n, 3), 255, np.uint8), a])
+    Image.fromarray(px).save(OUT / "Quest_RaysBurst.png", optimize=True)
+    manifest["RaysBurst"] = {"w": n, "h": n, "ink": [0, 0, n, n], "asset": manifest.get("RaysBurst", {}).get("asset", "")}
+    print(f"RaysBurst: {n}x{n}")
+
+
+def mastery_row(manifest: dict) -> None:
+    """MasteryRow: the plain Row with its hue turned from copper to the reference's pink-magenta rim (selected rows keep RowSelected's gold)."""
+    px = np.array(Image.open(OUT / "Quest_Row.png").convert("RGBA"))
+    hsv = np.array(Image.fromarray(px[..., :3]).convert("HSV"))
+    hsv[..., 0] = ((hsv[..., 0].astype(int) - 38) % 256).astype(np.uint8)  # -53 degrees: salmon (8 deg) -> pink-magenta (315 deg)
+    px[..., :3] = np.array(Image.fromarray(hsv, "HSV").convert("RGB"))
+    Image.fromarray(px).save(OUT / "Quest_MasteryRow.png", optimize=True)
+    manifest["MasteryRow"] = {**manifest["Row"], "asset": manifest.get("MasteryRow", {}).get("asset", "")}
+    print("MasteryRow:", px.shape[1], "x", px.shape[0])
+
+
 def main() -> None:
     args = sys.argv[1:]
     if args == ["--luau"]:
@@ -366,6 +392,10 @@ def main() -> None:
         print(f"{name}: {px.shape[1]}x{px.shape[0]}{note}")
     if not args or "GlowRadial" in args:
         glow_radial(manifest)
+    if not args or "RaysBurst" in args:
+        rays_burst(manifest)
+    if not args or "MasteryRow" in args:
+        mastery_row(manifest)
     mf.write_text(json.dumps(manifest, indent=1))
 
 

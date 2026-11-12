@@ -327,4 +327,16 @@ return {
 		Size = Vector2.new(256, 256),
 		Ink = Rect.new(0, 0, 256, 256),
 	},
+	CrownPlain = {
+		Image = "rbxassetid://130291183544148",
+		Size = Vector2.new(163, 105),
+		Ink = Rect.new(11, 11, 152, 93),
+	},
+	RaysBurst = { Image = "rbxassetid://125622434000742", Size = Vector2.new(256, 256), Ink = Rect.new(0, 0, 256, 256) },
+	MasteryRow = {
+		Image = "rbxassetid://76729133400497",
+		Size = Vector2.new(988, 110),
+		Ink = Rect.new(11, 11, 977, 99),
+		Slice = Rect.new(137, 43, 912, 61),
+	},
 }

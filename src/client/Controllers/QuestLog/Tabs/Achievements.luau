@@ -195,8 +195,16 @@ function Achievements.new(parent)
 		skinCell(rec, item.Id == selected)
 		local badge = Draw.img(btn, { Name = "Badge", ZIndex = z + 1 })
 		local brec = Q[item.Badge] or Q.BadgeKing
-		local bw, bh = Draw.fitIn(brec, cw * 0.92, ch * 0.52) -- ref crown + laurels ~122 wide in a 146 cell
-		Draw.apply(badge, brec, cw / 2, ch * 0.31, bw, bh)
+		local bw, bh = Draw.fitIn(brec, cw * (if item.Locked then 0.8 else 0.92), ch * 0.52) -- ref crown + laurels ~122 wide in a 146 cell
+		-- locked: a smaller emblem a little left and down keeps the corner padlock clear of it (ref)
+		Draw.apply(
+			badge,
+			brec,
+			cw / 2 - (if item.Locked then cw * 0.04 else 0),
+			ch * (if item.Locked then 0.34 else 0.31),
+			bw,
+			bh
+		)
 		Parts.text(btn, {
 			Name = "Name",
 			Text = string.upper(item.Name),

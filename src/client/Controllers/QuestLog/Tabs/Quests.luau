@@ -139,7 +139,20 @@ function Quests.new(parent)
 			local group = Draw.img(f, { Name = "Reset", Size = UDim2.fromScale(1, 1), ZIndex = banner.ZIndex }, "Frame")
 			local pill = Draw.img(group, { Name = "Pill" })
 			Draw.apply(pill, Bag.Search, cw - pw / 2, cy, pw, 40)
-			local sw = Draw.img(group, { Name = "Stopwatch", ZIndex = pill.ZIndex + 1 })
+			local halo = Draw.img(group, { -- ref: the clock glows bright gold
+				Name = "StopwatchGlow",
+				Image = Q.GlowRadial.Image,
+				ImageColor3 = Color3.fromRGB(255, 190, 40),
+				ImageTransparency = 0.35,
+				Size = UDim2.fromOffset(44, 44),
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromOffset(cw - pw + 22, cy),
+				ZIndex = pill.ZIndex + 1,
+			})
+			local sw = Draw.img(
+				group,
+				{ Name = "Stopwatch", ImageColor3 = Color3.fromRGB(255, 225, 120), ZIndex = halo.ZIndex + 1 }
+			)
 			local sww, swh = Draw.fitIn(Q.Stopwatch, 28, 28)
 			Draw.apply(sw, Q.Stopwatch, cw - pw + 22, cy, sww, swh)
 			local avail = pw - 56

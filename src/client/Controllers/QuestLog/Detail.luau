@@ -24,11 +24,14 @@ local BODY_H = 508
 local MAST_H = 601 -- Mastery body: no action button, so no bottom strip (the scroll is the slot + EXT, so it never scrolls)
 local ACH_H = 601 -- Achievement body: the CLAIM button sits in its reward row, so no bottom strip
 -- compact (phone) bodies: a separate stacked layout per kind that fits the panel without scrolling (hero art and description dropped)
-local COMPACT_BODY = { Quest = 216, Achievement = 245, Mastery = 284 }
+local COMPACT_BODY = { Quest = 216, Achievement = 245, Mastery = 278 }
 local REWARD_ICON = { Crystals = "Crystals", Die = "SkinFire" } -- Die: closest available die art
 local BOX_H, BOX_K = 55, 0.55 -- StatRow boxes: visible height and rim scale
 local COIN_TEXT = Color3.fromRGB(251, 243, 137)
 local SOFT = Color3.fromRGB(205, 210, 235)
+
+local PURPLE_GLOW = Color3.fromRGB(150, 45, 175) -- hero backdrop: purple bloom, magenta rays, then a warm centre (ref)
+local RAY_PINK = Color3.fromRGB(235, 95, 215)
 
 local Detail = {}
 
@@ -126,6 +129,17 @@ function Detail.new(parent)
 	-- Quest kind --------------------------------------------------------------------------------------------
 	local quest = Draw.img(body, { Name = "Quest", Size = UDim2.fromScale(1, 1) }, "Frame")
 	local z = quest.ZIndex
+	local bloom = Draw.img(quest, {
+		Name = "Bloom",
+		Image = Q.GlowRadial.Image,
+		ImageColor3 = PURPLE_GLOW,
+		ImageTransparency = 0.25,
+		ZIndex = z + 1,
+	})
+	local burst = Draw.img(
+		quest,
+		{ Name = "Burst", Image = Q.RaysBurst.Image, ImageColor3 = RAY_PINK, ImageTransparency = 0.4, ZIndex = z + 1 }
+	)
 	local glow = Draw.img(
 		quest,
 		{ Name = "Glow", ImageTransparency = 0.05, ImageColor3 = Color3.fromRGB(255, 125, 30), ZIndex = z + 1 }
@@ -152,7 +166,7 @@ function Detail.new(parent)
 	for _, n in { "Obj", "Prog", "Gold", "Gem" } do
 		local f = Draw.img(quest, { Name = n .. "Rim", AnchorPoint = Vector2.new(0.5, 0.5), ZIndex = z + 3 }, "Frame")
 		make("UICorner", { CornerRadius = UDim.new(0, 10) }, f)
-		make("UIStroke", { Color = Color3.fromRGB(156, 87, 156), Thickness = 2, Transparency = 0.1 }, f)
+		make("UIStroke", { Color = Color3.fromRGB(190, 105, 110), Thickness = 2, Transparency = 0.1 }, f)
 		rims[n] = f
 	end
 	local function rimAt(n: string, x: number, y: number, w: number, h: number, on: boolean)
@@ -197,6 +211,17 @@ function Detail.new(parent)
 	-- Achievement / Mastery kinds: filled later (same body, own frame).
 	local achievement = Draw.img(body, { Name = "Achievement", Size = UDim2.fromScale(1, 1), Visible = false }, "Frame")
 	local az = achievement.ZIndex
+	local aBloom = Draw.img(achievement, {
+		Name = "Bloom",
+		Image = Q.GlowRadial.Image,
+		ImageColor3 = PURPLE_GLOW,
+		ImageTransparency = 0.25,
+		ZIndex = az + 1,
+	})
+	local aBurst = Draw.img(
+		achievement,
+		{ Name = "Burst", Image = Q.RaysBurst.Image, ImageColor3 = RAY_PINK, ImageTransparency = 0.4, ZIndex = az + 1 }
+	)
 	local aGlow = Draw.img(
 		achievement,
 		{ Name = "Glow", ImageTransparency = 0.05, ImageColor3 = Color3.fromRGB(255, 105, 15), ZIndex = az + 1 }
@@ -244,7 +269,7 @@ function Detail.new(parent)
 	local aRewards = {} -- up to two reward boxes: { box, icon, text }
 	for i = 1, 2 do
 		aRewards[i] = {
-			box = Draw.img(achievement, { Name = "RewardBox" .. i, ImageTransparency = 0.45, ZIndex = az + 2 }),
+			box = Draw.img(achievement, { Name = "RewardBox" .. i, ImageTransparency = 0.05, ZIndex = az + 2 }),
 			glow = Draw.img(achievement, {
 				Name = "RewardGlow" .. i,
 				ImageTransparency = 0.5,
@@ -265,7 +290,7 @@ function Detail.new(parent)
 	local mFlagL = Draw.img(mastery, { Name = "FlagL", ZIndex = mz + 1 })
 	local mFlagR = Draw.img(mastery, { Name = "FlagR", ZIndex = mz + 1 })
 	local mRays = Draw.img(mastery, { Name = "Rays", ZIndex = mz + 1 })
-	local mHalo = Draw.img(mastery, { Name = "Halo", ZIndex = mz + 2 })
+	local mHalo = Draw.img(mastery, { Name = "Halo", ImageColor3 = Color3.fromRGB(255, 130, 20), ZIndex = mz + 2 }) -- saturated orange (M-L7-4)
 	local mDie = Draw.img(mastery, { Name = "Die", ZIndex = mz + 3 })
 	local mSparkles = {}
 	for i = 1, 4 do
@@ -379,7 +404,10 @@ function Detail.new(parent)
 		Draw.apply(ribbon, Q.DetailRibbon, cx, 36, rw, rw * Q.DetailRibbon.Ink.Height / Q.DetailRibbon.Ink.Width)
 		at(ribbonText, cx, 33)
 		ribbonText.Size = UDim2.fromOffset(rw * 0.62, 40)
-		Draw.apply(glow, Q.GlowRadial, cx, 139, 300, 250) -- ref: warm radial behind the scroll
+		Draw.apply(bloom, Q.GlowRadial, cx, 139, math.min(340, W + 30), 280)
+		Draw.apply(burst, Q.RaysBurst, cx, 139, math.min(330, W + 20), 330)
+		Draw.apply(glow, Q.GlowRadial, cx, 139, 190, 170) -- ref: warm radial centre behind the scroll
+		bloom.Visible, burst.Visible = not compact, not compact
 		glow.Visible = not compact -- its soft square would end in a hard edge at the scroll rim
 		local function spark(i: number, rec, dx: number, dy: number, size: number)
 			local sw, sh = Draw.fitIn(rec, size, size)
@@ -521,7 +549,10 @@ function Detail.new(parent)
 		aRibbonText.Size = UDim2.fromOffset(aw * 0.62, 40)
 		aRibbonText.Text = m.Title or "ACHIEVEMENT"
 		Parts.fit(aRibbonText, aRibbonText.Size.X.Offset, 26, 16)
-		Draw.apply(aGlow, Q.GlowRadial, cx, 140, 340, 280) -- ref: hot orange radial behind the badge over the purple panel
+		Draw.apply(aBloom, Q.GlowRadial, cx, 140, math.min(340, W + 30), 280)
+		Draw.apply(aBurst, Q.RaysBurst, cx, 140, math.min(330, W + 20), 330)
+		Draw.apply(aGlow, Q.GlowRadial, cx, 140, 230, 190) -- ref: hot orange radial behind the badge over the purple panel
+		aBloom.Visible, aBurst.Visible = not compact, not compact
 		aGlow.Visible = not compact -- its soft square would end in a hard edge at the scroll rim
 		local brec = Q[b.BadgeBig] or Q[b.Badge] or Q.BadgeKing
 		local bw, bh = Draw.fitIn(brec, math.min(250, W - 20), if compact then 96 else 130)
@@ -720,16 +751,16 @@ function Detail.new(parent)
 		end
 		if compact then -- stack: ribbon, name, level pill, XP bar, NEXT REWARDS and two small cards
 			local slack = math.max(0, math.floor((viewFor("Mastery") - COMPACT_BODY.Mastery) * 0.5))
-			at(mName, cx, 70 + slack * 0.3)
+			at(mName, cx, 68 + slack * 0.3)
 			mName.Size = UDim2.fromOffset(W - 10, 34)
 			Parts.fit(mName, W - 10, 28, 16)
-			at(mPill.Frame, cx, 104 + slack * 0.5)
-			at(mBar.Frame, cx, 140 + slack * 0.7)
-			sized(mNext, Q.NextRewards, 184 + slack * 0.85, nw) -- clear gap under the XP bar
-			at(mNextText, cx, 184 + slack * 0.85)
-			local cw = math.min(92, math.floor((W - 8) / 2))
+			at(mPill.Frame, cx, 100 + slack * 0.5)
+			at(mBar.Frame, cx, 133 + slack * 0.7)
+			sized(mNext, Q.NextRewards, 175 + slack * 0.85, nw) -- clear gap under the XP bar
+			at(mNextText, cx, 175 + slack * 0.85)
+			local cw = math.min(86, math.floor((W - 8) / 2))
 			local ch = cw * Q.RewardBoxPlain.Ink.Height / Q.RewardBoxPlain.Ink.Width
-			local cyc = 200 + slack + ch / 2
+			local cyc = 190 + slack + ch / 2
 			for i, r in mRewards do
 				local entry = rewards[i]
 				if entry then

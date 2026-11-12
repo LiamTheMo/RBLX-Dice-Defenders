@@ -56,7 +56,7 @@ function Toolbar.new(parent)
 	}, root)
 	local label = Parts.text(root, {
 		Name = "ShowLabel",
-		TextSize = 22,
+		TextSize = 26, -- ref "Show:" cap ~12
 		AnchorPoint = Vector2.new(1, 0.5),
 		TextXAlignment = Enum.TextXAlignment.Right,
 	}, 2)
@@ -125,7 +125,7 @@ function Toolbar.new(parent)
 			else 203
 		label.Visible = hasLabel and not compact
 		label.Text = labelText
-		label.Size = UDim2.fromOffset(60, HIT_H)
+		label.Size = UDim2.fromOffset(70, HIT_H)
 		local edge = W - PAD_R
 		local showCount = countText ~= nil and not compact -- phone: no room, the grid shows the cells themselves
 		local right = if showCount then edge - (if compact then 84 else 132) else edge -- ink right edge of the dropdown
@@ -146,7 +146,7 @@ function Toolbar.new(parent)
 		local left = right - ddW -- running left edge of the right cluster
 		if hasLabel and not compact then
 			label.Position = UDim2.fromOffset(left - 14, CY)
-			left -= 14 + 58
+			left -= 14 + 66
 		end
 		count.Visible = showCount
 		countPill.Visible = showCount

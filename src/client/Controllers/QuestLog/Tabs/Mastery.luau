@@ -145,7 +145,7 @@ function Mastery.new(parent)
 
 	local function skinRow(rec, on: boolean)
 		local ex = if on then SEL else 0
-		Draw.apply(rec.skin, if on then Q.RowSelected else Q.Row, rec.w / 2, rec.h / 2, rec.w + ex, rec.h + ex)
+		Draw.apply(rec.skin, if on then Q.RowSelected else Q.MasteryRow, rec.w / 2, rec.h / 2, rec.w + ex, rec.h + ex)
 		local n = rec.next -- the Next slot gets the gold cell only while its row is selected
 		if n then
 			Draw.apply(
@@ -159,15 +159,17 @@ function Mastery.new(parent)
 		end
 	end
 
-	local function buildSlot(btn, m, s: number, cx: number, cy: number, z: number, rec)
+	local function buildSlot(btn, m, s: number, cx: number, cy: number, z: number, rec, dieKey: string)
 		local skin = Draw.img(btn, { Name = "Slot" .. m.Lv, ZIndex = z })
 		Draw.apply(skin, Q.SlotCopper, cx, cy, s, s)
 		if m.State == "Next" then
 			rec.next = { skin = skin, s = s, cx = cx, cy = cy }
 		end
 		local icon = Draw.img(btn, { Name = "Icon" .. m.Lv, ZIndex = z + 2 })
-		local irec = Q[m.Icon] or Q.Crystals
-		local iw, ih = Draw.fitIn(irec, s * 0.78, s * 0.74) -- ref Lv.15 die ~48
+		-- ref: Lv.15 is a die filling the tile (no crown-face art: the plain die stands in), Lv.20 a plain gold crown
+		local key = if m.Lv == 15 then dieKey elseif m.Icon == "Crown" then "CrownPlain" else m.Icon
+		local irec = Q[key] or Q.Crystals
+		local iw, ih = Draw.fitIn(irec, s * 0.8, s * 0.78)
 		Draw.apply(icon, irec, cx, cy - s * 0.13, iw, ih)
 		local size = math.max(11, math.floor(s * 0.25)) -- ref tile label ink 33 wide
 		local label = Parts.text(btn, {
@@ -203,8 +205,8 @@ function Mastery.new(parent)
 		local z = skin.ZIndex + 1
 		local cy = rh / 2
 
-		local s = if full then 78 else 44 -- ref: slots ~80x82, 7 apart (a hair less: the panel is 20 px narrower)
-		local sGap = if full then 6 else 4
+		local s = if full then 75 else 44 -- ref: slots ~80x82, 7 apart (a hair less: the panel is 20 px narrower)
+		local sGap = if full then 4 else 4
 		local slotsW = if tiny then 0 else 4 * s + 3 * sGap
 		local slotsL = cw - (if full then 14 else 8) - slotsW
 		local dieBox = if full then 82 else 46 -- ref: die ~80x83, 22 from the row edge
@@ -214,14 +216,14 @@ function Mastery.new(parent)
 		local dw, dh = Draw.fitIn(drec, dieBox, dieBox)
 		Draw.apply(die, drec, dieL + dieBox / 2, cy, dw, dh)
 
-		local textL = dieL + dieBox + (if full then 11 else 8)
-		local clusterR = if tiny then cw - 8 else slotsL - (if full then 10 else 8)
+		local textL = dieL + dieBox + 8
+		local clusterR = if tiny then cw - 8 else slotsL - 8
 		local clusterW, clusterL
 		local nameW
 		if full then
 			clusterW = 186 -- ref XP bar 186 wide
 			clusterL = clusterR - clusterW
-			nameW = math.max(40, clusterL - 8 - textL)
+			nameW = math.max(40, clusterL - 4 - textL)
 		else
 			clusterL, clusterW = textL, math.max(60, clusterR - textL)
 		end
@@ -280,7 +282,7 @@ function Mastery.new(parent)
 		if not tiny then
 			for i, m in QuestLogic.masteryMilestones(row) do
 				local cx = slotsL + (i - 1) * (s + sGap) + s / 2
-				buildSlot(btn, m, s, cx, cy, z, rec)
+				buildSlot(btn, m, s, cx, cy, z, rec, row.Die)
 			end
 		end
 		skinRow(rec, row.Id == selected)
