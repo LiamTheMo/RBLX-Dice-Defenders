@@ -38,7 +38,7 @@ function Bag.new(parent, deps)
 			topCompact = -29, -- scroll top at -28 (Quest Log: -27.2)
 			text = "BAG",
 			textPos = UDim2.fromScale(0.5225, 0.525), -- blank parchment between the die and the right sparkles
-			textSize = UDim2.fromScale(0.52, 0.395), -- the Quest Log's 256 x 41.5 box
+			textSize = UDim2.fromScale(0.52, 0.5), -- tall enough for the 20 px compact title (0.395 clipped it on phones)
 			textFull = 34,
 			textCompact = 20,
 		},
