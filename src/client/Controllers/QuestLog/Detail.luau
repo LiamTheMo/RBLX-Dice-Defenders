@@ -27,6 +27,7 @@ local ACH_H = 601 -- Achievement body: the CLAIM button sits in its reward row, 
 local COMPACT_BODY = { Quest = 216, Achievement = 245, Mastery = 278 }
 local REWARD_ICON = { Crystals = "Crystals", Die = "SkinFire" } -- Die: closest available die art
 local BOX_H, BOX_K = 55, 0.55 -- StatRow boxes: visible height and rim scale
+local RIBBON_W, RIBBON_TEXT, RIBBON_MIN = 300, 26, 14 -- one title ribbon for all three kinds: same width, place and text cap
 local COIN_TEXT = Color3.fromRGB(251, 243, 137)
 local SOFT = Color3.fromRGB(205, 210, 235)
 
@@ -93,6 +94,16 @@ function Detail.new(parent)
 	local function at(inst, x: number, y: number)
 		inst.AnchorPoint = Vector2.new(0.5, 0.5)
 		inst.Position = UDim2.fromOffset(math.floor(x + 0.5), math.floor(y + 0.5))
+	end
+	-- the title ribbon every kind shares: one width, centre and text cap, so switching tabs never moves it
+	local function placeRibbon(ribbon, label, W: number, title: string)
+		local rw = math.min(RIBBON_W, W - 16)
+		local rh = rw * Q.DetailRibbon.Ink.Height / Q.DetailRibbon.Ink.Width
+		Draw.apply(ribbon, Q.DetailRibbon, W / 2, 36, rw, rh)
+		label.Size = UDim2.fromOffset(rw * 0.62, 40)
+		label.Text = title
+		Parts.fit(label, label.Size.X.Offset, RIBBON_TEXT, RIBBON_MIN)
+		at(label, W / 2, Draw.ribbonTextY(36, rh, label.TextSize)) -- caps in the middle of the band
 	end
 
 	local compact = false
@@ -404,10 +415,7 @@ function Detail.new(parent)
 		body.Size = UDim2.fromOffset(W, bodyH(kind))
 		body.Position = UDim2.fromOffset((slotW - 2 * INSET - W) / 2, 0)
 		local cx = W / 2
-		local rw = math.min(300, W - 16)
-		Draw.apply(ribbon, Q.DetailRibbon, cx, 36, rw, rw * Q.DetailRibbon.Ink.Height / Q.DetailRibbon.Ink.Width)
-		at(ribbonText, cx, 33)
-		ribbonText.Size = UDim2.fromOffset(rw * 0.62, 40)
+		local rw = math.min(RIBBON_W, W - 16) -- the divider spans the ribbon's width
 		Draw.apply(bloom, Q.GlowRadial, cx, 139, math.min(400, W + 80), 340)
 		Draw.apply(burst, Q.RaysBurst, cx, 139, math.min(380, W + 60), 380)
 		Draw.apply(glow, Q.GlowRadial, cx, 139, 215, 180) -- ref: warm radial centre behind the scroll
@@ -481,8 +489,7 @@ function Detail.new(parent)
 
 	function showQuest(m)
 		local b = m.Body
-		ribbonText.Text = m.Title or "QUEST DETAILS"
-		Parts.fit(ribbonText, ribbonText.Size.X.Offset, 26, 16)
+		placeRibbon(ribbon, ribbonText, body.Size.X.Offset, m.Title or "QUEST DETAILS")
 		name.Text = m.Name or ""
 		Parts.fit(name, name.Size.X.Offset, if compact then 28 else 38, if compact then 16 else 22)
 		local rec = Q.IconQuestScroll -- the reference always shows the scroll for the Quest kind
@@ -547,12 +554,7 @@ function Detail.new(parent)
 		local function sized(inst, rec, y: number, w: number)
 			Draw.apply(inst, rec, cx, y, w, w * rec.Ink.Height / rec.Ink.Width)
 		end
-		local aw = math.min(280, W - 16) -- ref: ribbon grows with its text
-		sized(aRibbon, Q.DetailRibbon, 36, aw)
-		at(aRibbonText, cx, 33)
-		aRibbonText.Size = UDim2.fromOffset(aw * 0.62, 40)
-		aRibbonText.Text = m.Title or "ACHIEVEMENT"
-		Parts.fit(aRibbonText, aRibbonText.Size.X.Offset, 26, 16)
+		placeRibbon(aRibbon, aRibbonText, W, m.Title or "ACHIEVEMENT")
 		Draw.apply(aBloom, Q.GlowRadial, cx, 140, math.min(400, W + 80), 340)
 		Draw.apply(aBurst, Q.RaysBurst, cx, 140, math.min(380, W + 60), 380)
 		Draw.apply(aGlow, Q.GlowRadial, cx, 140, 260, 210) -- ref: hot orange radial behind the badge over the purple panel
@@ -663,12 +665,7 @@ function Detail.new(parent)
 		local function sized(inst, rec, y: number, w: number)
 			Draw.apply(inst, rec, cx, y, w, w * rec.Ink.Height / rec.Ink.Width)
 		end
-		local mw = math.min(262, W - 16)
-		sized(mRibbon, Q.DetailRibbon, 36, mw)
-		at(mRibbonText, cx, 33)
-		mRibbonText.Size = UDim2.fromOffset(mw * 0.62, 40)
-		mRibbonText.Text = m.Title or "DICE MASTERY"
-		Parts.fit(mRibbonText, mRibbonText.Size.X.Offset, 24, 14)
+		placeRibbon(mRibbon, mRibbonText, W, m.Title or "DICE MASTERY")
 		-- flame banners hang from both ribbon ends (the art is fire-themed for every die)
 		local fh = 104 -- ref: ~60x105 at x +-150 from the centre, y 41..146 (clear of the ribbon tails)
 		for _, f in { { mFlagL, Q.BannerFlameL, -1 }, { mFlagR, Q.BannerFlameR, 1 } } do

@@ -60,6 +60,14 @@ function Draw.apply(inst, rec, cx: number, cy: number, inkW: number, inkH: numbe
 	return inst
 end
 
+-- Title centre y for a DetailRibbon of ink height inkH drawn at cy: the middle of its front band (sprite row 41, above the ink
+-- centre because the folded tails hang lower), less the ~0.05 x TextSize that caps sit below their text box's centre.
+local RIBBON_BAND_Y = 41
+function Draw.ribbonTextY(cy: number, inkH: number, textSize: number): number
+	local ink = Q.DetailRibbon.Ink
+	return cy + (RIBBON_BAND_Y - (ink.Min.Y + ink.Max.Y) / 2) / ink.Height * inkH - 0.05 * textSize
+end
+
 -- Scrollbar thumb (purple pill, vertical caps sliced, centre column only) of ink width trackW - 5, height h, top y in the track.
 function Draw.thumb(inst, trackW: number, h: number, y: number)
 	local w = trackW - 5

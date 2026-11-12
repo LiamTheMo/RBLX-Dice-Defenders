@@ -8,9 +8,9 @@
 
 return {
 	BannerEmblem = {
-		Image = "rbxassetid://86485382709538",
-		Size = Vector2.new(122, 165),
-		Ink = Rect.new(10, 10, 112, 155),
+		Image = "rbxassetid://70930091468478",
+		Size = Vector2.new(116, 165),
+		Ink = Rect.new(10, 10, 106, 155),
 	},
 	Window = {
 		Image = "rbxassetid://84082480203360",

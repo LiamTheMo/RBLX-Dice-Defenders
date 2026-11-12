@@ -313,7 +313,8 @@ function Shell.new(parent, deps)
 		banner.Size = UDim2.fromOffset(SB.Size.X * k, SB.Size.Y * k)
 		bannerText.TextSize = (if compact then bn.textCompact else bn.textFull) or (if compact then 20 else 34)
 		bannerText.Size = UDim2.new((bn.textW or 0.5) * sbInk[3], 0, 0, math.ceil(bannerText.TextSize * 1.2))
-		close.Size = if compact then UDim2.fromOffset(72, 68) else UDim2.fromOffset(84.5, 80) -- visible 74x72 (the sprite shows ~0.87 of its box)
+		-- ~85% of the reference X (visible 74x72 at full): same centre, so it still sits on the window's corner
+		close.Size = if compact then UDim2.fromOffset(61, 58) else UDim2.fromOffset(72, 68) -- visible ~63x61 (the sprite shows ~0.87 of its box)
 		close.Position = if compact
 			then UDim2.fromOffset(winW - t.mx - 27, t.my + 5)
 			else UDim2.fromOffset(winW - t.mx - 29, t.my + 8.5) -- centre 1432.5, 101.5

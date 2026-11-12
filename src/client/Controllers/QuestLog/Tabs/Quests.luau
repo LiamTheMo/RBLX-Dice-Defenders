@@ -106,19 +106,20 @@ function Quests.new(parent)
 	end
 
 	local function buildHeader(sec, order: number, first: boolean, cw: number)
-		local pre = if first then 0 else 17 -- ref: last row -> next ribbon top ~20
+		local small = mode ~= "full"
+		local bw = math.min(if small then 230 else 300, cw - 6)
+		local bh = bw * Q.DetailRibbon.Ink.Height / Q.DetailRibbon.Ink.Width
+		local iconSize = if small then 44 else 56
+		-- ref: last row -> next ribbon top ~20; the first ribbon (or its icon) taller than HEAD_H drops until its top clears the clip by 3+
+		local pre = if first then math.max(0, math.ceil(math.max(bh, iconSize) / 2 - HEAD_H / 2) + 3) else 17
 		local f = Draw.img(scroll, {
 			Name = "Head_" .. sec.Id,
 			LayoutOrder = order,
 			Size = UDim2.fromOffset(cw, HEAD_H + pre),
 		}, "Frame")
 		local cy = pre + HEAD_H / 2
-		local small = mode ~= "full"
-		local bw = math.min(if small then 230 else 300, cw - 6)
-		local bh = bw * Q.DetailRibbon.Ink.Height / Q.DetailRibbon.Ink.Width
 		local banner = Draw.img(f, { Name = "Banner" })
 		Draw.apply(banner, Q.DetailRibbon, bw / 2, cy, bw, bh)
-		local iconSize = if small then 44 else 56
 		local icon = Draw.img(f, { Name = "Icon", ZIndex = banner.ZIndex + 2 })
 		local iw, ih = Draw.fitIn(sec.Icon, iconSize, iconSize)
 		Draw.apply(icon, sec.Icon, bw * 0.15, cy, iw, ih)
@@ -129,11 +130,12 @@ function Quests.new(parent)
 			Text = sec.Title,
 			TextSize = if small then 22 else 29, -- ref label cap ~19
 			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.fromOffset(math.floor(textL + textW / 2), math.floor(cy - 2)),
 			Size = UDim2.fromOffset(textW, 40),
 			ZIndex = banner.ZIndex + 1,
 		}, 3)
 		Parts.fit(title, textW, title.TextSize, 14)
+		title.Position =
+			UDim2.fromOffset(math.floor(textL + textW / 2), math.floor(Draw.ribbonTextY(cy, bh, title.TextSize) + 0.5))
 		if sec.Reset then
 			local pw = if small then 170 else 223 -- ref pill ~223 wide
 			local group = Draw.img(f, { Name = "Reset", Size = UDim2.fromScale(1, 1), ZIndex = banner.ZIndex }, "Frame")

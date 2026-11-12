@@ -579,7 +579,7 @@ def ink_box(px: np.ndarray) -> list[int]:
 EMBLEM_PARTS = [  # back to front
     ("rib", (821, 472, 1155, 663), 0.360, (178, 168)),
     ("die", (480, 417, 738, 691), 0.400, (182, 112)),
-    ("crown", (54, 446, 407, 685), 0.305, (163, 55)),
+    ("crown", (54, 446, 407, 685), 0.285, (181, 52)),  # centred on the die's top face (its pip at x 181), rim resting on it
 ]
 BANNER_INK = (5, 5, 1018, 212)  # BannerScroll ink
 SCROLLBASE_INK = (11, 14, 785, 176)  # export/Play ScrollBase ink (play menu/export/manifest.json)

@@ -33,12 +33,12 @@ function Bag.new(parent, deps)
 		end,
 		banner = {
 			text = "BAG",
-			textX = 0.5227, -- blank parchment between the die and the right sparkles
+			textX = 0.5, -- centred over the gem pin (the shared scroll has no right-hand art to dodge)
 			textY = 0.527,
 			textW = 0.525,
 			textFull = 34,
 			textCompact = 20,
-			emblems = { { sprite = Sprites.BannerEmblem, box = { 0.1008, 0.0617, 0.1318, 0.8951 } } },
+			emblems = { { sprite = Sprites.BannerEmblem, box = { 0.1085, 0.0617, 0.124, 0.8951 } } },
 		},
 	})
 	local toolbar, grid = Parts.Toolbar(shell.Slots.Toolbar), Parts.Grid(shell.Slots.Grid)
