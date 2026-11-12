@@ -63,12 +63,6 @@ return {
 		Ink = Rect.new(10, 10, 341, 49),
 		Slice = Rect.new(97, 26, 260, 33),
 	},
-	FillGreen = {
-		Image = "rbxassetid://96202007766469",
-		Size = Vector2.new(576, 57),
-		Ink = Rect.new(10, 10, 566, 47),
-		Slice = Rect.new(251, 25, 397, 32),
-	},
 	Stopwatch = { Image = "rbxassetid://125124093222791", Size = Vector2.new(101, 106), Ink = Rect.new(11, 11, 89, 94) },
 	IconQuestScroll = {
 		Image = "rbxassetid://137802432389859",
@@ -304,16 +298,10 @@ return {
 		Size = Vector2.new(264, 280),
 		Ink = Rect.new(27, 45, 251, 269),
 	},
-	SlotPurple = {
-		Image = "rbxassetid://105278600388247",
-		Size = Vector2.new(251, 247),
-		Ink = Rect.new(14, 12, 238, 236),
-	},
 	Sparkle1 = { Image = "rbxassetid://125951352923741", Size = Vector2.new(125, 128), Ink = Rect.new(27, 27, 94, 100) },
 	Sparkle2 = { Image = "rbxassetid://72088321289923", Size = Vector2.new(112, 131), Ink = Rect.new(29, 10, 77, 103) },
 	Sparkle3 = { Image = "rbxassetid://116022411205812", Size = Vector2.new(87, 85), Ink = Rect.new(28, 25, 60, 57) },
 	Sparkle4 = { Image = "rbxassetid://74537580277951", Size = Vector2.new(75, 72), Ink = Rect.new(26, 26, 49, 45) },
-	GlowDie = { Image = "rbxassetid://123682078053662", Size = Vector2.new(556, 589), Ink = Rect.new(38, 67, 521, 537) },
 	Halo = { Image = "rbxassetid://114426866213056", Size = Vector2.new(429, 197), Ink = Rect.new(30, 37, 399, 171) },
 	Rays = { Image = "rbxassetid://85552709706701", Size = Vector2.new(403, 278), Ink = Rect.new(38, 51, 348, 250) },
 	ScrollThumbPurple = {

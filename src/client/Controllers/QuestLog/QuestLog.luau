@@ -77,6 +77,40 @@ local function achModel(item)
 	}
 end
 
+-- art the live (QUESTS-only) menu draws; ACH/MASTERY art loads in Studio only (live players see "coming soon" there)
+local STUDIO = RunService:IsStudio()
+local QUEST_ART = {}
+for _, n in
+	{
+		"Banner",
+		"DetailPanel",
+		"Dropdown",
+		"IconTabScroll",
+		"IconTabTrophy",
+		"SectionBanner",
+		"DetailRibbon",
+		"Row",
+		"RowSelected",
+		"Track",
+		"FillGold",
+		"Stopwatch",
+		"IconQuestScroll",
+		"IconDie",
+		"IconWings",
+		"IconCrown",
+		"IconCalendar",
+		"IconCalendarWeek",
+		"Crown",
+		"Crystals",
+		"RewardBoxPlain",
+		"GlowRadial",
+		"RaysBurst",
+		"ScrollThumbPurple",
+	}
+do
+	QUEST_ART[n] = true
+end
+
 local QuestLog = {}
 QuestLog.__index = QuestLog
 
@@ -102,15 +136,20 @@ function QuestLog.new(parent, deps)
 		},
 		detail = Q.DetailPanel,
 	})
-	task.spawn(function() -- stream every tab's art up front so the first tab switch is not blank
+	local preloaded = false
+	local function preload() -- first open only: stream the art so the first tab switch is not blank
+		if preloaded then
+			return
+		end
+		preloaded = true
 		local list = {}
-		for _, rec in Q do
-			if type(rec) == "table" and rec.Image then
+		for name, rec in Q do
+			if type(rec) == "table" and rec.Image and (STUDIO or QUEST_ART[name]) then
 				table.insert(list, rec.Image)
 			end
 		end
-		pcall(ContentProvider.PreloadAsync, ContentProvider, list)
-	end)
+		task.spawn(pcall, ContentProvider.PreloadAsync, ContentProvider, list)
+	end
 	local toolbar = Toolbar.new(shell.Slots.Toolbar)
 	local quests = Quests.new(shell.Slots.Grid)
 	local achievements = Achievements.new(shell.Slots.Grid)
@@ -231,9 +270,6 @@ function QuestLog.new(parent, deps)
 			achievements:SetSelected(id)
 			detail:Show(achModel(item))
 		end,
-		OnAchClaim = function(_id: string, _item)
-			deps.toast("Coming soon!") -- every achievement is a Sample for now
-		end,
 		OnMasterySelect = function(id: string, row) -- Mastery tab: highlight the cell and show it in the detail panel
 			masterySelected = id
 			mastery:SetSelected(id)
@@ -274,9 +310,6 @@ function QuestLog.new(parent, deps)
 	end)
 	achievements:OnSelect(function(id, item)
 		hooks.OnAchSelect(id, item)
-	end)
-	achievements:OnClaim(function(id, item)
-		hooks.OnAchClaim(id, item)
 	end)
 	mastery:OnSelect(function(id, row)
 		hooks.OnMasterySelect(id, row)
@@ -372,7 +405,7 @@ function QuestLog.new(parent, deps)
 		end)
 	)
 
-	self._shell, self._hud, self._conns = shell, hud, conns
+	self._shell, self._conns = shell, conns
 	self._parts = { toolbar, quests, achievements, mastery, detail }
 	self._open = function(tab)
 		local idx = tab or 1
@@ -380,6 +413,7 @@ function QuestLog.new(parent, deps)
 			shell:SetTab(idx)
 			return
 		end
+		preload()
 		shell:Open()
 		hud:SetBagMode(true)
 		timerToken += 1

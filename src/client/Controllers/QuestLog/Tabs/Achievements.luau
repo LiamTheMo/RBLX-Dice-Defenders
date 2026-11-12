@@ -1,6 +1,6 @@
 -- Quest Log, ACHIEVEMENTS tab: a grid of badge cells in one ScrollingFrame with the Bag's styled scrollbar.
--- Achievements.new(Slots.Grid) -> :SetItems(items) :SetSelected(id) :OnSelect(cb(id, item)) :OnClaim(cb(id, item)) (cells never claim)
--- :SetEmptyText(s) :SetVisible(b) :GetScroll() :SetScroll(n) :Destroy(). Achievements.pill(...) is the status pill the Detail reuses.
+-- Achievements.new(Slots.Grid) -> :SetItems(items) :SetSelected(id) :OnSelect(cb(id, item))
+-- :SetEmptyText(s) :SetVisible(b) :SetScroll(n) :Destroy(). Achievements.pill(...) is the status pill the Detail reuses.
 -- Design px. Columns = clamp(floor((W - 12) / 112), 2, 5); cells are 146x160 in the reference (CARD_W/H), 9-sliced at a fixed rim scale; content scales with the cell.
 
 local TextService = game:GetService("TextService")
@@ -286,12 +286,8 @@ function Achievements.new(parent)
 	function api:OnSelect(cb)
 		onSelect = cb
 	end
-	function api:OnClaim(_cb) end -- reserved: cells have no claim control; the Detail button claims
 	function api:SetEmptyText(s: string)
 		empty.Text = s
-	end
-	function api:GetScroll(): number
-		return scroll.CanvasPosition.Y
 	end
 	function api:SetScroll(n: number)
 		scroll.CanvasPosition = Vector2.new(0, n)

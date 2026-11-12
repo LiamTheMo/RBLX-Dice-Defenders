@@ -1,6 +1,6 @@
 -- Quest Log, QUESTS tab: sections (DAILY / WEEKLY / STORY) of quest rows in one ScrollingFrame with the Bag's styled scrollbar.
 -- Quests.new(Slots.Grid) -> :SetRows(rows) :SetResetText(daily, weekly) :SetSelected(id) :OnSelect(cb(id)) :OnClaim(cb(id, row))
--- :SetEmptyText(s) :GetScroll() :SetScroll(n) :Destroy(). Visual only; rows come from QuestLogic.questRows (already filtered).
+-- :SetEmptyText(s) :SetScroll(n) :Destroy(). Visual only; rows come from QuestLogic.questRows (already filtered).
 -- Design px. Row layout keys on the content width: full (>= 700), mid (360-700: desc hidden, rewards stacked), tiny (< 360: no rewards).
 
 local UiKit = require(script.Parent.Parent.Parent.UiKit)
@@ -490,9 +490,6 @@ function Quests.new(parent)
 	end
 	function api:SetEmptyText(s: string)
 		empty.Text = s
-	end
-	function api:GetScroll(): number
-		return scroll.CanvasPosition.Y
 	end
 	function api:SetScroll(n: number)
 		scroll.CanvasPosition = Vector2.new(0, n)

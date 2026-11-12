@@ -1,6 +1,6 @@
 -- Quest Log, MASTERY tab: one row per dice (die, name, mastery pill + XP bar, four reward slots) in a ScrollingFrame with the
 -- Bag's styled scrollbar. Mastery.new(Slots.Grid) -> :SetRows(rows) :SetSelected(id) :OnSelect(cb(id, row)) :SetEmptyText(s)
--- :SetVisible(b) :GetScroll() :SetScroll(n) :Destroy(). Mastery.pill / Mastery.bar are shared with the Detail.
+-- :SetVisible(b) :SetScroll(n) :Destroy(). Mastery.pill / Mastery.bar are shared with the Detail.
 -- rows = SampleData.Mastery shape (Id, Name, Level, Xp, XpGoal, Die, Milestones), already sorted/filtered by the controller.
 -- Design px. Layout keys on the content width: full (>= 700: pill + 4 slots), mid (360-700: no pill, small slots), tiny (< 360: no slots).
 
@@ -146,6 +146,7 @@ function Mastery.new(parent)
 	local function skinRow(rec, on: boolean)
 		local ex = if on then SEL else 0
 		Draw.apply(rec.skin, if on then Q.RowSelected else Q.MasteryRow, rec.w / 2, rec.h / 2, rec.w + ex, rec.h + ex)
+		rec.skin.ImageColor3 = if on then Color3.new(1, 1, 1) else Color3.fromRGB(205, 160, 200) -- mute the hot magenta rim
 		local n = rec.next -- the Next slot gets the gold cell only while its row is selected
 		if n then
 			Draw.apply(
@@ -339,9 +340,6 @@ function Mastery.new(parent)
 	end
 	function api:SetEmptyText(s: string)
 		empty.Text = s
-	end
-	function api:GetScroll(): number
-		return scroll.CanvasPosition.Y
 	end
 	function api:SetScroll(n: number)
 		scroll.CanvasPosition = Vector2.new(0, n)
