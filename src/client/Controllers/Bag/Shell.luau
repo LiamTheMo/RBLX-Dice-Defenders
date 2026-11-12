@@ -3,7 +3,8 @@
 -- Shell.new(parent, { fit = () -> { leftReal, bottomTopReal } }) -> shell (see :methods below).
 -- Optional deps for other menus (defaults = the Bag): name, banner { sprite, full, compact, top, topCompact, text, textPos,
 -- textSize, textFull, textCompact }, detail (sprite key or record), fullDetail (detail panel as tall as the left one),
--- free (no tabs or panels: one Slots.Content box from freeTop; window, banner and close run the same code as the Bag).
+-- free (no tabs or panels: one Slots.Content box from freeTop; window, banner and close run the same code as the Bag),
+-- tabIconScale (tab icon box multiplier, default 1).
 
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
@@ -325,14 +326,15 @@ function Shell.new(parent, deps)
 		tabBar.Position = UDim2.new(0.5, 0, 0, t.tabTop + t.my)
 		tabBar.Size = UDim2.fromOffset(barW, t.tabH)
 		tabBar.UIListLayout.Padding = UDim.new(0, t.tabGap)
+		local icon = t.icon * (deps.tabIconScale or 1)
 		for i, tab in self._tabButtons do
 			local w = if fixedW then TAB_W[i] * tabK else tabW
 			tab.Size = UDim2.fromOffset(w, t.tabH)
 			tab.Row.Position = UDim2.fromOffset(0, if compact then 0 else -4) -- ref label y 159-178: above the tab centre
 			tab.Row.UIListLayout.Padding = UDim.new(0, t.iconGap)
-			tab.Row.Icon.Size = UDim2.fromOffset(t.icon, t.icon)
+			tab.Row.Icon.Size = UDim2.fromOffset(icon, icon)
 			tab.Row.Icon.Visible = w >= 150
-			local avail = w - 24 - (if w >= 150 then t.icon + t.iconGap else 0)
+			local avail = w - 24 - (if w >= 150 then icon + t.iconGap else 0)
 			tab.Row.Label.UISizeConstraint.MaxSize = Vector2.new(avail, t.tabH)
 			Parts.fit(tab.Row.Label, avail, if w < 170 then 18 else t.tabText, 15)
 		end

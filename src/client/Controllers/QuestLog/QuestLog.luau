@@ -135,6 +135,7 @@ function QuestLog.new(parent, deps)
 			textCompact = 20,
 		},
 		detail = Q.DetailPanel,
+		tabIconScale = 1.3, -- ref tab icon ink ~63-70 px (the Bag's 54.5 box shows ~45-51)
 	})
 	local preloaded = false
 	local function preload() -- first open only: stream the art so the first tab switch is not blank
