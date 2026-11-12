@@ -483,6 +483,13 @@ function LobbyHud:SetBagMode(on: boolean)
 		xpText.Parent = xp
 		self.XpGroup.Visible = false
 		self.LvlLabel.TextSize, self.XpLabel.TextSize = 37, 37
+		for _, l in { self.LvlLabel, self.XpLabel } do -- AutomaticSize keeps the old TextSize width: force a re-measure
+			l.AutomaticSize = Enum.AutomaticSize.None
+			l.Size = UDim2.fromOffset(l.TextBounds.X, 40)
+			task.defer(function()
+				l.AutomaticSize = Enum.AutomaticSize.X
+			end)
+		end
 		currencies.LayoutOrder, xp.LayoutOrder = 1, 2
 		currencies.AutomaticSize, currencies.Size = Enum.AutomaticSize.None, UDim2.fromOffset(416, 44)
 		currencyList.Padding = UDim.new(0, 16)

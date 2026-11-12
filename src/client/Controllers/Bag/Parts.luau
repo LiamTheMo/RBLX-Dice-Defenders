@@ -753,7 +753,8 @@ function Parts.Grid(parent)
 		local sel
 		local glowName = SELECTED_COPPER[kind]
 		if glowName then
-			local k, g = 0.4, 14 * 0.4 -- 14 source px of glow at slice scale 0.4
+			local k = if compactNow then 0.25 else 0.4 -- phones: smaller glow so it stays clear of the panel rim
+			local g = 14 * k -- 14 source px of glow at the slice scale
 			local bw, bh = Parts.inkBox(glowName, cardW + 2 * g, cardH + 2 * g, k)
 			local gs = Sprites[glowName]
 			sel = img(card, {
@@ -802,9 +803,7 @@ function Parts.Grid(parent)
 			make("UIStroke", { Color = Color3.fromRGB(252, 205, 10), Thickness = t }, sel)
 			local r = px(14) -- bright core + warm glow (ref ~10 px; phones ~4 px so it stays inside the scroll window)
 			if compactNow then
-				glowRing(sel, 1, 2, Color3.fromRGB(255, 246, 89), 0, r)
-				glowRing(sel, t, 2, Color3.fromRGB(255, 150, 30), 0.45, r)
-				glowRing(sel, t + 2, 2, Color3.fromRGB(255, 130, 30), 0.75, r)
+				glowRing(sel, 1, 2, Color3.fromRGB(255, 246, 89), 0, r) -- no outer halo: it would reach the panel rim
 			else
 				glowRing(sel, 2, 3, Color3.fromRGB(255, 246, 89), 0, r)
 				glowRing(sel, t, 3, Color3.fromRGB(255, 150, 30), 0.45, r)
@@ -920,7 +919,8 @@ function Parts.Grid(parent)
 		cellM = m
 		-- Every tab reserves the scrollbar column the same way: Full centres the card ink in [FULL_L, W - FULL_R]
 		-- (bar ink at W - 19, so ~10 px clear of the last column); Compact keeps its own side/reserve.
-		local inner = if compact then W - 2 * side - 21 else W - FULL_L - FULL_R
+		local lead = if compact then 7 else 0 -- phones: extra left margin keeps the selected column-1 halo off the panel rim
+		local inner = if compact then W - 2 * side - 21 - lead else W - FULL_L - FULL_R
 		local cols = math.min(g.cols, math.max(1, math.floor((inner + gx) / (MIN_CARD_W + gx))))
 		cardW = math.min(if compact then 190 else g.maxW or 190, math.floor((inner - (cols - 1) * gx) / cols))
 		local pt = if compact then 10 else TOP -- compact: 10 px clear of the window top for the selected glow
@@ -954,7 +954,7 @@ function Parts.Grid(parent)
 		layout.CellSize = UDim2.fromOffset(cardW + m, cardH + m)
 		layout.CellPadding = UDim2.fromOffset(gx - m, gy - m)
 		-- Rows are left-aligned (a lone result sits in column 1); the whole column block is centred by padding.
-		local pad = (if compact then side else FULL_L - math.floor(m / 2))
+		local pad = (if compact then side + lead else FULL_L - math.floor(m / 2))
 			+ math.floor((inner - (cols * cardW + (cols - 1) * gx)) / 2)
 		gridPad.PaddingLeft = UDim.new(0, pad + GLOW_X)
 		gridPad.PaddingRight = UDim.new(0, GLOW_X) -- the cells need the full width: only the glow margin is kept on the right
@@ -1464,7 +1464,7 @@ function Parts.Detail(parent)
 		end
 		local btnH, pad = 48, 8
 		local gap = 3
-		local y0 = 11 -- clear of the panel rim and its corner
+		local y0 = if hasHeader then 11 else 15 -- clear of the panel rim and its corner (tags: a few px of fill under the rim outline)
 		local viewH = parent.Size.Y.Offset - (btnH + pad + 6)
 		local s = side()
 		scroll.Size = UDim2.new(1, 0, 0, math.max(0, viewH))
@@ -1484,7 +1484,17 @@ function Parts.Detail(parent)
 			end
 		end
 		local free = viewH - y0 - fixed - gap * (n - 1)
-		local artH = math.clamp(free, 28, 170)
+		local ART_MIN = 54 -- hero icon (0.92 x) must reach the grid icon size
+		if free < ART_MIN then -- tight panel: take the height from the block gaps, then the ribbon, before shrinking the hero
+			gap = 1
+			free = viewH - y0 - fixed - gap * (n - 1)
+			if free < ART_MIN and hasHeader then
+				local cut = math.min(topH - 26, ART_MIN - free)
+				topH -= cut
+				free += cut
+			end
+		end
+		local artH = math.clamp(free, ART_MIN, 170)
 		local y = y0 -- clear of the panel rim
 		local function put(inst, h)
 			inst.AnchorPoint = Vector2.new(0.5, 0)
