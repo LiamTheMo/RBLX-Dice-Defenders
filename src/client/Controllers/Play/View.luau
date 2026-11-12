@@ -19,7 +19,8 @@ local WHITE = Color3.new(1, 1, 1)
 local YELLOW = Color3.fromRGB(255, 242, 0)
 local YELLOW_HEX = "#FDEA0A"
 local GREY = Color3.fromRGB(205, 205, 215)
-local WARM = Color3.fromRGB(255, 230, 170) -- sparkle tint
+local WARM = Color3.fromRGB(255, 248, 215) -- sparkle tint: near white, pale gold
+local BLOOM = Color3.fromRGB(255, 150, 30) -- warm bloom behind the big sparkles
 local RIM_WHITE = Color3.fromRGB(254, 219, 244)
 local RIM_ORANGE = Color3.fromRGB(248, 130, 20)
 local BAR = { ScrollTrack = Rect.new(19, 65, 22, 227), ScrollThumb = Rect.new(20, 37, 22, 133) } -- narrow centre columns: no horizontal stretch
@@ -75,7 +76,16 @@ local function label(parent, o)
 		TextXAlignment = if o.AX == 0 then Enum.TextXAlignment.Left else Enum.TextXAlignment.Center,
 		ZIndex = o.Z,
 	}, o.Stroke or 3)
-	l.TextSize = Parts.fitSize(o.Plain or o.Text, o.Fit or o.W * 0.95, o.Size, o.Min or 12) -- 5% spare: hinting at fractional UI scales widens text
+	l.TextTruncate = Enum.TextTruncate.None -- a label shrinks to fit, it never shows "..."
+	local plain = o.Plain or o.Text
+	local fit = math.min(o.Fit or 1e5, o.W * 0.95) -- 5% spare: hinting at fractional UI scales widens text
+	local size = Parts.fitSize(plain, fit, o.Size, o.Min or 12)
+	local w = measure(plain, size)
+	local hard = o.W * 0.97
+	if w > hard then -- below Min only as a last resort (a column squeezed by a small window): smaller beats truncated
+		size = math.max(8, math.floor(size * hard / w))
+	end
+	l.TextSize = size
 	return l
 end
 
@@ -84,6 +94,20 @@ local function icon(parent, r, cx, cy, maxW, maxH, z)
 	local img = Draw.img(parent, { Name = "Icon", ZIndex = z })
 	local w, h = Draw.fitIn(r, maxW, maxH)
 	return Draw.apply(img, r, cx, cy, w, h)
+end
+
+-- Bright four-point sparkle (near white, pale gold); sizes >= 20 get a warm orange bloom behind them.
+local function spark(parent, sprite, cx, cy, size, z)
+	if size >= 20 then
+		local g = Draw.img(parent, { Name = "SparkBloom", ZIndex = z - 1 })
+		Draw.apply(g, Q.GlowRadial, cx, cy, size * 1.7, size * 1.7)
+		g.ImageColor3 = BLOOM
+		g.ImageTransparency = 0
+	end
+	local sp = icon(parent, sprite, cx, cy, size, size, z)
+	sp.ImageColor3 = WARM
+	sp.ImageTransparency = 0
+	return sp
 end
 
 local function clear(parent)
@@ -219,11 +243,15 @@ local function buildCard(self, host, wd, x, y, w, h, sel, crop, s, L)
 		local k = if L.compact then 0.3 else GLOW_K
 		local glow = skin(host, Q.CellSelected, x + w / 2, y + h / 2, w + g + gr, h + 2 * g, k, host.ZIndex + 2, "Glow")
 		glow.Interactable = false
+		if not L.compact then -- a twin on the same geometry doubles the bloom's strength
+			skin(host, Q.CellSelected, x + w / 2, y + h / 2, w + g + gr, h + 2 * g, k, host.ZIndex + 2, "Glow2").Interactable =
+				false
+		end
 	end
 	label(card, {
 		Name = "Title",
 		Text = wd.Name,
-		Size = if L.compact then 20 else titleSize(s), -- A-15: min(cap 23, ref ink width) = 33 at 1672
+		Size = if L.compact then 18 else titleSize(s), -- A-15: min(cap 23, ref ink width) = 33 at 1672
 		Min = if L.compact then 18 else 14,
 		AX = 0,
 		X = if L.compact then 8 else 12,
@@ -323,10 +351,10 @@ end
 
 -- Per-icon fit boxes (ref ink sizes); the sprite keeps its own aspect inside the box.
 local ICON_BOX = {
-	IconCrystals = { 67, 59 },
+	IconCrystals = { 76, 66 }, -- boxes are sprite Ink sizes: the visible ink draws smaller, scaled so it lands on the ref ink (crystal 67x58, banner 107x62, crown)
 	Potion = { 60, 62 },
 	IconChest = { 84, 62 },
-	RewardBanner = { 105, 58 },
+	RewardBanner = { 140, 75 },
 	IconGalaxyDie = { 68, 68 },
 }
 
@@ -471,7 +499,7 @@ local function buildRow(host, row, x, y, w, h, compact, f)
 				Min = 18,
 				X = 24,
 				Y = y0 + 10 + 20 * i,
-				W = avail,
+				W = avail + 10,
 				H = 20,
 				Z = z,
 				Stroke = 2,
@@ -483,9 +511,10 @@ local function buildRow(host, row, x, y, w, h, compact, f)
 		Name = "Wave",
 		Text = "WAVE " .. row.Wave,
 		AX = 0,
-		Size = 24, -- A-15: ref "WAVE 10" ink is 89 wide, which FredokaOne reaches at size 25 (cap 38 would be 2x too wide)
+		Size = 26, -- A-15: ref "WAVE 10" ink is 89 wide (cap 22 = size 30); <= 110% of it is size 26
 		Min = 12,
-		X = 24,
+		Fit = if tostring(row.Wave):len() >= 3 then 121 else 98,
+		X = 31, -- ref text starts x 684
 		Y = h / 2,
 		W = 132,
 		Z = z,
@@ -494,7 +523,7 @@ local function buildRow(host, row, x, y, w, h, compact, f)
 	local ix, dx, tx, tw = 192 * f, 250 * f, 323 * f, 126 * f
 	local box = ICON_BOX[row.Icon] or { 67, 59 }
 	if row.Icon == "CrownGems" then
-		icon(frame, Q.IconCrown, ix, h / 2 - 8, 84, 62, z)
+		icon(frame, Q.IconCrown, ix, h / 2 - 8, 104, 77, z)
 		for i = -1, 1 do
 			local gem = Draw.img(frame, {
 				Name = "Gem",
@@ -540,12 +569,12 @@ function View:_buildMid()
 	local bodyCy = rtop + rh * 0.38
 	skin(mid, Q.DetailRibbon, midW / 2, rtop + rh / 2, rw, rh, nil, base + 2, "Ribbon")
 	local tsz = if compact then (if midW < 250 then 24 else 28) else 40
-	local tdx = if compact then rw / 2 - tsz / 2 - 8 else 160 -- full: the trophies sit inside the ribbon body ends
+	local tdx = if compact then rw / 2 - tsz / 2 - 8 else 162 -- full: the trophies sit inside the ribbon body ends
 	local tcy = bodyCy + 2
 	icon(mid, Q.IconTabTrophy, midW / 2 - tdx, tcy, tsz, tsz, base + 3)
 	icon(mid, Q.IconTabTrophy, midW / 2 + tdx, tcy, tsz, tsz, base + 3)
 	local avail = 2 * tdx - tsz - (if compact then 10 else 4)
-	local title, tsize = "FIRST-TIME MILESTONES", if compact then 18 else 26 -- A-15: ref ink 273 wide = size 26.8
+	local title, tsize = "FIRST-TIME MILESTONES", if compact then 18 else 27 -- A-15: ref ink 273 wide = size 26.8; <= 270 keeps >= 5 px to the trophies
 	if compact and measure(title, tsize) > avail then
 		title = "MILESTONES"
 	end
@@ -554,6 +583,7 @@ function View:_buildMid()
 		Text = title,
 		Size = tsize,
 		Min = if compact then 18 else 12,
+		Fit = if compact then nil else 270,
 		X = midW / 2,
 		Y = bodyCy + 1,
 		W = avail,
@@ -569,15 +599,6 @@ function View:_buildMid()
 		scroll.Visible = true
 		local lead = if midW < 250 then 26 else 34
 		local rowW = midW - lead - 22 - 16
-		local used = 4 -- the window ends on a whole row so no half row shows under WORLD CLEAR
-		for _, row in rows do
-			local nxt = used + compactRowH(row, rowW) + 6
-			if nxt - 6 + 2 > sh then
-				break
-			end
-			used = nxt
-		end
-		sh = math.min(sh, math.max(used - 6 + 2, compactRowH(rows[1] or { Lines = {} }, rowW) + 6))
 		scroll.Position = UDim2.fromOffset(lead, sy)
 		scroll.Size = UDim2.fromOffset(midW - lead - 22, sh)
 		scroll.ZIndex = base + 2
@@ -593,6 +614,17 @@ function View:_buildMid()
 		local rowW = midW - 59
 		local g = math.min(1, L.panelH / 673)
 		local tops = { 92, 173, 254, 335, 418, 501 }
+		if #rows > 1 then -- thin orange line behind the status circles (ref x ~645), first to last circle
+			local y1, y2 = round(tops[1] * g + 36 * g), round(tops[#rows] * g + 36 * g)
+			make("Frame", {
+				Name = "Connector",
+				Position = UDim2.fromOffset(round(46 - 10) - 1, y1),
+				Size = UDim2.fromOffset(3, y2 - y1),
+				BackgroundColor3 = RIM_ORANGE,
+				BorderSizePixel = 0,
+				ZIndex = base + 1,
+			}, mid)
+		end
 		for i, row in rows do
 			buildRow(mid, row, 46, round(tops[i] * g), rowW, round(72 * g), false, rowW / 397)
 		end
@@ -613,24 +645,16 @@ function View:_buildMid()
 		Color = if clearOn then YELLOW else GREY,
 		X = pcx,
 		Y = pcy - 1,
-		W = pw - (if compact then 24 else 60),
+		W = pw - (if compact then 14 else 60),
 		Z = base + 4,
 	})
 	local sx = pw / 2 + (if compact then 12 else 22)
 	for sgn = -1, 1, 2 do
-		local sp = icon(
-			mid,
-			Q.Sparkle1,
-			pcx + sgn * sx,
-			pcy - (if compact then 1 else 7),
-			if compact then 18 else 26,
-			if compact then 18 else 26,
-			base + 3
-		)
-		sp.ImageColor3 = WARM
+		local big = if compact then 18 else 26
+		spark(mid, Q.Sparkle1, pcx + sgn * sx, pcy - (if compact then 1 else 7), big, base + 3)
 		if not compact then
-			icon(mid, Q.Sparkle3, pcx + sgn * (sx - 6), pcy - 29, 12, 12, base + 3).ImageColor3 = WARM
-			icon(mid, Q.Sparkle3, pcx + sgn * (sx - 6), pcy + 15, 12, 12, base + 3).ImageColor3 = WARM
+			spark(mid, Q.Sparkle3, pcx + sgn * (sx - 6), pcy - 29, 12, base + 3)
+			spark(mid, Q.Sparkle3, pcx + sgn * (sx - 6), pcy + 15, 12, base + 3)
 		end
 	end
 	self:_updateBars()
@@ -698,7 +722,7 @@ function View:_buildRight()
 	local rx = rw / 2 + (if compact then 0 else 2)
 	skin(col, Q.DetailRibbon, rx, y + rh / 2, rwR, rh, nil, base + 1, "Ribbon")
 	local rtitle = if compact then "REPEAT REWARDS" else "REPEAT REWARDS \u{2022} EVERY 10 WAVES"
-	local rwid = if compact then rw * 0.75 - 14 else rwR * 0.9
+	local rwid = if compact then rw * 0.8 - 8 else rwR * 0.95
 	if compact and measure(rtitle, 18) > rwid then
 		rtitle = "REWARDS"
 	end
@@ -708,7 +732,7 @@ function View:_buildRight()
 		Text = rrich,
 		Plain = rtitle,
 		Rich = true,
-		Size = if compact then 18 else 19, -- A-15: ref ink 303 wide = size 19.8; the shorter ribbon body fits ~18
+		Size = if compact then 18 else 21, -- A-15: ref ink 303 wide; fitted to the ribbon body
 		Min = if compact then 18 else 12,
 		X = rx,
 		Y = y + rh * 0.38 + 1,
@@ -811,7 +835,7 @@ function View:_buildRight()
 		icon(odds, Q.IconGalaxyDie, 68, dcy, 85, 95, z)
 		icon(odds, Q.Sparkle2, 29, oh * 0.38, 22, 22, z + 1).ImageColor3 = WARM
 		divider(odds, dvx, oh * 13 / 144, 4, oh * 112 / 144, z)
-		textCx, textW = 253, ow - 152 -- ref line centre x 1325
+		textCx, textW = 247, ow - 152 -- ref line centre x 1325 (6 px left of the old 253)
 		if #lines == 5 then
 			ys, sizes = { 18, 46, 75, 103, 128 }, { 25, 25, 25, 21, 20 } -- ref cap centres; A-15 sizes (ref inks 160 / 160 / 160 / 207 / 135 wide)
 			fits = { 160, 160, 160, 207, 135 }
@@ -846,10 +870,11 @@ function View:_buildRight()
 	y += oh + (if compact then 8 else 17)
 
 	-- START
-	local sw, sh = if compact then rw else 326, if compact then 58 else 90 -- full: 8 px under the ref 334 so the sparkles fit between the button and the window rim
+	-- full: the visible green body must be 330x86 (BtnGreen draws ~11.6 x 18 sprite-px-at-k less than its Ink box), centred on the ref centre
+	local sw, sh = if compact then rw else 339, if compact then 58 else 102
 	local bw, bh = Parts.inkBox("BtnGreen", sw, sh)
-	local scy = if compact then math.min(L.H - sh / 2 - 2, y + sh / 2) else y + sh / 2
-	local scx = round(rw / 2) + (if compact then 0 else 2)
+	local scy = if compact then math.min(L.H - sh / 2 - 2, y + sh / 2) else y + 49
+	local scx = round(rw / 2) + (if compact then 0 else 6)
 	local btn = Parts.button(col, {
 		Name = "Start",
 		Style = "Green",
@@ -861,6 +886,7 @@ function View:_buildRight()
 	})
 	btn.AnchorPoint = Vector2.new(0.5, 0.5)
 	btn.Position = UDim2.fromOffset(scx, round(scy))
+	btn.Label.TextTruncate = Enum.TextTruncate.None
 	btn.Label:FindFirstChildOfClass("UIStroke").Thickness = if compact then 3 else 4.5 -- the reference outline is ~5 px
 	self._startBtn = btn
 	self._startArrow = nil
@@ -873,7 +899,7 @@ function View:_buildRight()
 		l.TextXAlignment = Enum.TextXAlignment.Center
 		l.AnchorPoint = Vector2.new(0.5, 0.5)
 		l.Position = UDim2.fromOffset(bcx + 32, bcy - 4) -- ref label centre sits 4.5 px higher than the button helper's
-		l.Size = UDim2.fromOffset(190, round(bh) - 8)
+		l.Size = UDim2.fromOffset(190, 88)
 		l.TextSize = 60
 		self:SetStartState(self._startState)
 	end
@@ -884,12 +910,13 @@ function View:_buildRight()
 	end)
 	for sgn = -1, 1, 2 do
 		if compact then -- inside the column (the button is as wide as it), above the button in Z
-			icon(col, Q.Sparkle1, scx + sgn * (sw / 2 - 12), scy - sh * 0.3, 14, 14, base + 20).ImageColor3 = WARM
-			icon(col, Q.Sparkle1, scx + sgn * (sw / 2 - 12), scy + 6, 14, 14, base + 20).ImageColor3 = WARM
-		else -- outside the button ink (+-163), >= 6 px inside the column edge (= the window's inner rim), above the button in Z
-			icon(col, Q.Sparkle1, scx + sgn * 171, scy - 30, 14, 14, base + 20).ImageColor3 = WARM
-			icon(col, Q.Sparkle1, scx + sgn * 172, scy - 6, 14, 14, base + 20).ImageColor3 = WARM
-			icon(col, Q.Sparkle1, scx + sgn * 171, scy + 17, 12, 12, base + 20).ImageColor3 = WARM
+			spark(col, Q.Sparkle1, scx + sgn * (sw / 2 - 12), scy - sh * 0.3, 14, base + 20)
+			spark(col, Q.Sparkle1, scx + sgn * (sw / 2 - 12), scy + 6, 14, base + 20)
+		else -- beside the button's rounded ends, >= 6 px inside the column edge (= the window's inner rim); 26 / 24 px with a bloom + one small
+			local x = if sgn < 0 then 19 else rw - 19
+			spark(col, Q.Sparkle1, x, scy - 44, 26, base + 20)
+			spark(col, Q.Sparkle1, x, scy + 44, 24, base + 20)
+			spark(col, Q.Sparkle1, if sgn < 0 then 12 else rw - 12, scy - 6, 12, base + 20)
 		end
 	end
 end

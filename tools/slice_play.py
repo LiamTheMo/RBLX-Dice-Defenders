@@ -68,7 +68,7 @@ TARGETS = {"Card": (363, 148), "CardSel": (363, 168), "Preview": (372, 205)}
 # Dice: forest left, castle right (reference); Shadow: slide the crop down so the huge moon is partly cut (the sheet art is zoomed in).
 ALIGN = {
     "WorldDice": {"Card": (0, 0), "CardSel": (0, 0)},
-    "WorldShadow": {"Card": (0.5, 0), "CardSel": (0.5, 0)},
+    "WorldShadow": {"Card": (0.5, 0.6), "CardSel": (0.5, 0.6)},
 }
 
 
