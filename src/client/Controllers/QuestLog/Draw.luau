@@ -66,7 +66,7 @@ function Draw.thumb(inst, trackW: number, h: number, y: number)
 	Draw.apply(inst, Q.ScrollThumbPurple, trackW / 2, y + h / 2, w, h, w / Q.ScrollThumbPurple.Ink.Width)
 end
 
--- Progress bar: Track + FillGold (FillGreen when complete) with "x / y" centred over the whole bar.
+-- Progress bar: Track + FillGold (also when complete) with "x / y" centred over the whole bar.
 -- bar = Draw.bar(parent, W, H, z); bar.Frame is W x H (the ink); bar:Set(pct 0..1, text, complete).
 function Draw.bar(parent, name: string, W: number, H: number, z: number)
 	local frame = Draw.img(parent, { Name = name, Size = UDim2.fromOffset(W, H), ZIndex = z }, "Frame")
@@ -83,12 +83,12 @@ function Draw.bar(parent, name: string, W: number, H: number, z: number)
 	}, 2)
 	local base = label.TextSize
 	local bar = { Frame = frame }
-	function bar:Set(pct: number, text: string, complete: boolean)
+	function bar:Set(pct: number, text: string, _complete: boolean)
 		local inset = 3
 		local fw = round((W - 2 * inset) * math.clamp(pct, 0, 1))
 		fill.Visible = fw > 0
 		if fw > 0 then
-			Draw.apply(fill, if complete then Q.FillGreen else Q.FillGold, inset + fw / 2, H / 2, fw, H - 2 * inset)
+			Draw.apply(fill, Q.FillGold, inset + fw / 2, H / 2, fw, H - 2 * inset) -- complete bars keep the same yellow fill
 		end
 		label.Text = text
 		Parts.fit(label, W - 12, base, 11)

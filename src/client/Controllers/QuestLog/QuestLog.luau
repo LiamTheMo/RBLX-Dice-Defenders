@@ -91,12 +91,12 @@ function QuestLog.new(parent, deps)
 		name = "QuestLog",
 		banner = {
 			sprite = Q.Banner,
-			full = Vector2.new(511, 160), -- 0.813x the 629x197 art: ink 500 wide as the reference scroll
-			compact = Vector2.new(230, 72),
-			top = -99.4, -- ink top 4 px below the reference canvas top (window box top = reference y 92)
+			full = Vector2.new(494.7, 142.3), -- 0.51x the 970x279 art: ink 489 x 137 as the reference scroll
+			compact = Vector2.new(222.7, 64), -- ink 220 wide
+			top = -90.6, -- ink top at -88 (4 px below the reference canvas top; window box top = reference y 92)
 			text = "QUEST LOG",
-			textPos = UDim2.fromScale(0.538, 0.646), -- purple plate centre (reference 841.5, 96)
-			textSize = UDim2.fromScale(0.5, 0.26),
+			textPos = UDim2.fromScale(0.539, 0.665), -- the reference text centre (841.5, 96) on the blank parchment
+			textSize = UDim2.fromScale(0.517, 0.292),
 			textFull = 34,
 			textCompact = 20,
 		},

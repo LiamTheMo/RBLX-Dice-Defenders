@@ -6,7 +6,7 @@
 -- Ink = the opaque (alpha >= 160) box inside the export: the art is drawn smaller than its Size by this transparent margin.
 
 return {
-	Banner = { Image = "rbxassetid://95368929902772", Size = Vector2.new(629, 197), Ink = Rect.new(13, 14, 615, 183) },
+	Banner = { Image = "rbxassetid://111216938683744", Size = Vector2.new(970, 279), Ink = Rect.new(6, 5, 965, 274) },
 	DetailPanel = {
 		Image = "rbxassetid://89162432841451",
 		Size = Vector2.new(291, 387),

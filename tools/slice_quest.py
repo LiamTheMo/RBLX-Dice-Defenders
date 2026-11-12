@@ -55,12 +55,13 @@ OUT = SRC / "export"
 LUAU = ROOT / "src" / "client" / "Controllers" / "QuestLog" / "QuestSprites.luau"
 PAD = 10  # transparent px around the alpha>0 extent
 E = 40  # extra sheet px read around each rect so soft glows are never clipped
-SCALE = {"Row": 0.97, "RowSelected": 0.97}  # 1013/1025 px wide bars would pass 1024 with padding
+SCALE = {"Row": 0.97, "RowSelected": 0.97, "Banner": 0.46}  # rows: 1013/1025 px bars would pass 1024 with padding; banner: 2.2k px art to ~1000
 
 SHEETS = {
     "SF": "quests/shared-frame-navigation.png", "QC": "quests/quest-controls.png", "QI": "quests/quest-icons.png",
     "AC": "achievements/achievement-controls.png", "UB": "achievements/unlocked-badges.png", "LB": "achievements/locked-badges.png",
     "MD": "mastery/mastery-dice.png", "MC": "mastery/mastery-controls.png", "MR": "mastery/mastery-rewards.png",
+    "HB": "new/quest-log-header-blank-parchment.png",
 }
 # name: (sheet, rect, mode, extra)   extra: dict(also=[rects], fade={edge: px}, slice=min caps or None/absent = whole, keep_right, track=rect)
 S: dict[str, tuple] = {}
@@ -70,7 +71,7 @@ def add(name, sheet, rect, mode="comp", **kw):
     S[name] = (sheet, rect, mode, kw)
 
 
-add("Banner", "SF", (842, 0, 1472, 189))
+add("Banner", "HB", (39, 63, 2124, 649))  # user art: the header scroll without the purple text plate
 add("DetailPanel", "SF", (584, 493, 873, 874), sliced=(0, 0, 0, 0))
 add("Dropdown", "SF", (1303, 588, 1661, 667), sliced=(0, 0, 0, 0), chevron=True)
 add("IconTabScroll", "SF", (61, 384, 193, 494))
