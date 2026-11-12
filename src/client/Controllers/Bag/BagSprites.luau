@@ -375,7 +375,7 @@ return {
 		Ink = Rect.new(144, 136, 366, 354),
 	},
 	-- Loop 3
-	CheckWhite = { Image = "rbxassetid://114116013993489", Size = Vector2.new(53, 47), Ink = Rect.new(8, 8, 46, 37) },
+	CheckWhite = { Image = "rbxassetid://101071703487201", Size = Vector2.new(40, 31), Ink = Rect.new(1, 1, 39, 30) },
 	StepMinus = { Image = "rbxassetid://117801302967018", Size = Vector2.new(94, 93), Ink = Rect.new(5, 5, 89, 88) },
 	StepPlus = { Image = "rbxassetid://112776734134955", Size = Vector2.new(95, 93), Ink = Rect.new(5, 5, 90, 88) },
 	IconFlaskWhite = {
