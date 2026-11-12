@@ -30,6 +30,16 @@ function Bag.new(parent, deps)
 		fit = function()
 			return hud:GetBagInsets()
 		end,
+		banner = {
+			sprite = { Image = "rbxassetid://80983256574238", Size = Vector2.new(1024, 217) },
+			full = Vector2.new(435, 92.2),
+			compact = Vector2.new(244, 51.7),
+			top = -75,
+			textPos = UDim2.fromScale(0.57, 0.49),
+			textSize = UDim2.fromScale(0.4, 0.55),
+			textFull = 43,
+			textCompact = 24,
+		},
 	})
 	local toolbar, grid = Parts.Toolbar(shell.Slots.Toolbar), Parts.Grid(shell.Slots.Grid)
 	local footer, detail = Parts.Footer(shell.Slots.Footer), Parts.Detail(shell.Slots.Detail)
