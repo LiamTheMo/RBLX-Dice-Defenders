@@ -1,7 +1,7 @@
 -- Bag shell: the one window every tab shares (banner, close, tab bar, panel slots) plus Fit(). Visual only.
 -- Design px under one UIScale. Switching tabs never touches anything here except the tab sprites.
 -- Shell.new(parent, { fit = () -> { leftReal, bottomTopReal } }) -> shell (see :methods below).
--- Optional deps for other menus (defaults = the Bag): name, banner { sprite, full, compact, top, text, textPos,
+-- Optional deps for other menus (defaults = the Bag): name, banner { sprite, full, compact, top, topCompact, text, textPos,
 -- textSize, textFull, textCompact }, detail (sprite key or record), fullDetail (detail panel as tall as the left one).
 
 local TweenService = game:GetService("TweenService")
@@ -278,7 +278,7 @@ function Shell.new(parent, deps)
 		self.Compact = compact
 
 		local bsz = (if compact then bn.compact else bn.full) or t.banner
-		banner.Position = UDim2.new(0.5, 0, 0, (if compact then nil else bn.top) or t.bannerTop)
+		banner.Position = UDim2.new(0.5, 0, 0, (if compact then bn.topCompact else bn.top) or t.bannerTop)
 		banner.Size = UDim2.fromOffset(bsz.X, bsz.Y)
 		-- Full: BAG text keeps its screen position (30.7 right of the banner centre, 12.7 above the window top).
 		bannerText.Position = bn.textPos

@@ -30,15 +30,17 @@ function Bag.new(parent, deps)
 		fit = function()
 			return hud:GetBagInsets()
 		end,
-		banner = {
-			sprite = { Image = "rbxassetid://80983256574238", Size = Vector2.new(1024, 217) },
-			full = Vector2.new(435, 92.2),
-			compact = Vector2.new(244, 51.7),
-			top = -75,
-			textPos = UDim2.fromScale(0.57, 0.49),
-			textSize = UDim2.fromScale(0.4, 0.55),
-			textFull = 43,
-			textCompact = 24,
+		banner = { -- BannerScroll 1023x217 drawn at 0.4815 (full) / 0.216 (compact), uniform (Fit): its scroll ink 5..1018 x 5..209 ~ the Quest Log's scroll (489 x 96.4 full, 220 x 43.4 compact)
+			sprite = "BannerScroll",
+			full = Vector2.new(493.5, 105.2),
+			compact = Vector2.new(221, 47.7),
+			top = -52.4, -- scroll top at -49.9 (Quest Log: -48.8)
+			topCompact = -29, -- scroll top at -28 (Quest Log: -27.2)
+			text = "BAG",
+			textPos = UDim2.fromScale(0.5225, 0.525), -- blank parchment between the die and the right sparkles
+			textSize = UDim2.fromScale(0.52, 0.395), -- the Quest Log's 256 x 41.5 box
+			textFull = 34,
+			textCompact = 20,
 		},
 	})
 	local toolbar, grid = Parts.Toolbar(shell.Slots.Toolbar), Parts.Grid(shell.Slots.Grid)
