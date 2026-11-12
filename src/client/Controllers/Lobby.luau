@@ -11,6 +11,7 @@ local UiKit = require(script.Parent.UiKit)
 local LobbyHud = require(script.Parent.LobbyHud)
 local Bag = require(script.Parent.Bag.Bag)
 local QuestLog = require(script.Parent.QuestLog.QuestLog)
+local Play = require(script.Parent.Play.Play)
 local Display = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Display"))
 
 local make, panel, label, button = UiKit.make, UiKit.panel, UiKit.label, UiKit.button
@@ -21,7 +22,6 @@ local BROWN = Color3.fromRGB(58, 30, 23)
 local COPPER = Color3.fromRGB(224, 135, 90)
 local ROW_BROWN = Color3.fromRGB(86, 46, 34)
 local ROW_EDGE = Color3.fromRGB(128, 70, 46) -- dark copper row outline
-local MUTED = Color3.fromRGB(110, 90, 82)
 local CREAM = Color3.fromRGB(242, 226, 205)
 local TEXT_STROKE = Color3.fromRGB(9, 14, 24)
 
@@ -42,7 +42,7 @@ local TOASTS = {
 	Network = "Connection problem",
 }
 local RESULT_TITLES = { Won = "Victory!", Lost = "Defeat", Aborted = "Run Ended", Error = "Something went wrong" }
-local PANELS = { "Play", "Deck", "Profile" }
+local PANELS = { "Deck", "Profile" }
 
 local Lobby = {}
 
@@ -60,7 +60,7 @@ local function toast(text: string)
 	local token = toastToken
 	ui.Toast.Text = text
 	-- Bag or Quest Log open: sit over the HUD currency block so the bag banner, X and tabs stay visible.
-	if ui.Bag:IsOpen() or ui.QuestLog:IsOpen() then
+	if ui.Bag:IsOpen() or ui.QuestLog:IsOpen() or ui.Play:IsOpen() then
 		ui.ToastFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 		-- Clamped: on phones the HUD block is hidden and bottomTopReal is the screen height.
 		local y = math.min(ui.LobbyHud:GetBagInsets().bottomTopReal + 26, UiKit.screenSize(ui.Root).Y - 26)
@@ -75,13 +75,6 @@ local function toast(text: string)
 			ui.ToastFrame.Visible = false
 		end
 	end)
-end
-
-local function setEnabled(btn, enabled: boolean, color: Color3)
-	btn.Active = enabled
-	btn.BackgroundColor3 = enabled and color or MUTED
-	btn.TextColor3 = enabled and NAVY or CREAM
-	btn.TextTransparency = enabled and 0 or 0.35
 end
 
 -- Intent call on its own thread; returns nothing, surfaces failures via Rejected -> toast.
@@ -136,15 +129,23 @@ end
 local function showPanel(name: string?)
 	if name == "Bag" then -- the bag and quest log are their own windows, not placeholder panels
 		ui.QuestLog:Close()
+		ui.Play:Close()
 		ui.Bag:Toggle()
 		return
 	elseif name == "Quests" then
 		ui.Bag:Close()
+		ui.Play:Close()
 		ui.QuestLog:Toggle()
+		return
+	elseif name == "Play" then
+		ui.Bag:Close()
+		ui.QuestLog:Close()
+		ui.Play:Toggle()
 		return
 	end
 	ui.Bag:Close()
 	ui.QuestLog:Close()
+	ui.Play:Close()
 	openPanel = name
 	for key, p in ui.Panels do
 		p.Frame.Visible = key == name
@@ -213,32 +214,6 @@ end
 local function resetDraft()
 	local meta = NetClient.LastMeta
 	draft = meta and table.clone(meta.Deck) or {}
-end
-
-local function renderPlay(snap)
-	local body = ui.Panels.Play.Body
-	clear(body)
-	local card = row(body, 1, 110)
-	text(card, "World 1 \u{2014} Verdant Trial (10 waves)", UDim2.new(1, -16, 0, 40), UDim2.fromOffset(8, 6), 26)
-	local canStart = snap ~= nil and (snap.Phase == "Lobby" or snap.Phase == "Ended")
-	local start = button(
-		{
-			Position = UDim2.new(0, 8, 1, -54),
-			Size = UDim2.fromOffset(140, ROW),
-			Text = "Start",
-		},
-		card,
-		GREEN,
-		function()
-			if canStart then -- Active=false does not stop Activated
-				send("Start")
-			end
-		end
-	)
-	setEnabled(start, canStart, GREEN)
-	local locked = row(body, 2, 70)
-	locked.BackgroundColor3 = MUTED
-	text(locked, "Infinite \u{2014} Coming soon", UDim2.new(1, -16, 1, -8), UDim2.fromOffset(8, 4), 26, CREAM)
 end
 
 local function renderDeck()
@@ -360,7 +335,6 @@ local function renderState(snap)
 		return
 	end
 	lobbyActive = true
-	renderPlay(snap)
 	renderProfile(snap)
 	ui.LobbyHud:SetGold(snap.Gold)
 	renderResult(snap)
@@ -389,6 +363,7 @@ local function build()
 	-- Sibling of Hud (so Hud.Visible never hides it); Toast lives on the gui and stays above.
 	ui.Bag = Bag.new(ui.Root, { hud = ui.LobbyHud, toast = toast })
 	ui.QuestLog = QuestLog.new(ui.Root, { hud = ui.LobbyHud, toast = toast })
+	ui.Play = Play.new(ui.Root, { hud = ui.LobbyHud, toast = toast })
 
 	for _, name in PANELS do
 		newPanel(name)
@@ -484,6 +459,9 @@ function Lobby.Destroy()
 	end
 	if ui and ui.QuestLog then
 		ui.QuestLog:Destroy()
+	end
+	if ui and ui.Play then
+		ui.Play:Destroy()
 	end
 	if gui then
 		gui:Destroy()
