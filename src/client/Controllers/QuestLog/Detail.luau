@@ -16,12 +16,13 @@ local Mastery = require(script.Parent.Tabs.Mastery)
 local make = UiKit.make
 local Bag, Q = Draw.Bag, Draw.Q
 
-local ACTION_H = 76 -- bottom strip: the button (64 box, ink ~61) stays put while the body scrolls
-local BODY_H = 500
-local MAST_H = 606 -- Mastery body: no action button, so no bottom strip
-local ACH_H = 588 -- Achievement body: the CLAIM button sits in its reward row, so no bottom strip
+local EXT = 12 -- the bodies reach this far below the slot, inside the panel art (ref cards end ~11 px above the rim)
+local ACTION_H = 80 -- bottom strip: the button (248x81 box, ink ~238x66, ref 238x~66) stays put while the body scrolls
+local BODY_H = 508
+local MAST_H = 601 -- Mastery body: no action button, so no bottom strip (the scroll is the slot + EXT, so it never scrolls)
+local ACH_H = 601 -- Achievement body: the CLAIM button sits in its reward row, so no bottom strip
 local REWARD_ICON = { Crystals = "Crystals", Die = "SkinFire" } -- Die: closest available die art
-local BOX_H, BOX_K = 54, 0.55 -- StatRow boxes: visible height and rim scale
+local BOX_H, BOX_K = 55, 0.55 -- StatRow boxes: visible height and rim scale
 local COIN_TEXT = Color3.fromRGB(251, 243, 137)
 local SOFT = Color3.fromRGB(205, 210, 235)
 
@@ -42,7 +43,7 @@ function Detail.new(parent)
 		Name = "Scroll",
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		Size = UDim2.new(1, 0, 1, -ACTION_H),
+		Size = UDim2.new(1, 0, 1, EXT - ACTION_H),
 		CanvasSize = UDim2.fromOffset(0, BODY_H),
 		ScrollingDirection = Enum.ScrollingDirection.Y,
 		ScrollBarThickness = 4,
@@ -64,6 +65,16 @@ function Detail.new(parent)
 	local function at(inst, x: number, y: number)
 		inst.AnchorPoint = Vector2.new(0.5, 0.5)
 		inst.Position = UDim2.fromOffset(math.floor(x + 0.5), math.floor(y + 0.5))
+	end
+
+	-- The scroll reaches EXT below the slot only while the whole body fits there; on short windows it clips at the slot edge instead.
+	local function fitScroll()
+		local kind = current and current.Kind
+		local tall = kind == "Achievement" or kind == "Mastery"
+		local bodyH = if kind == "Achievement" then ACH_H elseif kind == "Mastery" then MAST_H else BODY_H
+		local strip = if tall then 0 else ACTION_H
+		local ext = if bodyH <= parent.Size.Y.Offset - strip + EXT then EXT else 0
+		scroll.Size = UDim2.new(1, 0, 1, ext - strip)
 	end
 
 	-- Quest kind --------------------------------------------------------------------------------------------
@@ -104,7 +115,7 @@ function Detail.new(parent)
 			Name = cellName .. "Icon",
 			Image = iconId,
 			ScaleType = Enum.ScaleType.Fit,
-			Size = UDim2.fromOffset(42, 42),
+			Size = UDim2.fromOffset(46, 46),
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			ZIndex = z + 4,
 		})
@@ -193,7 +204,7 @@ function Detail.new(parent)
 		Parts.text(mastery, { Name = "Title", TextSize = 24, AnchorPoint = Vector2.new(0.5, 0.5), ZIndex = mz + 6 }, 3)
 	local mName =
 		Parts.text(mastery, { Name = "Name", TextSize = 32, AnchorPoint = Vector2.new(0.5, 0.5), ZIndex = mz + 4 }, 3)
-	local mPill = Mastery.pill(mastery, "LevelPill", 190, mz + 4)
+	local mPill = Mastery.pill(mastery, "LevelPill", 200, mz + 4)
 	mPill.Frame.AnchorPoint = Vector2.new(0.5, 0.5)
 	local mBar, mBarW
 	local mDesc = Parts.text(mastery, {
@@ -245,7 +256,7 @@ function Detail.new(parent)
 		Name = "Action",
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromOffset(240, 64),
+		Size = UDim2.fromOffset(256, 80),
 		ZIndex = actions.ZIndex + 1,
 	}, "ImageButton")
 	Parts.interact(hit)
@@ -254,7 +265,7 @@ function Detail.new(parent)
 		Style = "Green",
 		Label = "CLAIM",
 		TextSize = 32,
-		Size = UDim2.fromOffset(228, 64),
+		Size = UDim2.fromOffset(248, 81),
 	})
 	visual.AnchorPoint = Vector2.new(0.5, 0.5)
 	visual.Position = UDim2.fromScale(0.5, 0.5)
@@ -274,6 +285,7 @@ function Detail.new(parent)
 		if slotW <= 0 then
 			return
 		end
+		fitScroll()
 		local W = slotW - 2 * (if slotW >= 380 then 40 else 14)
 		local kind = current and current.Kind
 		body.Size =
@@ -285,37 +297,37 @@ function Detail.new(parent)
 		at(ribbonText, cx, 33)
 		ribbonText.Size = UDim2.fromOffset(rw * 0.62, 40)
 		local gw, gh = Draw.fitIn(Bag.GlowEpic, 230, 230)
-		Draw.apply(glow, Bag.GlowEpic, cx, 136, gw, gh)
+		Draw.apply(glow, Bag.GlowEpic, cx, 139, gw, gh)
 		local function spark(i: number, rec, dx: number, dy: number, size: number)
 			local sw, sh = Draw.fitIn(rec, size, size)
-			Draw.apply(sparkles[i], rec, cx + dx, 136 + dy, sw, sh)
+			Draw.apply(sparkles[i], rec, cx + dx, 139 + dy, sw, sh)
 		end
 		local reach = math.min(112, W / 2 - 24)
-		spark(1, Q.Sparkle1, -reach, -52, 38)
-		spark(2, Q.Sparkle2, reach, -14, 42)
-		spark(3, Q.Sparkle3, -reach + 20, 30, 18)
-		spark(4, Q.Sparkle4, reach - 34, 38, 22)
-		at(name, cx, 216)
+		spark(1, Q.Sparkle1, -reach + 5, 0, 30) -- ref spots (design px from the icon centre)
+		spark(2, Q.Sparkle2, reach - 9, -3, 26)
+		spark(3, Q.Sparkle3, -80, -47, 18)
+		spark(4, Q.Sparkle4, 83, 28, 17)
+		at(name, cx, 223)
 		name.Size = UDim2.fromOffset(W - 10, 46)
-		Draw.apply(divider, Bag.DividerGold, cx, 252, rw, rw * Bag.DividerGold.Ink.Height / Bag.DividerGold.Ink.Width)
+		Draw.apply(divider, Bag.DividerGold, cx, 254, rw, rw * Bag.DividerGold.Ink.Height / Bag.DividerGold.Ink.Width)
 
 		local function box(inst, x: number, y: number, w: number, h: number)
 			Draw.apply(inst, Bag.StatRow, x, y, w, h, BOX_K)
 		end
-		box(objBox, cx, 276 + BOX_H / 2, W, BOX_H)
-		at(objPill, cx, 276)
-		at(objText, cx, 276 + BOX_H / 2 + 2)
+		box(objBox, cx, 305, W, BOX_H)
+		at(objPill, cx, 283)
+		at(objText, cx, 307)
 		objText.Size = UDim2.fromOffset(W - 28, BOX_H - 10)
-		box(progBox, cx, 352 + BOX_H / 2, W, BOX_H)
-		at(progPill, cx, 352)
-		at(rewPill, cx, 428)
-		if barW ~= W - 24 then
-			barW = W - 24
+		box(progBox, cx, 385, W, BOX_H)
+		at(progPill, cx, 354)
+		at(rewPill, cx, 430)
+		if barW ~= W - 30 then
+			barW = W - 30
 			if bar then
 				bar.Frame:Destroy()
 			end
 			bar = Draw.bar(quest, "ProgressBar", barW, 30, z + 4)
-			at(bar.Frame, cx, 352 + BOX_H / 2 + 2)
+			at(bar.Frame, cx, 385)
 		end
 		if current and current.Kind == "Quest" then
 			showQuest(current)
@@ -335,8 +347,8 @@ function Detail.new(parent)
 		name.Text = m.Name or ""
 		Parts.fit(name, name.Size.X.Offset, 38, 22)
 		local rec = Q.IconQuestScroll -- the reference always shows the scroll for the Quest kind
-		local iw, ih = Draw.fitIn(rec, 130, 112)
-		Draw.apply(icon, rec, body.Size.X.Offset / 2, 136, iw, ih)
+		local iw, ih = Draw.fitIn(rec, 175, 143)
+		Draw.apply(icon, rec, body.Size.X.Offset / 2, 139, iw, ih)
 		objText.Text = b.Desc or ""
 		objText.TextSize = Parts.fitSize(objText.Text, objText.Size.X.Offset * 1.8, 22, 15)
 		local pct = QuestLogic.percent(b.Progress, b.Goal)
@@ -345,15 +357,15 @@ function Detail.new(parent)
 		local W = body.Size.X.Offset
 		local cellW = math.floor((W - 8) / 2)
 		local hasGems = b.Gems ~= nil
-		local cy = 428 + 33
+		local cy = 471
 		local function cell(boxInst, ic, text, label: string, cx: number, w: number)
-			Draw.apply(boxInst, Bag.StatRow, cx, cy, w, 66, BOX_K)
-			local iconRight = cx - w / 2 + 14 + 42
+			Draw.apply(boxInst, Bag.StatRow, cx, cy, w, 70, BOX_K)
+			local iconRight = cx - w / 2 + 10 + 46
 			local textW = (cx + w / 2 - 12) - (iconRight + 6)
 			text.Text = label
 			text.Size = UDim2.fromOffset(textW, 40)
 			Parts.fit(text, textW, 26, 14)
-			at(ic, iconRight - 21, cy)
+			at(ic, iconRight - 23, cy)
 			at(text, iconRight + 6 + textW / 2, cy)
 			boxInst.Visible, ic.Visible, text.Visible = true, true, true
 		end
@@ -400,59 +412,54 @@ function Detail.new(parent)
 			local sw, sh = Draw.fitIn(s[1], s[4], s[4])
 			Draw.apply(aSparkles[i], s[1], cx + s[2], 140 + s[3], sw, sh)
 		end
-		at(aName, cx, 224)
+		at(aName, cx, 216)
 		aName.Size = UDim2.fromOffset(W - 10, 44)
 		aName.Text = string.upper(m.Name or "")
 		Parts.fit(aName, W - 10, 34, 20)
 		aPill:Set(b)
-		at(aPill.Frame, cx, 270)
-		at(aDesc, cx, 326)
-		aDesc.Size = UDim2.fromOffset(W - 24, 68)
+		at(aPill.Frame, cx, 259)
+		at(aDesc, cx, 321)
+		aDesc.Size = UDim2.fromOffset(268, 68)
 		aDesc.Text = b.Desc or ""
-		aDesc.TextSize = Parts.fitSize(aDesc.Text, (W - 24) * 2.6, 17, 14)
-		sized(aDiv1, Bag.DividerGold, 374, rw)
-		at(aLabel, cx, 398)
+		aDesc.TextSize = Parts.fitSize(aDesc.Text, 268 * 3, 21, 14)
+		sized(aDiv1, Bag.DividerGold, 364, rw)
+		at(aLabel, cx, 390)
 		aLabel.Size = UDim2.fromOffset(W, 26)
-		sized(aDiv2, Bag.DividerGold, 482, rw)
-		if aBarW ~= W - 20 then
-			aBarW = W - 20
+		sized(aDiv2, Bag.DividerGold, 454, rw)
+		if aBarW ~= math.min(321, W - 20) then
+			aBarW = math.min(321, W - 20)
 			if aBar then
 				aBar.Frame:Destroy()
 			end
-			aBar = Draw.bar(achievement, "ProgressBar", aBarW, 34, az + 4)
-			at(aBar.Frame, cx, 436)
+			aBar = Draw.bar(achievement, "ProgressBar", aBarW, 30, az + 4)
+			at(aBar.Frame, cx, 418)
 		end
 		local done = not b.Locked and b.Goal > 0 and b.Progress >= b.Goal
 		local pct = if b.Locked then 0 else QuestLogic.percent(b.Progress, b.Goal)
 		aBar:Set(pct, QuestLogic.progressText(b.Progress, b.Goal, b.Unit), done)
-		at(aRewPill, cx, 506)
-		-- Reward row: one box per reward on the left, the action button on the right (the shared button, reparented).
-		local btnW = math.min(120, math.floor(W * 0.36))
-		local n = math.min(#b.Rewards, 2)
-		local left = W - btnW - 6
-		local bxw = math.min(96, math.floor((left - 6 * (n - 1)) / math.max(n, 1)))
-		local x0 = (left - (n * bxw + 6 * (n - 1))) / 2
-		local rowY = 506 + 56
+		at(aRewPill, cx, 483)
+		-- Reward row (ref): two 112x116 boxes left of the CLAIM button (128x59), all centred on y 540.
+		local rowY = 540
 		for i, r in aRewards do
 			local entry = b.Rewards[i]
 			r.box.Visible, r.icon.Visible, r.text.Visible = entry ~= nil, entry ~= nil, entry ~= nil
 			if entry then
-				local rx = x0 + (i - 1) * (bxw + 6) + bxw / 2
-				Draw.apply(r.box, Bag.StatRow, rx, rowY, bxw, 82, BOX_K)
+				local rx = cx - 122 + (i - 1) * 113
+				Draw.apply(r.box, Bag.StatRow, rx, rowY, 112, 116, BOX_K)
 				local rec = Q[REWARD_ICON[entry.Name] or "Crystals"]
-				local iw, ih = Draw.fitIn(rec, 50, 46)
-				Draw.apply(r.icon, rec, rx, rowY - 14, iw, ih)
+				local iw, ih = Draw.fitIn(rec, 60, 64)
+				Draw.apply(r.icon, rec, rx + 2, rowY - 12, iw, ih)
 				r.text.Text = "x" .. QuestLogic.format(entry.Amount)
-				r.text.Size = UDim2.fromOffset(bxw - 8, 28)
-				at(r.text, rx, rowY + 26)
-				Parts.fit(r.text, bxw - 8, 22, 14)
+				r.text.Size = UDim2.fromOffset(104, 28)
+				at(r.text, rx + 3, rowY + 38)
+				Parts.fit(r.text, 104, 22, 14)
 			end
 		end
 		hit.Parent = achievement
 		hit.ZIndex = az + 8
-		hit.Size = UDim2.fromOffset(btnW + 8, 64)
-		hit.Position = UDim2.fromOffset(W - (btnW + 8) / 2, rowY)
-		visual.Size = UDim2.fromOffset(btnW, 56)
+		hit.Size = UDim2.fromOffset(136, 64)
+		hit.Position = UDim2.fromOffset(cx + 115, rowY + 1)
+		visual.Size = UDim2.fromOffset(128, 59)
 	end
 
 	function showMastery(m)
@@ -469,18 +476,18 @@ function Detail.new(parent)
 		mRibbonText.Text = m.Title or "DICE MASTERY"
 		Parts.fit(mRibbonText, mRibbonText.Size.X.Offset, 24, 14)
 		-- flame banners hang from both ribbon ends (the art is fire-themed for every die)
-		local fh = 96
+		local fh = 104 -- ref: ~60x105 at x +-150 from the centre, y 41..146 (clear of the ribbon tails)
 		for _, f in { { mFlagL, Q.BannerFlameL, -1 }, { mFlagR, Q.BannerFlameR, 1 } } do
 			local fw = fh * f[2].Ink.Width / f[2].Ink.Height
-			Draw.apply(f[1], f[2], cx + f[3] * (rw / 2 - fw / 2 + 2), 36 + fh / 2 - 8, fw, fh)
+			Draw.apply(f[1], f[2], cx + f[3] * math.min(150, W / 2 - fw / 2 - 2), 93, fw, fh)
 		end
 		local rayW, rayH = Draw.fitIn(Q.Rays, math.min(240, W - 20), 170)
-		Draw.apply(mRays, Q.Rays, cx, 146, rayW, rayH)
-		local hw, hh = Draw.fitIn(Q.Halo, 170, 60)
-		Draw.apply(mHalo, Q.Halo, cx, 196, hw, hh)
+		Draw.apply(mRays, Q.Rays, cx, 135, rayW, rayH)
+		local hw, hh = Draw.fitIn(Q.Halo, 190, 69)
+		Draw.apply(mHalo, Q.Halo, cx, 164, hw, hh)
 		local drec = Q[b.Die] or Q.DieFire
-		local dw, dh = Draw.fitIn(drec, 112, 116)
-		Draw.apply(mDie, drec, cx, 140, dw, dh)
+		local dw, dh = Draw.fitIn(drec, 125, 127)
+		Draw.apply(mDie, drec, cx, 129, dw, dh)
 		local reach = math.min(112, W / 2 - 24)
 		local sp = {
 			{ Q.Sparkle1, -reach, -50, 36 },
@@ -490,59 +497,60 @@ function Detail.new(parent)
 		}
 		for i, s in sp do
 			local sw, sh = Draw.fitIn(s[1], s[4], s[4])
-			Draw.apply(mSparkles[i], s[1], cx + s[2], 140 + s[3], sw, sh)
+			Draw.apply(mSparkles[i], s[1], cx + s[2], 129 + s[3], sw, sh)
 		end
-		at(mName, cx, 226)
+		at(mName, cx, 206)
 		mName.Size = UDim2.fromOffset(W - 10, 40)
 		mName.Text = string.upper(m.Name or "")
 		Parts.fit(mName, W - 10, 32, 18)
 		mPill:Set(b.Level)
-		at(mPill.Frame, cx, 268)
-		if mBarW ~= W - 20 then
-			mBarW = W - 20
+		at(mPill.Frame, cx, 248)
+		if mBarW ~= math.min(321, W - 20) then
+			mBarW = math.min(321, W - 20)
 			if mBar then
 				mBar.Frame:Destroy()
 			end
 			mBar = Mastery.bar(mastery, "XpBar", mBarW, 32, mz + 4)
-			at(mBar.Frame, cx, 312)
+			at(mBar.Frame, cx, 291)
 		end
 		mBar:Set(b.Xp, b.XpGoal)
-		at(mDesc, cx, 360)
-		mDesc.Size = UDim2.fromOffset(W - 24, 48)
+		at(mDesc, cx, 342)
+		mDesc.Size = UDim2.fromOffset(300, 48)
 		mDesc.Text = b.Desc or ""
-		mDesc.TextSize = Parts.fitSize(mDesc.Text, (W - 24) * 1.9, 17, 13)
-		sized(mDiv, Bag.DividerGold, 404, rw)
-		local nw = math.min(220, W)
-		sized(mNext, Q.NextRewards, 432, nw)
-		at(mNextText, cx, 432)
+		mDesc.TextSize = Parts.fitSize(mDesc.Text, 300 * 2, 18, 13)
+		sized(mDiv, Bag.DividerGold, 379, rw)
+		local nw = math.min(210, W)
+		sized(mNext, Q.NextRewards, 412, nw)
+		at(mNextText, cx, 412)
 		mNextText.Size = UDim2.fromOffset(nw * 0.6, 30)
 		Parts.fit(mNextText, nw * 0.6, 18, 12)
 		local rewards = QuestLogic.nextRewards(b)
-		local bxw = math.min(150, math.floor((W - 8) / 2))
+		local bxw = math.min(170, math.floor((W + 4) / 2))
 		local bxh = bxw * Q.RewardBox.Ink.Height / Q.RewardBox.Ink.Width
-		local cy = 458 + bxh / 2
+		local cy = 497
 		for i, r in mRewards do
 			local entry = rewards[i]
 			for _, o in r do
 				o.Visible = entry ~= nil
 			end
 			if entry then
-				local rx = cx + (i - 1 - (#rewards - 1) / 2) * (bxw + 8)
+				local rx = cx + (i - 1 - (#rewards - 1) / 2) * (bxw + 5)
 				Draw.apply(r.box, Q.RewardBox, rx, cy, bxw, bxh)
 				local irec = Q[entry.Icon] or Q.Crystals
-				local iw, ih = Draw.fitIn(irec, bxw * 0.58, bxh * 0.42)
-				Draw.apply(r.icon, irec, rx, cy - bxh * 0.18, iw, ih)
+				local iw, ih = Draw.fitIn(irec, 80, 80)
+				Draw.apply(r.icon, irec, rx, cy - bxh * 0.2, iw, ih)
 				r.name.Text = entry.Name
 				r.name.Size = UDim2.fromOffset(bxw - 14, 22)
-				at(r.name, rx, cy + bxh * 0.14)
-				Parts.fit(r.name, bxw - 14, 16, 11)
+				at(r.name, rx, cy + bxh * 0.2)
+				Parts.fit(r.name, bxw - 14, 20, 12)
 				local lw, lh = Draw.fitIn(Bag.Lock, 18, 18)
 				local gx = rx - (18 + 4 + 40) / 2 -- lock + "Lv. N" group centred in the box
-				Draw.apply(r.lock, Bag.Lock, gx + 9, cy + bxh * 0.33, lw, lh)
+				Draw.apply(r.lock, Bag.Lock, gx + 9, cy + bxh * 0.4, lw, lh)
 				r.lv.Text = "Lv. " .. entry.Lv
 				r.lv.TextXAlignment = Enum.TextXAlignment.Left
+				r.lv.TextSize = 19
 				r.lv.Size = UDim2.fromOffset(44, 22)
-				at(r.lv, gx + 18 + 4 + 22, cy + bxh * 0.33)
+				at(r.lv, gx + 18 + 4 + 22, cy + bxh * 0.4)
 			end
 		end
 	end
@@ -557,15 +565,15 @@ function Detail.new(parent)
 		local ach = kind == "Achievement"
 		local tall = ach or kind == "Mastery" -- no bottom action strip
 		local bodyH = if ach then ACH_H elseif kind == "Mastery" then MAST_H else BODY_H
-		scroll.Size = if tall then UDim2.fromScale(1, 1) else UDim2.new(1, 0, 1, -ACTION_H)
+		fitScroll()
 		scroll.CanvasSize = UDim2.fromOffset(0, bodyH)
 		body.Size = UDim2.fromOffset(body.Size.X.Offset, bodyH)
 		if not ach then -- back in the bottom strip (the Achievement branch moves it into its reward row)
 			hit.Parent = actions
 			hit.ZIndex = actions.ZIndex + 1
 			hit.Position = UDim2.fromScale(0.5, 0.5)
-			hit.Size = UDim2.fromOffset(240, 64)
-			visual.Size = UDim2.fromOffset(228, 64)
+			hit.Size = UDim2.fromOffset(256, 80)
+			visual.Size = UDim2.fromOffset(248, 81)
 		end
 		if not model then
 			return

@@ -83,6 +83,9 @@ add("Track", "QC", (1077, 439, 1661, 515), sliced=(0, 0, 0, 0))
 add("FillGold", "QC", (1073, 509, 1667, 596), "fill", sliced=(0, 0, 0, 0))
 add("FillGreen", "QC", (1078, 588, 1664, 667), "fill", sliced=(0, 0, 0, 0), green=True)
 add("Stopwatch", "QC", (1348, 666, 1438, 777))
+# purple scrollbar thumb: sits over its own track on the sheet, so it is rebuilt as a stadium over its measured purple body (mode "pill");
+# slice = fixed vertical cap SliceCenter (centre column only: the thumb is never stretched horizontally)
+add("ScrollThumbPurple", "SF", (1356, 676, 1396, 818), "pill", slice=(21, 26, 23, 122))
 for n, r in {"IconQuestScroll": (96, 15, 397, 280), "IconDie": (559, 12, 811, 278), "IconCrystals": (963, 0, 1212, 272),
              "IconChest": (1382, 13, 1683, 271), "IconCrown": (95, 291, 407, 552), "IconGalaxyDie": (549, 293, 820, 566),
              "IconCalendar": (1403, 299, 1663, 550), "IconCalendarWeek": (47, 595, 308, 857)}.items():
@@ -236,6 +239,24 @@ def fill_mask(arr: np.ndarray, region: tuple, green: bool = False) -> np.ndarray
     return full
 
 
+def pill_mask(arr: np.ndarray, region: tuple) -> np.ndarray:
+    """Purple body inside the region -> stadium over its measured box (+2 px for its own dark outline); alpha only."""
+    x0, y0, x1, y1 = region
+    sub = arr[y0:y1, x0:x1].astype(int)
+    r, g, b, a = (sub[..., i] for i in range(4))
+    hit = (a > 200) & (b > 190) & (r > 110) & (b > g + 70) & (b > r + 20)
+    core = ~dilate(~hit, 2)  # drop the thin purple fringe of the track rim
+    ys, xs = np.flatnonzero(core.any(1)), np.flatnonzero(core.any(0))
+    top, bot, left, right = ys.min() - 4, ys.max() + 5, xs.min() - 4, xs.max() + 5
+    yy, xx = np.mgrid[0 : y1 - y0, 0 : x1 - x0]
+    rad = (right - left) / 2
+    cy = np.clip(yy + 0.5, top + rad, bot - rad)
+    sdf = np.hypot(xx + 0.5 - (left + right) / 2, yy + 0.5 - cy) - rad
+    full = np.zeros(arr.shape[:2], np.float32)
+    full[y0:y1, x0:x1] = np.clip(0.5 - sdf, 0, 1)
+    return full
+
+
 def fade_edges(a: np.ndarray, box: tuple, fade: dict) -> None:
     x0, y0, x1, y1 = box
     yy, xx = np.mgrid[0 : a.shape[0], 0 : a.shape[1]]
@@ -261,10 +282,12 @@ def cut(name: str, sheets: dict) -> tuple[np.ndarray, dict]:
         keep = np.zeros(arr.shape[:2], bool)
         a, b, c, d = loc[0]
         keep[b:d, a:c] = True
+    elif mode == "pill":
+        keep = pill_mask(arr, loc[0])
     else:
         keep = fill_mask(arr, loc[0], bool(kw.get("green")))
     a = arr[..., 3]
-    if mode == "fill":
+    if mode in ("fill", "pill"):
         a[:] = np.round(keep * 255).astype(np.uint8)
     else:
         a[~keep] = 0

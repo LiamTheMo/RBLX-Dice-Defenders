@@ -13,11 +13,11 @@ local Draw = require(script.Parent.Parent.Draw)
 local make = UiKit.make
 local Bag, Q = Draw.Bag, Draw.Q
 
-local PAD_L, PAD_R, PAD_T, PAD_B = 12, 30, 12, 16 -- left/top >= the selected glow bleed; right = scrollbar gutter
-local GAP, GLOW = 4, 10 -- cell gap; selected cell ink grows by GLOW (5 per side) inside the sprite's own margin
+local PAD_L, PAD_R, PAD_T, PAD_B = 10, 30, 12, 14 -- left/top >= the selected glow bleed; right = scrollbar gutter (only when the grid scrolls)
+local GAP, GAP_Y, GLOW = 8, 11, 10 -- ref: cells ~152x160 on a 160 / 171 pitch -- cell gap; selected cell ink grows by GLOW (5 per side) inside the sprite's own margin
 local CARD_W, CARD_H = 146, 160 -- reference card (visible rim); cell height = width * 160 / 146
 local LOCKED_GREY = Color3.fromRGB(150, 138, 146)
-local BAR = { ScrollTrack = Rect.new(19, 65, 22, 227), ScrollThumb = Rect.new(20, 37, 22, 133) }
+local BAR = { ScrollTrack = Rect.new(19, 65, 22, 227) }
 
 local function barSkin(inst, name: string, w: number)
 	local s = Bag[name]
@@ -104,14 +104,14 @@ function Achievements.new(parent)
 		ScrollBarThickness = 0, -- the styled bar below replaces the native one; wheel, touch and drag still scroll
 		ZIndex = root.ZIndex + 1,
 	}, root)
-	make("UIPadding", {
+	local pad = make("UIPadding", {
 		PaddingLeft = UDim.new(0, PAD_L),
 		PaddingRight = UDim.new(0, PAD_R),
 		PaddingTop = UDim.new(0, PAD_T),
 		PaddingBottom = UDim.new(0, PAD_B),
 	}, scroll)
 	local grid = make("UIGridLayout", {
-		CellPadding = UDim2.fromOffset(GAP, GAP + 4),
+		CellPadding = UDim2.fromOffset(GAP, GAP_Y),
 		SortOrder = Enum.SortOrder.LayoutOrder,
 		FillDirection = Enum.FillDirection.Horizontal,
 	}, scroll)
@@ -133,7 +133,7 @@ function Achievements.new(parent)
 		Visible = false,
 		ZIndex = scroll.ZIndex + 2,
 	})
-	local thumb = Draw.img(track, { Name = "Thumb", AnchorPoint = Vector2.new(0.5, 0), ZIndex = track.ZIndex + 1 })
+	local thumb = Draw.img(track, { Name = "Thumb", ZIndex = track.ZIndex + 1 })
 
 	local function updateBar()
 		local h = parent.Size.Y.Offset
@@ -141,8 +141,7 @@ function Achievements.new(parent)
 		track.Visible = maxY > 1 and h > 0
 		local win, canvas = scroll.AbsoluteWindowSize.Y, math.max(1, scroll.AbsoluteCanvasSize.Y)
 		local thumbH = math.clamp(math.floor(h * win / canvas), 40, math.max(40, h))
-		thumb.Size = UDim2.fromOffset(barW, thumbH)
-		thumb.Position = UDim2.new(0.5, 0, 0, math.floor((h - thumbH) * (if maxY > 0 then y / maxY else 0)))
+		Draw.thumb(thumb, barW, thumbH, math.floor((h - thumbH) * (if maxY > 0 then y / maxY else 0)))
 	end
 	table.insert(conns, scroll:GetPropertyChangedSignal("CanvasPosition"):Connect(updateBar))
 	table.insert(conns, scroll:GetPropertyChangedSignal("AbsoluteCanvasSize"):Connect(updateBar))
@@ -167,7 +166,7 @@ function Achievements.new(parent)
 		local brec = Q[item.Badge] or Q.BadgeKing
 		local bw, bh = Draw.fitIn(brec, cw * 0.84, ch * 0.5)
 		Draw.apply(badge, brec, cw / 2, ch * 0.31, bw, bh)
-		local size = math.max(12, math.floor(15 * k + 0.5))
+		local size = math.max(12, math.floor(18 * k + 0.5))
 		local name = Parts.text(btn, {
 			Name = "Name",
 			Text = string.upper(item.Name),
@@ -179,7 +178,7 @@ function Achievements.new(parent)
 		}, 2)
 		Parts.fit(name, cw - 12, size, 12)
 		local ph = math.max(22, math.floor(ch * 0.17 + 0.5))
-		local pw = math.floor(cw * 0.84)
+		local pw = math.floor(cw * 0.8)
 		local pill = Achievements.pill(btn, "Status", pw, ph, z)
 		pill.Frame.AnchorPoint = Vector2.new(0.5, 0.5)
 		pill.Frame.Position = UDim2.fromOffset(cw / 2, math.floor(ch * 0.86))
@@ -206,10 +205,19 @@ function Achievements.new(parent)
 		track.Size = UDim2.fromOffset(barW, parent.Size.Y.Offset)
 		track.Position = UDim2.new(1, if W >= 360 then -7 else -3, 0, 0)
 		barSkin(track, "ScrollTrack", barW)
-		barSkin(thumb, "ScrollThumb", barW)
 		local cols = math.clamp(math.floor((W - 12) / 112), 2, 5)
-		local cw = math.floor((W - PAD_L - PAD_R - (cols - 1) * GAP) / cols)
-		local ch = math.floor(cw * CARD_H / CARD_W + 0.5)
+		local function cell(padR: number): (number, number)
+			local w = math.floor((W - PAD_L - padR - (cols - 1) * GAP) / cols)
+			return w, math.floor(w * CARD_H / CARD_W + 0.5)
+		end
+		local padR = 10 -- the scrollbar gutter is only reserved when the grid overflows (ref: 3 rows fill the panel)
+		local cw, ch = cell(padR)
+		local rowsN = math.ceil(#items / cols)
+		if rowsN * ch + math.max(0, rowsN - 1) * GAP_Y + PAD_T + PAD_B > parent.Size.Y.Offset then
+			padR = PAD_R
+			cw, ch = cell(padR)
+		end
+		pad.PaddingRight = UDim.new(0, padR)
 		grid.CellSize = UDim2.fromOffset(cw, ch)
 		grid.FillDirectionMaxCells = cols
 		for i, item in items do

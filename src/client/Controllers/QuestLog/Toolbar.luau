@@ -23,7 +23,8 @@ function Toolbar.new(parent)
 	local api, conns = {}, {}
 	local onSearch, onOption
 	local options, active = {}, nil
-	local placeholder, labelText, countText = "Search...", "Show:", nil
+	local placeholder, labelText, countText, prefix = "Search...", "Show:", nil, ""
+	local compactNow = false -- the "Sort: " prefix needs the wide pill
 	local muted = false
 	local ddW = 203
 
@@ -98,7 +99,7 @@ function Toolbar.new(parent)
 		ddText.Text = ""
 		for _, o in options do
 			if o.Id == active then
-				ddText.Text = o.Label
+				ddText.Text = (if compactNow then "" else prefix) .. o.Label
 			end
 		end
 		Parts.fit(ddText, ddText.Size.X.Offset, 22, 13)
@@ -111,11 +112,18 @@ function Toolbar.new(parent)
 		end
 		local inner = W - PAD_L - PAD_R
 		local compact = inner < 560
-		ddW = if compact then math.min(120, math.floor(inner * 0.45)) else 203
-		label.Visible = not compact
+		compactNow = compact
+		local hasLabel = labelText ~= ""
+		ddW = if compact
+			then math.min(120, math.floor(inner * 0.45))
+			elseif not hasLabel then 284 -- ref MASTERY: one wide "Sort: ..." pill
+			elseif countText then 245 -- ref ACHIEVEMENTS: SORT: + dropdown, then the count at the right end
+			else 203
+		label.Visible = hasLabel and not compact
 		label.Text = labelText
 		label.Size = UDim2.fromOffset(60, HIT_H)
-		local right = W - PAD_R -- ink right edge of the dropdown
+		local edge = W - PAD_R
+		local right = if countText then edge - (if compact then 84 else 132) else edge -- ink right edge of the dropdown
 		hit.Size = UDim2.fromOffset(ddW + 8, HIT_H)
 		hit.Position = UDim2.fromOffset(right + 4, CY)
 		Draw.apply(skin, Q.Dropdown, (ddW + 8) / 2, HIT_H / 2, ddW, INK_H)
@@ -123,7 +131,7 @@ function Toolbar.new(parent)
 		ddText.Size = UDim2.fromOffset(ddW - 62, INK_H)
 		setLabelText()
 		local left = right - ddW -- running left edge of the right cluster
-		if not compact then
+		if hasLabel and not compact then
 			label.Position = UDim2.fromOffset(left - 14, CY)
 			left -= 14 + 58
 		end
@@ -131,8 +139,7 @@ function Toolbar.new(parent)
 		if countText then
 			count.Text = countText
 			count.Size = UDim2.fromOffset(84, HIT_H)
-			count.Position = UDim2.fromOffset(left - 12, CY)
-			left -= 12 + 70
+			count.Position = UDim2.fromOffset(edge - 8, CY)
 		end
 		local searchW = math.max(120, left - (if compact then 10 else 24) - PAD_L)
 		Draw.apply(search, Bag.Search, PAD_L + searchW / 2, CY, searchW, INK_H)
@@ -228,9 +235,10 @@ function Toolbar.new(parent)
 	function api:OnSearch(cb)
 		onSearch = cb
 	end
-	function api:SetLabel(s: string)
-		labelText = s
+	function api:SetLabel(s: string, dropdownPrefix: string?)
+		labelText, prefix = s, dropdownPrefix or ""
 		label.Text = s
+		layout()
 	end
 	function api:SetOptions(list, activeId: string?)
 		options, active = list, activeId or (list[1] and list[1].Id)

@@ -13,8 +13,8 @@ local make = UiKit.make
 local Bag, Q = Draw.Bag, Draw.Q
 
 local PAD_L, PAD_R, PAD_T, PAD_B = 14, 30, 10, 16 -- left/top >= the selected glow; right = scrollbar gutter
-local GAP, SEL = 8, 8
-local BAR = { ScrollTrack = Rect.new(19, 65, 22, 227), ScrollThumb = Rect.new(20, 37, 22, 133) }
+local GAP, SEL = 5, 8 -- ref: rows 96 tall on a 101 pitch
+local BAR = { ScrollTrack = Rect.new(19, 65, 22, 227) }
 
 local function barSkin(inst, name: string, w: number)
 	local s = Bag[name]
@@ -104,7 +104,7 @@ function Mastery.new(parent)
 		ScrollBarThickness = 0, -- the styled bar below replaces the native one; wheel, touch and drag still scroll
 		ZIndex = root.ZIndex + 1,
 	}, root)
-	make("UIPadding", {
+	local pad = make("UIPadding", {
 		PaddingLeft = UDim.new(0, PAD_L),
 		PaddingRight = UDim.new(0, PAD_R),
 		PaddingTop = UDim.new(0, PAD_T),
@@ -129,7 +129,7 @@ function Mastery.new(parent)
 		Visible = false,
 		ZIndex = scroll.ZIndex + 2,
 	})
-	local thumb = Draw.img(track, { Name = "Thumb", AnchorPoint = Vector2.new(0.5, 0), ZIndex = track.ZIndex + 1 })
+	local thumb = Draw.img(track, { Name = "Thumb", ZIndex = track.ZIndex + 1 })
 
 	local function updateBar()
 		local h = parent.Size.Y.Offset
@@ -137,8 +137,7 @@ function Mastery.new(parent)
 		track.Visible = maxY > 1 and h > 0
 		local win, canvas = scroll.AbsoluteWindowSize.Y, math.max(1, scroll.AbsoluteCanvasSize.Y)
 		local thumbH = math.clamp(math.floor(h * win / canvas), 40, math.max(40, h))
-		thumb.Size = UDim2.fromOffset(barW, thumbH)
-		thumb.Position = UDim2.new(0.5, 0, 0, math.floor((h - thumbH) * (if maxY > 0 then y / maxY else 0)))
+		Draw.thumb(thumb, barW, thumbH, math.floor((h - thumbH) * (if maxY > 0 then y / maxY else 0)))
 	end
 	table.insert(conns, scroll:GetPropertyChangedSignal("CanvasPosition"):Connect(updateBar))
 	table.insert(conns, scroll:GetPropertyChangedSignal("AbsoluteCanvasSize"):Connect(updateBar))
@@ -169,7 +168,7 @@ function Mastery.new(parent)
 		local irec = Q[m.Icon] or Q.Crystals
 		local iw, ih = Draw.fitIn(irec, s * 0.58, s * 0.5)
 		Draw.apply(icon, irec, cx, cy - s * 0.12, iw, ih)
-		local size = math.max(11, math.floor(s * 0.19))
+		local size = math.max(11, math.floor(s * 0.21))
 		local label = Parts.text(btn, {
 			Name = "Lv" .. m.Lv,
 			Text = "Lv. " .. m.Lv,
@@ -203,23 +202,23 @@ function Mastery.new(parent)
 		local z = skin.ZIndex + 1
 		local cy = rh / 2
 
-		local s = if full then 72 else 44
+		local s = if full then 78 else 44 -- ref: slots ~80x82, 7 apart (a hair less: the panel is 20 px narrower)
 		local sGap = if full then 6 else 4
 		local slotsW = if tiny then 0 else 4 * s + 3 * sGap
-		local slotsL = cw - (if full then 12 else 8) - slotsW
-		local dieBox = if full then 68 else 46
-		local dieL = if full then 12 else 8
+		local slotsL = cw - (if full then 14 else 8) - slotsW
+		local dieBox = if full then 82 else 46 -- ref: die ~80x83, 22 from the row edge
+		local dieL = if full then 20 else 8
 		local die = Draw.img(btn, { Name = "Die", ZIndex = z })
 		local drec = Q[row.Die] or Q.DieFire
 		local dw, dh = Draw.fitIn(drec, dieBox, dieBox)
 		Draw.apply(die, drec, dieL + dieBox / 2, cy, dw, dh)
 
-		local textL = dieL + dieBox + (if full then 10 else 8)
+		local textL = dieL + dieBox + (if full then 11 else 8)
 		local clusterR = if tiny then cw - 8 else slotsL - (if full then 10 else 8)
 		local clusterW, clusterL
 		local nameW
 		if full then
-			clusterW = 176
+			clusterW = 180
 			clusterL = clusterR - clusterW
 			nameW = math.max(40, clusterL - 8 - textL)
 		else
@@ -231,7 +230,7 @@ function Mastery.new(parent)
 			nameLabel = Parts.text(btn, {
 				Name = "Name",
 				Text = row.Name,
-				TextSize = 20,
+				TextSize = 24,
 				TextWrapped = true,
 				TextXAlignment = Enum.TextXAlignment.Left,
 				AnchorPoint = Vector2.new(0, 0.5),
@@ -245,7 +244,8 @@ function Mastery.new(parent)
 					longest = word
 				end
 			end
-			nameLabel.TextSize = Parts.fitSize(longest, nameW, 20, 12) -- wraps to two lines, never mid-word
+			local one = Parts.fitSize(row.Name, nameW, 24, 1)
+			nameLabel.TextSize = if one >= 19 then one else Parts.fitSize(longest, nameW, 24, 12) -- one line, else two (never mid-word)
 		else
 			nameLabel = Parts.text(btn, {
 				Name = "Name",
@@ -263,11 +263,11 @@ function Mastery.new(parent)
 		if full then
 			local pill = Mastery.pill(btn, "Pill", clusterW, z)
 			pill.Frame.AnchorPoint = Vector2.new(0.5, 0.5)
-			pill.Frame.Position = UDim2.fromOffset(clusterL + clusterW / 2, cy - 17)
+			pill.Frame.Position = UDim2.fromOffset(clusterL + clusterW / 2, cy - 18)
 			pill:Set(row.Level)
-			local bar = Mastery.bar(btn, "XpBar", clusterW, 24, z)
+			local bar = Mastery.bar(btn, "XpBar", clusterW, 25, z)
 			bar.Frame.AnchorPoint = Vector2.new(0.5, 0.5)
-			bar.Frame.Position = UDim2.fromOffset(clusterL + clusterW / 2, cy + 19)
+			bar.Frame.Position = UDim2.fromOffset(clusterL + clusterW / 2, cy + 21)
 			bar:Set(row.Xp, row.XpGoal)
 		else
 			local bar = Mastery.bar(btn, "XpBar", clusterW, 20, z)
@@ -303,11 +303,16 @@ function Mastery.new(parent)
 		end
 		local cw = W - PAD_L - PAD_R
 		local mode = if cw >= 700 then "full" elseif cw >= 360 then "mid" else "tiny"
+		-- the scrollbar gutter is only reserved when the rows overflow (ref: the 5 rows fill the panel width)
+		local rh = if mode == "full" then 96 else 72
+		local overflow = #rows * rh + math.max(0, #rows - 1) * GAP + PAD_T + PAD_B > parent.Size.Y.Offset
+		local padR = if overflow then PAD_R else 16
+		pad.PaddingRight = UDim.new(0, padR)
+		cw = W - PAD_L - padR
 		barW = if cw >= 360 then 21 else 12
 		track.Size = UDim2.fromOffset(barW, parent.Size.Y.Offset)
 		track.Position = UDim2.new(1, if cw >= 360 then -7 else -3, 0, 0)
 		barSkin(track, "ScrollTrack", barW)
-		barSkin(thumb, "ScrollThumb", barW)
 		for i, row in rows do
 			buildRow(row, i, cw, mode)
 		end

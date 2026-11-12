@@ -60,6 +60,12 @@ function Draw.apply(inst, rec, cx: number, cy: number, inkW: number, inkH: numbe
 	return inst
 end
 
+-- Scrollbar thumb (purple pill, vertical caps sliced, centre column only) of ink width trackW - 5, height h, top y in the track.
+function Draw.thumb(inst, trackW: number, h: number, y: number)
+	local w = trackW - 5
+	Draw.apply(inst, Q.ScrollThumbPurple, trackW / 2, y + h / 2, w, h, w / Q.ScrollThumbPurple.Ink.Width)
+end
+
 -- Progress bar: Track + FillGold (FillGreen when complete) with "x / y" centred over the whole bar.
 -- bar = Draw.bar(parent, W, H, z); bar.Frame is W x H (the ink); bar:Set(pct 0..1, text, complete).
 function Draw.bar(parent, name: string, W: number, H: number, z: number)

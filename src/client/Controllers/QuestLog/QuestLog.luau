@@ -3,6 +3,7 @@
 -- Rows come from NetClient.LastMeta.Quests plus the client-only SampleData (Studio only); re-rendered on NetClient.Meta.
 -- Claim: only real "Claim" rows send ClaimQuest (one in flight per id); the next Meta decides the Claimed state.
 
+local ContentProvider = game:GetService("ContentProvider")
 local ContextActionService = game:GetService("ContextActionService")
 local GuiService = game:GetService("GuiService")
 local RunService = game:GetService("RunService")
@@ -101,6 +102,15 @@ function QuestLog.new(parent, deps)
 		},
 		detail = Q.DetailPanel,
 	})
+	task.spawn(function() -- stream every tab's art up front so the first tab switch is not blank
+		local list = {}
+		for _, rec in Q do
+			if type(rec) == "table" and rec.Image then
+				table.insert(list, rec.Image)
+			end
+		end
+		pcall(ContentProvider.PreloadAsync, ContentProvider, list)
+	end)
 	local toolbar = Toolbar.new(shell.Slots.Toolbar)
 	local quests = Quests.new(shell.Slots.Grid)
 	local achievements = Achievements.new(shell.Slots.Grid)
@@ -296,7 +306,11 @@ function QuestLog.new(parent, deps)
 		query, mode = "", default
 		achSelected, masterySelected = nil, nil
 		toolbar:SetQuery("")
-		toolbar:SetLabel(if tab >= 2 then "SORT:" else "Show:")
+		if tab == 3 then
+			toolbar:SetLabel("", "Sort: ")
+		else
+			toolbar:SetLabel(if tab == 2 then "SORT:" else "Show:")
+		end
 		toolbar:SetOptions(if tab == 1 then OPTIONS elseif tab == 2 then ACH_OPTIONS else MASTERY_OPTIONS, default)
 		toolbar:SetCount(nil)
 		quests:SetVisible(tab == 1)

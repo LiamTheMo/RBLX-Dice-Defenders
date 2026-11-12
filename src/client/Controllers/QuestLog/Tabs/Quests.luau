@@ -12,8 +12,8 @@ local Draw = require(script.Parent.Parent.Draw)
 local make = UiKit.make
 local Bag, Q = Draw.Bag, Draw.Q
 
-local PAD_L, PAD_R, PAD_T, PAD_B = 14, 30, 10, 16 -- left/top >= the selected glow; right = scrollbar gutter
-local ROW_H, GAP, HEAD_H = 62, 8, 72
+local PAD_L, PAD_R, PAD_T, PAD_B = 14, 34, 2, 16 -- left/top >= the selected glow; right = scrollbar gutter
+local ROW_H, GAP, HEAD_H = 60, 5, 54 -- ref: rows ~60 tall on a 65 pitch; ribbon top -> first row top 61
 local COIN_TEXT = Color3.fromRGB(251, 243, 137)
 local GOLD_HEX = "#FCD51A"
 local GREEN_TEXT = Color3.fromRGB(120, 235, 90)
@@ -22,7 +22,7 @@ local SECTIONS = {
 	{ Id = "Weekly", Title = "WEEKLY QUESTS", Icon = Q.IconCalendarWeek, Reset = true },
 	{ Id = "Story", Title = "STORY QUESTS", Icon = Q.IconQuestScroll, Reset = false },
 }
-local BAR = { ScrollTrack = Rect.new(19, 65, 22, 227), ScrollThumb = Rect.new(20, 37, 22, 133) } -- narrow centre column: no horizontal stretch
+local BAR = { ScrollTrack = Rect.new(19, 65, 22, 227) } -- narrow centre column: no horizontal stretch
 
 local function barSkin(inst, name: string, w: number)
 	local s = Bag[name]
@@ -83,7 +83,7 @@ function Quests.new(parent)
 		Visible = false,
 		ZIndex = scroll.ZIndex + 2,
 	})
-	local thumb = Draw.img(track, { Name = "Thumb", AnchorPoint = Vector2.new(0.5, 0), ZIndex = track.ZIndex + 1 })
+	local thumb = Draw.img(track, { Name = "Thumb", ZIndex = track.ZIndex + 1 })
 
 	local function updateBar()
 		local h = parent.Size.Y.Offset
@@ -91,8 +91,7 @@ function Quests.new(parent)
 		track.Visible = maxY > 1 and h > 0
 		local win, canvas = scroll.AbsoluteWindowSize.Y, math.max(1, scroll.AbsoluteCanvasSize.Y)
 		local thumbH = math.clamp(math.floor(h * win / canvas), 40, math.max(40, h))
-		thumb.Size = UDim2.fromOffset(barW, thumbH)
-		thumb.Position = UDim2.new(0.5, 0, 0, math.floor((h - thumbH) * (if maxY > 0 then y / maxY else 0)))
+		Draw.thumb(thumb, barW, thumbH, math.floor((h - thumbH) * (if maxY > 0 then y / maxY else 0)))
 	end
 	table.insert(conns, scroll:GetPropertyChangedSignal("CanvasPosition"):Connect(updateBar))
 	table.insert(conns, scroll:GetPropertyChangedSignal("AbsoluteCanvasSize"):Connect(updateBar))
@@ -106,7 +105,7 @@ function Quests.new(parent)
 	end
 
 	local function buildHeader(sec, order: number, first: boolean, cw: number)
-		local pre = if first then 0 else 8
+		local pre = if first then 0 else 17 -- ref: last row -> next ribbon top ~20
 		local f = Draw.img(scroll, {
 			Name = "Head_" .. sec.Id,
 			LayoutOrder = order,
@@ -185,8 +184,8 @@ function Quests.new(parent)
 		local cy = ROW_H / 2
 
 		-- Right to left: claim, gem, coin, bar; the left column keeps the rest.
-		local claimW, claimH = (if full then 98 elseif tiny then 62 else 72), (if full then 48 else 42)
-		local right = cw - (if full then 8 else 6)
+		local claimW, claimH = (if full then 97 elseif tiny then 62 else 72), (if full then 48 else 42)
+		local right = cw - (if full then 5 else 6)
 		local claimLeft = right - claimW
 		local regionCx = claimLeft + claimW / 2
 		if state == "Claim" or state == "Soon" then
@@ -252,7 +251,7 @@ function Quests.new(parent)
 				TextXAlignment = Enum.TextXAlignment.Left,
 				AnchorPoint = Vector2.new(0, 0.5),
 				Position = UDim2.fromOffset(cx + iconSize + 4, y),
-				Size = UDim2.fromOffset(if full then 56 else 64, 28),
+				Size = UDim2.fromOffset(if full then 54 else 64, 28),
 				ZIndex = z + 1,
 			}, 2)
 			Parts.fit(t, t.Size.X.Offset, size, 12)
@@ -262,13 +261,13 @@ function Quests.new(parent)
 		local gems = if row.Gems then "+" .. QuestLogic.format(row.Gems) else nil
 		local rewardLeft = claimLeft - 10
 		if full then
-			local gemL = claimLeft - 10 - 92
+			local gemL = claimLeft - 79 -- ref: gem icon 79 left of CLAIM, coin icon 91-96 left of the gem
 			if gems then
-				reward(HudSprites.Gem, gems, Color3.new(1, 1, 1), gemL, cy, 18, 32)
+				reward(HudSprites.Gem, gems, Color3.new(1, 1, 1), gemL, cy, 20, 32)
 			end
-			rewardLeft = gemL - 8 - 96
-			reward(HudSprites.Coin, gold, COIN_TEXT, rewardLeft, cy, 18, 32)
-			rewardLeft -= 12
+			rewardLeft = gemL - 91
+			reward(HudSprites.Coin, gold, COIN_TEXT, rewardLeft, cy, 20, 32)
+			rewardLeft -= 10
 		elseif not tiny then
 			rewardLeft = claimLeft - 10 - 86
 			reward(HudSprites.Coin, gold, COIN_TEXT, rewardLeft, cy - 14, 15, 24)
@@ -281,21 +280,21 @@ function Quests.new(parent)
 		end
 
 		-- Left column: icon, name (+ desc), progress bar.
-		local iconBox = if full then 60 elseif tiny then 34 else 44
+		local iconBox = if full then 56 elseif tiny then 34 else 44
 		local icon = Draw.img(btn, { Name = "Icon", ZIndex = z + 1 })
 		local iw, ih = Draw.fitIn(Q[row.Icon] or Q.IconQuestScroll, iconBox, math.min(52, iconBox))
-		Draw.apply(icon, Q[row.Icon] or Q.IconQuestScroll, (if full then 12 else 8) + iconBox / 2, cy, iw, ih)
-		local textL = (if full then 12 else 8) + iconBox + 10
+		Draw.apply(icon, Q[row.Icon] or Q.IconQuestScroll, (if full then 18 else 8) + iconBox / 2, cy, iw, ih)
+		local textL = (if full then 18 else 8) + iconBox + 19
 		local pct = QuestLogic.percent(row.Progress, row.Goal)
 		local complete = row.Goal > 0 and row.Progress >= row.Goal
 		local nameY, barW2, barH
 		local colR
 		if full then
-			barW2, barH = 150, 28
+			barW2, barH = 163, 27
 			colR = rewardLeft - barW2 - 4
 			local bar = Draw.bar(btn, "Progress", barW2, barH, z + 1)
 			bar.Frame.AnchorPoint = Vector2.new(0.5, 0.5)
-			bar.Frame.Position = UDim2.fromOffset(rewardLeft - 4 - barW2 / 2, cy)
+			bar.Frame.Position = UDim2.fromOffset(rewardLeft - 4 - barW2 / 2, cy + 1)
 			bar:Set(pct, QuestLogic.progressText(row.Progress, row.Goal), complete)
 			nameY = 19
 		else
@@ -312,7 +311,7 @@ function Quests.new(parent)
 		local name = Parts.text(btn, {
 			Name = "Name",
 			Text = row.Name,
-			TextSize = if full then 20 else if tiny then 15 else 18,
+			TextSize = if full then 24 else if tiny then 15 else 18,
 			TextXAlignment = Enum.TextXAlignment.Left,
 			AnchorPoint = Vector2.new(0, 0.5),
 			Position = UDim2.fromOffset(textL, nameY),
@@ -324,14 +323,14 @@ function Quests.new(parent)
 			local desc = Parts.text(btn, {
 				Name = "Desc",
 				Text = row.Desc,
-				TextSize = 15,
+				TextSize = 18,
 				TextXAlignment = Enum.TextXAlignment.Left,
 				AnchorPoint = Vector2.new(0, 0.5),
 				Position = UDim2.fromOffset(textL + 2, 43),
 				Size = UDim2.fromOffset(colW, 22),
 				ZIndex = z + 1,
 			}, 2)
-			Parts.fit(desc, colW, 15, 12)
+			Parts.fit(desc, colW, 18, 12)
 		end
 		btn.Activated:Connect(function()
 			if onSelect then
@@ -359,7 +358,6 @@ function Quests.new(parent)
 		track.Size = UDim2.fromOffset(barW, parent.Size.Y.Offset)
 		track.Position = UDim2.new(1, if cw >= 360 then -7 else -3, 0, 0)
 		barSkin(track, "ScrollTrack", barW)
-		barSkin(thumb, "ScrollThumb", barW)
 		local order, shown = 0, 0
 		for _, sec in SECTIONS do
 			local list = {}

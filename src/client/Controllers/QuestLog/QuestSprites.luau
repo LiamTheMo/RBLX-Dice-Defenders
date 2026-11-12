@@ -316,4 +316,10 @@ return {
 	GlowDie = { Image = "rbxassetid://123682078053662", Size = Vector2.new(556, 589), Ink = Rect.new(38, 67, 521, 537) },
 	Halo = { Image = "rbxassetid://114426866213056", Size = Vector2.new(429, 197), Ink = Rect.new(30, 37, 399, 171) },
 	Rays = { Image = "rbxassetid://85552709706701", Size = Vector2.new(403, 278), Ink = Rect.new(38, 51, 348, 250) },
+	ScrollThumbPurple = {
+		Image = "rbxassetid://109667627221184",
+		Size = Vector2.new(44, 148),
+		Ink = Rect.new(10, 10, 34, 138),
+		Slice = Rect.new(21, 26, 23, 122),
+	},
 }
