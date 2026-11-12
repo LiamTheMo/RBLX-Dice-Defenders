@@ -62,10 +62,18 @@ REUSED = {"PurpleBox": {"w": 251, "h": 247, "ink": [14, 12, 238, 236], "slice": 
 TARGETS = {"Card": (363, 148), "CardSel": (363, 168), "Preview": (372, 205)}
 
 
-def crop_rect(w: int, h: int, tw: int, th: int) -> list[int]:
+# Per-world framing (ax, ay) = share of the spare width / height left of / above the crop; default centred, top-aligned.
+# Dice: forest left, castle right (reference); Shadow: slide the crop down so the huge moon is partly cut (the sheet art is zoomed in).
+ALIGN = {
+    "WorldDice": {"Card": (0, 0), "CardSel": (0, 0)},
+    "WorldShadow": {"Card": (0.5, 0.6), "CardSel": (0.5, 0.6)},
+}
+
+
+def crop_rect(w: int, h: int, tw: int, th: int, ax: float = 0.5, ay: float = 0) -> list[int]:
     cw, ch = (w, round(w * th / tw)) if w / h <= tw / th else (round(h * tw / th), h)
-    x0 = (w - cw) // 2
-    return [x0, 0, x0 + cw, ch]
+    x0, y0 = round((w - cw) * ax), round((h - ch) * ay)
+    return [x0, y0, x0 + cw, y0 + ch]
 
 
 def world(name: str) -> tuple[np.ndarray, dict]:
@@ -74,7 +82,7 @@ def world(name: str) -> tuple[np.ndarray, dict]:
     px = np.array(Image.open(SRC / "play-world-cards.png").convert("RGBA"))[y0 + d : y1 - d, x0 + d : x1 - d].copy()
     px[..., 3] = 255
     h, w = px.shape[:2]
-    return px, {"rects": {k: crop_rect(w, h, *t) for k, t in TARGETS.items()}}
+    return px, {"rects": {k: crop_rect(w, h, *t, *ALIGN.get(name, {}).get(k, (0.5, 0))) for k, t in TARGETS.items()}}
 
 
 def main() -> None:

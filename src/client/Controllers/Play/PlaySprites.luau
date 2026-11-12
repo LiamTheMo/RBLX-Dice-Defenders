@@ -47,9 +47,9 @@ return {
 		Image = "rbxassetid://88260523003357",
 		Size = Vector2.new(867, 313),
 		Ink = Rect.new(0, 0, 867, 313),
-		Card = Rect.new(49, 0, 817, 313),
-		CardSel = Rect.new(95, 0, 771, 313),
-		Preview = Rect.new(149, 0, 717, 313),
+		Card = Rect.new(0, 0, 768, 313),
+		CardSel = Rect.new(0, 0, 676, 313),
+		Preview = Rect.new(150, 0, 718, 313),
 	},
 	WorldFrost = {
 		Image = "rbxassetid://83351968763600",
@@ -71,8 +71,8 @@ return {
 		Image = "rbxassetid://113653597909595",
 		Size = Vector2.new(319, 181),
 		Ink = Rect.new(0, 0, 319, 181),
-		Card = Rect.new(0, 0, 319, 130),
-		CardSel = Rect.new(0, 0, 319, 148),
+		Card = Rect.new(0, 31, 319, 161),
+		CardSel = Rect.new(0, 20, 319, 168),
 		Preview = Rect.new(0, 0, 319, 176),
 	},
 	PurpleBox = {

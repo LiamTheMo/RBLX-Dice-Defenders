@@ -21,8 +21,9 @@ local YELLOW_HEX = "#FDEA0A"
 local GREY = Color3.fromRGB(205, 205, 215)
 local RIM_WHITE = Color3.fromRGB(254, 219, 244)
 local RIM_ORANGE = Color3.fromRGB(248, 130, 20)
-local BAR_SLICE = Rect.new(19, 65, 22, 227) -- narrow centre column of Bag.ScrollTrack: no horizontal stretch
-local BAR_W = 14
+local BAR = { ScrollTrack = Rect.new(19, 65, 22, 227), ScrollThumb = Rect.new(20, 37, 22, 133) } -- narrow centre columns: no horizontal stretch
+local BAR_W = 10 -- track box; the Bag's sprites draw an 8 px ink bar at this width (the Bag's phone scrollbar)
+local ASP = 79 / 391 -- DetailRibbon ink aspect (h / w): ribbons keep it, never stretched
 
 local function round(n: number): number
 	return math.floor(n + 0.5)
@@ -50,7 +51,7 @@ local function label(parent, o)
 		TextXAlignment = if o.AX == 0 then Enum.TextXAlignment.Left else Enum.TextXAlignment.Center,
 		ZIndex = o.Z,
 	}, o.Stroke or 3)
-	l.TextSize = Parts.fitSize(o.Plain or o.Text, o.W, o.Size, o.Min or 12)
+	l.TextSize = Parts.fitSize(o.Plain or o.Text, o.W * 0.95, o.Size, o.Min or 12) -- 5% spare: hinting at fractional UI scales widens text
 	return l
 end
 
@@ -69,6 +70,18 @@ local function clear(parent)
 	end
 end
 
+-- Opaque white divider (Draw.img forces a clear background, which hid the old ones).
+local function divider(parent, x: number, y: number, w: number, h: number, z: number)
+	return make("Frame", {
+		Name = "Divider",
+		Position = UDim2.fromOffset(round(x), round(y)),
+		Size = UDim2.fromOffset(w, round(h)),
+		BackgroundColor3 = WHITE,
+		BorderSizePixel = 0,
+		ZIndex = z,
+	}, parent)
+end
+
 -- Draw.apply keeps the 9-slice rim at design size k.
 local function skin(parent, r, cx, cy, w, h, k, z, name)
 	local img = Draw.img(parent, { Name = name or "Skin", ZIndex = z })
@@ -79,7 +92,7 @@ local function barSkin(inst, name: string, w: number)
 	local s = Bag[name]
 	inst.Image = s.Image
 	inst.ScaleType = Enum.ScaleType.Slice
-	inst.SliceCenter = if name == "ScrollTrack" then BAR_SLICE else Rect.new(20, 37, 22, 133)
+	inst.SliceCenter = BAR[name]
 	inst.SliceScale = w / s.Size.X
 end
 
@@ -92,8 +105,8 @@ local function compute(W: number, H: number, compact: boolean)
 	local L = { W = W, H = H, compact = compact }
 	if compact then
 		L.gap = 5
-		L.leftW = if W >= 700 then 216 else 172
-		L.rightW = if W >= 700 then 240 else 172
+		L.leftW = if W >= 700 then 216 else 164 -- 18 px labels need: titles 136, tile headers 94
+		L.rightW = if W >= 700 then 240 else 206
 		L.midW = W - L.leftW - L.rightW - 2 * L.gap
 		L.midX = L.leftW + L.gap
 		L.rightX = L.midX + L.midW + L.gap
@@ -111,21 +124,29 @@ end
 
 -- Left column ----------------------------------------------------------------------------------------------
 
-local function cardPill(card, wd, L, s, h)
+local function cardPill(card, wd, L, s, w, h)
 	local compact = L.compact
-	local pw, ph = round(264 * s), round(43 * s)
-	local cx, cy = round(9 * s) + pw / 2, h - round(5 * s) - ph / 2
+	local pw, ph = round(266 * s), round(43 * s)
+	local cx, cy = round(8 * s) + pw / 2, h - round(5 * s) - ph / 2
+	if compact then
+		pw, ph = w - 16, 26
+		cx, cy = 8 + pw / 2, h - 5 - ph / 2
+	end
 	local z = card.ZIndex
 	skin(card, Bag.PillGreen, cx, cy, pw, ph, nil, z + 1, "BestPill")
-	icon(card, Bag.IconCrown, cx - pw / 2 + 32 * s, cy, 36 * s, 28 * s, z + 2)
-	local tx0 = 56 * s
-	local avail = pw - tx0 - 10 * s
-	local size = math.max(if compact then 18 else 12, round(24 * s))
+	local crown = not compact or pw >= 150 -- narrowest phones drop the crown so the 18 px text fits
+	local tx0 = if crown then 56 * s else 12
+	if crown then
+		icon(card, Bag.IconCrown, cx - pw / 2 + 32 * s, cy, 36 * s, 28 * s, z + 2)
+	end
+	local avail = pw - tx0 - (if compact then 12 else 10 * s)
+	local size = if compact then 18 else round(25 * s)
+	local num = if wd.Best == "--" then wd.Best else `<font color="{YELLOW_HEX}">{wd.Best}</font>`
 	local plain = `BEST WAVE {wd.Best} / {wd.Waves}`
-	local rich = `BEST WAVE <font color="{YELLOW_HEX}">{wd.Best}</font> / {wd.Waves}`
+	local rich = `BEST WAVE {num} / {wd.Waves}`
 	if compact and measure(plain, size) > avail then
 		plain = `BEST {wd.Best}/{wd.Waves}`
-		rich = `BEST <font color="{YELLOW_HEX}">{wd.Best}</font>/{wd.Waves}`
+		rich = `BEST {num}/{wd.Waves}`
 	end
 	label(card, {
 		Name = "BestText",
@@ -133,15 +154,17 @@ local function cardPill(card, wd, L, s, h)
 		Plain = plain,
 		Rich = true,
 		Size = size,
-		Min = if compact then 14 else 12,
+		Min = if compact then 18 else 12,
 		X = cx - pw / 2 + tx0 + avail / 2,
-		Y = cy + 1,
+		Y = cy,
 		W = avail,
 		H = ph,
 		Stroke = 2,
 		Z = z + 2,
 	})
 end
+
+local GLOW_K = 0.62 -- CellSelected: ~22 sprite px of glow outside its bright line -> ~14 px bloom outside the card edge
 
 local function buildCard(self, host, wd, x, y, w, h, sel, crop, s, L)
 	local art = PlaySprites[wd.Art]
@@ -158,30 +181,41 @@ local function buildCard(self, host, wd, x, y, w, h, sel, crop, s, L)
 	make("UICorner", { CornerRadius = UDim.new(0, round(22 * s)) }, card)
 	make("UIStroke", {
 		Color = if sel then WHITE else RIM_WHITE,
-		Thickness = if sel then 2 else 3,
+		Thickness = 3,
 		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
 	}, card)
 	if sel then
-		local g = if L.compact then 4 else 6
-		local glow =
-			skin(host, Q.CellSelected, x + w / 2, y + h / 2, w + 2 * g, h + 2 * g, 0.2, host.ZIndex + 2, "Glow")
+		local g = if L.compact then 5 else 13
+		local gr = if L.compact then 5 else 7 -- the mid panel's rim sits 6 px right of the card
+		local k = if L.compact then 0.3 else GLOW_K
+		local glow = skin(
+			host,
+			Q.CellSelected,
+			x + (w + gr - g) / 2,
+			y + h / 2,
+			w + g + gr,
+			h + 2 * g,
+			k,
+			host.ZIndex + 2,
+			"Glow"
+		)
 		glow.Interactable = false
 	end
 	label(card, {
 		Name = "Title",
 		Text = wd.Name,
-		Size = math.max(if L.compact then 20 else 14, round(32 * s)),
-		Min = 14,
+		Size = if L.compact then 18 else round(32 * s),
+		Min = if L.compact then 18 else 14,
 		AX = 0,
-		X = if L.compact then 10 else round(30 * s),
-		Y = round(12 * s) + 17 * s,
-		W = round(300 * s),
+		X = if L.compact then 8 else round(27 * s),
+		Y = if L.compact then 15 else round(12 * s) + 17 * s,
+		W = if L.compact then w - 12 else round(300 * s),
 		Z = card.ZIndex + 1,
 		Stroke = 3,
 	})
-	cardPill(card, wd, L, s, h)
+	cardPill(card, wd, L, s, w, h)
 	if wd.Locked then
-		local lw, lh = 39 * s, 46 * s
+		local lw, lh = 34 * s, 40 * s
 		local lock = icon(card, Bag.Lock, w - 34 * s, h - 53 * s, lw, lh, card.ZIndex + 1)
 		lock.Name = "Padlock"
 	end
@@ -198,6 +232,8 @@ local function buildCard(self, host, wd, x, y, w, h, sel, crop, s, L)
 	return card
 end
 
+local CARD_H = { 148, 148, 149, 144 } -- reference card heights (unselected); the selected one is 168 and grows upward
+
 function View:_buildLeft()
 	local L = self._L
 	clear(self._leftFrame)
@@ -209,7 +245,7 @@ function View:_buildLeft()
 	local host = if compact then self._leftScroll else self._leftFrame
 	if compact then
 		local cw = L.leftW - 12
-		local ch = round(cw / 2.45)
+		local ch = math.max(62, round(cw / 2.45))
 		local pitch = ch + 8
 		for i, wd in worlds do
 			buildCard(
@@ -230,10 +266,11 @@ function View:_buildLeft()
 	else
 		local s = L.leftW / 363
 		local f = math.min(1, (L.panelH - 3) / 659) -- short windows squash the card heights (crop keeps the art's aspect)
+		local tops = { 22, 184, 347, 510 }
 		for i, wd in worlds do
 			local sel = wd.Id == self._selected
-			local top = round((22 + 163 * (i - 1)) * f)
-			local h = round(148 * f)
+			local top = round(tops[i] * f)
+			local h = round(CARD_H[i] * f)
 			local art = PlaySprites[wd.Art]
 			if sel then
 				buildCard(
@@ -241,7 +278,7 @@ function View:_buildLeft()
 					host,
 					wd,
 					0,
-					top - round(19 * f),
+					top - round(20 * f),
 					L.leftW,
 					round(168 * f),
 					true,
@@ -258,6 +295,15 @@ function View:_buildLeft()
 end
 
 -- Middle column --------------------------------------------------------------------------------------------
+
+-- Per-icon fit boxes (ref ink sizes); the sprite keeps its own aspect inside the box.
+local ICON_BOX = {
+	IconCrystals = { 67, 59 },
+	Potion = { 56, 68 },
+	IconChest = { 82, 66 },
+	RewardBanner = { 92, 64 },
+	IconGalaxyDie = { 80, 72 },
+}
 
 local function rewardLines(row, lines, cx, cy, w, sizes, z)
 	local total = 0
@@ -283,6 +329,45 @@ local function rewardLines(row, lines, cx, cy, w, sizes, z)
 	end
 end
 
+-- Phone rows stack "WAVE n" over the reward, wrapped at 18 px so nothing truncates.
+local function compactLines(row, avail: number): { string }
+	local src, rew = row.Lines, {}
+	local from = 1
+	if #src >= 2 and src[1]:sub(1, 1) == "+" and measure(src[1], 18) < 60 then
+		rew[1] = src[1] .. " " .. src[2]
+		from = 3
+	end
+	for j = from, #src do
+		table.insert(rew, src[j])
+	end
+	if measure(table.concat(rew, " "), 18) <= avail then
+		return { table.concat(rew, " ") }
+	end
+	local out = {}
+	for _, l in rew do
+		local at, best = nil, 1e9
+		if measure(l, 18) > avail then
+			for pos in l:gmatch("()%s") do
+				local d = math.abs(pos - #l / 2)
+				if d < best then
+					at, best = pos, d
+				end
+			end
+		end
+		if at then
+			table.insert(out, l:sub(1, at - 1))
+			table.insert(out, l:sub(at + 1))
+		else
+			table.insert(out, l)
+		end
+	end
+	return out
+end
+
+local function compactRowH(row, rowW: number): number
+	return math.max(48, 10 + 20 * (1 + #compactLines(row, rowW - 34)))
+end
+
 local function buildRow(host, row, x, y, w, h, compact, f)
 	local frame = Draw.img(host, {
 		Name = "Row" .. row.Wave,
@@ -292,72 +377,83 @@ local function buildRow(host, row, x, y, w, h, compact, f)
 	}, "Frame")
 	skin(frame, Q.Row, w / 2, h / 2, w, h, nil, frame.ZIndex + 1, "Skin")
 	local z = frame.ZIndex + 3
-	local d = if compact then 30 else 46
+	local d = if compact then 32 else 46
 	local circle = Draw.img(frame, { Name = "Status", ZIndex = z })
 	Draw.apply(
 		circle,
 		if row.Reached then Q.CheckCircle else PlaySprites.LockCircle,
-		if compact then 2 else -9,
+		if compact then 2 else -10,
 		h / 2,
 		d,
 		d
 	)
-	local wsize = if compact then 18 else 27
+	if compact then
+		local avail = w - 34
+		local lines = compactLines(row, avail)
+		local y0 = h / 2 - (1 + #lines) * 10
+		label(frame, {
+			Name = "Wave",
+			Text = "WAVE " .. row.Wave,
+			AX = 0,
+			Size = 18,
+			Min = 18,
+			X = 24,
+			Y = y0 + 10,
+			W = avail,
+			H = 20,
+			Z = z,
+			Stroke = 3,
+		})
+		for i, str in lines do
+			label(frame, {
+				Name = "Reward" .. i,
+				Text = str,
+				AX = 0,
+				Size = 18,
+				Min = 18,
+				X = 24,
+				Y = y0 + 10 + 20 * i,
+				W = avail,
+				H = 20,
+				Z = z,
+				Stroke = 2,
+			})
+		end
+		return
+	end
 	label(frame, {
 		Name = "Wave",
 		Text = "WAVE " .. row.Wave,
 		AX = 0,
-		Size = wsize,
-		Min = if compact then 16 else 20,
-		X = if compact then 20 else 32,
+		Size = 29,
+		Min = 20,
+		X = 32,
 		Y = h / 2,
-		W = if compact then 78 else 118,
+		W = 118,
 		Z = z,
 		Stroke = 3,
 	})
-	local ix, dx, tx, tw = 200 * f, 254 * f, 327 * f, 134 * f
-	if compact then
-		if w >= 220 then
-			ix, dx = 118, 140
-		else -- narrow phones: no reward icon, the lines get the room
-			ix, dx = nil, 100
-		end
-		tw = w - dx - 12
-		tx = dx + 6 + tw / 2
-	end
-	local ibox = if compact then 36 else 64
-	if ix and row.Icon == "CrownGems" then
-		icon(frame, Q.IconCrown, ix, h / 2 - (if compact then 6 else 9), ibox * 0.95, ibox * 0.75, z)
+	local ix, dx, tx, tw = 192 * f, 251 * f, 323 * f, 126 * f
+	local box = ICON_BOX[row.Icon] or { 67, 59 }
+	if row.Icon == "CrownGems" then
+		icon(frame, Q.IconCrown, ix, h / 2 - 8, 84, 62, z)
 		for i = -1, 1 do
 			local gem = Draw.img(frame, {
 				Name = "Gem",
 				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.fromOffset(
-					round(ix + i * (ibox * 0.28)),
-					round(h / 2 + ibox * (if compact then 0.28 else 0.35))
-				),
-				Size = UDim2.fromOffset(ibox * 0.28, ibox * 0.28),
+				Position = UDim2.fromOffset(round(ix + i * 27), round(h / 2 + 26)),
+				Size = UDim2.fromOffset(26, 26),
 				Image = Sprites.Gem,
-				ZIndex = z,
+				ZIndex = z + 1,
 			})
 			gem.ScaleType = Enum.ScaleType.Fit
 		end
-	elseif ix then
-		icon(frame, rec(row.Icon), ix, h / 2, ibox, ibox, z)
+	else
+		icon(frame, rec(row.Icon), ix, h / 2, box[1], box[2], z)
 	end
-	local div = Draw.img(frame, {
-		Name = "Divider",
-		Position = UDim2.fromOffset(round(dx), round(h / 2 - (if compact then 18 else 27))),
-		Size = UDim2.fromOffset(3, if compact then 36 else 55),
-		BackgroundColor3 = WHITE,
-		BackgroundTransparency = 0.05,
-		ZIndex = z,
-	}, "Frame")
-	div.BorderSizePixel = 0
-	local sizes = if compact
-		then (if #row.Lines >= 3 then { 17, 15, 15 } else { 19, 17 })
-		else (if #row.Lines >= 3 then { 26, 19, 19 } else { 28, 20 })
-	if h < 72 and not compact then
+	divider(frame, dx, h / 2 - 27.5, 4, 55, z)
+	local sizes = if #row.Lines >= 3 then { 26, 18, 18 } else { 28, 20 }
+	if h < 72 then
 		for i, v in sizes do
 			sizes[i] = math.floor(v * math.max(0.85, h / 72))
 		end
@@ -374,16 +470,24 @@ function View:_buildMid()
 	mid.Position = UDim2.fromOffset(L.midX, 0)
 	mid.Size = UDim2.fromOffset(midW, L.H)
 	local base = mid.ZIndex
-	skin(mid, Bag.LeftPanel, midW / 2, L.panelH / 2, midW, L.panelH, 0.5, base + 1, "Panel")
-	-- ribbon + trophies + title
-	local rw, rh, rcy = if compact then midW - 20 else 400, if compact then 36 else 72, if compact then 24 else 50
-	skin(mid, Q.DetailRibbon, midW / 2, rcy, rw, rh, nil, base + 2, "Ribbon")
-	local tsz = if compact then (if midW < 250 then 24 else 28) else 46
-	local tdx = rw / 2 - tsz / 2 - (if compact then 14 else 20)
-	icon(mid, Q.IconTabTrophy, midW / 2 - tdx, rcy - 1, tsz, tsz, base + 3)
-	icon(mid, Q.IconTabTrophy, midW / 2 + tdx, rcy - 1, tsz, tsz, base + 3)
-	local avail = 2 * tdx - tsz - 16
-	local title, tsize = "FIRST-TIME MILESTONES", if compact then 18 else 28
+	if compact then
+		skin(mid, Bag.LeftPanel, midW / 2, L.panelH / 2, midW, L.panelH, 0.5, base + 1, "Panel")
+	else
+		skin(mid, Bag.LeftPanel, midW / 2 - 2, L.panelH / 2 - 1, midW + 2, L.panelH, 0.5, base + 1, "Panel")
+	end
+	-- ribbon (kept at its own aspect; the body is its top 76%) + trophies + title
+	local rw = if compact then midW - 20 else 400
+	local rh = round(rw * ASP)
+	local rtop = if compact then 6 else 15
+	local bodyCy = rtop + rh * 0.38
+	skin(mid, Q.DetailRibbon, midW / 2, rtop + rh / 2, rw, rh, nil, base + 2, "Ribbon")
+	local tsz = if compact then (if midW < 250 then 24 else 28) else 51
+	local tdx = if compact then rw / 2 - tsz / 2 - 8 else 171
+	local tcy = bodyCy + 2
+	icon(mid, Q.IconTabTrophy, midW / 2 - tdx, tcy, tsz, if compact then tsz else 46, base + 3)
+	icon(mid, Q.IconTabTrophy, midW / 2 + tdx, tcy, tsz, if compact then tsz else 46, base + 3)
+	local avail = 2 * tdx - tsz - (if compact then 10 else 14)
+	local title, tsize = "FIRST-TIME MILESTONES", if compact then 18 else 29
 	if compact and measure(title, tsize) > avail then
 		title = "MILESTONES"
 	end
@@ -391,9 +495,9 @@ function View:_buildMid()
 		Name = "RibbonText",
 		Text = title,
 		Size = tsize,
-		Min = 17,
+		Min = if compact then 18 else 20,
 		X = midW / 2,
-		Y = rcy - 1,
+		Y = bodyCy + 1,
 		W = avail,
 		Z = base + 4,
 	})
@@ -401,37 +505,43 @@ function View:_buildMid()
 	-- rows
 	local rows = self._rows
 	if compact then
-		local sy, sh = 2 * rcy + 6, L.H - (2 * rcy + 6) - 62
+		local sy = rtop + rh + 4
+		local sh = L.H - sy - 62
 		local scroll = self._rowScroll
 		scroll.Visible = true
 		local lead = if midW < 250 then 26 else 34
 		scroll.Position = UDim2.fromOffset(lead, sy)
-		scroll.Size = UDim2.fromOffset(midW - lead - 18, sh)
+		scroll.Size = UDim2.fromOffset(midW - lead - 22, sh)
 		scroll.ZIndex = base + 2
-		local rowW, rowH, pitch = midW - lead - 18 - 14, 52, 58
-		for i, row in rows do
-			buildRow(scroll, row, 14, 4 + (i - 1) * pitch, rowW, rowH, true, 1)
+		local rowW = midW - lead - 22 - 16
+		local y = 4
+		for _, row in rows do
+			local h = compactRowH(row, rowW)
+			buildRow(scroll, row, 14, y, rowW, h, true, 1)
+			y += h + 6
 		end
-		scroll.CanvasSize = UDim2.fromOffset(0, 8 + #rows * pitch)
+		scroll.CanvasSize = UDim2.fromOffset(0, y + 2)
 	else
 		self._rowScroll.Visible = false
-		local rowW = midW - 61
+		local rowW = midW - 59
 		local g = math.min(1, L.panelH / 673)
+		local tops = { 92, 173, 254, 335, 418, 501 }
 		for i, row in rows do
-			buildRow(mid, row, 48, round((93 + 81.8 * (i - 1)) * g), rowW, round(72 * g), false, rowW / 395)
+			buildRow(mid, row, 46, round(tops[i] * g), rowW, round(72 * g), false, rowW / 397)
 		end
 	end
 
 	-- WORLD CLEAR pill + sparkles
 	local clearOn = self._worldClear
 	local pw, ph = if compact then math.min(midW - 70, 176) else 309, if compact then 44 else 58
-	local pcx, pcy = midW / 2, if compact then L.H - 30 else round(622 * math.min(1, L.panelH / 673))
+	local pcx = midW / 2 + (if compact then 0 else 1.5)
+	local pcy = if compact then L.H - 30 else round(621 * math.min(1, L.panelH / 673))
 	skin(mid, if clearOn then Bag.PillGold else Bag.PillGrey, pcx, pcy, pw, ph, nil, base + 3, "WorldClear")
 	label(mid, {
 		Name = "Text",
 		Text = "WORLD CLEAR",
 		Size = if compact then 22 else 37,
-		Min = if compact then 17 else 20,
+		Min = if compact then 18 else 20,
 		Color = if clearOn then YELLOW else GREY,
 		X = pcx,
 		Y = pcy - 1,
@@ -440,10 +550,10 @@ function View:_buildMid()
 	})
 	local sx = pw / 2 + (if compact then 12 else 22)
 	for sgn = -1, 1, 2 do
-		icon(mid, Q.Sparkle1, pcx + sgn * sx, pcy + 2, if compact then 18 else 28, if compact then 18 else 28, base + 3)
+		icon(mid, Q.Sparkle1, pcx + sgn * sx, pcy - 1, if compact then 18 else 26, if compact then 18 else 26, base + 3)
 		if not compact then
-			icon(mid, Q.Sparkle3, pcx + sgn * (sx - 6), pcy - 24, 14, 14, base + 3)
-			icon(mid, Q.Sparkle3, pcx + sgn * (sx - 6), pcy + 20, 14, 14, base + 3)
+			icon(mid, Q.Sparkle3, pcx + sgn * (sx - 6), pcy - 23, 12, 12, base + 3)
+			icon(mid, Q.Sparkle3, pcx + sgn * (sx - 6), pcy + 21, 12, 12, base + 3)
 		end
 	end
 	self:_updateBars()
@@ -465,10 +575,10 @@ function View:_buildRight()
 	local col = self._right
 	clear(col)
 	local compact, rw = L.compact, L.rightW
-	local P, ohFull, thFull = 209, 144, 101 -- short windows (small desktops) shrink the preview first, then odds, then tiles
+	local P, ohFull, thFull = 211, 144, 101 -- short windows (small desktops) shrink the preview first, then odds, then tiles
 	if not compact then
-		local deficit = math.max(0, P + 442 - L.panelH)
-		local cut = math.min(deficit, 59)
+		local deficit = math.max(0, P + 441 - L.panelH)
+		local cut = math.min(deficit, 62)
 		P -= cut
 		deficit -= cut
 		cut = math.min(deficit, 30)
@@ -492,7 +602,8 @@ function View:_buildRight()
 			local art = PlaySprites[wd.Art]
 			local pv = Draw.img(col, {
 				Name = "Preview",
-				Size = UDim2.fromOffset(rw, P),
+				Position = UDim2.fromOffset(-1, -1),
+				Size = UDim2.fromOffset(rw + 4, P),
 				Image = art.Image,
 				ImageRectOffset = art.Preview.Min,
 				ImageRectSize = Vector2.new(art.Preview.Width, art.Preview.Height),
@@ -502,24 +613,29 @@ function View:_buildRight()
 			make("UICorner", { CornerRadius = UDim.new(0, 22) }, pv)
 			make("UIStroke", { Color = RIM_ORANGE, Thickness = 3, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, pv)
 		end
-		y = P + 17
+		y = P - 1 + 4
 	end
-	-- ribbon
-	local rh = if compact then 32 else 56
-	local rcy = y + rh / 2
-	skin(col, Q.DetailRibbon, rw / 2, rcy, rw, rh, nil, base + 1, "Ribbon")
+	-- ribbon (own aspect; the body is its top 76%)
+	local rh = round(rw * ASP)
+	local rx = rw / 2 + (if compact then 0 else 2)
+	skin(col, Q.DetailRibbon, rx, y + rh / 2, rw, rh, nil, base + 1, "Ribbon")
+	local rtitle = if compact then "REPEAT REWARDS" else "REPEAT REWARDS \u{2022} EVERY 10 WAVES"
+	local rwid = rw * 0.75 - 14
+	if compact and measure(rtitle, 18) > rwid then
+		rtitle = "REWARDS"
+	end
 	label(col, {
 		Name = "RibbonText",
-		Text = if compact then "REPEAT REWARDS" else "REPEAT REWARDS \u{2022} EVERY 10 WAVES",
+		Text = rtitle,
 		Size = if compact then 18 else 22,
-		Min = if compact then 17 else 14,
-		X = rw / 2,
-		Y = rcy - 1,
-		W = rw - (if compact then 44 else 70),
+		Min = if compact then 18 else 14,
+		X = rx,
+		Y = y + rh * 0.38 + 1,
+		W = rwid,
 		Z = base + 3,
 		Stroke = 2,
 	})
-	y += rh + (if compact then 5 else 4)
+	y += rh + 2
 
 	-- tiles
 	local tiles = self._tiles
@@ -527,12 +643,16 @@ function View:_buildRight()
 	local cols = 4
 	if compact then
 		cols = 2
-		tgap = 6
-		tw, th = round((rw - tgap) / 2), 56
+		tw, th = round((rw - tgap) / 2), 60
+	end
+	local hh = if compact then 24 else 25
+	local lsize = if compact then 18 else 19
+	for _, tile in tiles do -- one label size for every tile
+		lsize = math.min(lsize, Parts.fitSize(tile.Label, tw - 6, lsize, if compact then 18 else 11))
 	end
 	for i, tile in tiles do
 		local c, r = (i - 1) % cols, (i - 1) // cols
-		local tx, ty = c * (tw + tgap) + (if compact then 0 else 1), y + r * (th + tgap)
+		local tx, ty = c * (tw + tgap) + (if compact then 0 else 4), y + r * (th + tgap)
 		local box = Draw.img(col, {
 			Name = "Tile" .. i,
 			Position = UDim2.fromOffset(tx, ty),
@@ -540,80 +660,59 @@ function View:_buildRight()
 			ZIndex = base + 1,
 		}, "Frame")
 		skin(box, PlaySprites.PurpleBox, tw / 2, th / 2, tw, th, if compact then 0.2 else 0.3, box.ZIndex + 1, "Skin")
-		local hh = if compact then 22 else 25
-		skin(box, Bag.PillPurple, tw / 2, hh / 2 + 3, tw - 8, hh, nil, box.ZIndex + 2, "Header")
+		skin(box, Bag.PillPurple, tw / 2, hh / 2 + 1, tw - 4, hh, nil, box.ZIndex + 2, "Header")
 		label(box, {
 			Name = "Label",
 			Text = tile.Label,
-			Size = if compact then 17 else 19,
-			Min = if compact then 13 else 11,
+			Size = lsize,
+			Min = if compact then 18 else 11,
 			X = tw / 2,
-			Y = hh / 2 + 3,
-			W = tw - 18,
+			Y = hh / 2 + 1,
+			W = tw - 6,
 			Stroke = 2,
 			Z = box.ZIndex + 3,
 		})
-		local iy = hh + 3 + (th - hh - 3) / 2
+		local iy = if compact then hh + 1 + (th - hh - 1) / 2 else 62 * th / 101
 		icon(box, rec(tile.Icon), tw / 2, iy, if compact then 34 else 58, if compact then 28 else 58, box.ZIndex + 2)
 	end
 	local rowsN = (#tiles + cols - 1) // cols
-	y += rowsN * th + (rowsN - 1) * tgap + (if compact then 6 else 15)
+	y += rowsN * th + (rowsN - 1) * tgap + (if compact then 6 else 9)
 
 	-- odds
-	local oh = if compact then 98 else ohFull
+	local lines = self._odds
+	local oh = if compact then math.max(70, 20 * #lines + 8) else ohFull
+	local ow = if compact then rw else rw - 1
 	local odds = Draw.img(col, {
 		Name = "Odds",
-		Position = UDim2.fromOffset(if compact then 0 else 1, y),
-		Size = UDim2.fromOffset(if compact then rw else rw - 2, oh),
+		Position = UDim2.fromOffset(if compact then 0 else 4, y),
+		Size = UDim2.fromOffset(ow, oh),
 		ZIndex = base + 1,
 	}, "Frame")
-	local ow = rw - (if compact then 0 else 2)
 	skin(odds, PlaySprites.PurpleBox, ow / 2, oh / 2, ow, oh, 0.4, odds.ZIndex + 1, "Skin")
 	local z = odds.ZIndex + 3
-	local dieS = if compact then 52 else 90
-	local dieX = if compact then 36 else 73
-	icon(odds, Q.IconGalaxyDie, dieX, oh / 2 + 2, dieS, dieS, z)
-	icon(
-		odds,
-		Q.Sparkle2,
-		dieX - dieS / 2 + 2,
-		oh / 2 - dieS * 0.12,
-		if compact then 14 else 22,
-		if compact then 14 else 22,
-		z + 1
-	)
-	local dvx = if compact then 68 else 140
-	local div = Draw.img(odds, {
-		Name = "Divider",
-		Position = UDim2.fromOffset(dvx, round(oh * 0.12)),
-		Size = UDim2.fromOffset(if compact then 3 else 4, round(oh * 0.76)),
-		BackgroundColor3 = WHITE,
-		BackgroundTransparency = 0.05,
-		ZIndex = z,
-	}, "Frame")
-	div.BorderSizePixel = 0
-	local lines = self._odds
-	local textCx = (dvx + 4 + ow - 6) / 2
-	local textW = ow - 6 - (dvx + 8)
-	local ys, sizes
+	local textCx, textW = ow / 2, ow - 14
+	local ys, sizes = {}, {}
 	if compact then
-		local n = math.min(#lines, 4)
-		lines = { table.unpack(lines, 1, n) }
-		ys, sizes = {}, {}
-		for i = 1, n do
-			ys[i] = oh / 2 + (i - (n + 1) / 2) * 21
+		for i = 1, #lines do
+			ys[i] = oh / 2 + (i - (#lines + 1) / 2) * 20
 			sizes[i] = 18
 		end
-	elseif #lines == 5 then
-		ys, sizes = { 18, 46, 75, 103, 128 }, { 25, 25, 25, 22, 21 }
-		for i = 1, 5 do
-			ys[i] = ys[i] * oh / 144
-		end
 	else
-		ys, sizes = {}, {}
-		for i = 1, #lines do
-			ys[i] = oh / 2 + (i - (#lines + 1) / 2) * 30
-			sizes[i] = 25
+		local dvx = 134
+		icon(odds, Q.IconGalaxyDie, 69, oh * 68.5 / 144, 85, 95, z)
+		icon(odds, Q.Sparkle2, 33, oh * 0.38, 22, 22, z + 1)
+		divider(odds, dvx, oh * 13 / 144, 4, oh * 112 / 144, z)
+		textCx, textW = (dvx + 4 + ow - 6) / 2, ow - 6 - (dvx + 12)
+		if #lines == 5 then
+			ys, sizes = { 16, 44, 73, 100, 124 }, { 25, 25, 25, 22, 21 }
+			for i = 1, 5 do
+				ys[i] = ys[i] * oh / 144
+			end
+		else
+			for i = 1, #lines do
+				ys[i] = oh / 2 + (i - (#lines + 1) / 2) * 30
+				sizes[i] = 25
+			end
 		end
 	end
 	for i, line in lines do
@@ -624,7 +723,7 @@ function View:_buildRight()
 			Plain = plain,
 			Rich = true,
 			Size = sizes[i],
-			Min = if compact then 14 else 12,
+			Min = if compact then 18 else 12,
 			X = textCx,
 			Y = ys[i],
 			W = textW,
@@ -633,23 +732,25 @@ function View:_buildRight()
 			Z = z,
 		})
 	end
-	y += oh + (if compact then 10 else 15)
+	y += oh + (if compact then 8 else 17)
 
 	-- START
 	local sw, sh = if compact then rw else 334, if compact then 58 else 90
 	local bw, bh = Parts.inkBox("BtnGreen", sw, sh)
 	local scy = if compact then math.min(L.H - sh / 2 - 2, y + sh / 2) else y + sh / 2
+	local scx = round(rw / 2) + (if compact then 0 else 6)
 	local btn = Parts.button(col, {
 		Name = "Start",
 		Style = "Green",
 		Label = "START",
-		TextSize = if compact then 28 else 48,
+		TextSize = if compact then 28 else 50,
 		Icon = PlaySprites.PlayArrow,
 		Size = UDim2.fromOffset(round(bw), round(bh)),
 		Enabled = self._startState == "Ready",
 	})
 	btn.AnchorPoint = Vector2.new(0.5, 0.5)
-	btn.Position = UDim2.fromOffset(round(rw / 2), round(scy))
+	btn.Position = UDim2.fromOffset(scx, round(scy))
+	btn.Label:FindFirstChildOfClass("UIStroke").Thickness = if compact then 3 else 4.5 -- the reference outline is ~5 px
 	self._startBtn = btn
 	btn.Activated:Connect(function()
 		if self._startState == "Ready" and self._onStart then
@@ -657,16 +758,14 @@ function View:_buildRight()
 		end
 	end)
 	for sgn = -1, 1, 2 do
-		icon(
-			col,
-			Q.Sparkle1,
-			rw / 2 + sgn * (sw / 2 + 2 - (if compact then 10 else 6)),
-			scy - sh * 0.3,
-			20,
-			20,
-			base + 5
-		)
-		icon(col, Q.Sparkle1, rw / 2 + sgn * (sw / 2 + 2 - (if compact then 6 else 0)), scy + 4, 22, 22, base + 5)
+		if compact then
+			icon(col, Q.Sparkle1, scx + sgn * (sw / 2 - 8), scy - sh * 0.3, 16, 16, base + 5)
+			icon(col, Q.Sparkle1, scx + sgn * (sw / 2 - 4), scy + 4, 18, 18, base + 5)
+		else
+			icon(col, Q.Sparkle1, scx + sgn * 174, scy - 30, 26, 26, base + 5)
+			icon(col, Q.Sparkle1, scx + sgn * 186, scy - 6, 28, 28, base + 5)
+			icon(col, Q.Sparkle1, scx + sgn * 174, scy + 17, 12, 12, base + 5)
+		end
 	end
 end
 
@@ -676,7 +775,8 @@ local function makeBar(holder, scroll)
 	local track = Draw.img(holder, { Name = "ScrollTrack", AnchorPoint = Vector2.new(1, 0), Visible = false })
 	track:SetAttribute("Keep", true)
 	barSkin(track, "ScrollTrack", BAR_W)
-	local thumb = Draw.img(track, { Name = "Thumb", ZIndex = track.ZIndex + 1 })
+	local thumb = Draw.img(track, { Name = "Thumb", AnchorPoint = Vector2.new(0.5, 0), ZIndex = track.ZIndex + 1 })
+	barSkin(thumb, "ScrollThumb", BAR_W)
 	return function()
 		local win, maxY =
 			scroll.AbsoluteWindowSize.Y, math.max(0, scroll.AbsoluteCanvasSize.Y - scroll.AbsoluteWindowSize.Y)
@@ -688,12 +788,9 @@ local function makeBar(holder, scroll)
 		track.Size = UDim2.fromOffset(BAR_W, h)
 		local canvas = math.max(1, scroll.AbsoluteCanvasSize.Y)
 		local thumbH = math.clamp(math.floor(h * win / canvas), 40, math.max(40, h))
-		Draw.thumb(
-			thumb,
-			BAR_W,
-			thumbH,
-			math.floor((h - thumbH) * (if maxY > 0 then scroll.CanvasPosition.Y / maxY else 0))
-		)
+		thumb.Size = UDim2.fromOffset(BAR_W, thumbH)
+		thumb.Position =
+			UDim2.new(0.5, 0, 0, math.floor((h - thumbH) * (if maxY > 0 then scroll.CanvasPosition.Y / maxY else 0)))
 	end
 end
 

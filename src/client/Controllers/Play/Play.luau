@@ -34,15 +34,15 @@ function Play.new(parent, deps)
 		free = true,
 		banner = {
 			text = "PLAY",
-			textX = 0.572, -- the swords sit left of the title
-			textY = 0.444,
+			textX = 0.585, -- the swords sit left of the title
+			textY = 0.41,
 			textW = 0.37,
-			textFull = 46,
+			textFull = 58, -- cap ~42 like the reference
 			textCompact = 22,
 			emblems = {
 				{ sprite = PlaySprites.LaurelL, box = { 0.1447, 0.1458, 0.1053, 0.6667 } },
 				{ sprite = PlaySprites.LaurelR, box = { 0.7409, 0.1458, 0.1053, 0.6667 } },
-				{ sprite = SWORDS, box = { 0.2196, -0.0569, 0.1822, 0.8125 } },
+				{ sprite = SWORDS, box = { 0.21, -0.233, 0.2006, 0.89 } },
 			},
 		},
 	})
