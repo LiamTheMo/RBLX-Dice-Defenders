@@ -243,11 +243,10 @@ local function pillRoleSize(worlds, L, s, w, h): number
 	return size
 end
 
-local function cardPill(card, wd, L, s, w, h, role)
+local function cardPill(card, wd, L, s, w, h, role, z)
 	local g = pillGeom(wd, L, s, w, h)
 	local cx, cy, pw, ph = g.cx, g.cy, g.pw, g.ph
-	local z = card.ZIndex
-	skin(card, Bag.PillGreen, cx, cy, pw, ph, nil, z + 1, "BestPill")
+	skin(card, if wd.Locked then Bag.PillGrey else Bag.PillGreen, cx, cy, pw, ph, nil, z + 1, "BestPill")
 	if g.crown then
 		icon(card, Bag.IconCrown, cx - pw / 2 + 32 * s, cy, 36 * s, 28 * s, z + 2)
 	end
@@ -314,6 +313,18 @@ local function buildCard(self, host, wd, x, y, w, h, sel, crop, s, L)
 	if sel then
 		bloom(host, x, y, w, h, round(22 * s), host.ZIndex + 2, L.compact)
 	end
+	local zt = card.ZIndex + (if wd.Locked then 2 else 0) -- locked: title / pill / padlock sit above the gray shade (card + 2)
+	if wd.Locked then
+		-- grays the art (and the Shadow moon) out: 25% of the art's colour shows through a neutral gray
+		local shade = make("Frame", {
+			Name = "LockShade",
+			Size = UDim2.fromScale(1, 1),
+			BackgroundColor3 = Color3.fromRGB(80, 80, 88),
+			BackgroundTransparency = 0.25,
+			ZIndex = card.ZIndex + 2,
+		}, card)
+		make("UICorner", { CornerRadius = UDim.new(0, round(22 * s)) }, shade)
+	end
 	label(card, {
 		Name = "Title",
 		Text = wd.Name,
@@ -323,10 +334,10 @@ local function buildCard(self, host, wd, x, y, w, h, sel, crop, s, L)
 		X = if L.compact then 10 else 12,
 		Y = if L.compact then 18 else round(12 * s) + 17 * s,
 		W = if L.compact then (w - 10 - mpx(5) - 3) / 0.95 else w - 16, -- phones: the title ends >= 5 real px from the card rim (3 px outline)
-		Z = card.ZIndex + 1,
+		Z = zt + 1,
 		Stroke = 3,
 	})
-	cardPill(card, wd, L, s, w, h, L.pillSize)
+	cardPill(card, wd, L, s, w, h, L.pillSize, zt)
 	if wd.Art == "WorldShadow" and not L.compact then
 		-- the source art's moon is ~85 px at card scale (ref ~38): the card crop stops left of / below it and a small disc is cut from the same sheet
 		local d = round(38 * s)
@@ -346,14 +357,23 @@ local function buildCard(self, host, wd, x, y, w, h, sel, crop, s, L)
 			ZIndex = card.ZIndex + 1,
 		})
 		make("UICorner", { CornerRadius = UDim.new(0.5, 0) }, moon)
+		-- the sheet's tree crosses the disc's lower half: fade it into the card art instead of a hard circular cut
+		make("UIGradient", {
+			Rotation = 90,
+			Transparency = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 0),
+				NumberSequenceKeypoint.new(0.45, 0),
+				NumberSequenceKeypoint.new(1, 1),
+			}),
+		}, moon)
 	end
 	if wd.Locked then
 		-- right of the BEST pill (never over it or the art's die / castle); phones have no room: top-right corner
 		local lock
 		if L.compact then
-			lock = icon(card, Bag.Lock, w - 20, h - 19, 18, 22, card.ZIndex + 1)
+			lock = icon(card, Bag.Lock, w - 20, h - 19, 18, 22, zt + 1)
 		else
-			lock = icon(card, Bag.Lock, w - 24 * s, h - 24 * s, 27 * s, 32 * s, card.ZIndex + 1)
+			lock = icon(card, Bag.Lock, w - 24 * s, h - 24 * s, 27 * s, 32 * s, zt + 1)
 		end
 		lock.Name = "Padlock"
 	end
@@ -965,7 +985,18 @@ function View:_buildRight()
 			box.ZIndex + 1,
 			"Skin"
 		)
-		skin(box, Bag.PillPurple, tw / 2, hh / 2 + 1, tw - (if tight then 2 else 4), hh, nil, box.ZIndex + 2, "Header")
+		-- phones: tw - 1 gives COSMETICS (89 px at the 18 px floor) >= 3 real px to the pill ends; neighbour headers stay 7 px apart
+		skin(
+			box,
+			Bag.PillPurple,
+			tw / 2,
+			hh / 2 + 1,
+			tw - (if compact then 1 elseif tight then 2 else 4),
+			hh,
+			nil,
+			box.ZIndex + 2,
+			"Header"
+		)
 		label(box, {
 			Name = "Label",
 			Text = tile.Label,
@@ -1120,25 +1151,29 @@ function View:_buildRight()
 		end
 		return
 	end
-	-- Three sparkles a side like the reference, each hugging the pill's end cap with >= 5 real px to it and to the window rim; any that
-	-- cannot fit is dropped (a column too narrow for all of them keeps one corner pair).
-	local hw, m5, drawn = (math.min(339, rw - 8) - 9) / 2, mpx(5), 0
-	for _, sp in { { -34, 18 }, { -12, 10 }, { 30, 16 } } do
-		local half = sp[2] / 2
-		local dy = math.clamp(sp[1], y - 8 + m5 + half - scy, L.H - 4.5 - half - scy) -- >= 5 real px under the odds box above, inside the window rim below
-		local xmin = hw - 43 + math.sqrt(math.max(0, 43 * 43 - dy * dy)) + half + m5 + 0.5
-		if xmin <= rw - 3 - m5 - half - scx then
-			drawn += 1
-			for sgn = -1, 1, 2 do
-				spark(col, Q.Sparkle1, scx + sgn * xmin, scy + dy, sp[2], base + 20)
-			end
-		end
+	-- Up to three sparkles a side like the reference, each >= 5 real px from the button's PIXELS (its dark rim included) and from the
+	-- window rim / odds box. BtnGreen's alpha edge is its ink box with 32 px round corners (measured from Bag_BtnGreen.png at k = 1;
+	-- conservative for both corners). A corner sparkle slides outward into the corner pocket, then shrinks; any that cannot fit is dropped.
+	local bhw, bhh, rad, m5 = sw / 2, sh / 2, 32, mpx(5)
+	local function gap(x, dy) -- distance from (x, dy) (relative to the button centre) to the button's pixels
+		local qx, qy = math.abs(x) - (bhw - rad), math.abs(dy) - (bhh - rad)
+		return math.sqrt(math.max(qx, 0) ^ 2 + math.max(qy, 0) ^ 2) + math.min(math.max(qx, qy), 0) - rad
 	end
-	if drawn == 0 then
-		for sgn = -1, 1, 2 do -- 18 px sparkles on the pill's rounded corners (45 degrees off the end circle, ~10 px clear), mirrored, inside the column rim
-			local x = scx + sgn * math.min(165.5, rw - 12.5 - scx) -- >= 5 real px inside the window rim (9 px half sparkle + 3 px rim)
-			spark(col, Q.Sparkle1, x, scy + math.max(-44, y - 8 + m5 + 9 - scy), 18, base + 20)
-			spark(col, Q.Sparkle1, x, scy + math.min(44, L.H - 13.5 - scy), 18, base + 20)
+	for _, sp in { { -34, 18, true }, { -12, 10, false }, { 30, 16, true } } do
+		for size = sp[2], 10, -2 do
+			local half = size / 2
+			local lo, hi = y - 8 + m5 + half - scy, L.H - 4.5 - half - scy -- >= 5 real px under the odds box, inside the window rim
+			local x, dy = rw - 3 - m5 - half - scx, math.clamp(sp[1], lo, hi) -- as far from the button as the window rim allows
+			local step = if sp[1] < 0 then -1 else 1
+			while sp[3] and gap(x, dy) < half + m5 + 1 and dy + step >= lo and dy + step <= hi do
+				dy += step
+			end
+			if gap(x, dy) >= half + m5 + 1 then -- +1: Draw.apply rounds the position and size to whole px
+				for sgn = -1, 1, 2 do
+					spark(col, Q.Sparkle1, scx + sgn * x, scy + dy, size, base + 20)
+				end
+				break
+			end
 		end
 	end
 end
