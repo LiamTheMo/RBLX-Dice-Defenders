@@ -117,10 +117,9 @@ function Toolbar.new(parent)
 		local inner = W - PAD_L - PAD_R
 		local compact = inner < 560
 		compactNow = compact
-		local iconOnly = compact and inner < 300 -- phone: the chevron alone, the menu names the options
 		local hasLabel = labelText ~= ""
 		ddW = if compact
-			then (if iconOnly then 58 else 128)
+			then (if inner < 300 then 112 else 128) -- phone: short value ("All", "Progress", "Level")
 			elseif not hasLabel then 284 -- ref MASTERY: one wide "Sort: ..." pill
 			elseif countText then 245 -- ref ACHIEVEMENTS: SORT: + dropdown, then the count at the right end
 			else 203
@@ -128,7 +127,7 @@ function Toolbar.new(parent)
 		label.Text = labelText
 		label.Size = UDim2.fromOffset(60, HIT_H)
 		local edge = W - PAD_R
-		local showCount = countText ~= nil and not iconOnly
+		local showCount = countText ~= nil and not compact -- phone: no room, the grid shows the cells themselves
 		local right = if showCount then edge - (if compact then 84 else 132) else edge -- ink right edge of the dropdown
 		hit.Size = UDim2.fromOffset(ddW + 8, HIT_H)
 		hit.Position = UDim2.fromOffset(right + 4, CY)
@@ -139,8 +138,7 @@ function Toolbar.new(parent)
 			- (DROPDOWN.Size.X - DROPDOWN.Ink.Width)
 		local dk = math.min(INK_H / DROPDOWN.Ink.Height, ddW / capX)
 		Draw.apply(skin, DROPDOWN, (ddW + 8) / 2, HIT_H / 2, ddW, DROPDOWN.Ink.Height * dk, dk)
-		local textW = if compact then ddW - 60 else ddW - 62 -- compact: clear of the chevron
-		ddText.Visible = not iconOnly
+		local textW = if compact then ddW - 58 else ddW - 62 -- compact: clear of the chevron
 		ddText.Position = UDim2.fromOffset(4 + (if compact then 10 else 12) + textW / 2, HIT_H / 2)
 		ddText.Size = UDim2.fromOffset(textW, INK_H)
 		setLabelText()
@@ -158,12 +156,15 @@ function Toolbar.new(parent)
 			count.Position = UDim2.fromOffset(edge - pw / 2, CY)
 			Draw.apply(countPill, Bag.Search, edge - pw / 2, CY, pw, 40)
 		end
-		local searchW = math.max(120, left - (if compact then 10 else 24) - PAD_L)
+		local searchW = math.max(if compact then 70 else 120, left - (if compact then 8 else 24) - PAD_L)
 		Draw.apply(search, Bag.Search, PAD_L + searchW / 2, CY, searchW, INK_H)
-		Draw.apply(mag, Bag.Magnifier, PAD_L + 16 + 13, CY, 26, 26)
-		input.Position = UDim2.fromOffset(PAD_L + 52, CY)
-		input.Size = UDim2.fromOffset(searchW - 52 - 14, HIT_H)
-		input.PlaceholderText = placeholder
+		local pad = if compact then 36 else 52 -- text start inside the box
+		Draw.apply(mag, Bag.Magnifier, PAD_L + (if compact then 8 else 16) + 13, CY, 26, 26)
+		input.Position = UDim2.fromOffset(PAD_L + pad, CY)
+		input.Size = UDim2.fromOffset(searchW - pad - (if compact then 8 else 14), HIT_H)
+		input.TextSize = if compact then 18 else 20
+		-- phone: "Search..." when it fits, else just the magnifier
+		input.PlaceholderText = if not compact then placeholder elseif searchW - pad - 8 >= 86 then "Search..." else ""
 		menu.Position = UDim2.fromOffset(right + 4, CY + HIT_H / 2 + 2)
 	end
 	table.insert(conns, parent:GetPropertyChangedSignal("Size"):Connect(layout))

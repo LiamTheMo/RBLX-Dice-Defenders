@@ -52,12 +52,12 @@ function Mastery.pill(parent, name: string, w: number, z: number)
 end
 
 -- XP bar w x h: MasteryTrack + MasteryFill (sized by width) with "6,540 / 8,000" centred. bar.Frame; bar:Set(xp, goal).
-function Mastery.bar(parent, name: string, w: number, h: number, z: number)
+function Mastery.bar(parent, name: string, w: number, h: number, z: number, textSize: number?)
 	local frame = Draw.img(parent, { Name = name, Size = UDim2.fromOffset(w, h), ZIndex = z }, "Frame")
 	local track = Draw.img(frame, { Name = "Track", ZIndex = z + 1 })
 	Draw.apply(track, Q.MasteryTrack, w / 2, h / 2, w, h)
 	local fill = Draw.img(frame, { Name = "Fill", ZIndex = z + 2 })
-	local size = math.max(12, math.floor(h * 0.55))
+	local size = textSize or math.max(12, math.floor(h * 0.55))
 	local label = Parts.text(frame, {
 		Name = "Text",
 		AnchorPoint = Vector2.new(0.5, 0.5),
@@ -102,6 +102,7 @@ function Mastery.new(parent)
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		ScrollingDirection = Enum.ScrollingDirection.Y,
 		ScrollBarThickness = 0, -- the styled bar below replaces the native one; wheel, touch and drag still scroll
+		ScrollBarImageTransparency = 1, -- a 0-thickness bar still draws a 1 px hairline
 		ZIndex = root.ZIndex + 1,
 	}, root)
 	local pad = make("UIPadding", {
@@ -166,7 +167,7 @@ function Mastery.new(parent)
 		end
 		local icon = Draw.img(btn, { Name = "Icon" .. m.Lv, ZIndex = z + 2 })
 		local irec = Q[m.Icon] or Q.Crystals
-		local iw, ih = Draw.fitIn(irec, s * 0.58, s * 0.5)
+		local iw, ih = Draw.fitIn(irec, s * 0.64, s * 0.56)
 		Draw.apply(icon, irec, cx, cy - s * 0.12, iw, ih)
 		local size = math.max(11, math.floor(s * 0.21))
 		local label = Parts.text(btn, {

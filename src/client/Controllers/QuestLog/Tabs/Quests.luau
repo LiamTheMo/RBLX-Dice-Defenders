@@ -56,6 +56,7 @@ function Quests.new(parent)
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		ScrollingDirection = Enum.ScrollingDirection.Y,
 		ScrollBarThickness = 0, -- the styled bar below replaces the native one; wheel, touch and drag still scroll
+		ScrollBarImageTransparency = 1, -- a 0-thickness bar still draws a 1 px hairline
 		ZIndex = root.ZIndex + 1,
 	}, root)
 	local pad = make("UIPadding", {
@@ -184,7 +185,7 @@ function Quests.new(parent)
 		local cy = ROW_H / 2
 
 		-- Right to left: claim, gem, coin, bar; the left column keeps the rest.
-		local claimW, claimH = (if full then 97 elseif tiny then 56 else 72), (if full then 48 else 42)
+		local claimW, claimH = (if full then 97 elseif tiny then 48 else 72), (if full then 48 else 42)
 		local right = cw - (if full then 5 else 6)
 		local claimLeft = right - claimW
 		local regionCx = claimLeft + claimW / 2
@@ -201,7 +202,7 @@ function Quests.new(parent)
 				Name = "Claim",
 				Style = "Green",
 				Label = if state == "Soon" then "SOON" else "CLAIM",
-				TextSize = if full then 22 else 18,
+				TextSize = if full then 22 elseif tiny then 15 else 18,
 				Enabled = state == "Claim",
 				Size = UDim2.fromOffset(claimW + 3, claimH + 2),
 			})
@@ -287,14 +288,13 @@ function Quests.new(parent)
 			end
 			rewardLeft -= 8
 		else
-			rewardLeft = claimLeft - 6
-			if state == "Progress" then -- the claim column carries the coin reward instead of staying empty
-				reward(HudSprites.Coin, gold, COIN_TEXT, claimLeft + 2, cy, 14, 20, claimW - 26)
-			end
+			-- phone: the coin reward ends every row's bar line; the button column exists only when there is a button
+			rewardLeft = if state == "Progress" then cw - 8 else claimLeft - 6
+			reward(HudSprites.Coin, gold, COIN_TEXT, rewardLeft - 62, cy + 14, 13, 16, 40)
 		end
 
 		-- Left column: icon, name (+ desc), progress bar.
-		local iconBox = if full then 56 elseif tiny then 28 else 44
+		local iconBox = if full then 56 elseif tiny then 24 else 44
 		local icon = Draw.img(btn, { Name = "Icon", ZIndex = z + 1 })
 		local iw, ih = Draw.fitIn(Q[row.Icon] or Q.IconQuestScroll, iconBox, math.min(52, iconBox))
 		Draw.apply(
@@ -321,11 +321,19 @@ function Quests.new(parent)
 		else
 			barH = 18
 			colR = rewardLeft
-			barW2 = math.max(60, colR - textL)
+			barW2 = math.max(if tiny then 48 else 60, colR - textL - (if tiny then 64 else 0))
 			local bar = Draw.bar(btn, "Progress", barW2, barH, z + 1)
 			bar.Frame.AnchorPoint = Vector2.new(0, 0.5)
 			bar.Frame.Position = UDim2.fromOffset(textL, cy + 14)
-			bar:Set(pct, QuestLogic.progressText(row.Progress, row.Goal), complete)
+			bar:Set(
+				pct,
+				(
+					if tiny
+						then string.gsub(QuestLogic.progressText(row.Progress, row.Goal), " ", "")
+						else QuestLogic.progressText(row.Progress, row.Goal)
+				),
+				complete
+			)
 			nameY = 17
 		end
 		local colW = math.max(40, colR - textL - 8)

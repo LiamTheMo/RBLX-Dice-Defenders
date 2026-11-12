@@ -102,6 +102,7 @@ function Achievements.new(parent)
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		ScrollingDirection = Enum.ScrollingDirection.Y,
 		ScrollBarThickness = 0, -- the styled bar below replaces the native one; wheel, touch and drag still scroll
+		ScrollBarImageTransparency = 1, -- a 0-thickness bar still draws a 1 px hairline
 		ZIndex = root.ZIndex + 1,
 	}, root)
 	local pad = make("UIPadding", {
