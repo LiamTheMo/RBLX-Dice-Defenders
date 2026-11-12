@@ -363,16 +363,22 @@ function LobbyHud.build(parent, cb)
 	self.LvlLabel = xpLabel("LvlLabel", "LVL \u{2014}", 1)
 	self.XpLabel = xpLabel("XpLabel", "\u{2014} / \u{2014} XP", 2)
 
-	-- Bag-mode bottom row: the same objects re-parented into one inline centred row (SetBagMode).
-	local row = make("Frame", {
+	-- Bag-mode bottom row: the same objects re-parented into one inline centred row (SetBagMode). It is a
+	-- hit area like ProfileHit, so tapping the currencies / XP opens Profile with the bag open too.
+	local row = make("TextButton", {
 		Name = "BagRow",
 		BackgroundTransparency = 1,
+		Text = "",
+		AutoButtonColor = false,
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.new(0.5, 0, 1, -(BOTTOM_GAP - 2 + BAG_ROW.Y / 2) - 4.5), -- ref content centre y 893.5
 		Size = UDim2.fromOffset(BAG_ROW.X, BAG_ROW.Y),
 		Visible = false,
 	}, hud)
 	list(row, Enum.FillDirection.Horizontal, 43)
+	row.Activated:Connect(function()
+		open("Profile")
+	end)
 	local divider = make("Frame", {
 		Name = "Divider",
 		BackgroundColor3 = Color3.fromRGB(240, 240, 240),
