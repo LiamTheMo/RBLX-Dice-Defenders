@@ -27,7 +27,10 @@ end
 -- Disabled label (same on action buttons and stepper): translucent text and outline.
 local function dimLabel(label, on: boolean)
 	label.TextTransparency = if on then 0 else 0.45
-	label:FindFirstChildOfClass("UIStroke").Transparency = if on then 0 else 0.45
+	local stroke = label:FindFirstChildOfClass("UIStroke") -- gone if a hover refresh fires mid-teardown (resize)
+	if stroke then
+		stroke.Transparency = if on then 0 else 0.45
+	end
 end
 
 local Parts = {}
@@ -1914,7 +1917,9 @@ function Parts.Detail(parent)
 				Parts.Pill(tags, model.Rarity, string.upper(model.Rarity), { Name = "Rarity", H = 24, TextSize = 14 })
 			left.AnchorPoint, left.Position = Vector2.zero, UDim2.fromScale(0, 0)
 			if model.StatusTag then
-				local right = Parts.Pill(tags, "Equipped", model.StatusTag, { Name = "Status", H = 24, TextSize = 14 })
+				-- InkH (not H): the label and tick are centred as one group, as on the full tier and the card tags
+				local right =
+					Parts.Pill(tags, "Equipped", model.StatusTag, { Name = "Status", InkH = 20, TextSize = 14 })
 				right.AnchorPoint, right.Position = Vector2.new(1, 0), UDim2.fromScale(1, 0)
 			end
 			return
