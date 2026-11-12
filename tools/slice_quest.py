@@ -44,7 +44,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageFilter
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import slice_bag as sb  # noqa: E402  (plain helpers, no import side effects)
@@ -55,7 +55,7 @@ OUT = SRC / "export"
 LUAU = ROOT / "src" / "client" / "Controllers" / "QuestLog" / "QuestSprites.luau"
 PAD = 10  # transparent px around the alpha>0 extent
 E = 40  # extra sheet px read around each rect so soft glows are never clipped
-SCALE = {"Row": 0.97, "RowSelected": 0.97, "Banner": 0.46}  # rows: 1013/1025 px bars would pass 1024 with padding; banner: 2.2k px art to ~1000
+SCALE = {"Row": 0.97, "RowSelected": 0.97}  # rows: 1013/1025 px bars would pass 1024 with padding
 
 SHEETS = {
     "SF": "quests/shared-frame-navigation.png", "QC": "quests/quest-controls.png", "QI": "quests/quest-icons.png",
@@ -71,12 +71,10 @@ def add(name, sheet, rect, mode="comp", **kw):
     S[name] = (sheet, rect, mode, kw)
 
 
-add("Banner", "HB", (39, 63, 2124, 649))  # user art: the header scroll without the purple text plate
 add("DetailPanel", "SF", (584, 493, 873, 874), sliced=(0, 0, 0, 0))
 add("Dropdown", "SF", (1303, 588, 1661, 667), sliced=(0, 0, 0, 0), chevron=True)
 add("IconTabScroll", "SF", (61, 384, 193, 494))
 add("IconTabTrophy", "SF", (190, 382, 320, 488))
-add("SectionBanner", "QC", (465, 205, 871, 307))
 add("DetailRibbon", "QC", (485, 315, 890, 407))
 add("Row", "QC", (21, 439, 1034, 549), sliced=(0, 0, 0, 0))
 add("RowSelected", "QC", (11, 548, 1036, 667), sliced=(0, 0, 0, 0))
@@ -313,6 +311,85 @@ def cut(name: str, sheets: dict) -> tuple[np.ndarray, dict]:
     return px, {"edgeClipped": bool(edge), "scale": k}
 
 
+# Banner emblems for the shared Play_ScrollBase scroll, cut from the header's high-res source and drawn IN FRONT of it (children of the banner).
+# Everything is resized into ScrollBase export px (1:1 with Play_ScrollBase.png) by one transform: sb = (src - (40, 0)) * EM_S + (11, EM_DY), where
+# EM_S makes the old scroll's ink (x 40..2123) as wide as ScrollBase's (774) and EM_DY lowers the emblems onto the new scroll so its top rim sits at or
+# above the old rim under the quill and sword (every column), i.e. what the old art hid is hidden by the new scroll too.
+HB_SRC = SRC / "new" / "quest-log-header-blank-parchment.png"
+SB_INK = (11, 14, 785, 176)  # play menu/export ScrollBase ink
+EM_S = (SB_INK[2] - SB_INK[0]) / (2123 - 40)
+EM_DY = -72
+SEAL_BOX = (240, 250, 620, 660)  # source px: the red wax seal and its ribbon tails
+QUILL_BOX = (440, 60, 1770, 360)  # source px: quill + sword above the scroll's top rim
+RIM = [(400, 245), (600, 275), (800, 300), (1000, 322), (1100, 330), (1160, 326), (1300, 320), (1500, 315), (1650, 285), (1770, 265)]  # old rim top edge under them
+RIM_KEEP = 4  # source px of old rim kept below that line (hidden by the new scroll anyway)
+EM_PAD = 8
+SEAL_CLIP, SEAL_CLIP_Y = 50, 300  # seal box px clipped bottom-left (the tail tip starts at ~52)
+
+
+def mfilter(m: np.ndarray, size: int, mx: bool) -> np.ndarray:
+    f = ImageFilter.MaxFilter(size) if mx else ImageFilter.MinFilter(size)
+    return np.array(Image.fromarray((m * 255).astype(np.uint8)).filter(f)) > 127
+
+
+def to_scrollbase(rgba: np.ndarray, origin: tuple[int, int]) -> tuple[np.ndarray, int, int]:
+    """Source crop (its top-left at `origin` in source px) -> (px, x, y) in ScrollBase export px."""
+    h, w = rgba.shape[:2]
+    nw, nh = max(1, round(w * EM_S)), max(1, round(h * EM_S))
+    px = sb.premult_resize(Image.fromarray(rgba), (nw, nh))
+    return px, round((origin[0] - 40) * EM_S + SB_INK[0]), round(origin[1] * EM_S + EM_DY)
+
+
+def finish_emblem(px: np.ndarray, x: int, y: int) -> tuple[np.ndarray, list[float]]:
+    px = np.pad(px, ((EM_PAD, EM_PAD), (EM_PAD, EM_PAD), (0, 0)))
+    px[..., 3][px[..., 3] < 8] = 0
+    px = sb.bleed(sb.dematte(px))
+    ink = sb.ink_box(px)
+    w, h = SB_INK[2] - SB_INK[0], SB_INK[3] - SB_INK[1]
+    x, y = x - EM_PAD, y - EM_PAD
+    return px, [round((x + ink[0] - SB_INK[0]) / w, 4), round((y + ink[1] - SB_INK[1]) / h, 4), round((ink[2] - ink[0]) / w, 4), round((ink[3] - ink[1]) / h, 4)]
+
+
+def banner_seal() -> tuple[np.ndarray, list[float]]:
+    """Red seal + ribbon tails: colour mask (red, saturated), largest piece, holes (gold check, highlights) filled, +3 px for its dark outline."""
+    x0, y0, x1, y1 = SEAL_BOX
+    src = np.array(Image.open(HB_SRC).convert("RGBA"))[y0:y1, x0:x1].copy()
+    hsv = np.array(Image.fromarray(src[..., :3]).convert("HSV")).astype(int)
+    h, s, v = hsv[..., 0] * 360 / 255, hsv[..., 1] / 255, hsv[..., 2] / 255
+    red = ((h < 18) | (h > 340)) & (s > 0.45) & (v > 0.25) & (src[..., 3] > 128)
+    lab = label8(red)
+    m = lab == np.bincount(lab[lab > 0]).argmax()
+    m[SEAL_CLIP_Y:, :SEAL_CLIP] = False  # the old scroll's curl runs into the left tail's tip: red-brown shading left of it is not the seal
+    m = mfilter(mfilter(np.pad(m, 12), 13, True), 13, False)  # close the ribbon-edge gaps
+    m = ~flood(~m, (0, 0))  # fill holes
+    m = mfilter(m, 7, True)[12:-12, 12:-12]
+    src[..., 3] = np.array(Image.fromarray((m * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(1.2)))
+    px, x, y = to_scrollbase(src, (x0, y0))
+    return finish_emblem(px, x, y)
+
+
+def banner_quill() -> tuple[np.ndarray, list[float]]:
+    """Quill + sword: the art above the old rim line, then every pixel under the ScrollBase silhouette (at the placement above) removed with a 1 px soft edge."""
+    x0, y0, x1, y1 = QUILL_BOX
+    src = np.array(Image.open(HB_SRC).convert("RGBA"))[y0:y1, x0:x1].copy()
+    rim = np.interp(np.arange(x0, x1), [p[0] for p in RIM], [p[1] for p in RIM]) + RIM_KEEP
+    src[..., 3] = np.where(np.arange(y0, y1)[:, None] < rim[None, :], src[..., 3], 0)
+    px, x, y = to_scrollbase(src, (x0, y0))
+    px = np.pad(px, ((EM_PAD, EM_PAD), (EM_PAD, EM_PAD), (0, 0)))
+    x, y = x - EM_PAD, y - EM_PAD
+    base = np.array(Image.open(ROOT / "Assets" / "UI" / "play menu" / "export" / "Play_ScrollBase.png").convert("RGBA"))[..., 3]
+    cover = np.zeros(px.shape[:2], np.float32)
+    ys, xs = np.mgrid[0 : px.shape[0], 0 : px.shape[1]]
+    ok = (ys + y >= 0) & (ys + y < base.shape[0]) & (xs + x >= 0) & (xs + x < base.shape[1])
+    cover[ok] = base[(ys + y)[ok], (xs + x)[ok]] / 255
+    cover = np.array(Image.fromarray(np.round(mfilter(cover > 0.5, 3, False) * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(0.7))) / 255  # 1 px inside the edge, soft
+    px[..., 3] = np.round(px[..., 3] * (1 - cover)).astype(np.uint8)
+    return finish_emblem(px[EM_PAD:-EM_PAD, EM_PAD:-EM_PAD], x + EM_PAD, y + EM_PAD)
+
+
+EMBLEMS = {"BannerSeal": banner_seal, "BannerQuill": banner_quill}
+
+
 def chevron_cap(px: np.ndarray) -> int:
     """Right cap width (px) that keeps the white chevron whole (+4 px)."""
     w = px.shape[1]
@@ -366,6 +443,12 @@ def main() -> None:
     mf = OUT / "manifest.json"
     manifest = json.loads(mf.read_text()) if mf.exists() else {}
     sheets: dict = {}
+    for name, fn in EMBLEMS.items():  # composed pieces: only when named
+        if name in args:
+            px, box = fn()
+            Image.fromarray(px).save(OUT / f"Quest_{name}.png", optimize=True)
+            manifest[name] = {"w": px.shape[1], "h": px.shape[0], "ink": sb.ink_box(px), "box": box, "asset": manifest.get(name, {}).get("asset", "")}
+            print(f"{name}: {px.shape[1]}x{px.shape[0]} ink {manifest[name]['ink']} box {box}")
     for name in S:
         if args and name not in args:
             continue

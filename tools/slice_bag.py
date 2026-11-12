@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageFilter
 
 SRC = Path(__file__).resolve().parent.parent / "Assets" / "UI" / "bag menu"
 OUT = SRC / "export"
@@ -46,15 +46,11 @@ SPRITES = {
     "BtnPurple": ("Dice/controls-regenerated.png", (1144, 213, 338, 143), 256, SHEET_MARGIN),
     "Search": ("Dice/controls-regenerated.png", (49, 403, 882, 110), 800, SHEET_MARGIN),
     "Sort": ("Dice/controls-regenerated.png", (968, 403, 506, 114), 506, SHEET_MARGIN),
-    "CardIdle": ("Dice/controls-regenerated.png", (270, 544, 317, 318), 256, SHEET_MARGIN),
-    "CardSelected": ("Dice/controls-regenerated.png", (624, 544, 321, 318), 258, SHEET_MARGIN),  # same scale as idle
     "Close": ("Dice/controls-regenerated.png", (1054, 619, 184, 173), 144, SHEET_MARGIN),
     "LevelTrack": ("Dice/controls-regenerated.png", (127, 904, 687, 87), 687, SHEET_MARGIN),
     "LevelFill": ("Dice/controls-regenerated.png", (864, 922, 519, 51), 519, SHEET_MARGIN),  # native, like the track
     # Title
-    "Banner": ("Dice/frames-regenerated.png", (917, 536, 605, 208), 605, SHEET_MARGIN),  # laurels + ribbon + crowned die, one piece
     "Ribbon": ("Cosmetics/icons-regenerated.png", (26, 820, 690, 182), 690, SHEET_MARGIN),
-    "BagDie": ("New/new menu dice.png", (166, 34, 840, 1169), 512, SHEET_MARGIN),
     # Pills (Materials controls 15-20)
     "PillGold": ("Materials/controls-regenerated.png", (52, 781, 254, 81), 254, SHEET_MARGIN),
     "PillPurple": ("Materials/controls-regenerated.png", (341, 781, 245, 81), 245, SHEET_MARGIN),
@@ -63,9 +59,7 @@ SPRITES = {
     "PillGrey": ("Materials/controls-regenerated.png", (1189, 781, 250, 81), 250, SHEET_MARGIN),
     "PillPink": ("Materials/controls-regenerated.png", (1473, 781, 250, 81), 250, SHEET_MARGIN),
     # Stepper (Materials controls 6/7/8)
-    "QtyMinus": ("Materials/controls-regenerated.png", (473, 367, 153, 131), 153, SHEET_MARGIN),
     "QtyField": ("Materials/controls-regenerated.png", (657, 372, 460, 118), 460, SHEET_MARGIN),
-    "QtyPlus": ("Materials/controls-regenerated.png", (1148, 367, 153, 132), 153, SHEET_MARGIN),
     # Icons
     "IconDice": ("Dice/icons-regenerated.png", (59, 100, 234, 259), 256, SHEET_MARGIN),
     "IconCrystals": ("Dice/icons-regenerated.png", (338, 100, 252, 242), 256, SHEET_MARGIN),
@@ -81,7 +75,6 @@ SPRITES = {
     "EquippedPill": ("Dice/icons-badges-and-effects.png", (36, 472, 204, 64), 204, 14),
     # Loop 1: rarity cards = CardIdle recoloured (RECOLOR); CardCopper = the Cosmetics sheet's copper-rimmed card at CardIdle's scale
     **{f"Card{r}": ("Dice/controls-regenerated.png", (270, 544, 317, 318), 256, SHEET_MARGIN) for r in CARD_FILL},
-    "CardCopper": ("Cosmetics/controls-regenerated.png", (73, 44, 339, 331), 274, SHEET_MARGIN),
     "CardCopperMaroon": ("Cosmetics/controls-regenerated.png", (73, 44, 339, 331), 274, SHEET_MARGIN),  # items tab: maroon fill
     "ScrollTrack": ("Materials/controls-regenerated.png", (1576, 25, 54, 447), 270, SHEET_MARGIN),  # ~2 texels per design px at 16 px wide
     "ScrollThumb": ("Materials/controls-regenerated.png", (1676, 70, 55, 274), 270, SHEET_MARGIN),
@@ -95,9 +88,7 @@ SPRITES = {
     # Loop 2: items name ribbon, selected copper cards (glow incl.), badge, stats side lines (L: diamond at its right end; R = mirror),
     # cosmetics flags, wide pill, portal ring. Rects are alpha>=160 boxes (the ring's soft halo is feathered out over the margin).
     "ItemsNameRibbon": ("Items/icons-effects-regenerated-v2.png", (371, 536, 761, 146), 720, SHEET_MARGIN),
-    "CardCopperSelected": ("Cosmetics/controls-regenerated.png", (436, 42, 353, 353), 285, 14),  # same scale as CardCopper; 14 px glow, neighbours sit 17 px away
     "CardCopperSelectedMaroon": ("Cosmetics/controls-regenerated.png", (436, 42, 353, 353), 285, 14),
-    "CheckBadge": ("Materials/icons-badges-and-effects.png", (1043, 266, 97, 99), 72, SHEET_MARGIN),
     "StatsLineL": ("Dice/icons-badges-and-effects.png", (1172, 831, 267, 27), 190, SHEET_MARGIN),
     "StatsLineR": ("Dice/icons-badges-and-effects.png", (1172, 831, 267, 27), 190, SHEET_MARGIN),
     "CosFlagLeft": ("Cosmetics/icons-badges-and-effects.png", (41, 439, 184, 297), 250, SHEET_MARGIN),
@@ -105,24 +96,21 @@ SPRITES = {
     "PillWide": ("Cosmetics/controls-regenerated.png", (1020, 900, 453, 92), 453, SHEET_MARGIN),
     "GlowRing": ("Cosmetics/icons-badges-and-effects.png", (473, 788, 568, 212), 560, 24),
     # Loop 3: white EQUIPPED check lifted off the Dice sheet's baked pill (glyph + its dark outline only), stepper -/+ buttons with their own
-    # baked glyphs (Items sheet), a white USE flask (recoloured from the Items sheet's green one), a wider banner (Items sheet).
+    # baked glyphs (Items sheet), a white USE flask (recoloured from the Items sheet's green one).
     "CheckWhite": ("Dice/icons-badges-and-effects.png", (178, 488, 41, 35), 41, 6),
     "StepMinus": ("Items/icons-badges-and-effects.png", (975, 392, 84, 83), 84, SHEET_MARGIN),
     "StepPlus": ("Items/icons-badges-and-effects.png", (867, 392, 85, 83), 85, SHEET_MARGIN),
     "IconFlaskWhite": ("Items/icons-badges-and-effects.png", (39, 372, 94, 118), 118, SHEET_MARGIN),
-    "BannerWide": ("Items/icons-badges-and-effects.png", (403, 147, 691, 209), 691, SHEET_MARGIN),
-    # Loop 7: the user's new bag banner, one whole piece (crowned die, scroll, clasp); native res, sized against the Quest Log scroll.
-    "BannerScroll": ("New/reference.png", (5, 5, 1013, 207), 1013, SHEET_MARGIN),
 }
 # Sliced, height-fitted controls: export height (px, margin included) ~2x the largest full-tier draw height.
 HEIGHTS = {
     "TabPurple": 120, "TabGold": 120, "BtnGreen": 112, "BtnRed": 112, "BtnGold": 112, "BtnPurple": 112, "Search": 112,
     "Sort": 112, "PillGold": 60, "PillPurple": 60, "PillBlue": 60, "PillGreen": 60, "PillGrey": 60, "PillPink": 60,
-    "QtyMinus": 112, "QtyField": 112, "QtyPlus": 112, "LevelTrack": 52, "PillWide": 76,
+    "QtyField": 112, "LevelTrack": 52, "PillWide": 76,
 }
 VERTICAL = {"ScrollTrack", "ScrollThumb"}  # sliced top/bottom only: Slice = Rect(0, t, w, h - b); draw with SliceScale = draw width / Size.X
-FEATHER = {"EquippedPill", "GlowRing", "CardCopperSelected", "CardCopperSelectedMaroon"}  # baked halo runs into the next element on the sheet: fade it to nothing over the margin
-ERASE_GLYPH = {"QtyMinus": (11, 3), "QtyPlus": (7, 0)}  # the baked -/+ is drawn live; fill its area (pad, extra pad below) from the art around it
+FEATHER = {"EquippedPill", "GlowRing", "CardCopperSelectedMaroon"}  # baked halo runs into the next element on the sheet: fade it to nothing over the margin
+ERASE_GLYPH = {}  # the baked -/+ is drawn live; fill its area (pad, extra pad below) from the art around it
 # Keep the baked chevron / check mark: the right-hand band is neither rebuilt nor checked. Value = (t_max, b_min) rows that bracket the
 # glyph and its outline so no slice line crosses it (None where the pill's own corner arc forbids that: the line crosses the glyph).
 KEEP_RIGHT = {"EquippedPill": None}
@@ -142,11 +130,11 @@ GLOWS = {
 SLICED = {
     "Window": (292, 154, 224, 124), "LeftPanel": None, "Detail": None, "Strip": None, "TabPurple": (79, 44, 63, 49), "TabGold": None,
     "BtnGreen": None, "BtnRed": None, "BtnGold": None, "BtnPurple": None, "Search": None,
-    "CardIdle": None, "CardSelected": None, "LevelTrack": None, "LevelFill": None,
+    "LevelTrack": None, "LevelFill": None,
     "PillGold": None, "PillPurple": None, "PillBlue": None, "PillGreen": None, "PillGrey": None, "PillPink": None,
-    "QtyMinus": None, "QtyField": None, "QtyPlus": None, "EquippedPill": (0, 0, 76, 0),
-    **{f"Card{r}": None for r in CARD_FILL}, "CardCopper": None, "CardCopperMaroon": None, "StatRow": None,
-    "CardCopperSelected": None, "CardCopperSelectedMaroon": None, "PillWide": None,
+    "QtyField": None, "EquippedPill": (0, 0, 76, 0),
+    **{f"Card{r}": None for r in CARD_FILL}, "CardCopperMaroon": None, "StatRow": None,
+    "CardCopperSelectedMaroon": None, "PillWide": None,
     "ScrollTrack": None, "ScrollThumb": None,
 }
 
@@ -584,9 +572,72 @@ def ink_box(px: np.ndarray) -> list[int]:
     return [int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1]
 
 
+# Banner emblem for the shared Play_ScrollBase scroll: the crowned die + purple ribbon tails of BannerScroll, rebuilt from New/banner-sprites.png.
+# Parts are placed where BannerScroll shows them (centre cx, cy in BannerScroll px; scale = BannerScroll px per sheet px), then mapped into
+# ScrollBase export px (the scroll ink 1013 wide there = 774 wide, centred on the ink) so the emblem PNG is 1:1 with ScrollBase's pixels.
+# The small sparkles / dice / swooshes at the scroll ends are not cut: ~12 screen px at full size.
+EMBLEM_PARTS = [  # back to front
+    ("rib", (821, 472, 1155, 663), 0.360, (178, 168)),
+    ("die", (480, 417, 738, 691), 0.400, (182, 112)),
+    ("crown", (54, 446, 407, 685), 0.305, (163, 55)),
+]
+BANNER_INK = (5, 5, 1018, 212)  # BannerScroll ink
+SCROLLBASE_INK = (11, 14, 785, 176)  # export/Play ScrollBase ink (play menu/export/manifest.json)
+EMBLEM_PAD = 12
+EMBLEM_OUTLINE = (70, 36, 22)  # the thin dark-brown outline BannerScroll draws round the die / crown / ribbons
+
+
+def premult_resize(img: Image.Image, size: tuple[int, int]) -> np.ndarray:
+    """Lanczos resize on premultiplied colour: no dark/light halo at soft edges."""
+    a = np.array(img.convert("RGBA")).astype(np.float32)
+    a[..., :3] *= a[..., 3:] / 255
+    out = np.dstack([np.array(Image.fromarray(a[..., i], "F").resize(size, Image.LANCZOS)) for i in range(4)])
+    out[..., :3] = np.where(out[..., 3:] > 0.5, out[..., :3] / np.maximum(out[..., 3:], 0.5) * 255, 0)
+    return np.clip(np.round(out), 0, 255).astype(np.uint8)
+
+
+def banner_emblem() -> tuple[np.ndarray, list[float]]:
+    """-> (RGBA px, [x, y, w, h] placement as fractions of the ScrollBase ink box)."""
+    sheet = Image.open(SRC / "New" / "banner-sprites.png").convert("RGBA")
+    f = (SCROLLBASE_INK[2] - SCROLLBASE_INK[0]) / (BANNER_INK[2] - BANNER_INK[0])  # ScrollBase px per BannerScroll px
+    ox = SCROLLBASE_INK[0] + 0.0 - BANNER_INK[0] * f
+    oy = (SCROLLBASE_INK[1] + SCROLLBASE_INK[3]) / 2 - (BANNER_INK[1] + BANNER_INK[3]) / 2 * f
+    placed = []
+    for _, rect, s, (cx, cy) in EMBLEM_PARTS:
+        w, h = round((rect[2] - rect[0]) * s * f), round((rect[3] - rect[1]) * s * f)
+        placed.append((premult_resize(sheet.crop(rect), (w, h)), round(ox + cx * f - w / 2), round(oy + cy * f - h / 2)))
+    x0, y0 = min(p[1] for p in placed) - EMBLEM_PAD, min(p[2] for p in placed) - EMBLEM_PAD
+    x1, y1 = max(p[1] + p[0].shape[1] for p in placed) + EMBLEM_PAD, max(p[2] + p[0].shape[0] for p in placed) + EMBLEM_PAD
+    canvas = Image.new("RGBA", (x1 - x0, y1 - y0))
+    for px, x, y in placed:  # each part gets its own outline so the die's outline shows over the ribbons
+        part = Image.new("RGBA", canvas.size)
+        part.paste(Image.fromarray(px), (x - x0, y - y0))
+        a = part.getchannel("A").filter(ImageFilter.MaxFilter(5)).filter(ImageFilter.GaussianBlur(0.8))
+        outline = Image.new("RGBA", canvas.size, EMBLEM_OUTLINE + (0,))
+        outline.putalpha(a)
+        canvas.alpha_composite(outline)
+        canvas.alpha_composite(part)
+    px = bleed(np.array(canvas))
+    px[..., 3][px[..., 3] < 8] = 0
+    sw, sh = SCROLLBASE_INK[2] - SCROLLBASE_INK[0], SCROLLBASE_INK[3] - SCROLLBASE_INK[1]
+    ink = ink_box(px)
+    return px, [round((x0 + ink[0] - SCROLLBASE_INK[0]) / sw, 4), round((y0 + ink[1] - SCROLLBASE_INK[1]) / sh, 4),
+                round((ink[2] - ink[0]) / sw, 4), round((ink[3] - ink[1]) / sh, 4)]
+
+
 def main() -> None:
     OUT.mkdir(exist_ok=True)
     only = set(sys.argv[1:])
+    if "BannerEmblem" in only:  # composed from several parts: its own path, merged into the manifest
+        only.discard("BannerEmblem")
+        px, box = banner_emblem()
+        Image.fromarray(px).save(OUT / "Bag_BannerEmblem.png", optimize=True)
+        mf = json.loads((OUT / "manifest.json").read_text())
+        mf["BannerEmblem"] = {"w": px.shape[1], "h": px.shape[0], "ink": ink_box(px), "box": box, "asset": mf.get("BannerEmblem", {}).get("asset", "")}
+        (OUT / "manifest.json").write_text(json.dumps(mf, indent=1))
+        print(f"BannerEmblem: {px.shape[1]}x{px.shape[0]} ink {ink_box(px)} box {box}")
+        if not only:
+            return
     sheets: dict[str, Image.Image] = {}
     old = OUT / "manifest.json"
     manifest = json.loads(old.read_text()) if only and old.exists() else {}

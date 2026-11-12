@@ -8,6 +8,7 @@ local GuiService = game:GetService("GuiService")
 local NetClient = require(script.Parent.Parent.NetClient)
 local Shell = require(script.Parent.Shell)
 local Parts = require(script.Parent.Parts)
+local Sprites = require(script.Parent.BagSprites)
 local BagLogic = require(script.Parent.BagLogic)
 local Dice = require(script.Parent.Tabs.Dice)
 local Materials = require(script.Parent.Tabs.Materials)
@@ -30,17 +31,14 @@ function Bag.new(parent, deps)
 		fit = function()
 			return hud:GetBagInsets()
 		end,
-		banner = { -- BannerScroll 1023x217 drawn at 0.4815 (full) / 0.216 (compact), uniform (Fit): its scroll ink 5..1018 x 5..209 ~ the Quest Log's scroll (489 x 96.4 full, 220 x 43.4 compact)
-			sprite = "BannerScroll",
-			full = Vector2.new(493.5, 105.2),
-			compact = Vector2.new(221, 47.7),
-			top = -52.4, -- scroll top at -49.9 (Quest Log: -48.8)
-			topCompact = -29, -- scroll top at -28 (Quest Log: -27.2)
+		banner = {
 			text = "BAG",
-			textPos = UDim2.fromScale(0.5225, 0.525), -- blank parchment between the die and the right sparkles
-			textSize = UDim2.fromScale(0.52, 0.5), -- tall enough for the 20 px compact title (0.395 clipped it on phones)
+			textX = 0.5227, -- blank parchment between the die and the right sparkles
+			textY = 0.527,
+			textW = 0.525,
 			textFull = 34,
 			textCompact = 20,
+			emblems = { { sprite = Sprites.BannerEmblem, box = { 0.1008, 0.0617, 0.1318, 0.8951 } } },
 		},
 	})
 	local toolbar, grid = Parts.Toolbar(shell.Slots.Toolbar), Parts.Grid(shell.Slots.Grid)

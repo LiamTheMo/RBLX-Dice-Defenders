@@ -1,8 +1,9 @@
 -- Bag shell: the one window every tab shares (banner, close, tab bar, panel slots) plus Fit(). Visual only.
 -- Design px under one UIScale. Switching tabs never touches anything here except the tab sprites.
 -- Shell.new(parent, { fit = () -> { leftReal, bottomTopReal } }) -> shell (see :methods below).
--- Optional deps for other menus (defaults = the Bag): name, banner { sprite, full, compact, top, topCompact, text, textPos,
--- textSize, textFull, textCompact }, detail (sprite key or record), fullDetail (detail panel as tall as the left one),
+-- Optional deps for other menus (defaults = the Bag): name, banner { text, textX, textY, textW, textFull, textCompact,
+-- emblems = { { sprite = record or id, box = {x, y, w, h} } } } (x/y/w/h = fractions of the scroll ink; the scroll and the
+-- gem pin are the same for every menu, title centre textX/textY and width textW are scroll-ink fractions), detail (sprite key or record), fullDetail (detail panel as tall as the left one),
 -- free (no tabs or panels: one Slots.Content box from freeTop; window, banner and close run the same code as the Bag),
 -- tabIconScale (tab icon box multiplier, default 1).
 
@@ -11,6 +12,7 @@ local UserInputService = game:GetService("UserInputService")
 
 local UiKit = require(script.Parent.Parent.UiKit)
 local Parts = require(script.Parent.Parts)
+local PlaySprites = require(script.Parent.Parent.Play.PlaySprites) -- the shared banner art (ScrollBase, GemPin) is cut by slice_play.py
 
 local make = UiKit.make
 local Z = 20 -- Bag root; Sibling ZIndex (descendants always >= their parent)
@@ -23,10 +25,9 @@ local TIER = {
 		mx = 6,
 		my = 5,
 		rim = 1.0,
-		over = 86, -- layout only: banner top to window frame top (the banner itself sits at bannerTop)
-		bannerTop = -90.6,
-		banner = Vector2.new(435, 135.9), -- BannerWide 701x219 at 0.62: laurel span ~424 as in the ref
-		bannerText = 76,
+		over = 86, -- layout only: banner top to window frame top
+		inkW = 488.5, -- banner scroll ink width, and its centre y below the window box top
+		inkCy = -0.8,
 		tabTop = 41.8, -- from the rim box top (all Full values below are rim-box relative)
 		tabH = 75.5, -- visible tab body 64 tall (sprite margin + shadow ~13% of the box)
 		tabGap = -0.8, -- box gap (the tab sprite shows ~20 px less than its box in width): visible gap 17-18
@@ -47,9 +48,8 @@ local TIER = {
 		my = 1,
 		rim = 0.78,
 		over = 46,
-		bannerTop = -46,
-		banner = Vector2.new(244, 76),
-		bannerText = 34,
+		inkW = 220,
+		inkCy = -5.6,
 		tabText = 24,
 		tabTop = 30,
 		tabH = 56,
@@ -66,6 +66,8 @@ local TIER = {
 		pitch = 120,
 	},
 }
+local SB, GEM = PlaySprites.ScrollBase, PlaySprites.GemPin
+local GEM_BOX = { 0.4261, 0.7153, 0.1488, 0.3167 }
 local GAP = 10 -- vertical gap left panel to footer
 local FULL_INK = Vector2.new(1251, 770) -- window box minus the transparent mx/my margin: visible rim 213-1459 x 98-861
 local TAB_W = { 278.3, 299.3, 280.3, 314.3 } -- full-tier box widths for 4 tabs: visible 265 / 286 / 267 / 301 as in the ref
@@ -161,23 +163,40 @@ function Shell.new(parent, deps)
 	}, tabBar)
 	self.TabBar = tabBar
 
-	-- Banner: one baked sprite (laurels, ribbon, crowned die); only the "BAG" text is live, in the art's free box
-	-- (export px x 236-490, y 86-174 of 615x218).
+	-- Banner: the shared blank scroll + gem pin, the menu's emblems on top, then its title text (all children, Scale-placed).
 	local banner = make("ImageLabel", {
 		Name = "Banner",
 		BackgroundTransparency = 1,
 		AnchorPoint = Vector2.new(0.5, 0),
 		ZIndex = Z + 10,
 	}, window)
-	Parts.skin(banner, bn.sprite or "BannerWide")
+	Parts.skin(banner, SB)
+	local sbInk =
+		{ SB.Ink.Min.X / SB.Size.X, SB.Ink.Min.Y / SB.Size.Y, SB.Ink.Width / SB.Size.X, SB.Ink.Height / SB.Size.Y }
+	local function addEmblem(sprite, box)
+		local x, y, w, h = box[1], box[2], box[3], box[4] -- scroll-ink fractions
+		x, y, w, h = sbInk[1] + x * sbInk[3], sbInk[2] + y * sbInk[4], w * sbInk[3], h * sbInk[4] -- banner fractions
+		local e = make("ImageLabel", { Name = "Emblem", BackgroundTransparency = 1, ZIndex = Z + 11 }, banner)
+		Parts.image(e, sprite)
+		if type(sprite) == "table" then -- draw by ink: the sprite's transparent margin extends the box
+			local r = sprite
+			local ix, iy, iw, ih =
+				r.Ink.Min.X / r.Size.X, r.Ink.Min.Y / r.Size.Y, r.Ink.Width / r.Size.X, r.Ink.Height / r.Size.Y
+			x, y, w, h = x - ix / iw * w, y - iy / ih * h, w / iw, h / ih
+		end
+		e.Position, e.Size = UDim2.fromScale(x, y), UDim2.fromScale(w, h)
+	end
+	addEmblem(GEM, GEM_BOX)
+	for _, e in bn.emblems or {} do
+		addEmblem(e.sprite, e.box)
+	end
 	local bannerText = Parts.text(banner, {
 		Name = "Text",
 		Text = bn.text or "BAG",
 		TextTruncate = Enum.TextTruncate.None,
 		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = bn.textPos or UDim2.fromScale(354 / 615, 114 / 218), -- ref: BAG ink centre 30 px right of, 7 px above the ribbon centre
-		Size = bn.textSize or UDim2.fromScale(254 / 615, 88 / 218),
-		ZIndex = Z + 11,
+		Position = UDim2.fromScale(sbInk[1] + (bn.textX or 0.5) * sbInk[3], sbInk[2] + (bn.textY or 0.5) * sbInk[4]),
+		ZIndex = Z + 12,
 	}, 5)
 	self.Banner = banner
 
@@ -289,16 +308,11 @@ function Shell.new(parent, deps)
 		end
 		self.Compact = compact
 
-		local bsz = (if compact then bn.compact else bn.full) or t.banner
-		banner.Position = UDim2.new(0.5, 0, 0, (if compact then bn.topCompact else bn.top) or t.bannerTop)
-		banner.Size = UDim2.fromOffset(bsz.X, bsz.Y)
-		-- Full: BAG text keeps its screen position (30.7 right of the banner centre, 12.7 above the window top).
-		bannerText.Position = bn.textPos
-			or if compact then UDim2.fromScale(354 / 615, 114 / 218) else UDim2.fromOffset(bsz.X / 2 + 30.7, 77.9)
-		bannerText.TextSize = (if compact then bn.textCompact else bn.textFull) or t.bannerText
-		if not bn.textSize then -- the box holds the text (centre unchanged): TextFits true at every scale
-			bannerText.Size = UDim2.fromOffset(bsz.X * 254 / 615, math.ceil(bannerText.TextSize * 1.2))
-		end
+		local k = t.inkW / SB.Ink.Width -- sprite px -> design px
+		banner.Position = UDim2.new(0.5, 0, 0, t.inkCy - (SB.Ink.Min.Y + SB.Ink.Max.Y) / 2 * k)
+		banner.Size = UDim2.fromOffset(SB.Size.X * k, SB.Size.Y * k)
+		bannerText.TextSize = (if compact then bn.textCompact else bn.textFull) or (if compact then 20 else 34)
+		bannerText.Size = UDim2.new((bn.textW or 0.5) * sbInk[3], 0, 0, math.ceil(bannerText.TextSize * 1.2))
 		close.Size = if compact then UDim2.fromOffset(72, 68) else UDim2.fromOffset(84.5, 80) -- visible 74x72 (the sprite shows ~0.87 of its box)
 		close.Position = if compact
 			then UDim2.fromOffset(winW - t.mx - 27, t.my + 5)

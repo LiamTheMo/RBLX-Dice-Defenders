@@ -7,13 +7,11 @@
 -- Ink = the opaque (alpha >= 160) box inside the export: the art is drawn smaller than its Size by this transparent margin.
 
 return {
-	-- BannerScroll: the one-piece bag banner (cut whole from New/reference.png), sized like the Quest Log scroll
-	BannerScroll = {
-		Image = "rbxassetid://75285930298271",
-		Size = Vector2.new(1023, 217),
-		Ink = Rect.new(5, 5, 1018, 212),
+	BannerEmblem = {
+		Image = "rbxassetid://86485382709538",
+		Size = Vector2.new(122, 165),
+		Ink = Rect.new(10, 10, 112, 155),
 	},
-	Banner = { Image = "rbxassetid://76738978316837", Size = Vector2.new(615, 218), Ink = Rect.new(5, 5, 610, 213) },
 	Window = {
 		Image = "rbxassetid://84082480203360",
 		Size = Vector2.new(1024, 454),
@@ -81,18 +79,6 @@ return {
 		Slice = Rect.new(65, 50, 754, 62),
 	},
 	Sort = { Image = "rbxassetid://123838910993791", Size = Vector2.new(460, 112), Ink = Rect.new(5, 5, 455, 106) },
-	CardIdle = {
-		Image = "rbxassetid://133458673461541",
-		Size = Vector2.new(265, 266),
-		Ink = Rect.new(5, 5, 260, 261),
-		Slice = Rect.new(52, 51, 190, 205),
-	},
-	CardSelected = {
-		Image = "rbxassetid://106442954748693",
-		Size = Vector2.new(268, 265),
-		Ink = Rect.new(5, 5, 263, 260),
-		Slice = Rect.new(89, 57, 187, 207),
-	},
 	Close = {
 		Image = "rbxassetid://108242197733291",
 		Size = Vector2.new(153, 145),
@@ -111,7 +97,6 @@ return {
 		Slice = Rect.new(24, 15, 201, 19),
 	},
 	Ribbon = { Image = "rbxassetid://71675040842911", Size = Vector2.new(698, 190) },
-	BagDie = { Image = "rbxassetid://81557477067385", Size = Vector2.new(371, 516) },
 	PillGold = {
 		Image = "rbxassetid://80671828511855",
 		Size = Vector2.new(169, 60),
@@ -148,23 +133,11 @@ return {
 		Ink = Rect.new(5, 5, 162, 55),
 		Slice = Rect.new(36, 27, 129, 33),
 	},
-	QtyMinus = {
-		Image = "rbxassetid://84925190750074",
-		Size = Vector2.new(129, 112),
-		Ink = Rect.new(5, 5, 124, 107),
-		Slice = Rect.new(58, 50, 72, 62),
-	},
 	QtyField = {
 		Image = "rbxassetid://78594440866082",
 		Size = Vector2.new(407, 112),
 		Ink = Rect.new(5, 6, 402, 106),
 		Slice = Rect.new(161, 47, 308, 62),
-	},
-	QtyPlus = {
-		Image = "rbxassetid://101301827972870",
-		Size = Vector2.new(128, 112),
-		Ink = Rect.new(5, 5, 123, 107),
-		Slice = Rect.new(54, 50, 89, 71),
 	},
 	IconDice = { Image = "rbxassetid://70520619812748", Size = Vector2.new(243, 268), Ink = Rect.new(5, 6, 237, 262) },
 	IconCrystals = {
@@ -228,12 +201,6 @@ return {
 		Ink = Rect.new(5, 5, 260, 261),
 		Slice = Rect.new(95, 97, 190, 205),
 	},
-	CardCopper = {
-		Image = "rbxassetid://109888527590831",
-		Size = Vector2.new(284, 277),
-		Ink = Rect.new(5, 5, 279, 273),
-		Slice = Rect.new(96, 124, 185, 163),
-	},
 	CardCopperMaroon = {
 		Image = "rbxassetid://134499798182540",
 		Size = Vector2.new(284, 277),
@@ -291,22 +258,11 @@ return {
 		Size = Vector2.new(731, 149),
 		Ink = Rect.new(6, 6, 725, 143),
 	},
-	CardCopperSelected = {
-		Image = "rbxassetid://77012994930247",
-		Size = Vector2.new(308, 308),
-		Ink = Rect.new(12, 8, 296, 288),
-		Slice = Rect.new(89, 102, 240, 203),
-	},
 	CardCopperSelectedMaroon = {
 		Image = "rbxassetid://112116296398760",
 		Size = Vector2.new(308, 308),
 		Ink = Rect.new(12, 8, 296, 288),
 		Slice = Rect.new(81, 102, 213, 203),
-	},
-	CheckBadge = {
-		Image = "rbxassetid://134109178683257",
-		Size = Vector2.new(81, 82),
-		Ink = Rect.new(5, 5, 76, 77),
 	},
 	StatsLineL = {
 		Image = "rbxassetid://98916366501119",
@@ -383,5 +339,4 @@ return {
 		Size = Vector2.new(104, 128),
 		Ink = Rect.new(5, 5, 99, 123),
 	},
-	BannerWide = { Image = "rbxassetid://96791195089932", Size = Vector2.new(701, 219), Ink = Rect.new(5, 5, 696, 214) },
 }

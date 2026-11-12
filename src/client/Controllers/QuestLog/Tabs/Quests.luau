@@ -115,9 +115,9 @@ function Quests.new(parent)
 		local cy = pre + HEAD_H / 2
 		local small = mode ~= "full"
 		local bw = math.min(if small then 230 else 300, cw - 6)
-		local bh = bw * Q.SectionBanner.Ink.Height / Q.SectionBanner.Ink.Width
+		local bh = bw * Q.DetailRibbon.Ink.Height / Q.DetailRibbon.Ink.Width
 		local banner = Draw.img(f, { Name = "Banner" })
-		Draw.apply(banner, Q.SectionBanner, bw / 2, cy, bw, bh)
+		Draw.apply(banner, Q.DetailRibbon, bw / 2, cy, bw, bh)
 		local iconSize = if small then 44 else 56
 		local icon = Draw.img(f, { Name = "Icon", ZIndex = banner.ZIndex + 2 })
 		local iw, ih = Draw.fitIn(sec.Icon, iconSize, iconSize)

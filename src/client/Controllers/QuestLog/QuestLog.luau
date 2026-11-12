@@ -82,12 +82,12 @@ local STUDIO = RunService:IsStudio()
 local QUEST_ART = {}
 for _, n in
 	{
-		"Banner",
+		"BannerSeal",
+		"BannerQuill",
 		"DetailPanel",
 		"Dropdown",
 		"IconTabScroll",
 		"IconTabTrophy",
-		"SectionBanner",
 		"DetailRibbon",
 		"Row",
 		"RowSelected",
@@ -124,15 +124,16 @@ function QuestLog.new(parent, deps)
 		end,
 		name = "QuestLog",
 		banner = {
-			sprite = Q.Banner,
-			full = Vector2.new(494.7, 142.3), -- 0.51x the 970x279 art: ink 489 x 137 as the reference scroll
-			compact = Vector2.new(222.7, 64), -- ink 220 wide
-			top = -90.6, -- ink top at -88 (4 px below the reference canvas top; window box top = reference y 92)
 			text = "QUEST LOG",
-			textPos = UDim2.fromScale(0.539, 0.665), -- the reference text centre (841.5, 96) on the blank parchment
-			textSize = UDim2.fromScale(0.517, 0.292),
+			textX = 0.5394,
+			textY = 0.543,
+			textW = 0.523,
 			textFull = 34,
 			textCompact = 20,
+			emblems = {
+				{ sprite = Q.BannerSeal, box = { 0.1085, 0.1111, 0.1382, 0.8148 } },
+				{ sprite = Q.BannerQuill, box = { 0.1925, -0.3827, 0.5904, 0.4938 } },
+			},
 		},
 		detail = Q.DetailPanel,
 		tabIconScale = 1.3, -- ref tab icon ink ~63-70 px (the Bag's 54.5 box shows ~45-51)
