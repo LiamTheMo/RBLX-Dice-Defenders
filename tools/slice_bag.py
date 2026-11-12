@@ -412,6 +412,9 @@ def isolate_check(arr: np.ndarray) -> np.ndarray:
     for _ in range(2):
         p = np.pad(keep, 1)
         keep = p[:-2, 1:-1] | p[2:, 1:-1] | p[1:-1, :-2] | p[1:-1, 2:] | p[:-2, :-2] | p[:-2, 2:] | p[2:, :-2] | p[2:, 2:] | keep
+    p = np.pad(cur, 1)  # one px bolder: the tick's strokes are thin for a 12 px mark; the dark outline (2 px) keeps 1 px
+    bold = (p[:-2, 1:-1] | p[2:, 1:-1] | p[1:-1, :-2] | p[1:-1, 2:] | p[:-2, :-2] | p[:-2, 2:] | p[2:, :-2] | p[2:, 2:] | cur) & keep
+    arr[bold, :3] = 255
     arr[..., 3] = np.where(keep, 255, 0).astype(np.uint8)
     return arr
 
@@ -440,6 +443,7 @@ RECOLOR["Detail"] = lambda a: recolor_tone(a, [("E76E28", "F2855D", 28)])
 RECOLOR["Strip"] = lambda a: recolor_tone(a, [("CE1FA1", "A82B8B", 30)])
 RECOLOR["DividerGold"] = lambda a: recolor_tone(a, [("F2A903", "F5C21C", 80)])  # warm body median #F2A903 -> ref #F5C21C; the pale core (B > 90) is out of range
 RECOLOR["CheckWhite"] = isolate_check
+TRIM = {"CheckWhite": 1}  # name -> transparent px kept around the alpha bbox
 RECOLOR["IconFlaskWhite"] = recolor_flask_white
 RECOLOR["StatRow"] = lambda a: recolor_card(a, "663064", "320E2B", 12, 0)  # reference row: #320E2B fill, subtle #5A2A58 rim
 
@@ -621,6 +625,11 @@ def main() -> None:
             note += f" {line}" + "".join(f" WARN {n}" for n in notes)
         if name == "Window":
             px = trim_outline(px)
+        if name in TRIM:  # tight crop to the art (the ring assert already ran on the padded crop): the sprite box is the ink, sized by its Ink
+            ys, xs = np.nonzero(px[..., 3])
+            pad = TRIM[name]
+            px = np.pad(px[ys.min() : ys.max() + 1, xs.min() : xs.max() + 1], ((pad, pad), (pad, pad), (0, 0)))
+            info["w"], info["h"] = px.shape[1], px.shape[0]
         info["ink"] = ink_box(px)
         Image.fromarray(px).save(OUT / f"Bag_{name}.png", optimize=True)
         manifest[name] = info
