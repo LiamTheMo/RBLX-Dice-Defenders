@@ -648,6 +648,34 @@ local function barSkin(inst, name: string, w: number)
 	inst.SliceScale = w / s.Size.X
 end
 
+-- Styled scrollbar: ScrollTrack + ScrollThumb under `root`, driven by `scroll` (hide its native bar). api.Layout(visibleH, barW,
+-- rightInset) sizes the track (barW x visibleH, rightInset px from root's right edge, top 0), re-skins both pieces and refreshes the
+-- thumb; the thumb follows CanvasPosition / AbsoluteCanvasSize itself. The track starts hidden: the caller owns api.Track.Visible.
+function Parts.scrollBar(root, scroll, z: number)
+	local track = img(root, { Name = "ScrollTrack", AnchorPoint = Vector2.new(1, 0), Visible = false, ZIndex = z })
+	local thumb = img(track, { Name = "Thumb", AnchorPoint = Vector2.new(0.5, 0), ZIndex = z + 1 })
+	local visibleH, barW = 0, 12
+	local api = { Track = track, Thumb = thumb }
+	function api.Update()
+		local y, maxY = scroll.CanvasPosition.Y, math.max(0, scroll.AbsoluteCanvasSize.Y - scroll.AbsoluteWindowSize.Y)
+		local win, canvas = scroll.AbsoluteWindowSize.Y, math.max(1, scroll.AbsoluteCanvasSize.Y)
+		local thumbH = math.clamp(math.floor(visibleH * win / canvas), 40, math.max(40, visibleH))
+		thumb.Size = UDim2.fromOffset(barW, thumbH)
+		thumb.Position = UDim2.new(0.5, 0, 0, math.floor((visibleH - thumbH) * (if maxY > 0 then y / maxY else 0)))
+	end
+	function api.Layout(h: number, w: number, rightInset: number)
+		visibleH, barW = h, w
+		track.Size = UDim2.fromOffset(w, h)
+		track.Position = UDim2.new(1, -rightInset, 0, 0)
+		barSkin(track, "ScrollTrack", w)
+		barSkin(thumb, "ScrollThumb", w)
+		api.Update()
+	end
+	scroll:GetPropertyChangedSignal("CanvasPosition"):Connect(api.Update)
+	scroll:GetPropertyChangedSignal("AbsoluteCanvasSize"):Connect(api.Update)
+	return api
+end
+
 function Parts.Grid(parent)
 	local api, conns = {}, {}
 	local items, cards, selected, fallback, kind = {}, {}, nil, nil, "Dice"
@@ -705,15 +733,10 @@ function Parts.Grid(parent)
 		Visible = false,
 		ZIndex = scroll.ZIndex + 1,
 	})
-	local track = img(root, {
-		Name = "ScrollTrack",
-		AnchorPoint = Vector2.new(1, 0),
-		Visible = false,
-		ZIndex = scroll.ZIndex + 2,
-	})
-	local thumb = img(track, { Name = "Thumb", AnchorPoint = Vector2.new(0.5, 0), ZIndex = track.ZIndex + 1 })
+	local bar = Parts.scrollBar(root, scroll, scroll.ZIndex + 2)
+	local track = bar.Track
 	local emptyText = "Nothing here yet"
-	local visibleH, barW = 0, 12
+	local visibleH = 0
 	local updateFade
 
 	-- Edges fade only where content is cut off: nothing at rest on the top row, nothing at the end of the list.
@@ -732,10 +755,6 @@ function Parts.Grid(parent)
 		table.insert(pts, if bot > 0 then NumberSequenceKeypoint.new(1, 1) else NumberSequenceKeypoint.new(1, 0))
 		fadeGradient.Transparency = NumberSequence.new(pts)
 		track.Visible = #items > 0 and visibleH > 0 -- always on (the thumb fills the track when nothing scrolls)
-		local win, canvas = scroll.AbsoluteWindowSize.Y, math.max(1, scroll.AbsoluteCanvasSize.Y)
-		local thumbH = math.clamp(math.floor(visibleH * win / canvas), 40, math.max(40, visibleH))
-		thumb.Size = UDim2.fromOffset(barW, thumbH)
-		thumb.Position = UDim2.new(0.5, 0, 0, math.floor((visibleH - thumbH) * (if maxY > 0 then y / maxY else 0)))
 	end
 	connect(conns, scroll:GetPropertyChangedSignal("CanvasPosition"), updateFade)
 	connect(conns, scroll:GetPropertyChangedSignal("AbsoluteCanvasSize"), updateFade)
@@ -979,7 +998,7 @@ function Parts.Grid(parent)
 			+ math.floor((inner - (cols * cardW + (cols - 1) * gx)) / 2)
 		gridPad.PaddingLeft = UDim.new(0, pad + GLOW_X)
 		gridPad.PaddingRight = UDim.new(0, GLOW_X) -- the cells need the full width: only the glow margin is kept on the right
-		barW = if compact then 8 else 12 -- Full: thumb ink 8 px, clear of the cards and inside the rim
+		local barW = if compact then 8 else 12 -- Full: thumb ink 8 px, clear of the cards and inside the rim
 		gridPad.PaddingTop = UDim.new(0, pt)
 		local pitch = cardH + gy
 		rows = rows or math.max(1, math.floor((H - pt - 2 - m + gy) / pitch))
@@ -990,10 +1009,7 @@ function Parts.Grid(parent)
 			visibleH = H - 2
 		end
 		fade.Size = UDim2.new(1, 2 * GLOW_X, 0, visibleH + GLOW_Y)
-		track.Size = UDim2.fromOffset(barW, visibleH)
-		track.Position = UDim2.new(1, if compact then -8 else -9, 0, 0) -- phones: thumb ink ends >= 3 px before the panel rim
-		barSkin(track, "ScrollTrack", barW)
-		barSkin(thumb, "ScrollThumb", barW)
+		bar.Layout(visibleH, barW, if compact then 8 else 9) -- phones: thumb ink ends >= 3 px before the panel rim
 		updateFade()
 		for _, c in cards do
 			c:Destroy()
