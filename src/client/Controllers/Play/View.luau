@@ -195,8 +195,8 @@ end
 
 -- Left column ----------------------------------------------------------------------------------------------
 
--- BEST pill geometry + its text (the compact variants drop words until the text fits).
-local function pillGeom(wd, L, s, w, h)
+-- BEST pill geometry + its text in one form ("full" / "short" / "min").
+local function pillGeom(wd, L, s, w, h, form)
 	local compact = L.compact
 	local pw, ph = round(255 * s), round(52 * s) -- 9-slice ink: visible width = pw + ~10, visible height = ph x 0.83 -> ref 266 x 43-46
 	local bm = math.max(round(5 * s), math.ceil(mpx(5) + 0.3)) -- >= 5 real px from the card's inner rim
@@ -210,16 +210,8 @@ local function pillGeom(wd, L, s, w, h)
 	local avail = pw - tx0 - (if compact then 12 else 10 * s)
 	local size = if compact then 18 else round(25 * s)
 	local num = if wd.Best == "--" then wd.Best else `<font color="{YELLOW_HEX}">{wd.Best}</font>`
-	local plain = PlayLogic.bestWaveText(wd.Best, "full")
-	local rich = PlayLogic.bestWaveText(wd.Best, "full", num)
-	if compact and measure(plain, size) > avail then
-		plain = PlayLogic.bestWaveText(wd.Best, "short")
-		rich = PlayLogic.bestWaveText(wd.Best, "short", num)
-	end
-	if compact and measure(plain, size) > avail then
-		plain = PlayLogic.bestWaveText(wd.Best, "min")
-		rich = PlayLogic.bestWaveText(wd.Best, "min", num)
-	end
+	local plain = PlayLogic.bestWaveText(wd.Best, form)
+	local rich = PlayLogic.bestWaveText(wd.Best, form, num)
 	return {
 		pw = pw,
 		ph = ph,
@@ -234,18 +226,35 @@ local function pillGeom(wd, L, s, w, h)
 	}
 end
 
+-- One BEST text form per screen: the widest one every card's pill fits (phones; desktop tiers always read "full").
+local function pillForm(worlds, L, s, w, h): string
+	if L.compact then
+		for _, form in { "full", "short" } do
+			local fits = true
+			for _, wd in worlds do
+				local g = pillGeom(wd, L, s, w, h, form)
+				fits = fits and measure(g.plain, g.size) <= g.avail
+			end
+			if fits then
+				return form
+			end
+		end
+	end
+	return if L.compact then "min" else "full"
+end
+
 -- One BEST text size for every card (the largest that fits the longest text), desktop tiers.
 local function pillRoleSize(worlds, L, s, w, h): number
 	local size = 1e5
 	for _, wd in worlds do
-		local g = pillGeom(wd, L, s, w, h)
+		local g = pillGeom(wd, L, s, w, h, L.pillForm)
 		size = math.min(size, fitSize(g.plain, g.avail * 0.95, g.size, 1))
 	end
 	return size
 end
 
 local function cardPill(card, wd, L, s, w, h, role, z)
-	local g = pillGeom(wd, L, s, w, h)
+	local g = pillGeom(wd, L, s, w, h, L.pillForm)
 	local cx, cy, pw, ph = g.cx, g.cy, g.pw, g.ph
 	skin(card, if wd.Locked then Bag.PillGrey else Bag.PillGreen, cx, cy, pw, ph, nil, z + 1, "BestPill")
 	if g.crown then
@@ -410,6 +419,7 @@ function View:_buildLeft()
 		local ch = math.max(62, (L.H - 2 * mt - (n - 1) * gap) // n) -- the cards fill the column (top / bottom aligned with the mid panel); scroll only when they cannot fit
 		local pitch = ch + gap
 		local y0 = mt
+		L.pillForm = pillForm(worlds, L, cw / 363, cw - mt - 3, ch)
 		for i, wd in worlds do
 			buildCard(
 				self,
@@ -429,6 +439,7 @@ function View:_buildLeft()
 	else
 		local s = L.leftW / 363
 		local f = math.min(1, (L.panelH - 3) / 659) -- short windows squash the card heights (crop keeps the art's aspect)
+		L.pillForm = "full"
 		L.pillSize = pillRoleSize(worlds, L, math.min(s, f), L.leftW - CARD_L - CARD_R, 100)
 		local tops = { 22, 184, 347, 510 }
 		for i, wd in worlds do
