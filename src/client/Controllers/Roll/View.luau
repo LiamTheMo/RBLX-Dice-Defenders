@@ -467,6 +467,11 @@ function View:_drawRarity(L, z, Pw: number, Ph: number)
 	local gMin = if L.compact then ROW_GAP_REAL else ROW_GAP_MIN * K
 	local gEdge = if L.compact then 0 else math.ceil(ROW_EDGE_MIN * K) -- desktop: the least real px between the plate / rim and the rows
 	local hr = math.min(math.floor(L.rowH * K), math.floor((r1 - r0 - 5 * gMin - 2 * gEdge) / 6)) -- real px
+	local hMin = math.ceil(12 * K) -- compute()'s row floor
+	if not L.compact and hr < hMin then -- short desktop window: the desktop margins give way to the phone minimums, never the rows
+		gMin, gEdge = ROW_GAP_REAL, ROW_GAP_REAL
+		hr = math.max(hMin, math.min(math.floor(L.rowH * K), math.floor((r1 - r0 - 7 * ROW_GAP_REAL) / 6)))
+	end
 	local free = r1 - r0 - 6 * hr
 	local g = math.floor(free / 7)
 	local gaps = { g, g, g, g, g, g, g }
