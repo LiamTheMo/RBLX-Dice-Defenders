@@ -3,7 +3,7 @@
 -- Live players get `live` (no reward amounts or odds); Studio gets the full reference sample.
 
 local function world(id: string, name: string, art: string)
-	return { Id = id, Name = name, Art = art, Waves = 100, Locked = true }
+	return { Id = id, Name = name, Art = art, Locked = true }
 end
 
 local function ms(wave: number, icon: string, lines: { string })

@@ -9,6 +9,19 @@ test("WORLD mirrors server Balance.Waves", function()
 	expectEq(PlayLogic.WORLD.Waves, Balance.Waves, "waves")
 end)
 
+test("BEST WAVE denominator is 100 on every world card", function()
+	local rows = PlayLogic.worlds({ BestWave = 35 }, SampleData.full)
+	table.move(PlayLogic.worlds(nil, SampleData.full), 1, #rows, #rows + 1, rows)
+	for _, w in rows do
+		expectEq(PlayLogic.bestWaveText(w.Best, "full"), `BEST WAVE {w.Best} / 100`, "full " .. w.Id)
+		expectEq(PlayLogic.bestWaveText(w.Best, "short"), `BEST {w.Best}/100`, "short " .. w.Id)
+		expectEq(PlayLogic.bestWaveText(w.Best, "min"), `{w.Best}/100`, "min " .. w.Id)
+	end
+	expectEq(rows[1].Best, "35", "real best")
+	expectEq(rows[#SampleData.full.Worlds + 2].Best, "--", "real nil best")
+	expectEq(PlayLogic.bestWaveText("35", "full", "<b>35</b>"), "BEST WAVE <b>35</b> / 100", "shown")
+end)
+
 test("bestText", function()
 	expectEq(PlayLogic.bestText(nil), "--", "nil")
 	expectEq(PlayLogic.bestText(0), "--", "0")

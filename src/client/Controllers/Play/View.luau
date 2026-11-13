@@ -11,6 +11,7 @@ local Parts = require(script.Parent.Parent.Bag.Parts)
 local Draw = require(script.Parent.Parent.QuestLog.Draw)
 local Sprites = require(script.Parent.Parent.Sprites)
 local PlaySprites = require(script.Parent.PlaySprites)
+local PlayLogic = require(script.Parent.PlayLogic)
 
 local Q, Bag = Draw.Q, Draw.Bag
 local make = UiKit.make
@@ -209,15 +210,15 @@ local function pillGeom(wd, L, s, w, h)
 	local avail = pw - tx0 - (if compact then 12 else 10 * s)
 	local size = if compact then 18 else round(25 * s)
 	local num = if wd.Best == "--" then wd.Best else `<font color="{YELLOW_HEX}">{wd.Best}</font>`
-	local plain = `BEST WAVE {wd.Best} / {wd.Waves}`
-	local rich = `BEST WAVE {num} / {wd.Waves}`
+	local plain = PlayLogic.bestWaveText(wd.Best, "full")
+	local rich = PlayLogic.bestWaveText(wd.Best, "full", num)
 	if compact and measure(plain, size) > avail then
-		plain = `BEST {wd.Best}/{wd.Waves}`
-		rich = `BEST {num}/{wd.Waves}`
+		plain = PlayLogic.bestWaveText(wd.Best, "short")
+		rich = PlayLogic.bestWaveText(wd.Best, "short", num)
 	end
 	if compact and measure(plain, size) > avail then
-		plain = `{wd.Best}/{wd.Waves}`
-		rich = `{num}/{wd.Waves}`
+		plain = PlayLogic.bestWaveText(wd.Best, "min")
+		rich = PlayLogic.bestWaveText(wd.Best, "min", num)
 	end
 	return {
 		pw = pw,

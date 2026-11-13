@@ -6,6 +6,20 @@ local PlayLogic = {}
 -- The one real, playable world is the server's trial. Waves mirrors server Balance.Waves; play.spec guards it.
 PlayLogic.WORLD = { Id = "DiceKingdom", Name = "DICE KINGDOM", Art = "WorldDice", Waves = 10 }
 
+-- Card denominator only (every world card reads "/ 100"); not the server's playable wave count.
+PlayLogic.DISPLAY_WAVES = 100
+
+-- BEST pill text. `shown` lets the view pass a rich-text-wrapped number in place of `best`.
+function PlayLogic.bestWaveText(best: string, form: "full" | "short" | "min", shown: string?): string
+	local n = shown or best
+	if form == "full" then
+		return `BEST WAVE {n} / {PlayLogic.DISPLAY_WAVES}`
+	elseif form == "short" then
+		return `BEST {n}/{PlayLogic.DISPLAY_WAVES}`
+	end
+	return `{n}/{PlayLogic.DISPLAY_WAVES}`
+end
+
 function PlayLogic.bestText(best: number?): string
 	if type(best) ~= "number" or best ~= best or best < 1 then
 		return "--"
@@ -35,12 +49,11 @@ function PlayLogic.worlds(snap: any, sample: any)
 			Name = W.Name,
 			Art = W.Art,
 			Best = PlayLogic.bestText(snap and snap.BestWave),
-			Waves = W.Waves,
 			Locked = false,
 		},
 	}
 	for _, w in sample.Worlds do
-		table.insert(out, { Id = w.Id, Name = w.Name, Art = w.Art, Best = "--", Waves = w.Waves, Locked = true })
+		table.insert(out, { Id = w.Id, Name = w.Name, Art = w.Art, Best = "--", Locked = true })
 	end
 	return out
 end
