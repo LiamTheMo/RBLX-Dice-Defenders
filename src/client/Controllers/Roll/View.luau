@@ -42,6 +42,7 @@ local ROW_GAP_MIN = 8.5 -- design px between the plate, the rows and the rim's i
 local ROW_GAP_COMPACT = 3.75 -- phones: 3 real px between the rows, the heading and the rim's inner face (text stays >= 14 real px, so the rows take the height)
 local ROW_GAP_REAL = 3 -- phones: the least real px between two rows
 local RIM_T_C, RIM_B_C = 8, 7.1 -- phones, Rarity panel (pixel scan of the 667 capture): rim bands 6.4 / 5.6 real px at UIScale 0.8, from the visible box edges
+local RIM_B_844 = 9.2 -- 844: the bottom rim's first pixel (highlight, not the dark face edge) sits 1.7 real px higher than at 667 (pixel scan)
 local FACE_SHIFT = 0.75 -- the Rarity panel's inner face centre sits this far right of its visible box centre (rim bands 13 / 12 source px at slice scale 0.5, minus the box insets 2 / 4)
 local TEXT_LIFT = 0.0685 -- x text size: the label centre to the ink centre of ascender..descender text (ink -0.354 .. +0.491 em)
 local MYTHIC_K = 1.14 -- the Mythic die is 1.14x the side dice (ref 204 vs 179)
@@ -202,7 +203,7 @@ local function compute(W: number, H: number, compact: boolean)
 		L.ruleH, L.ruleY = 12, -1
 		L.gap, L.btnGap, L.pad = 3.5, 3.5, 17 -- pad: >= 8 real px from the buttons to the window rim's inner face (face bottom 5.4 real px above the content bottom)
 		L.plateTop, L.plateH, L.pityH, L.btnH = if W >= 700 then 13 else 8, if W >= 700 then 24 else 26, 55, 45 -- plateTop: >= 4 real px under the panel's double top rim at 844
-		L.rimT, L.rimB = RIM_T_C, RIM_B_C
+		L.rimT, L.rimB = RIM_T_C, if W >= 700 then RIM_B_844 else RIM_B_C
 		L.titleY = RIM_T_C + ROW_GAP_COMPACT + 6.55 -- the plain heading (667): 3 real px under the rim, outline ~12.3 design px tall (caps 8.9 real + stroke 0.5), 3 real px to row 1
 		L.panelY = 4
 		L.noRarPlate = W < 700 -- 667: the title can't clear the diamonds inside the row span, so it is plain outlined text
@@ -253,10 +254,10 @@ local function compute(W: number, H: number, compact: boolean)
 		L.btnW = math.min(250, round((W - 40) / 2))
 		L.btnSpace = 40
 		L.featPlateW = round(L.fw * 0.7)
-		L.rowW = L.rw - 32 -- >= 6 real px to the rim's inner face (pixel scan: the rim face sits ~5 px inside the panel box)
+		L.rowW = L.rw - (if W < 700 then 25 else 32) -- >= 6 real px to the rim's inner face (pixel scan: the rim face sits ~5 px inside the panel box); 667: 4.5-6 px, so Common name and percent keep >= 8 px
 		L.rarPlateW = if L.noRarPlate then L.rowW + 2 * 18 else L.rowW - 6 -- the plate stays inside the row span (reference: plate 290 in rows 296)
 		L.rowIcon, L.rowNameX, L.rowNameW, L.rowPctW =
-			if W < 700 then 0.105 else 0.1, if W < 700 then 0.236 else 0.205, 0.6, 0.5 -- phones: name and percent share the narrow row (667: >= 3 px between the widest icon, the Rare stars, and the names)
+			if W < 700 then 0.1066 else 0.1, if W < 700 then 0.2267 else 0.205, 0.6, 0.5 -- phones: name and percent share the narrow row (667: icon column 14.2 real px, names at 30: Rare stars (0.9x) 2 px inside the row cap and >= 3 px from the name)
 		L.plateClear = 2 * 18 -- both plate ends (diamond + bevel) at plateH 28
 	else
 		L.padTop = 12 -- the scroll frame reaches this far above the content top, so the rule can sit just under the tabs
@@ -495,7 +496,7 @@ function View:_drawRarity(L, z, Pw: number, Ph: number)
 		local icon = Draw.img(panel, { Name = "Icon", ZIndex = z + 2 })
 		local rec = ROW_ICON[row.Rarity] or RollSprites.CrownGold
 		local box = ICON_BOX[row.Rarity] or CROWN_BOX
-		local f = if L.compact then rowH * 0.9 / 25 else 1
+		local f = if L.compact then rowH * 0.9 / 25 * (if L.noRarPlate and row.Rarity == "Rare" then 0.9 else 1) else 1
 		local boxW, boxH = box[1] * f, box[2] * f
 		-- ink-fitted into the box (width first), centred on the icon column
 		local ins = INS[rec]
