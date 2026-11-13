@@ -33,9 +33,8 @@ function Bag.new(parent, deps)
 		end,
 		banner = {
 			text = "BAG",
-			textX = 0.5, -- centred over the gem pin (the shared scroll has no right-hand art to dodge)
 			textW = 0.525,
-			emblems = { { sprite = Sprites.BannerEmblem, box = { 0.1085, 0.0617, 0.124, 0.8951 } } },
+			emblems = { { sprite = Sprites.BannerEmblem, box = { 0.1085, 0.0617, 0.124, 0.8951 }, side = true } },
 		},
 	})
 	local toolbar, grid = Parts.Toolbar(shell.Slots.Toolbar), Parts.Grid(shell.Slots.Grid)

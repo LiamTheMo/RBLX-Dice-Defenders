@@ -34,12 +34,11 @@ function Play.new(parent, deps)
 		free = true,
 		banner = {
 			text = "PLAY",
-			textX = 0.5715, -- the ref PLAY centre (+41.5 px of the 587 px scroll) scaled into the 489 px scroll, with >= 5 px to the swords and the right laurel
 			textW = 0.5,
 			emblems = {
-				{ sprite = PlaySprites.LaurelL, box = { 0.1538, 0.157, 0.1061, 0.645 } }, -- 0.83x the ref laurel (A-2 scale), drawn first: behind the swords
-				{ sprite = PlaySprites.LaurelR, box = { 0.7374, 0.157, 0.1061, 0.645 } },
-				{ sprite = SWORDS, box = { 0.221, -0.077, 0.172, 0.765 } },
+				{ sprite = PlaySprites.LaurelL, box = { 0.1379, 0.157, 0.1061, 0.645 } }, -- 0.83x the ref laurel (A-2 scale), drawn first: behind the swords; the pair is mirrored about the scroll centre
+				{ sprite = PlaySprites.LaurelR, box = { 0.7560, 0.157, 0.1061, 0.645 } }, -- >= 4 px clear of the title outline
+				{ sprite = SWORDS, box = { 0.221, -0.077, 0.172, 0.765 }, side = true },
 			},
 		},
 	})

@@ -21,7 +21,7 @@ local View = require(script.Parent.View)
 local ACTION = "RollClose"
 local POOLS = { "Standard", "Event" }
 -- Banner emblems (Roll only, no gem pin): Roll_BannerRing (ink 476 x 182 src px) behind Roll_BannerDieSolo (ink 203 x 220), the ring ~2.9x the die width centred on the die.
--- Boxes = scroll-ink fractions per tier. The die's top is >= 2 screen px down; its bottom is >= 6 px above the ROLL outline (title y 0.66).
+-- Boxes = scroll-ink fractions per tier. The die's top is >= 2 screen px down; the ring's bottom is >= 4 px above the ROLL caps.
 local INK = PlaySprites.ScrollBase.Ink.Height / PlaySprites.ScrollBase.Ink.Width
 local function dieBoxes(h, top, inkW)
 	local scrollH = inkW * INK
@@ -32,8 +32,8 @@ local function dieBoxes(h, top, inkW)
 	local die = { 0.5 - w / 2 / inkW, top / scrollH, w / inkW, h / scrollH }
 	return ring, die
 end
-local RING_FULL, DIE_FULL = dieBoxes(75, -34.5, 488.5)
-local RING_COMPACT, DIE_COMPACT = dieBoxes(34.5, -17.5, 220)
+local RING_FULL, DIE_FULL = dieBoxes(61.5, -34.6, 488.5)
+local RING_COMPACT, DIE_COMPACT = dieBoxes(30, -18.1, 220)
 local TIMER_W, SEP_W = 223, 30 -- the Quest Log pill width (full tier)
 local PRESS_COOLDOWN = 0.5 -- UX throttle only
 
@@ -54,10 +54,8 @@ function Roll.new(parent, deps)
 		tabReserve = SEP_W + TIMER_W + 16, -- (+ the two layout gaps) phones: the tabs shrink to leave this much of the row for the divider and timer
 		banner = {
 			text = "ROLL",
-			textX = 0.5,
 			textW = 0.45,
 			noGem = true,
-			titleY = { full = 0.66, compact = 0.66 },
 			emblems = {
 				{ sprite = RollSprites.BannerRing, box = { full = RING_FULL, compact = RING_COMPACT } },
 				{ sprite = RollSprites.BannerDieSolo, box = { full = DIE_FULL, compact = DIE_COMPACT } },

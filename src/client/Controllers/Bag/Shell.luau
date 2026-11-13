@@ -1,15 +1,15 @@
 -- Bag shell: the one window every tab shares (banner, close, tab bar, panel slots) plus Fit(). Visual only.
 -- Design px under one UIScale. Switching tabs never touches anything here except the tab sprites.
 -- Shell.new(parent, { fit = () -> { leftReal, bottomTopReal } }) -> shell (see :methods below).
--- Optional deps for other menus (defaults = the Bag): name, banner { text, textX, textW, emblems = { { sprite = record or id, box = {x, y, w, h} } } } (x/y/w/h = fractions of the scroll ink; the scroll and the
--- gem pin and the title size/height (TITLE) are the same for every menu; title centre textX and width textW are scroll-ink
--- fractions, a longer title shrinks to fit), detail (sprite key or record), fullDetail (detail panel as tall as the left one),
+-- Optional deps for other menus (defaults = the Bag): name, banner { text, textW, emblems = { { sprite = record or id, box = {x, y, w, h}, side = true } } } (x/y/w/h = fractions of the scroll ink; the scroll and the
+-- gem pin and the title size/height (TITLE) are the same for every menu; title width textW is a scroll-ink
+-- fraction, a longer title shrinks to fit; the title is centred on the parchment's height; the emblem flagged side (at most one)
+-- sits left of the title at the title's centre height and the pair is centred on the scroll, its box x/y are ignored), detail (sprite key or record), fullDetail (detail panel as tall as the left one),
 -- free (no tabs or panels: one Slots.Content box from freeTop; window, banner and close run the same code as the Bag),
 -- tabIconScale (tab icon box multiplier, default 1), tabW (tabs keep this design-px width instead of stretching (compact: scaled with the tab height, and shrunk to leave deps.tabReserve design px free in the row);
 -- the tab bar keeps the Bag's span so another child with a high LayoutOrder shares the row; a tab without Icon centres its label;
 -- free mode with tabs puts Content under the tab bar).
--- Opt-in banner options (default = unchanged): banner.noGem = true skips the gem pin; banner.titleY = { full = f, compact = f } overrides the title
--- centre height (scroll-ink fraction); an emblem box may be { full = box, compact = box } to size the emblem per tier.
+-- Opt-in banner options (default = unchanged): banner.noGem = true skips the gem pin; an emblem box may be { full = box, compact = box } to size the emblem per tier.
 
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
@@ -71,11 +71,17 @@ local TIER = {
 	},
 }
 local SB, GEM = PlaySprites.ScrollBase, PlaySprites.GemPin
-local TITLE = { -- banner title: font size, outline, centre height (scroll-ink fraction) per tier
-	Full = { size = 64, stroke = 5, y = 0.395 },
-	Compact = { size = 19, stroke = 3, y = 0.329 },
+local TITLE = { -- banner title: font size and outline per tier
+	Full = { size = 64, stroke = 5 },
+	Compact = { size = 19, stroke = 3 },
 }
-local GEM_BOX = { 0.4261, 0.7153, 0.1488, 0.3167 }
+local TITLE_Y = 0.512 -- title centre height (scroll-ink fraction) = the centre of the scroll's visible parchment
+local SIDE_GAP = 0.0315 -- side emblem to title glyph gap (scroll-ink widths), as in the Play and Shop references
+-- Fredoka One side bearings (x text size) of the first / last letter of the titles in use, measured from the 1672 captures; BEARING for any other letter
+local BEARING = 0.042
+local BEARING_L = { B = 0.058, Q = 0.0875, P = 0.042, R = 0.056 }
+local BEARING_R = { G = 0.06, Y = 0.031, L = 0.027 }
+local GEM_BOX = { 0.4261, 0.78, 0.1488, 0.3167 } -- 2 px under the title's outline
 local GAP = 10 -- vertical gap left panel to footer
 local FULL_INK = Vector2.new(1251, 770) -- window box minus the transparent mx/my margin: visible rim 213-1459 x 98-861
 local TAB_W = { 278.3, 299.3, 280.3, 314.3 } -- full-tier box widths for 4 tabs: visible 265 / 286 / 267 / 301 as in the ref
@@ -181,14 +187,15 @@ function Shell.new(parent, deps)
 	Parts.skin(banner, SB)
 	local sbInk =
 		{ SB.Ink.Min.X / SB.Size.X, SB.Ink.Min.Y / SB.Size.Y, SB.Ink.Width / SB.Size.X, SB.Ink.Height / SB.Size.Y }
-	local placers = {}
-	local function addEmblem(sprite, box)
+	local placers, sideEmblem = {}, nil
+	local function addEmblem(sprite, box, isSide)
 		local tiered = box.full ~= nil
 		local e = make("ImageLabel", { Name = "Emblem", BackgroundTransparency = 1, ZIndex = Z + 11 }, banner)
 		Parts.image(e, sprite)
-		local function place(b)
+		local function place(b, ovX, cy) -- ovX / cy (banner fractions of the ink box's left edge and centre height) override the box
 			local x, y, w, h = b[1], b[2], b[3], b[4] -- scroll-ink fractions
 			x, y, w, h = sbInk[1] + x * sbInk[3], sbInk[2] + y * sbInk[4], w * sbInk[3], h * sbInk[4] -- banner fractions
+			x, y = ovX or x, if cy then cy - h / 2 else y
 			if type(sprite) == "table" then -- draw by ink: the sprite's transparent margin extends the box
 				local r = sprite
 				local ix, iy, iw, ih =
@@ -197,7 +204,9 @@ function Shell.new(parent, deps)
 			end
 			e.Position, e.Size = UDim2.fromScale(x, y), UDim2.fromScale(w, h)
 		end
-		if tiered then
+		if isSide then
+			sideEmblem = { place = place, box = box }
+		elseif tiered then
 			table.insert(placers, function(compact)
 				place(if compact then box.compact else box.full)
 			end)
@@ -209,7 +218,7 @@ function Shell.new(parent, deps)
 		addEmblem(GEM, GEM_BOX)
 	end
 	for _, e in bn.emblems or {} do
-		addEmblem(e.sprite, e.box)
+		addEmblem(e.sprite, e.box, e.side)
 	end
 	local bannerText = Parts.text(banner, {
 		Name = "Text",
@@ -333,10 +342,6 @@ function Shell.new(parent, deps)
 		banner.Position = UDim2.new(0.5, 0, 0, t.inkCy - (SB.Ink.Min.Y + SB.Ink.Max.Y) / 2 * k)
 		banner.Size = UDim2.fromOffset(SB.Size.X * k, SB.Size.Y * k)
 		local title = if compact then TITLE.Compact else TITLE.Full
-		if bn.titleY then
-			title = table.clone(title)
-			title.y = if compact then bn.titleY.compact else bn.titleY.full
-		end
 		for _, place in placers do
 			place(compact)
 		end
@@ -347,7 +352,22 @@ function Shell.new(parent, deps)
 			title.size,
 			12
 		)
-		bannerText.Position = UDim2.fromScale(sbInk[1] + (bn.textX or 0.5) * sbInk[3], sbInk[2] + title.y * sbInk[4])
+		local bannerW = banner.Size.X.Offset
+		local cy = sbInk[2] + TITLE_Y * sbInk[4]
+		-- the glyphs' ink (text box minus the first / last letter's side bearing) is centred on the scroll, or the side emblem + glyphs as one group
+		local ts, str = bannerText.TextSize, bannerText.Text
+		local boxW = Parts.measure(str, ts)
+		local bl, br = (BEARING_L[str:sub(1, 1)] or BEARING) * ts, (BEARING_R[str:sub(-1)] or BEARING) * ts
+		local lead = 0 -- emblem ink + gap in front of the glyphs
+		if sideEmblem then
+			lead = sideEmblem.box[3] * sbInk[3] * bannerW + SIDE_GAP * sbInk[3] * bannerW
+		end
+		local groupLeft = (sbInk[1] + sbInk[3] / 2) * bannerW - (lead + boxW - bl - br) / 2
+		if sideEmblem then
+			sideEmblem.place(sideEmblem.box, groupLeft / bannerW, cy)
+		end
+		local textCx = (groupLeft + lead - bl + boxW / 2) / bannerW
+		bannerText.Position = UDim2.fromScale(textCx, cy)
 		bannerText.Size = UDim2.new((bn.textW or 0.5) * sbInk[3], 0, 0, math.ceil(bannerText.TextSize * 1.2))
 		-- ~85% of the reference X (visible 74x72 at full): same centre, so it still sits on the window's corner
 		close.Size = if compact then UDim2.fromOffset(61, 58) else UDim2.fromOffset(72, 68) -- visible ~63x61 (the sprite shows ~0.87 of its box)

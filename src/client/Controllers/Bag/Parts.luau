@@ -140,6 +140,8 @@ local function measure(str: string, size: number): number
 	return TextService:GetTextSize(str, size, FONT, Vector2.new(1e5, 1e5)).X
 end
 
+Parts.measure = measure -- text width in design px
+
 -- Shrinks the label's TextSize from maxSize until the text fits availW (never under minSize; AtEnd handles the rest).
 function Parts.fitSize(str: string, availW: number, maxSize: number, minSize: number): number
 	local w = measure(str, maxSize)

@@ -125,10 +125,9 @@ function QuestLog.new(parent, deps)
 		name = "QuestLog",
 		banner = {
 			text = "QUEST LOG",
-			textX = 0.5394,
 			textW = 0.523,
 			emblems = {
-				{ sprite = Q.BannerSeal, box = { 0.1085, 0.1111, 0.1382, 0.8148 } },
+				{ sprite = Q.BannerSeal, box = { 0.1085, 0.1111, 0.1382, 0.8148 }, side = true },
 				{ sprite = Q.BannerQuill, box = { 0.1925, -0.3827, 0.5904, 0.4938 } },
 			},
 		},
