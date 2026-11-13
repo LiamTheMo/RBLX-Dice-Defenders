@@ -40,8 +40,9 @@ local CROWN_BOX = { 41, 25 }
 local RIM_B = 3 -- the Rarity panel's inner face ends this far above its visible bottom (Bag_Detail: 14 source px from the ink, 8 of them outside the visible box, at slice scale 0.5)
 local ROW_GAP_MIN = 8.5 -- design px between the plate, the rows and the rim's inner face
 local ROW_GAP_COMPACT = 3.75 -- phones: 3 real px between the rows, the heading and the rim's inner face (text stays >= 14 real px, so the rows take the height)
+local ROW_EDGE_MIN = 11.6 -- design px from the plate's visible bottom / the rim box edge (3 above the bottom rim) to the rows: >= 4.6 real px of bare face at 1235x681 (8 design px to the rim's first pixel)
 local ROW_GAP_REAL = 3 -- phones: the least real px between two rows
-local RIM_T_C, RIM_B_C = 8, 7.1 -- phones, Rarity panel (pixel scan of the 667 capture): rim bands 6.4 / 5.6 real px at UIScale 0.8, from the visible box edges
+local RIM_T_C, RIM_B_C = 8, 5.85 -- phones, Rarity panel (pixel scan of the 667 capture): rim bands 6.4 / 5.6 real px at UIScale 0.8, from the visible box edges; the rows end 1 real px lower (4.3 real px to the face) to widen the heading strip
 local RIM_B_844 = 7.45 -- 844: the bottom rim's first pixel (highlight, not the dark face edge) sits 1.7 real px higher than at 667 (pixel scan); 1.75 less than that, the row block shares ROWS_DROP_844 with the top margin
 local ROWS_DROP_844 = 1.75 -- 844: the block of rows sits this far lower (top margin 3.5 vs bottom 6.3 real px before: equal within 1 px now)
 local FACE_SHIFT = 0.75 -- the Rarity panel's inner face centre sits this far right of its visible box centre (rim bands 13 / 12 source px at slice scale 0.5, minus the box insets 2 / 4)
@@ -205,7 +206,7 @@ local function compute(W: number, H: number, compact: boolean)
 		L.gap, L.btnGap, L.pad = 3.5, 3.5, 17 -- pad: >= 8 real px from the buttons to the window rim's inner face (face bottom 5.4 real px above the content bottom)
 		L.plateTop, L.plateH, L.pityH, L.btnH = if W >= 700 then 13 else 8, if W >= 700 then 24 else 26, 55, 45 -- plateTop: >= 4 real px under the panel's double top rim at 844
 		L.rimT, L.rimB = RIM_T_C, if W >= 700 then RIM_B_844 else RIM_B_C
-		L.titleY = RIM_T_C + ROW_GAP_COMPACT + 6.55 -- the plain heading (667): 3 real px under the rim, outline ~12.3 design px tall (caps 8.9 real + stroke 0.5), 3 real px to row 1
+		L.titleY = RIM_T_C + ROW_GAP_COMPACT + 7.15 -- the plain heading (667): >= 3 real px under the rim and above row 1 (rows start 2 real px lower), outline ~12.3 design px tall (caps 8.9 real + stroke 0.5)
 		L.panelY = 4
 		L.noRarPlate = W < 700 -- 667: the title can't clear the diamonds inside the row span, so it is plain outlined text
 		L.panelH = math.max(150, H - L.panelY - L.pityH - L.btnH - L.gap - L.btnGap - L.pad)
@@ -308,7 +309,9 @@ local function compute(W: number, H: number, compact: boolean)
 	-- six identical visible rows: as tall as fits with the minimum gap above, between and below them
 	L.rimB = L.rimB or RIM_B
 	L.rowsTop = if L.noRarPlate
-		then L.rimT + ROW_GAP_COMPACT + 12.4
+		then L.rimT
+			+ 2 * ROW_GAP_COMPACT
+			+ 12.4 -- 667: the heading strip is 3.75 design px (3 real) deeper than the plain 3 + 3 px gaps
 		else L.plateTop + L.plateH + (if L.compact and W >= 700 then ROWS_DROP_844 else 0)
 	local gapMin = if compact then ROW_GAP_COMPACT else ROW_GAP_MIN
 	local fitH = (L.panelH - L.rimB - L.rowsTop - 7 * gapMin) / 6
@@ -462,20 +465,27 @@ function View:_drawRarity(L, z, Pw: number, Ph: number)
 		then math.floor(baseY + (L.panelY + Ph - L.rimB) * K)
 		else round(baseY + (L.panelY + Ph - L.rimB) * K)
 	local gMin = if L.compact then ROW_GAP_REAL else ROW_GAP_MIN * K
-	local hr = math.min(math.floor(L.rowH * K), math.floor((r1 - r0 - 7 * gMin) / 6)) -- real px
+	local gEdge = if L.compact then 0 else math.ceil(ROW_EDGE_MIN * K) -- desktop: the least real px between the plate / rim and the rows
+	local hr = math.min(math.floor(L.rowH * K), math.floor((r1 - r0 - 5 * gMin - 2 * gEdge) / 6)) -- real px
 	local free = r1 - r0 - 6 * hr
 	local g = math.floor(free / 7)
-	local rem = free - 7 * g
 	local gaps = { g, g, g, g, g, g, g }
-	for i = 1, 3 do -- the remainder pixels go to the outer pairs first, an odd one to the middle gap
-		if rem >= 2 then
-			gaps[i] += 1
-			gaps[8 - i] += 1
-			rem -= 2
+	if g < gEdge or (L.compact and L.W >= 700) then -- tight: the rows keep their least gap, the plate / rim margins take the rest
+		local gi = if L.compact then ROW_GAP_REAL else math.floor((free - 2 * gEdge) / 5)
+		local e = free - 5 * gi
+		gaps = { math.ceil(e / 2), gi, gi, gi, gi, gi, math.floor(e / 2) }
+	else
+		local rem = free - 7 * g
+		for i = 1, 3 do -- the remainder pixels go to the outer pairs first, an odd one to the middle gap
+			if rem >= 2 then
+				gaps[i] += 1
+				gaps[8 - i] += 1
+				rem -= 2
+			end
 		end
-	end
-	if rem == 1 then
-		gaps[4] += 1
+		if rem == 1 then
+			gaps[4] += 1
+		end
 	end
 	local rowH = hr / K -- design px (snapped to whole real px)
 	local rowK = rowH / 68 -- the rows' visible source heights are 62-73 px
