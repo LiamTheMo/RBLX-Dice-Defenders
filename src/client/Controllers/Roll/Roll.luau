@@ -32,7 +32,7 @@ local function dieBoxes(h, top, inkW, ringUp)
 	local die = { 0.5 - w / 2 / inkW, top / scrollH, w / inkW, h / scrollH }
 	return ring, die
 end
-local RING_FULL, DIE_FULL = dieBoxes(57, -34.6, 488.5, 2.5) -- ringUp: the halo sits this far above the die so its faint glow stays >= 3 real px off the ROLL outline
+local RING_FULL, DIE_FULL = dieBoxes(57, -34.6, 488.5, 0)
 local RING_COMPACT, DIE_COMPACT = dieBoxes(28, -18.1, 220, 0)
 local TIMER_W, SEP_W = 223, 30 -- the Quest Log pill width (full tier)
 local PRESS_COOLDOWN = 0.5 -- UX throttle only

@@ -80,10 +80,11 @@ local TITLE_Y = 0.512 -- title centre height (scroll-ink fraction) = the centre 
 local SIDE_GAP = { Full = 12, Compact = 10 } -- side emblem ink to title outline (the Bag's crowned die stays >= 3 px off the gem pin wing)
 local FLAT_L, FLAT_R, FLAT_MARGIN = 99, 700, 8 -- the parchment's cream (ScrollBase sprite px, between the rolled ends); the group keeps FLAT_MARGIN design px off its ends
 -- Fredoka One side bearings (x text size) of the first / last letter of the titles in use: the fill's ink edge to the text box edge,
--- measured on a 100 px capture of each title (the label is centred, so the ink edge sits bearing px inside the TextBounds)
+-- measured on a clean 100 px render of each title (left-aligned label: the ink edge sits bearing x size inside the TextBounds); G (last letter) is
+-- set below its measured 0.033 so the projected real-device group centre (text renders at floor(size)) stays within 1 px at every size
 local BEARING = 0.035
-local BEARING_L = { B = 0.039, Q = 0.031, P = 0.042, R = 0.043, S = 0.022 }
-local BEARING_R = { G = 0.033, Y = 0.015, L = 0.025, P = 0.030 }
+local BEARING_L = { B = 0.033, Q = 0.020, P = 0.033, R = 0.033, S = 0.020 }
+local BEARING_R = { G = 0.0225, Y = 0.005, L = 0.024, P = 0.0205 }
 local GEM_BOX = { 0.4261, 0.787, 0.1488, 0.3167 } -- >= 2 REAL px under the title's outline (UIScale 0.8: 2.5 design px)
 local GAP = 10 -- vertical gap left panel to footer
 local FULL_INK = Vector2.new(1251, 770) -- window box minus the transparent mx/my margin: visible rim 213-1459 x 98-861
