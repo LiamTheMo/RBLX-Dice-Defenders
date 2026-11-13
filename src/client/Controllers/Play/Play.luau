@@ -38,7 +38,11 @@ function Play.new(parent, deps)
 			emblems = {
 				{ sprite = PlaySprites.LaurelL, box = { 0.1379, 0.157, 0.1061, 0.645 } }, -- 0.83x the ref laurel (A-2 scale), drawn first: behind the swords; the pair is mirrored about the scroll centre
 				{ sprite = PlaySprites.LaurelR, box = { 0.7560, 0.157, 0.1061, 0.645 } }, -- >= 4 px clear of the title outline
-				{ sprite = SWORDS, box = { 0.221, -0.077, 0.172, 0.765 }, side = true },
+				{
+					sprite = SWORDS,
+					box = { full = { 0.221, -0.077, 0.172, 0.765 }, compact = { 0.221, -0.077, 0.139, 0.62 } },
+					side = true,
+				}, -- compact: 0.81x, the pommel clears the gem pin
 			},
 		},
 	})

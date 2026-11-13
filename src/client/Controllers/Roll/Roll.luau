@@ -23,17 +23,17 @@ local POOLS = { "Standard", "Event" }
 -- Banner emblems (Roll only, no gem pin): Roll_BannerRing (ink 476 x 182 src px) behind Roll_BannerDieSolo (ink 203 x 220), the ring ~2.9x the die width centred on the die.
 -- Boxes = scroll-ink fractions per tier. The die's top is >= 2 screen px down; the ring's bottom is >= 4 px above the ROLL caps.
 local INK = PlaySprites.ScrollBase.Ink.Height / PlaySprites.ScrollBase.Ink.Width
-local function dieBoxes(h, top, inkW)
+local function dieBoxes(h, top, inkW, ringUp)
 	local scrollH = inkW * INK
 	local w = h * 203 / 220
-	local rw = 2.9 * w
+	local rw = 2.8 * w
 	local rh = rw * 182 / 476
-	local ring = { 0.5 - rw / 2 / inkW, (top + h / 2 - rh / 2) / scrollH, rw / inkW, rh / scrollH }
+	local ring = { 0.5 - rw / 2 / inkW, (top + h / 2 - rh / 2 - ringUp) / scrollH, rw / inkW, rh / scrollH }
 	local die = { 0.5 - w / 2 / inkW, top / scrollH, w / inkW, h / scrollH }
 	return ring, die
 end
-local RING_FULL, DIE_FULL = dieBoxes(57, -34.6, 488.5)
-local RING_COMPACT, DIE_COMPACT = dieBoxes(28, -18.1, 220)
+local RING_FULL, DIE_FULL = dieBoxes(57, -34.6, 488.5, 2.5) -- ringUp: the halo sits this far above the die so its faint glow stays >= 3 real px off the ROLL outline
+local RING_COMPACT, DIE_COMPACT = dieBoxes(28, -18.1, 220, 0)
 local TIMER_W, SEP_W = 223, 30 -- the Quest Log pill width (full tier)
 local PRESS_COOLDOWN = 0.5 -- UX throttle only
 

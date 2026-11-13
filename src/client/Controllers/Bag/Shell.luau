@@ -73,7 +73,7 @@ local TIER = {
 local SB, GEM = PlaySprites.ScrollBase, PlaySprites.GemPin
 local TITLE = { -- banner title: font size and outline per tier
 	Full = { size = 64, stroke = 5 },
-	Compact = { size = 19, stroke = 3 },
+	Compact = { size = 19, stroke = 2 }, -- 2: the counters of O / R / A stay open at 15 real px
 }
 local TITLE_Y = 0.512 -- title centre height (scroll-ink fraction) = the centre of the scroll's visible parchment
 -- Banner group = the side emblem's ink + SIDE_GAP + the title's outline (fill + stroke), centred on the scroll; design px.
@@ -84,7 +84,7 @@ local FLAT_L, FLAT_R, FLAT_MARGIN = 99, 700, 8 -- the parchment's cream (ScrollB
 local BEARING = 0.035
 local BEARING_L = { B = 0.039, Q = 0.031, P = 0.042, R = 0.043, S = 0.022 }
 local BEARING_R = { G = 0.033, Y = 0.015, L = 0.025, P = 0.030 }
-local GEM_BOX = { 0.4261, 0.78, 0.1488, 0.3167 } -- 2 px under the title's outline
+local GEM_BOX = { 0.4261, 0.787, 0.1488, 0.3167 } -- >= 2 REAL px under the title's outline (UIScale 0.8: 2.5 design px)
 local GAP = 10 -- vertical gap left panel to footer
 local FULL_INK = Vector2.new(1251, 770) -- window box minus the transparent mx/my margin: visible rim 213-1459 x 98-861
 local TAB_W = { 278.3, 299.3, 280.3, 314.3 } -- full-tier box widths for 4 tabs: visible 265 / 286 / 267 / 301 as in the ref
@@ -227,7 +227,8 @@ function Shell.new(parent, deps)
 		Name = "Text",
 		Text = bn.text or "BAG",
 		TextTruncate = Enum.TextTruncate.None,
-		AnchorPoint = Vector2.new(0.5, 0.5),
+		AnchorPoint = Vector2.new(0, 0.5), -- left-aligned: the ink starts at the box edge + the letter's bearing at the rendered (fractional) size
+		TextXAlignment = Enum.TextXAlignment.Left,
 		ZIndex = Z + 12,
 	}, 5)
 	local bannerStroke = bannerText:FindFirstChildOfClass("UIStroke")
@@ -365,29 +366,27 @@ function Shell.new(parent, deps)
 			lead = sideBox[3] * sbInk[3] * bannerW + SIDE_GAP[if compact then "Compact" else "Full"]
 		end
 		local flatW = (FLAT_R - FLAT_L) * k - 2 * FLAT_MARGIN
-		-- Text is drawn at a whole real size (the rendered size is floored; TextBounds is that size's width), so width and
-		-- bearings are taken at floor(size x bs) real px, in design px
+		-- The ink is linear in the rendered (fractional) size, TextBounds is not (it steps): width = TextBounds per em at a large
+		-- size minus the two bearings, the label is left-aligned, so the group edges sit where the arithmetic says
 		local bl0, br0 = BEARING_L[str:sub(1, 1)] or BEARING, BEARING_R[str:sub(-1)] or BEARING
-		local function metrics(sz) -- effective design size, text box width, outline width
-			local n = math.max(1, math.floor(sz * bs + 1e-3))
-			local w = Parts.measure(str, n) / bs
-			return n / bs, w, w - (bl0 + br0) * n / bs + 2 * title.stroke
+		local perEm = Parts.measure(str, 200) / 200
+		local function outWidth(sz)
+			return (perEm - bl0 - br0) * sz + 2 * title.stroke
 		end
 		local ts = title.size
-		while ts > 12 and lead + select(3, metrics(ts)) > flatW do
+		while ts > 12 and lead + outWidth(ts) > flatW do
 			ts -= 1
 		end
 		bannerText.TextSize = ts
-		local eff, boxW, outW = metrics(ts)
+		local outW = outWidth(ts)
 		local groupLeft = (sbInk[1] + sbInk[3] / 2) * bannerW - (lead + outW) / 2
 		if sideEmblem then
 			sideEmblem.place(sideBox, groupLeft / bannerW, cy)
 		end
-		local textCx = (groupLeft + lead + title.stroke - bl0 * eff + boxW / 2) / bannerW
-		bannerText.Position = UDim2.fromScale(textCx, cy)
+		bannerText.Position = UDim2.fromScale((groupLeft + lead + title.stroke - bl0 * ts) / bannerW, cy)
 		bannerText.Size = UDim2.new(
 			0,
-			math.max((bn.textW or 0.5) * sbInk[3] * bannerW, boxW + 2 * title.stroke + 4),
+			math.max((bn.textW or 0.5) * sbInk[3] * bannerW, perEm * ts + 2 * title.stroke + 4),
 			0,
 			math.ceil(ts * 1.2)
 		)
