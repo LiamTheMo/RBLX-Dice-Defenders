@@ -13,6 +13,7 @@ local Bag = require(script.Parent.Bag.Bag)
 local QuestLog = require(script.Parent.QuestLog.QuestLog)
 local Play = require(script.Parent.Play.Play)
 local Roll = require(script.Parent.Roll.Roll)
+local Shop = require(script.Parent.Shop.Shop)
 
 local make, panel, label, button = UiKit.make, UiKit.panel, UiKit.label, UiKit.button
 local NAVY, WHITE, GREEN = UiKit.NAVY, UiKit.WHITE, UiKit.GREEN
@@ -52,12 +53,36 @@ local openPanel = nil
 local dismissed = false
 local lobbyActive = false
 
+-- Every menu window: HUD name -> ui key. Opening one closes the others.
+local MENUS = {
+	{ Name = "Bag", Key = "Bag" },
+	{ Name = "Quests", Key = "QuestLog" },
+	{ Name = "Play", Key = "Play" },
+	{ Name = "Roll", Key = "Roll" },
+	{ Name = "Shop", Key = "Shop" },
+}
+
+local function closeMenus()
+	for _, menu in MENUS do
+		ui[menu.Key]:Close()
+	end
+end
+
+local function anyMenuOpen(): boolean
+	for _, menu in MENUS do
+		if ui[menu.Key]:IsOpen() then
+			return true
+		end
+	end
+	return false
+end
+
 local function toast(text: string)
 	toastToken += 1
 	local token = toastToken
 	ui.Toast.Text = text
-	-- Bag, Quest Log or Play open: sit over the HUD currency block so the banner, X and tabs stay visible.
-	if ui.Bag:IsOpen() or ui.QuestLog:IsOpen() or ui.Play:IsOpen() or ui.Roll:IsOpen() then
+	-- A menu open: sit over the HUD currency block so the banner, X and tabs stay visible.
+	if anyMenuOpen() then
 		ui.ToastFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 		-- Clamped: on phones the HUD block is hidden and bottomTopReal is the screen height.
 		local y = math.min(ui.LobbyHud:GetBagInsets().bottomTopReal + 26, UiKit.screenSize(ui.Root).Y - 26)
@@ -113,35 +138,18 @@ local function outline(lbl)
 end
 
 local function showPanel(name: string?, tab: number?)
-	if name == "Bag" then -- the bag and quest log are their own windows, not placeholder panels
-		ui.QuestLog:Close()
-		ui.Play:Close()
-		ui.Roll:Close()
-		ui.Bag:Toggle(tab)
-		return
-	elseif name == "Quests" then
-		ui.Bag:Close()
-		ui.Play:Close()
-		ui.Roll:Close()
-		ui.QuestLog:Toggle()
-		return
-	elseif name == "Play" then
-		ui.Bag:Close()
-		ui.QuestLog:Close()
-		ui.Roll:Close()
-		ui.Play:Toggle()
-		return
-	elseif name == "Roll" then
-		ui.Bag:Close()
-		ui.QuestLog:Close()
-		ui.Play:Close()
-		ui.Roll:Toggle()
-		return
+	for _, menu in MENUS do -- the menus are their own windows, not placeholder panels: opening one closes the rest
+		if menu.Name == name then
+			for _, other in MENUS do
+				if other ~= menu then
+					ui[other.Key]:Close()
+				end
+			end
+			ui[menu.Key]:Toggle(tab)
+			return
+		end
 	end
-	ui.Bag:Close()
-	ui.QuestLog:Close()
-	ui.Play:Close()
-	ui.Roll:Close()
+	closeMenus()
 	openPanel = name
 	for key, p in ui.Panels do
 		p.Frame.Visible = key == name
@@ -272,6 +280,7 @@ local function build()
 	ui.QuestLog = QuestLog.new(ui.Root, { hud = ui.LobbyHud, toast = toast })
 	ui.Play = Play.new(ui.Root, { hud = ui.LobbyHud, toast = toast })
 	ui.Roll = Roll.new(ui.Root, { hud = ui.LobbyHud, toast = toast })
+	ui.Shop = Shop.new(ui.Root, { hud = ui.LobbyHud, toast = toast })
 
 	newPanel("Profile")
 
@@ -371,6 +380,9 @@ function Lobby.Destroy()
 	end
 	if ui and ui.Roll then
 		ui.Roll:Destroy()
+	end
+	if ui and ui.Shop then
+		ui.Shop:Destroy()
 	end
 	if gui then
 		gui:Destroy()
