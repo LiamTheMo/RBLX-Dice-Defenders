@@ -7,6 +7,7 @@
 
 local TextService = game:GetService("TextService")
 
+local BagSprites = require(script.Parent.Parent.Bag.BagSprites)
 local Parts = require(script.Parent.Parent.Bag.Parts)
 local Draw = require(script.Parent.Parent.QuestLog.Draw)
 local RollSprites = require(script.Parent.Parent.Roll.RollSprites)
@@ -20,7 +21,6 @@ local make = UiKit.make
 
 local GOLD = Color3.fromRGB(255, 200, 60)
 local DIM = Color3.fromRGB(205, 210, 235)
-local GLOW = Color3.fromRGB(255, 150, 40)
 local SPARK = Color3.fromRGB(255, 230, 150)
 local PANEL_INS = { 4, 2, 4, 10 } -- visible insets (source px: left, top, right, bottom) of the LeftPanel sprite inside its Ink rect
 local PANEL_K = 0.5 -- slice scale of every card (as the Roll and Play panels)
@@ -38,7 +38,7 @@ local ROLE = {
 		px = 3,
 	},
 	name = {
-		size = 34,
+		size = 36,
 		min = 20,
 		cs = 20,
 		cmin = 18,
@@ -47,7 +47,7 @@ local ROLE = {
 		px = 3,
 	},
 	desc = {
-		size = 20,
+		size = 22,
 		min = 15,
 		cs = 18,
 		cmin = 15,
@@ -56,7 +56,7 @@ local ROLE = {
 		px = 2,
 	},
 	bullet = {
-		size = 28,
+		size = 30,
 		min = 18,
 		cs = 18,
 		cmin = 15,
@@ -65,7 +65,7 @@ local ROLE = {
 		px = 2,
 	},
 	price = {
-		size = 48,
+		size = 56,
 		min = 15,
 		cs = 26,
 		cmin = 15,
@@ -77,14 +77,15 @@ local ROLE = {
 	soonSub = { size = 26, min = 16, cs = 18, cmin = 15, fill = DIM, px = 3 },
 }
 -- price button tiers: box w x h, text size, Robux icon height, icon-to-number gap
+-- (frames: the BtnGreen art sits ~3.4 px inside, so the visible ink is the ref 226 x 77 hero / 174 x 46 card)
 local TIER = {
-	hero = { w = 226, h = 76, size = 48, icon = 46, gap = 13 },
-	card = { w = 174, h = 45, size = 38, icon = 33, gap = 5 },
+	hero = { w = 233, h = 84, size = 56, icon = 46, gap = 13 },
+	card = { w = 178, h = 50, size = 50, icon = 33, gap = 5 },
 	compact = { w = 150, h = 56, size = 26, icon = 26, gap = 4 },
 }
 -- heading plates: sprite, ink box (fitted by aspect, never stretched), card top below the plate top
 local HEAD = {
-	STARTER = { rec = ShopSprites.StarterCap, w = 440, h = 78, drop = 8 },
+	STARTER = { rec = ShopSprites.StarterCap, w = 440, h = 82, drop = 8 },
 	GAMEPASSES = { rec = ShopSprites.GPHeading, w = 468, h = 75, below = 77, drop = 10 },
 	GEMS = { rec = ShopSprites.GemsHeading, w = 450, h = 50, below = 57 },
 }
@@ -99,12 +100,13 @@ local ART = { -- product art keys (Shop\SampleData)
 	ChestOpenGems = ShopSprites.ChestOpenGems,
 	Gems3 = "Gems3", -- composed in art()
 }
+local BULLET_BOX = { Gem = { 38, 28 }, Dice3 = { 44, 30 }, Potion = { 28, 32 }, Chest = { 48, 33 } } -- Full icon boxes (the ref's sizes)
 local BULLET = { Gem = Sprites.Gem, Dice3 = RollSprites.Dice3, Potion = Q.Potion, Chest = Q.IconChest }
-local SPARKLES = { -- hero card-local centre and visible size
-	{ Q.Sparkle1, 87, 54, 32, 28 },
-	{ Q.Sparkle2, 376, 40, 33, 30 },
-	{ Q.Sparkle3, 54, 137, 22, 23 },
-	{ Q.Sparkle4, 456, 137, 22, 23 },
+local CARD_SPARKS = { -- per card art: x / y in art half-sizes from its centre, box
+	{ Q.Sparkle1, -0.8, -0.6, 18, 18 },
+	{ Q.Sparkle2, 0.85, -0.65, 18, 18 },
+	{ Q.Sparkle3, -0.85, 0.55, 13, 13 },
+	{ Q.Sparkle4, 0.9, 0.5, 13, 13 },
 }
 
 local function round(n: number): number
@@ -120,7 +122,7 @@ end
 -- One text role = one size: the largest size <= size at which every string fits w (never under min).
 local function roleSize(strs: { string }, w: number, size: number, min: number): number
 	for _, s in strs do
-		while size > min and measure(s, size) > w do
+		while size > min and measure(s, size) > w * 0.97 do
 			size -= 1
 		end
 	end
@@ -198,17 +200,19 @@ local function whole(parent, rec, cx: number, cy: number, w: number, z: number, 
 end
 
 local function art(parent, key: string, cx: number, cy: number, w: number, h: number, z: number)
-	if key == "Gems3" then -- the reference trio: two small gems low and wide, a big one on top between them
+	if key == "Gems3" then -- the reference trio: a big gem on top overlapping two smaller, darker ones tilted outwards behind it
 		local u = h / 88
-		sprite(parent, Sprites.Gem, cx - 42 * u, cy + 14 * u, 52 * u, 52 * u, z, "GemL")
-		sprite(parent, Sprites.Gem, cx + 42 * u, cy + 14 * u, 52 * u, 52 * u, z, "GemR")
-		sprite(parent, Sprites.Gem, cx, cy - 6 * u, 74 * u, 74 * u, z + 1, "GemC")
+		local gl = sprite(parent, Sprites.Gem, cx - 36 * u, cy + 16 * u, 56 * u, 56 * u, z, "GemL")
+		local gr = sprite(parent, Sprites.Gem, cx + 36 * u, cy + 16 * u, 56 * u, 56 * u, z, "GemR")
+		gl.Rotation, gr.Rotation = -14, 14
+		gl.ImageColor3, gr.ImageColor3 = Color3.fromRGB(205, 195, 225), Color3.fromRGB(205, 195, 225)
+		sprite(parent, Sprites.Gem, cx, cy - 8 * u, 80 * u, 80 * u, z + 1, "GemC")
 	else
 		sprite(parent, ART[key], cx, cy, w, h, z)
 	end
 end
 
--- Card skin by its VISIBLE box (x, y, w, h); the returned frame is exactly that box (children use card-local px) and clips glows to it.
+-- Card skin by its VISIBLE box (x, y, w, h); the returned frame is exactly that box (children use card-local px).
 local function card(parent, name: string, x: number, y: number, w: number, h: number, z: number)
 	local l, t, r, b = PANEL_INS[1], PANEL_INS[2], PANEL_INS[3], PANEL_INS[4]
 	local k = PANEL_K
@@ -227,8 +231,20 @@ local function card(parent, name: string, x: number, y: number, w: number, h: nu
 		Position = UDim2.fromOffset(round(x), round(y)),
 		Size = UDim2.fromOffset(w, h),
 		ZIndex = z + 1,
-		ClipsDescendants = true,
 	}, "Frame")
+end
+
+-- A rarity glow (the whole soft-edged image, fading to nothing at its own edge) w x h centred at (cx, cy), kept inside its card.
+local function glow(parent, key: string, cx: number, cy: number, w: number, h: number, z: number)
+	return Draw.img(parent, {
+		Name = "Glow",
+		Image = BagSprites[key].Image,
+		ScaleType = Enum.ScaleType.Stretch,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromOffset(round(cx), round(cy)),
+		Size = UDim2.fromOffset(round(w), round(h)),
+		ZIndex = z,
+	})
 end
 
 local View = {}
@@ -241,17 +257,17 @@ View.Art, View.Bullets = ART, BULLET -- the key tables (the spec checks SampleDa
 local function compute(W: number, H: number, compact: boolean)
 	local L = { W = W, H = H, compact = compact }
 	if compact then
-		L.pad = { l = 10, r = 20, t = 10, b = 10 }
+		L.pad = { l = 20, r = 20, t = 10, b = 10 } -- symmetric: the cards and plates sit on the content axis
 		L.barW, L.barInset, L.gap = 8, 8, 10
-		L.inner = W - 30
+		L.inner = W - 40
 		L.cols = if (L.inner - 20) / 3 >= 250 then 3 else 2
-		L.plateK, L.ruleK = 0.64, 0.35
+		L.plateK, L.ruleK = 0.64, 0.45
 	else
 		L.pad = { l = 28, r = 28, t = 16, b = 16 }
 		L.barW, L.barInset, L.gap = 12, 9, 15
 		L.inner = W - 56
 		L.cols = 3
-		L.plateK, L.ruleK = 1, 0.57
+		L.plateK, L.ruleK = 1, 0.7
 	end
 	L.colW = math.floor((L.inner - (L.cols - 1) * L.gap) / L.cols)
 	L.rowW = L.cols * L.colW + (L.cols - 1) * L.gap
@@ -268,9 +284,13 @@ local function compute(W: number, H: number, compact: boolean)
 		if compact then
 			return 8 + (if hasDesc then 56 else 50) + 22 + (if hasDesc then 46 else 0) + bh + 8
 		end
-		return (if hasDesc then 163 else 120) + bh - 45
+		return (if hasDesc then 163 else 120) + bh - TIER.card.h
 	end
 	L.heroH = if compact then 150 else 208
+	-- Full is drawn in the reference x units (card 373 wide, hero row 1149); a narrower slot scales every x with its card / row so
+	-- nothing leaves it (heights, text sizes and the 44 px touch height are not scaled)
+	L.fc = if compact then 1 else math.min(1, L.colW / 373)
+	L.fh = if compact then 1 else math.min(1, L.rowW / 1149)
 	return L
 end
 
@@ -283,14 +303,15 @@ local function priceButton(
 	h: number,
 	x: number,
 	y: number,
-	z: number
+	z: number,
+	bw: number
 )
 	local t = TIER[tierName]
 	local text = ShopLogic.priceText(price)
 	local btn = Parts.button(parent, {
 		Name = "Price",
 		Style = "Green",
-		Size = UDim2.fromOffset(t.w, h),
+		Size = UDim2.fromOffset(bw, h),
 		TextSize = size,
 		Label = text,
 	})
@@ -298,7 +319,7 @@ local function priceButton(
 	local ink = ShopSprites.Robux.Ink
 	local iw = t.icon * ink.Width / ink.Height
 	local tw = measure(text, size)
-	local x0 = (t.w - (iw + t.gap + tw)) / 2
+	local x0 = (bw - (iw + t.gap + tw)) / 2
 	local l = btn.Label
 	l.TextColor3, l.TextSize, l.TextXAlignment, l.TextTruncate =
 		ROLE.price.fill, size, Enum.TextXAlignment.Left, Enum.TextTruncate.None
@@ -331,26 +352,33 @@ function View:_plate(L, key: string, text: string, cx: number, y: number, rules:
 				rp.ImageRectOffset = Vector2.new(if side < 0 then RULE_LEFT + RULE_LEN - len else RULE_RIGHT, 0)
 				rp.ImageRectSize = Vector2.new(len, RULE.Size.Y)
 				rp.AnchorPoint = Vector2.new(if side < 0 then 1 else 0, 0.5)
-				rp.Position = UDim2.fromOffset(round(cx + side * inner), round(cy))
+				rp.Position = UDim2.fromOffset(round(cx + side * inner), round(cy + (h.drop or 0) * L.plateK)) -- on the text line, not the crown-extended plate centre
 				rp.Size = UDim2.fromOffset(round(len * k), round(RULE.Size.Y * k))
 			end
 		end
 	end
-	label(c, "Heading", text, ROLE.head, self._headSize, cx, cy + (h.drop or 0) * L.plateK, pw * 0.64, TEXT_Z)
+	local hs = self._headSize
+	if key == "STARTER" and not L.compact then
+		hs = roleSize({ text }, pw * 0.7, 46, ROLE.head.min) -- the ref's STARTER PACK text is larger than the other headings
+	end
+	label(c, "Heading", text, ROLE.head, hs, cx, cy + (h.drop or 0) * L.plateK, pw * 0.7, TEXT_Z)
 	return ph
 end
 
 function View:_drawHero(L, item, x: number, y: number, w: number)
 	local c = L.compact
+	local f = L.fh
 	local h = L.heroH
 	local holder = card(self._canvas, "Hero", x, y, w, h, 24)
 	local z = 25
 	local btnH = L.btnH(L.heroTier)
+	local bw = round(TIER[L.heroTier].w * f)
 	local bullets = item.Bullets or {}
 	local bsize = self._bulletSize
 	local pitch, top, iconCx, textX, textW, divX, btnX, btnY
 	if c then
 		local aw = if L.inner >= 700 then 190 else 140
+		glow(holder, "GlowLegendary", (aw + 16) / 2, h / 2 + 4, aw + 10, h - 10, z)
 		local frame = Draw.img(
 			holder,
 			{ Name = "ArtFrame", Size = UDim2.fromOffset(aw + 16, h), ZIndex = z, ClipsDescendants = true },
@@ -359,30 +387,35 @@ function View:_drawHero(L, item, x: number, y: number, w: number)
 		whole(frame, ShopSprites.HeroArt, (aw + 16) / 2, h / 2 + 4, aw, z + 1, "Art")
 		pitch, iconCx = 28, 8 + aw + 8 + 14
 		top = h / 2 + 4 - 1.5 * pitch
-		btnX = w - 12 - TIER.compact.w
+		btnX = w - 12 - bw
 		divX = btnX - 12
 		textX = iconCx + 14 + 6
 		textW = divX - 6 - textX
 		btnY = h / 2 + 4 - btnH / 2
+		local maxW = 0
+		for _, b in bullets do
+			maxW = math.max(maxW, measure(b.Text, bsize))
+		end
+		local slack = math.max(0, textW - maxW) / 2 -- centre the bullet block between the art and the divider
+		iconCx, textX = iconCx + slack, textX + slack
 	else
+		glow(holder, "GlowLegendary", 258 * f, 104, 510 * f, 200, z)
+		glow(holder, "GlowLegendary", 258 * f, 104, 330 * f, 170, z)
 		local frame = Draw.img(holder, {
 			Name = "ArtFrame",
-			Position = UDim2.fromOffset(28, 4),
-			Size = UDim2.fromOffset(470, 200),
+			Position = UDim2.fromOffset(round(28 * f), 4),
+			Size = UDim2.fromOffset(round(470 * f), 200),
 			ZIndex = z,
 			ClipsDescendants = true,
 		}, "Frame")
-		whole(frame, ShopSprites.HeroArt, 208, 94, 404, z + 1, "Art") -- core spans the ref art box (x 80-478, chest top y 21)
-		for _, s in SPARKLES do
-			local sp = sprite(holder, s[1], s[2], s[3], s[4], s[5], z + 2, "Sparkle")
-			sp.ImageColor3 = SPARK
-		end
-		pitch, top, iconCx, textX, textW = 33, 78, 567, 613, 202
-		divX, btnX, btnY = 845, 885, 90
+		whole(frame, ShopSprites.HeroArt, 230 * f, 88, 430 * f, z + 1, "Art") -- ink spans local x 43-473, y 9-203 as the ref art box
+		pitch, top, iconCx, textX, textW = 31, 86, 567 * f, 613 * f, 214 * f
+		divX, btnX, btnY = round(845 * f), round(882 * f), 86
 	end
 	for i, b in bullets do
 		local cy = top + (i - 1) * pitch
-		sprite(holder, BULLET[b.Icon], iconCx, cy, if c then 28 else 48, if c then 28 else 34, z + 2, "BulletIcon")
+		local bb = if c then { 28, 28 } else BULLET_BOX[b.Icon]
+		sprite(holder, BULLET[b.Icon], iconCx, cy, bb[1], bb[2], z + 2, "BulletIcon")
 		label(holder, "Bullet", b.Text, ROLE.bullet, bsize, textX, cy, textW, z + 2, 0)
 	end
 	local div = Draw.img(holder, {
@@ -404,11 +437,11 @@ function View:_drawHero(L, item, x: number, y: number, w: number)
 			NumberSequenceKeypoint.new(1, 1),
 		}),
 	}, div)
-	self:_buy(holder, L.heroTier, item, self._priceHero, btnH, btnX, btnY, z + 3)
+	self:_buy(holder, L.heroTier, item, self._priceHero, btnH, btnX, btnY, z + 3, bw)
 end
 
-function View:_buy(parent, tier: string, item, size: number, h: number, x: number, y: number, z: number)
-	local btn = priceButton(parent, tier, item.Price, size, h, x, y, z)
+function View:_buy(parent, tier: string, item, size: number, h: number, x: number, y: number, z: number, bw: number)
+	local btn = priceButton(parent, tier, item.Price, size, h, x, y, z, bw)
 	table.insert(
 		self._connsBuild,
 		btn.Activated:Connect(function()
@@ -422,10 +455,11 @@ end
 -- One product card at (x, y) in the canvas; Full = the reference columns, Compact = a vertical stack.
 function View:_drawCard(L, item, x: number, y: number, hasDesc: boolean)
 	local c = L.compact
+	local f = L.fc
 	local w, h = L.colW, L.cardH(hasDesc)
 	local holder = card(self._canvas, "Card", x, y, w, h, 24)
+	local bw = round(TIER[L.cardTier].w * f)
 	local bh = L.btnH(L.cardTier)
-	local tier = TIER[L.cardTier]
 	local ns = self._nameSize
 	local ds = self._descSize
 	local cx, artCx, artCy, artW, artH, nameY, descY, btnX, btnY
@@ -434,21 +468,27 @@ function View:_drawCard(L, item, x: number, y: number, hasDesc: boolean)
 		artCx, artCy, artW = w / 2, 8 + artH / 2, math.min(w - 24, artH * 2)
 		nameY = 8 + artH + 11
 		descY = nameY + 11
-		cx, btnX, btnY = w / 2, (w - tier.w) / 2, 8 + artH + 22 + (if hasDesc then 46 else 0)
+		cx, btnX, btnY = w / 2, (w - bw) / 2, 8 + artH + 22 + (if hasDesc then 46 else 0)
 	else
-		local ay = if hasDesc then 79 else 59
-		artCx, artCy, artW, artH =
-			if hasDesc then 87 else 95, ay, if hasDesc then 135 else 138, if hasDesc then 118 else 88
+		artCx, artCy = (if hasDesc then 84 else 90) * f, if hasDesc then 79 else 60
+		artW, artH = (if hasDesc then 148 else 156) * f, if hasDesc then 134 else 104
 		nameY, descY = if hasDesc then 26 else 34, 51
-		cx = if hasDesc then 253 else 273 -- the ref's text column sits left on the passes, right on the gem packs
-		btnX, btnY = cx - 87, if hasDesc then 103 else 60
+		cx = (if hasDesc then 253 else 273) * f -- the ref's text column sits left on the passes, right on the gem packs
+		btnX, btnY = cx - bw / 2, if hasDesc then 101 else 58
 	end
-	local gw, gh = artW * 1.1, artH * 1.1
-	local g = Draw.img(holder, { Name = "Glow", ZIndex = 25 })
-	Draw.apply(g, Q.GlowRadial, artCx, artCy, gw, gh)
-	g.ImageColor3, g.ImageTransparency = GLOW, 0.35
+	local gw, gh = artW * 1.9, artH * 1.9 -- the glow fades to nothing at its own edge; it is kept inside the card rim
+	gw, gh = math.min(gw, 2 * artCx - 6, 2 * (w - artCx) - 6), math.min(gh, 2 * artCy - 6, 2 * (h - artCy) - 6)
+	local gk = if hasDesc then "GlowLegendary" else "GlowMythic"
+	glow(holder, gk, artCx, artCy, gw, gh, 25)
+	glow(holder, gk, artCx, artCy, gw * 0.65, gh * 0.8, 25) -- a second, tighter layer: the reference glow is strong at the art
 	art(holder, item.Art, artCx, artCy, artW, artH, 26)
-	local textW = if c then w - 24 else 186
+	local sk = if c then 0.7 else 1
+	for _, s in CARD_SPARKS do
+		local sp =
+			sprite(holder, s[1], artCx + s[2] * artW / 2, artCy + s[3] * artH / 2, s[4] * sk, s[5] * sk, 27, "Sparkle")
+		sp.ImageColor3 = SPARK
+	end
+	local textW = if c then w - 24 else 186 * f
 	label(holder, "Name", item.Name, ROLE.name, ns, cx, nameY, textW, 27)
 	if item.Desc then
 		local pitch = 23
@@ -457,7 +497,7 @@ function View:_drawCard(L, item, x: number, y: number, hasDesc: boolean)
 			label(holder, "Desc" .. i, line, ROLE.desc, ds, cx, first + (i - 1) * pitch, textW, 27)
 		end
 	end
-	self:_buy(holder, L.cardTier, item, self._priceCard, bh, btnX, btnY, 28)
+	self:_buy(holder, L.cardTier, item, self._priceCard, bh, btnX, btnY, 28, bw)
 end
 
 function View:_drawSoon(L, sec)
@@ -520,18 +560,18 @@ function View:_roles(L)
 		local s, min = role(name, c)
 		return roleSize(strs, w, s, min)
 	end
-	local function priceSize(strs, tier)
+	local function priceSize(strs, tier, f)
 		local t = TIER[tier]
 		local s, min = role("price", c)
-		return roleSize(strs, t.w - 16 - t.icon * 0.88 - t.gap, math.min(s, t.size), min)
+		return roleSize(strs, t.w * f - 16 - t.icon * 0.88 - t.gap, math.min(s, t.size), min)
 	end
 	local plateW = HEAD.GAMEPASSES.w * L.plateK * 0.9 * 0.64 -- narrowest plate text width
 	self._headSize = size("head", heads, if c then 150 else plateW)
-	self._nameSize = size("name", names, if c then L.colW - 24 else 186)
-	self._descSize = size("desc", descs, if c then L.colW - 24 else 186)
-	self._bulletSize = size("bullet", bullets, if c then (L.inner >= 700 and 300 or 184) else 202)
-	self._priceHero = priceSize(hero, L.heroTier)
-	self._priceCard = priceSize(cardP, L.cardTier)
+	self._nameSize = size("name", names, if c then L.colW - 24 else 186 * L.fc)
+	self._descSize = size("desc", descs, if c then L.colW - 24 else 186 * L.fc)
+	self._bulletSize = size("bullet", bullets, if c then (L.inner >= 700 and 300 or 184) else 202 * L.fh)
+	self._priceHero = priceSize(hero, L.heroTier, L.fh)
+	self._priceCard = priceSize(cardP, L.cardTier, L.fc)
 end
 
 function View:_build()

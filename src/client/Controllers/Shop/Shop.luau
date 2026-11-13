@@ -24,9 +24,9 @@ local TAB_ICONS = {
 	GEMS = Sprites.Gem,
 	SHARDS = ShopSprites.IconShards,
 }
--- Banner emblems (scroll-ink fractions). The chest is the side emblem: height 0.765 and top -0.077 as the Play swords; width from its ink
--- aspect (278 x 246 src px) on the 774 x 162 scroll ink: 0.765 * 162 * (278 / 246) / 774 = 0.181. Laurels: the Play pair.
-local CHEST = { 0, -0.11, 0.208, 0.88 }
+-- Banner side emblem (scroll-ink fractions; y is overridden by the title centring): the chest at 0.89x the first cut so its ink stays >= 4 px off
+-- the Play laurel, 0.81x on Compact (as the Play swords) so it clears the gem pin. Width from the ink aspect (278 x 246): 0.782 * 162 * 1.13 / 774.
+local CHEST = { full = { 0, -0.07, 0.185, 0.782 }, compact = { 0, 0.01, 0.15, 0.633 } }
 
 local Shop = {}
 Shop.__index = Shop
