@@ -39,8 +39,9 @@ local ICON_BOX = { Rare = { 50, 20 }, Common = { 24, 23 } }
 local CROWN_BOX = { 41, 25 }
 local RIM_B = 3 -- the Rarity panel's inner face ends this far above its visible bottom (Bag_Detail: 14 source px from the ink, 8 of them outside the visible box, at slice scale 0.5)
 local ROW_GAP_MIN = 8.5 -- design px between the plate, the rows and the rim's inner face
-local ROW_GAP_COMPACT = 3.1 -- phones: text stays >= 14 real px, so the rows take the height and the gaps give
-local ROW_GAP_REAL = 2.5 -- phones: the least real px between two rows
+local ROW_GAP_COMPACT = 3.75 -- phones: 3 real px between the rows, the heading and the rim's inner face (text stays >= 14 real px, so the rows take the height)
+local ROW_GAP_REAL = 3 -- phones: the least real px between two rows
+local RIM_T_C, RIM_B_C = 8, 7.1 -- phones, Rarity panel (pixel scan of the 667 capture): rim bands 6.4 / 5.6 real px at UIScale 0.8, from the visible box edges
 local FACE_SHIFT = 0.75 -- the Rarity panel's inner face centre sits this far right of its visible box centre (rim bands 13 / 12 source px at slice scale 0.5, minus the box insets 2 / 4)
 local TEXT_LIFT = 0.0685 -- x text size: the label centre to the ink centre of ascender..descender text (ink -0.354 .. +0.491 em)
 local MYTHIC_K = 1.14 -- the Mythic die is 1.14x the side dice (ref 204 vs 179)
@@ -90,7 +91,7 @@ local INS = {
 -- slice scale k (default: visible height / visible source height).
 -- the pity frame on phones: the Bag panel's skin with short caps (35 design px, not 89), so its rim keeps the panels' slice scale in a 48 px frame
 local PITY_FRAME = setmetatable({ Slice = Rect.new(232, 40, 473, 421) }, { __index = Bag.LeftPanel })
-INS[PITY_FRAME] = INS[Bag.LeftPanel]
+INS[PITY_FRAME] = { 4, 2, 4, 8 } -- short caps (35 px): the rim ends 8 source px above the ink edge (the Bag panel's skin keeps 10)
 
 local function vis(inst, rec, cx: number, cy: number, visW: number, visH: number, k: number?, exact: Vector2?)
 	local ins = INS[rec] or { 0, 0, 0, 0 }
@@ -199,8 +200,10 @@ local function compute(W: number, H: number, compact: boolean)
 	if compact then
 		L.padTop = 8 -- the scroll frame reaches this far above the content so the rule is never clipped
 		L.ruleH, L.ruleY = 12, -1
-		L.gap, L.btnGap, L.pad = 4, 6, 19 -- pad: >= 8 real px from the buttons to the window rim's inner face
-		L.plateTop, L.plateH, L.pityH, L.btnH = if W >= 700 then 13 else 8, if W >= 700 then 24 else 26, 48, 56 -- plateTop: >= 4 real px under the panel's double top rim at 844
+		L.gap, L.btnGap, L.pad = 3.5, 3.5, 17 -- pad: >= 8 real px from the buttons to the window rim's inner face (face bottom 5.4 real px above the content bottom)
+		L.plateTop, L.plateH, L.pityH, L.btnH = if W >= 700 then 13 else 8, if W >= 700 then 24 else 26, 55, 45 -- plateTop: >= 4 real px under the panel's double top rim at 844
+		L.rimT, L.rimB = RIM_T_C, RIM_B_C
+		L.titleY = RIM_T_C + ROW_GAP_COMPACT + 6.55 -- the plain heading (667): 3 real px under the rim, outline ~12.3 design px tall (caps 8.9 real + stroke 0.5), 3 real px to row 1
 		L.panelY = 4
 		L.noRarPlate = W < 700 -- 667: the title can't clear the diamonds inside the row span, so it is plain outlined text
 		L.panelH = math.max(150, H - L.panelY - L.pityH - L.btnH - L.gap - L.btnGap - L.pad)
@@ -236,14 +239,14 @@ local function compute(W: number, H: number, compact: boolean)
 			pillX = rowW * 0.03, -- = the bar's right margin
 			pillW = pillW,
 			pillH = 34,
-			pillCy = 24,
+			pillCy = 27.75,
 			infoX = infoX,
 			barL = barL,
 			barW = rowW * 0.97 - barL,
 			barH = 14,
-			tY = 17.9, -- the text line (count shares its centre) and the bar are one group centred in the frame's inner face (7.5 .. H - 1.5)
-			cY = 17.9,
-			bY = 38.6,
+			tY = 18.15, -- the text line (count shares its centre) and the bar are one group (outline top .. bar rim, 34.6 design px) centred in the inner face (7.6 .. H - 7.5; rims measured 6.1 / 6.0 real px)
+			cY = 18.15,
+			bY = 38.85,
 			textX = 0.373,
 			crown = 24,
 		}
@@ -252,7 +255,8 @@ local function compute(W: number, H: number, compact: boolean)
 		L.featPlateW = round(L.fw * 0.7)
 		L.rowW = L.rw - 32 -- >= 6 real px to the rim's inner face (pixel scan: the rim face sits ~5 px inside the panel box)
 		L.rarPlateW = if L.noRarPlate then L.rowW + 2 * 18 else L.rowW - 6 -- the plate stays inside the row span (reference: plate 290 in rows 296)
-		L.rowIcon, L.rowNameX, L.rowNameW, L.rowPctW = 0.1, if W < 700 then 0.19 else 0.205, 0.6, 0.5 -- phones: name and percent share the narrow row
+		L.rowIcon, L.rowNameX, L.rowNameW, L.rowPctW =
+			if W < 700 then 0.105 else 0.1, if W < 700 then 0.236 else 0.205, 0.6, 0.5 -- phones: name and percent share the narrow row (667: >= 3 px between the widest icon, the Rare stars, and the names)
 		L.plateClear = 2 * 18 -- both plate ends (diamond + bevel) at plateH 28
 	else
 		L.padTop = 12 -- the scroll frame reaches this far above the content top, so the rule can sit just under the tabs
@@ -280,14 +284,14 @@ local function compute(W: number, H: number, compact: boolean)
 			pillX = 62 * sx, -- = the bar's right margin (1099 - 290 - 747)
 			pillW = 157,
 			pillH = 51,
-			pillCy = 47,
+			pillCy = 44.4,
 			infoX = 62 * sx + 157 + 5 + round(51 * 0.7) / 2, -- 5 px ink gap from the PITY pill
 			barL = 290 * sx,
 			barW = 747 * sx,
 			barH = 30,
-			tY = 30,
-			cY = 30,
-			bY = 64,
+			tY = 25.3, -- group (outline top .. bar rim) centred in the inner face (7.5 .. H - 6.8)
+			cY = 25.3,
+			bY = 59.3,
 			textX = (569 - 290) / 747,
 			crown = 44,
 		}
@@ -300,9 +304,11 @@ local function compute(W: number, H: number, compact: boolean)
 		L.plateClear = 2 * 46 -- plate end -> diamond -> text clearance (reference ~11 px)
 	end
 	-- six identical visible rows: as tall as fits with the minimum gap above, between and below them
-	L.rowsTop = if L.noRarPlate then L.plateTop + 17 else L.plateTop + L.plateH
+	L.rimB = L.rimB or RIM_B
+	L.rowsTop = if L.noRarPlate then L.rimT + ROW_GAP_COMPACT + 12.4 else L.plateTop + L.plateH
 	local gapMin = if compact then ROW_GAP_COMPACT else ROW_GAP_MIN
-	L.rowH = math.max(12, math.min(L.rowH, math.floor((L.panelH - RIM_B - L.rowsTop - 7 * gapMin) / 6)))
+	local fitH = (L.panelH - L.rimB - L.rowsTop - 7 * gapMin) / 6
+	L.rowH = math.max(12, math.min(L.rowH, if compact then fitH else math.floor(fitH))) -- phones: whole real px are snapped in _drawRarity
 	L.sizes.row = math.min(L.sizes.row, math.floor((L.rowH - 3) / 0.58)) -- caps (0.58 x size) keep >= 1.5 px inside the row
 	L.total = L.panelY + L.panelH + L.gap + L.pityH + L.btnGap + L.btnH + L.pad
 	return L
@@ -435,10 +441,10 @@ function View:_drawRarity(L, z, Pw: number, Ph: number)
 	label(panel, {
 		Name = "Title",
 		Text = string.upper("Rarity Chances"),
-		Stroke = if L.noRarPlate then 2 else nil,
+		Stroke = if L.noRarPlate then 0.5 else nil, -- 0.5: the cap-height outline leaves >= 3 real px to the rim and to row 1 (the strip is 16.8 real px)
 		Size = self._headR,
 		X = Pw / 2,
-		Y = if L.noRarPlate then L.plateTop + 9 else L.plateTop + L.plateH / 2, -- plain title: sits above the rows
+		Y = if L.noRarPlate then L.titleY else L.plateTop + L.plateH / 2, -- plain title: in its own strip above the rows
 		W = plateW - L.plateClear,
 		Z = z + 2,
 	})
@@ -448,7 +454,9 @@ function View:_drawRarity(L, z, Pw: number, Ph: number)
 	local canvas = self._canvas
 	local baseX, baseY = canvas.AbsolutePosition.X, canvas.AbsolutePosition.Y
 	local r0 = round(baseY + (L.panelY + L.rowsTop) * K)
-	local r1 = round(baseY + (L.panelY + Ph - RIM_B) * K)
+	local r1 = if L.compact
+		then math.floor(baseY + (L.panelY + Ph - L.rimB) * K)
+		else round(baseY + (L.panelY + Ph - L.rimB) * K)
 	local gMin = if L.compact then ROW_GAP_REAL else ROW_GAP_MIN * K
 	local hr = math.min(math.floor(L.rowH * K), math.floor((r1 - r0 - 7 * gMin) / 6)) -- real px
 	local free = r1 - r0 - 6 * hr
@@ -477,7 +485,7 @@ function View:_drawRarity(L, z, Pw: number, Ph: number)
 	local topR = r0
 	local lift = if L.compact then TEXT_LIFT * self._rowSize else 0
 	local stroke = if not L.compact then 2.5 elseif L.noRarPlate then 1 else 1.5
-	local pctPad = if not L.compact then 5 elseif L.noRarPlate then 5 else 9 -- phones: inside the row's rounded end
+	local pctPad = if not L.compact then 5 elseif L.noRarPlate then 3.4 else 9 -- phones: inside the row's rounded end
 	for i, row in self._rows do
 		topR += gaps[i]
 		local cy = (topR + hr / 2 - baseY) / K - L.panelY
@@ -604,7 +612,7 @@ function View:_drawPity(L, z, y: number)
 			Exact = true,
 			W = barW * 0.7,
 			Z = z + 2,
-			Stroke = 2,
+			Stroke = if L.compact then 1.5 else 2,
 		})
 		label(self._canvas, {
 			Name = "Count",
@@ -617,7 +625,7 @@ function View:_drawPity(L, z, y: number)
 			Exact = true,
 			W = barW * 0.22,
 			Z = z + 2,
-			Stroke = if L.compact then 2 else nil,
+			Stroke = if L.compact then 1.5 else nil,
 		})
 	end
 end
