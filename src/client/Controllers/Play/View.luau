@@ -555,8 +555,9 @@ local function rowRoles(rows, w: number, h: number, f: number)
 			return nil
 		end
 		local ix = math.clamp(192 * f, ixMin, ixMax)
-		local dx = math.clamp(250 * f, ix + half + m5 + 1, dxMax)
-		return { ix = ix, dx = dx, tx = math.clamp(323 * f, dx + 6 + m5 + wr / 2, txMax), wr = wr }
+		-- min/max, not clamp: at ix == ixMax the lower bound equals the upper one and float rounding can put it a hair above
+		local dx = math.min(math.max(250 * f, ix + half + m5 + 1), dxMax)
+		return { ix = ix, dx = dx, tx = math.min(math.max(323 * f, dx + 6 + m5 + wr / 2), txMax), wr = wr }
 	end
 	local t = 1
 	while true do
@@ -1175,6 +1176,9 @@ function View:_buildRight()
 		for size = sp[2], 10, -2 do
 			local half = size / 2
 			local lo, hi = y - 8 + m5 + half - scy, L.H - 4.5 - half - scy -- >= 5 real px under the odds box, inside the window rim
+			if lo > hi then
+				continue -- short windows: no room at this size
+			end
 			local x, dy = rw - 3 - m5 - half - scx, math.clamp(sp[1], lo, hi) -- as far from the button as the window rim allows
 			local step = if sp[1] < 0 then -1 else 1
 			while sp[3] and gap(x, dy) < half + m5 + 1 and dy + step >= lo and dy + step <= hi do
