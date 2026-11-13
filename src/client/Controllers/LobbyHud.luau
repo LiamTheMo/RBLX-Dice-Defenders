@@ -1,5 +1,5 @@
 -- Lobby HUD: borderless icons, inline counters, XP line and framed dice slots laid out in design px (1672x941) under one UIScale (no Init/Start).
--- LobbyHud.build(parent, { open = (panel) -> (), toast = (text) -> () }) -> hud; hud:SetGold(n), hud:SetDeck(ids).
+-- LobbyHud.build(parent, { open = (panel, tab?) -> (), toast = (text) -> () }) -> hud; hud:SetGold(n), hud:SetDeck(ids).
 
 local ContentProvider = game:GetService("ContentProvider")
 
@@ -453,7 +453,7 @@ function LobbyHud.build(parent, cb)
 		end)
 		slot:GetAttributeChangedSignal("Empty"):Connect(refresh)
 		slot.Activated:Connect(function()
-			open("Deck")
+			open("Bag", 1)
 		end)
 		self.Slots[i] = icon
 	end

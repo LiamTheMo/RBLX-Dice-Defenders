@@ -13,7 +13,6 @@ local Bag = require(script.Parent.Bag.Bag)
 local QuestLog = require(script.Parent.QuestLog.QuestLog)
 local Play = require(script.Parent.Play.Play)
 local Roll = require(script.Parent.Roll.Roll)
-local Display = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Display"))
 
 local make, panel, label, button = UiKit.make, UiKit.panel, UiKit.label, UiKit.button
 local NAVY, WHITE, GREEN = UiKit.NAVY, UiKit.WHITE, UiKit.GREEN
@@ -30,7 +29,7 @@ local ROW = 48 -- touch row / button height in px (>= 44)
 local TOAST_NAMES = { Start = true, EquipDeck = true, ClaimQuest = true }
 local TOASTS = {
 	WrongPhase = "Not available right now",
-	BadDeck = "Your deck is invalid. Fix it in Deck.",
+	BadDeck = "Your deck is invalid. Fix it in your Bag.",
 	UnknownDie = "Unknown die",
 	NotOwned = "You don't own that die",
 	UnknownQuest = "Unknown quest",
@@ -43,7 +42,6 @@ local TOASTS = {
 	Network = "Connection problem",
 }
 local RESULT_TITLES = { Won = "Victory!", Lost = "Defeat", Aborted = "Run Ended", Error = "Something went wrong" }
-local PANELS = { "Deck", "Profile" }
 
 local Lobby = {}
 
@@ -51,8 +49,6 @@ local connections = {}
 local gui, ui
 local toastToken = 0
 local openPanel = nil
-local draft = {} -- unsaved deck edit (client-only UI state)
-local selectedSlot = 1
 local dismissed = false
 local lobbyActive = false
 
@@ -74,17 +70,6 @@ local function toast(text: string)
 	task.delay(2.5, function()
 		if token == toastToken then
 			ui.ToastFrame.Visible = false
-		end
-	end)
-end
-
--- Intent call on its own thread; returns nothing, surfaces failures via Rejected -> toast.
-local function send(name: string, onOk: (() -> ())?, ...)
-	local args = table.pack(...)
-	task.spawn(function()
-		local ok = NetClient.Request(name, table.unpack(args, 1, args.n))
-		if ok and onOk then
-			onOk()
 		end
 	end)
 end
@@ -127,12 +112,12 @@ local function outline(lbl)
 	make("UIStroke", { Color = TEXT_STROKE, Thickness = 2, LineJoinMode = Enum.LineJoinMode.Round }, lbl)
 end
 
-local function showPanel(name: string?)
+local function showPanel(name: string?, tab: number?)
 	if name == "Bag" then -- the bag and quest log are their own windows, not placeholder panels
 		ui.QuestLog:Close()
 		ui.Play:Close()
 		ui.Roll:Close()
-		ui.Bag:Toggle()
+		ui.Bag:Toggle(tab)
 		return
 	elseif name == "Quests" then
 		ui.Bag:Close()
@@ -217,93 +202,6 @@ local function newPanel(name: string)
 	return body
 end
 
-local function deckName(id: string): string
-	local die = Display.Dice[id]
-	return die and die.Name or id
-end
-
-local function resetDraft()
-	local meta = NetClient.LastMeta
-	draft = meta and table.clone(meta.Deck) or {}
-end
-
-local function renderDeck()
-	local body = ui.Panels.Deck.Body
-	clear(body)
-	local meta = NetClient.LastMeta
-	if not meta then
-		return
-	end
-	local slots = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, 64), LayoutOrder = 1 }, body)
-	make("UIGridLayout", {
-		CellSize = UDim2.new(0.2, -6, 1, 0),
-		CellPadding = UDim2.fromOffset(6, 0),
-		SortOrder = Enum.SortOrder.LayoutOrder,
-	}, slots)
-	for i = 1, 5 do
-		button(
-			{
-				Text = draft[i] and deckName(draft[i]) or "Empty",
-				LayoutOrder = i,
-			},
-			slots,
-			i == selectedSlot and COPPER or CREAM,
-			function()
-				selectedSlot = i
-				renderDeck()
-			end
-		)
-	end
-	-- Save + hint share one row so a 375 px phone still shows the owned dice below.
-	local saveRow =
-		make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, ROW), LayoutOrder = 2 }, body)
-	local save = button({ Size = UDim2.fromOffset(140, ROW), Text = "Save Deck" }, saveRow, GREEN, function()
-		local seen, count = {}, 0
-		for i = 1, 5 do
-			local id = draft[i]
-			if id and not seen[id] then
-				seen[id] = true
-				count += 1
-			end
-		end
-		if count ~= 5 or #draft ~= 5 then
-			toast("Pick 5 different dice")
-			return
-		end
-		send("EquipDeck", function()
-			toast("Deck saved")
-		end, table.clone(draft))
-	end)
-	save.Name = "Save"
-	label({
-		Text = "Tap a die to place it in the highlighted slot",
-		Position = UDim2.fromOffset(148, 0),
-		Size = UDim2.new(1, -148, 1, 0),
-	}, saveRow, 20)
-	for i, die in meta.Dice do
-		local slot = table.find(draft, die.Id)
-		local suffix = slot and ("  (slot " .. slot .. ")") or ""
-		button(
-			{
-				Size = UDim2.new(1, -8, 0, ROW),
-				Text = ("%s  Lv %d%s"):format(deckName(die.Id), die.Level, suffix),
-				LayoutOrder = 10 + i,
-			},
-			body,
-			slot and COPPER or CREAM,
-			function()
-				local other = table.find(draft, die.Id)
-				if other then
-					draft[other], draft[selectedSlot] = draft[selectedSlot], draft[other]
-				else
-					draft[selectedSlot] = die.Id
-				end
-				renderDeck()
-			end
-		)
-	end
-end
-
 local function renderProfile(snap)
 	local body = ui.Panels.Profile.Body
 	clear(body)
@@ -352,8 +250,6 @@ local function renderState(snap)
 end
 
 local function renderMeta()
-	resetDraft()
-	renderDeck()
 	local meta = NetClient.LastMeta
 	ui.LobbyHud:SetDeck(meta and meta.Deck)
 end
@@ -377,9 +273,7 @@ local function build()
 	ui.Play = Play.new(ui.Root, { hud = ui.LobbyHud, toast = toast })
 	ui.Roll = Roll.new(ui.Root, { hud = ui.LobbyHud, toast = toast })
 
-	for _, name in PANELS do
-		newPanel(name)
-	end
+	newPanel("Profile")
 
 	-- Results card (Ended): local dismiss only; backdrop swallows input behind it.
 	ui.ResultBackdrop = make("TextButton", {

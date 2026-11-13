@@ -316,11 +316,12 @@ function Bag:Close()
 	self._shell:Close()
 end
 
-function Bag:Toggle()
-	if self._shell:IsOpen() then
+-- Closes when open (on `tab`, or on any tab when none is given); otherwise opens or switches to `tab`.
+function Bag:Toggle(tab: number?)
+	if self._shell:IsOpen() and (tab == nil or self._shell:GetTab() == tab) then
 		self._shell:Close()
 	else
-		self._open(1)
+		self._open(tab)
 	end
 end
 
