@@ -42,7 +42,8 @@ local ROW_GAP_MIN = 8.5 -- design px between the plate, the rows and the rim's i
 local ROW_GAP_COMPACT = 3.75 -- phones: 3 real px between the rows, the heading and the rim's inner face (text stays >= 14 real px, so the rows take the height)
 local ROW_GAP_REAL = 3 -- phones: the least real px between two rows
 local RIM_T_C, RIM_B_C = 8, 7.1 -- phones, Rarity panel (pixel scan of the 667 capture): rim bands 6.4 / 5.6 real px at UIScale 0.8, from the visible box edges
-local RIM_B_844 = 9.2 -- 844: the bottom rim's first pixel (highlight, not the dark face edge) sits 1.7 real px higher than at 667 (pixel scan)
+local RIM_B_844 = 7.45 -- 844: the bottom rim's first pixel (highlight, not the dark face edge) sits 1.7 real px higher than at 667 (pixel scan); 1.75 less than that, the row block shares ROWS_DROP_844 with the top margin
+local ROWS_DROP_844 = 1.75 -- 844: the block of rows sits this far lower (top margin 3.5 vs bottom 6.3 real px before: equal within 1 px now)
 local FACE_SHIFT = 0.75 -- the Rarity panel's inner face centre sits this far right of its visible box centre (rim bands 13 / 12 source px at slice scale 0.5, minus the box insets 2 / 4)
 local TEXT_LIFT = 0.0685 -- x text size: the label centre to the ink centre of ascender..descender text (ink -0.354 .. +0.491 em)
 local MYTHIC_K = 1.14 -- the Mythic die is 1.14x the side dice (ref 204 vs 179)
@@ -306,7 +307,9 @@ local function compute(W: number, H: number, compact: boolean)
 	end
 	-- six identical visible rows: as tall as fits with the minimum gap above, between and below them
 	L.rimB = L.rimB or RIM_B
-	L.rowsTop = if L.noRarPlate then L.rimT + ROW_GAP_COMPACT + 12.4 else L.plateTop + L.plateH
+	L.rowsTop = if L.noRarPlate
+		then L.rimT + ROW_GAP_COMPACT + 12.4
+		else L.plateTop + L.plateH + (if L.compact and W >= 700 then ROWS_DROP_844 else 0)
 	local gapMin = if compact then ROW_GAP_COMPACT else ROW_GAP_MIN
 	local fitH = (L.panelH - L.rimB - L.rowsTop - 7 * gapMin) / 6
 	L.rowH = math.max(12, math.min(L.rowH, if compact then fitH else math.floor(fitH))) -- phones: whole real px are snapped in _drawRarity
