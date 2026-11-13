@@ -70,3 +70,12 @@ test("guard", function()
 	g.finish()
 	expectEq(g.begin(), true, "after finish")
 end)
+
+test("sectionsFor with no data (live) is Soon on every tab", function()
+	for _, tab in ShopLogic.TABS do
+		local s = ShopLogic.sectionsFor(tab.Id, nil)
+		expectEq(#s, 1, tab.Id .. " count")
+		expectEq(s[1].Kind, "Soon", tab.Id .. " kind")
+		expectEq(s[1].Heading, tab.Label, tab.Id .. " heading")
+	end
+end)

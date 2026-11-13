@@ -255,7 +255,6 @@ end
 
 local View = {}
 View.__index = View
-View.Art, View.Bullets = ART, BULLET -- the key tables (the spec checks SampleData against them)
 
 -- Layout ----------------------------------------------------------------------------------------------------
 
@@ -594,18 +593,18 @@ function View:_roles(L)
 		local s, min = role(name, c)
 		return roleSize(strs, w, s, min)
 	end
-	local function priceSize(strs, tier, f)
+	local function priceSize(strs, tier, bw)
 		local t = TIER[tier]
 		local s, min = role("price", c)
-		return roleSize(strs, t.w * f - 16 - t.icon * 0.88 - t.gap, math.min(s, t.size), min)
+		return roleSize(strs, bw - 16 - t.icon * 0.88 - t.gap, math.min(s, t.size), min)
 	end
 	local plateW = HEAD.GAMEPASSES.w * L.plateK * 0.9 * 0.64 -- narrowest plate text width
 	self._headSize = size("head", heads, if c then 150 else plateW)
 	self._nameSize = size("name", names, if c then L.colW - 24 else 186 * L.fc)
 	self._descSize = size("desc", descs, if c then L.colW - 24 else 186 * L.fc)
 	self._bulletSize = size("bullet", bullets, if c then L.bulletW else 202 * L.fh)
-	self._priceHero = priceSize(hero, L.heroTier, L.fh)
-	self._priceCard = priceSize(cardP, L.cardTier, L.fc)
+	self._priceHero = priceSize(hero, L.heroTier, if c then L.heroBw else TIER[L.heroTier].w * L.fh)
+	self._priceCard = priceSize(cardP, L.cardTier, TIER[L.cardTier].w * L.fc)
 end
 
 function View:_build()

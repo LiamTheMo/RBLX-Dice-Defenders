@@ -17,8 +17,19 @@ local function cards(heading: string, items: { any }): Section
 	return { Kind = "Cards", Heading = heading, Items = items }
 end
 
+local function soonHeading(tabId: string): string
+	for _, tab in ShopLogic.TABS do
+		if tab.Id == tabId then
+			return tab.Label
+		end
+	end
+	return "COMING SOON"
+end
+
 function ShopLogic.sectionsFor(tabId: string, data: any): { Section }
-	if tabId == "FEATURED" then
+	if data == nil then
+		return { { Kind = "Soon", Heading = soonHeading(tabId) } } -- live: no products yet
+	elseif tabId == "FEATURED" then
 		return {
 			{ Kind = "Hero", Heading = "STARTER PACK", Items = { data.Starter } },
 			cards("GAMEPASSES", data.Gamepasses),
@@ -29,13 +40,7 @@ function ShopLogic.sectionsFor(tabId: string, data: any): { Section }
 	elseif tabId == "GEMS" then
 		return { cards("GEMS", data.Gems) }
 	end
-	local heading = "COMING SOON"
-	for _, tab in ShopLogic.TABS do
-		if tab.Id == tabId then
-			heading = tab.Label
-		end
-	end
-	return { { Kind = "Soon", Heading = heading } }
+	return { { Kind = "Soon", Heading = soonHeading(tabId) } }
 end
 
 -- Whole number with thousands commas: 1200 -> "1,200". Floors; never negative.
