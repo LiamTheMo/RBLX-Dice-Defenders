@@ -28,7 +28,9 @@ end
 
 -- Draws `rec` so its visible ink is inkW x inkH centred at (cx, cy) in the parent. Sliced sprites keep their margins at
 -- slice scale k (default inkH / ink height), reduced when the box is too small for the caps; plain ones stretch to the ink.
-function Draw.apply(inst, rec, cx: number, cy: number, inkW: number, inkH: number, k: number?)
+-- Size and Position snap to whole design px (offsets are integers) unless `exact` (the parent's design size): then they are
+-- scales of it, so the box lands at the fractional design px asked for.
+function Draw.apply(inst, rec, cx: number, cy: number, inkW: number, inkH: number, k: number?, exact: Vector2?)
 	local ink, size = rec.Ink, rec.Size
 	local sx, sy, w, h
 	if rec.Slice then
@@ -52,11 +54,15 @@ function Draw.apply(inst, rec, cx: number, cy: number, inkW: number, inkH: numbe
 		inst.ScaleType = Enum.ScaleType.Stretch
 	end
 	inst.AnchorPoint = Vector2.new(0.5, 0.5)
-	inst.Size = UDim2.fromOffset(round(w), round(h))
-	inst.Position = UDim2.fromOffset(
-		round(cx + (size.X / 2 - (ink.Min.X + ink.Max.X) / 2) * sx),
-		round(cy + (size.Y / 2 - (ink.Min.Y + ink.Max.Y) / 2) * sy)
-	)
+	local px, py =
+		cx + (size.X / 2 - (ink.Min.X + ink.Max.X) / 2) * sx, cy + (size.Y / 2 - (ink.Min.Y + ink.Max.Y) / 2) * sy
+	if exact then
+		inst.Size = UDim2.fromScale(w / exact.X, h / exact.Y)
+		inst.Position = UDim2.fromScale(px / exact.X, py / exact.Y)
+	else
+		inst.Size = UDim2.fromOffset(round(w), round(h))
+		inst.Position = UDim2.fromOffset(round(px), round(py))
+	end
 	return inst
 end
 
