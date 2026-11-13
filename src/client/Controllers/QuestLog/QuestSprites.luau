@@ -324,7 +324,7 @@ return {
 	BannerSeal = {
 		Image = "rbxassetid://88217102630797",
 		Size = Vector2.new(157, 168),
-		Ink = Rect.new(18, 19, 125, 151),
+		Ink = Rect.new(18, 19, 124, 151), -- visible edge: the last alpha column (124) is parchment-coloured
 	},
 	BannerQuill = {
 		Image = "rbxassetid://91693766916316",

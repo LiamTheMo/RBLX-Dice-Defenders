@@ -79,12 +79,14 @@ local TITLE_Y = 0.512 -- title centre height (scroll-ink fraction) = the centre 
 -- Banner group = the side emblem's ink + SIDE_GAP + the title's outline (fill + stroke), centred on the scroll; design px.
 local SIDE_GAP = { Full = 12, Compact = 10 } -- side emblem ink to title outline (the Bag's crowned die stays >= 3 px off the gem pin wing)
 local FLAT_L, FLAT_R, FLAT_MARGIN = 99, 700, 8 -- the parchment's cream (ScrollBase sprite px, between the rolled ends); the group keeps FLAT_MARGIN design px off its ends
--- Fredoka One side bearings (x text size) of the first / last letter of the titles in use: the fill's ink edge to the text box edge,
--- measured on a clean 100 px render of each title (left-aligned label: the ink edge sits bearing x size inside the TextBounds); G (last letter) is
--- set below its measured 0.033 so the projected real-device group centre (text renders at floor(size)) stays within 1 px at every size
+-- Fredoka One side bearings (x the real text size R) of the first / last letter of the titles in use: the white fill's ink edge to the
+-- text box edge, MEASURED on native captures (no QA scale) of every menu at several viewport sizes (mean over the sizes; the hinted
+-- glyph edges move by up to 0.5 px with R, which is the model's accuracy). FILL_EDGE = real px by which the fill's thresholded edge
+-- sits inside the outline's stroke (stroke edge - fill edge minus the stroke thickness, measured the same way).
+local FILL_EDGE = 0.35
 local BEARING = 0.035
-local BEARING_L = { B = 0.033, Q = 0.020, P = 0.033, R = 0.033, S = 0.020 }
-local BEARING_R = { G = 0.0225, Y = 0.005, L = 0.024, P = 0.0205 }
+local BEARING_L = { B = 0.042, Q = 0.028, P = 0.037, R = 0.042, S = 0.024 }
+local BEARING_R = { G = 0.0315, Y = 0.020, L = 0.034, P = 0.029 }
 local GEM_BOX = { 0.4261, 0.787, 0.1488, 0.3167 } -- >= 2 REAL px under the title's outline (UIScale 0.8: 2.5 design px)
 local GAP = 10 -- vertical gap left panel to footer
 local FULL_INK = Vector2.new(1251, 770) -- window box minus the transparent mx/my margin: visible rim 213-1459 x 98-861
@@ -367,12 +369,18 @@ function Shell.new(parent, deps)
 			lead = sideBox[3] * sbInk[3] * bannerW + SIDE_GAP[if compact then "Compact" else "Full"]
 		end
 		local flatW = (FLAT_R - FLAT_L) * k - 2 * FLAT_MARGIN
-		-- The ink is linear in the rendered (fractional) size, TextBounds is not (it steps): width = TextBounds per em at a large
-		-- size minus the two bearings, the label is left-aligned, so the group edges sit where the arithmetic says
+		-- The engine draws text at the integer size floor(TextSize x UIScale) (measured: ink widths step at integer logical sizes, and the
+		-- TextBounds equal the layout at that size), so the model works in real px at R and divides by the scale
 		local bl0, br0 = BEARING_L[str:sub(1, 1)] or BEARING, BEARING_R[str:sub(-1)] or BEARING
-		local perEm = Parts.measure(str, 200) / 200
-		local function outWidth(sz)
-			return (perEm - bl0 - br0) * sz + 2 * title.stroke
+		local function realSize(sz)
+			return math.floor(sz * bs)
+		end
+		local function strokeReal() -- the stroke's real thickness plus the white fill's visible edge sitting inside the glyph edge
+			return title.stroke * bs + FILL_EDGE
+		end
+		local function outWidth(sz) -- design px
+			local r = realSize(sz)
+			return (Parts.measure(str, r) - (bl0 + br0) * r + 2 * strokeReal()) / bs
 		end
 		local ts = title.size
 		while ts > 12 and lead + outWidth(ts) > flatW do
@@ -380,14 +388,15 @@ function Shell.new(parent, deps)
 		end
 		bannerText.TextSize = ts
 		local outW = outWidth(ts)
+		local rs = realSize(ts)
 		local groupLeft = (sbInk[1] + sbInk[3] / 2) * bannerW - (lead + outW) / 2
 		if sideEmblem then
 			sideEmblem.place(sideBox, groupLeft / bannerW, cy)
 		end
-		bannerText.Position = UDim2.fromScale((groupLeft + lead + title.stroke - bl0 * ts) / bannerW, cy)
+		bannerText.Position = UDim2.fromScale((groupLeft + lead + (strokeReal() - bl0 * rs) / bs) / bannerW, cy)
 		bannerText.Size = UDim2.new(
 			0,
-			math.max((bn.textW or 0.5) * sbInk[3] * bannerW, perEm * ts + 2 * title.stroke + 4),
+			math.max((bn.textW or 0.5) * sbInk[3] * bannerW, Parts.measure(str, rs) / bs + 2 * title.stroke + 4),
 			0,
 			math.ceil(ts * 1.2)
 		)
@@ -419,7 +428,7 @@ function Shell.new(parent, deps)
 		tabBar.Position = UDim2.new(0.5, 0, 0, t.tabTop + t.my)
 		tabBar.Size = UDim2.fromOffset(barW, t.tabH)
 		tabBar.UIListLayout.Padding = UDim.new(0, t.tabGap)
-		local icon = t.icon * (deps.tabIconScale or 1)
+		local icon = t.icon * (if compact then 1 else deps.tabIconScale or 1) -- phones: the label gets the width, not a bigger icon
 		local labelSize = math.huge -- one text size for the whole bar: the largest every label fits at
 		for i, tab in self._tabButtons do
 			local w = if fixedW
@@ -436,7 +445,7 @@ function Shell.new(parent, deps)
 			tab.Row.UIListLayout.Padding = UDim.new(0, t.iconGap)
 			tab.Row.Icon.Size = UDim2.fromOffset(icon, icon)
 			tab.Row.Icon.Visible = hasIcon and w >= 150
-			local avail = w - 24 - (if hasIcon and w >= 150 then icon + t.iconGap else 0)
+			local avail = w - (if compact then 16 else 24) - (if hasIcon and w >= 150 then icon + t.iconGap else 0)
 			tab.Row.Label.UISizeConstraint.MaxSize = Vector2.new(avail, t.tabH)
 			labelSize =
 				math.min(labelSize, Parts.fitSize(tab.Row.Label.Text, avail, if w < 170 then 18 else t.tabText, 15))
