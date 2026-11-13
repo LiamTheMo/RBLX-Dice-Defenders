@@ -655,8 +655,8 @@ function Parts.scrollBar(root, scroll, z: number)
 	local track = img(root, { Name = "ScrollTrack", AnchorPoint = Vector2.new(1, 0), Visible = false, ZIndex = z })
 	local thumb = img(track, { Name = "Thumb", AnchorPoint = Vector2.new(0.5, 0), ZIndex = z + 1 })
 	local visibleH, barW = 0, 12
-	local api = { Track = track, Thumb = thumb }
-	function api.Update()
+	local api = { Track = track }
+	local function update()
 		local y, maxY = scroll.CanvasPosition.Y, math.max(0, scroll.AbsoluteCanvasSize.Y - scroll.AbsoluteWindowSize.Y)
 		local win, canvas = scroll.AbsoluteWindowSize.Y, math.max(1, scroll.AbsoluteCanvasSize.Y)
 		local thumbH = math.clamp(math.floor(visibleH * win / canvas), 40, math.max(40, visibleH))
@@ -669,10 +669,10 @@ function Parts.scrollBar(root, scroll, z: number)
 		track.Position = UDim2.new(1, -rightInset, 0, 0)
 		barSkin(track, "ScrollTrack", w)
 		barSkin(thumb, "ScrollThumb", w)
-		api.Update()
+		update()
 	end
-	scroll:GetPropertyChangedSignal("CanvasPosition"):Connect(api.Update)
-	scroll:GetPropertyChangedSignal("AbsoluteCanvasSize"):Connect(api.Update)
+	scroll:GetPropertyChangedSignal("CanvasPosition"):Connect(update)
+	scroll:GetPropertyChangedSignal("AbsoluteCanvasSize"):Connect(update)
 	return api
 end
 

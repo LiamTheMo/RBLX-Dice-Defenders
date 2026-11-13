@@ -1,5 +1,5 @@
 -- Lobby: sprite HUD (LobbyHud) + one placeholder panel at a time, shown in Lobby / Ended only.
--- Reads NetClient.Last / LastMeta and calls NetClient.Request; no game logic here.
+-- Reads NetClient.Last / LastMeta; no game logic here.
 --
 -- Placeholder art that needs generated art later (ART_PIPELINE): panel frames,
 -- world / mode cards, die icons (colour squares now), rarity badges, results banner, toast frame.
@@ -245,7 +245,7 @@ local function renderState(snap)
 	ui.Root.Visible = active
 	if not active then
 		if lobbyActive then
-			showPanel(nil) -- also closes the bag and quest log; only on the transition, not every State tick
+			showPanel(nil) -- closes all five menus; only on the transition, not every State tick
 		end
 		lobbyActive = false
 		ui.ResultBackdrop.Visible = false
