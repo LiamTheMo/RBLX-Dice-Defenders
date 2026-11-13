@@ -34,7 +34,13 @@ function Bag.new(parent, deps)
 		banner = {
 			text = "BAG",
 			textW = 0.525,
-			emblems = { { sprite = Sprites.BannerEmblem, box = { 0.1085, 0.0617, 0.124, 0.8951 }, side = true } },
+			emblems = {
+				{
+					sprite = Sprites.BannerEmblem,
+					box = { full = { 0, 0, 0.1116, 0.805 }, compact = { 0, 0, 0.0868, 0.6266 } }, -- as tall as the Quest seal; the compact one clears the gem pin
+					side = true,
+				},
+			},
 		},
 	})
 	local toolbar, grid = Parts.Toolbar(shell.Slots.Toolbar), Parts.Grid(shell.Slots.Grid)

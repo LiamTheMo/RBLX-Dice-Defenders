@@ -32,8 +32,8 @@ local function dieBoxes(h, top, inkW)
 	local die = { 0.5 - w / 2 / inkW, top / scrollH, w / inkW, h / scrollH }
 	return ring, die
 end
-local RING_FULL, DIE_FULL = dieBoxes(61.5, -34.6, 488.5)
-local RING_COMPACT, DIE_COMPACT = dieBoxes(30, -18.1, 220)
+local RING_FULL, DIE_FULL = dieBoxes(57, -34.6, 488.5)
+local RING_COMPACT, DIE_COMPACT = dieBoxes(28, -18.1, 220)
 local TIMER_W, SEP_W = 223, 30 -- the Quest Log pill width (full tier)
 local PRESS_COOLDOWN = 0.5 -- UX throttle only
 
