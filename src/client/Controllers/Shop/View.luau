@@ -79,7 +79,7 @@ local ROLE = {
 -- price button tiers: box w x h, text size, Robux icon height, icon-to-number gap
 -- (frames: the BtnGreen art sits ~3.4 px inside, so the visible ink is the ref 226 x 77 hero / 174 x 46 card)
 local TIER = {
-	hero = { w = 237, h = 90, size = 56, icon = 49, gap = 13 },
+	hero = { w = 234, h = 83, size = 56, icon = 49, gap = 13 }, -- ink (outline + shadow) 226 x 75 = the reference button
 	card = { w = 178, h = 50, size = 36, icon = 33, gap = 5 },
 	compact = { w = 150, h = 56, size = 26, icon = 26, gap = 4 },
 }
@@ -132,7 +132,10 @@ end
 
 local function role(name: string, compact: boolean)
 	local r = ROLE[name]
-	return if compact then r.cs else r.size, if compact then r.cmin else r.min
+	if compact then
+		return r.cs, r.cmin
+	end
+	return r.size, math.max(r.min, math.ceil(12 / K)) -- Full tiers: never under 12 real px
 end
 
 -- Live text (ax 0 left, 0.5 centre) centred on y in a box w wide; the role size is fitted by the caller, this only guards a squeezed box.
@@ -167,7 +170,7 @@ local function label(
 	end
 	local tw = measure(text, size)
 	if tw > w * 0.97 then
-		l.TextSize = math.max(8, math.floor(size * w * 0.97 / tw))
+		l.TextSize = math.max(math.min(size, math.ceil(12 / K)), math.floor(size * w * 0.97 / tw)) -- never under 12 real px
 	end
 	return l
 end
@@ -338,11 +341,14 @@ end
 -- Build -----------------------------------------------------------------------------------------------------
 
 -- Plate (whole sprite fitted by aspect) + live heading + side rules, centred on cx with its ink top at y; returns its ink height.
-function View:_plate(L, key: string, text: string, cx: number, y: number, rules: boolean)
+function View:_plate(L, key: string, text: string, cx: number, y: number, rules: boolean, right: number?)
 	local h = HEAD[key] or HEAD.GEMS
 	local c = self._canvas
 	local pw, ph = Draw.fitIn(h.rec, h.w * L.plateK, h.h * L.plateK)
 	local cy = y + ph / 2
+	if right then
+		cx = math.min(cx, right - pw / 2) -- a narrow slot: the plate stays inside the hero row
+	end
 	local plate = Draw.img(c, { Name = "Plate", ZIndex = PLATE_Z })
 	Draw.apply(plate, h.rec, cx, cy, pw, ph)
 	if rules then
@@ -418,7 +424,7 @@ function View:_drawHero(L, item, x: number, y: number, w: number)
 		}, "Frame")
 		whole(frame, ShopSprites.HeroArt, 246 * f, 90, 446 * f, z + 1, "Art") -- visible width incl. its baked sparkles = 684 of 710 source px = the ref's 430
 		pitch, top, iconCx, textX, textW = 32.83, 77.5, 567 * f, 613 * f, 214 * f -- the ref bullet rows 77.5 / 110 / 142.5 / 176
-		divX, btnX, btnY = round(845 * f), round(880 * f), 83
+		divX, btnX, btnY = round(845 * f), round(880 * f), 128 - btnH / 2 -- the button centred on the divider
 	end
 	for i, b in bullets do
 		local cy = top + (i - 1) * pitch
@@ -624,7 +630,8 @@ function View:_build()
 				string.upper(sec.Heading or ""),
 				if c then cx else L.x0 + 668,
 				if c then y else y - 13,
-				false
+				false,
+				L.x0 + L.rowW
 			)
 			local top = if c then y + ph - 8 else y
 			self:_drawHero(L, sec.Items[1], if c then 0 else L.x0, top, if c then L.inner else L.rowW)
