@@ -85,7 +85,7 @@ function Detail.new(parent)
 		if not track.Visible then
 			return
 		end
-		local room = viewH - 74 -- starts below the ribbon tail
+		local room = math.max(viewH - 74, 30) -- starts below the ribbon tail; the 30 floor keeps clamp valid in short windows
 		local h = math.clamp(math.floor(room * viewH / canvas), 30, room)
 		Draw.thumb(thumb, 16, h, 64 + math.floor((room - h) * math.clamp(scroll.CanvasPosition.Y / maxY, 0, 1)))
 	end
