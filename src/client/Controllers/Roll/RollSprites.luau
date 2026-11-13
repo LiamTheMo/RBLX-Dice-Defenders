@@ -65,6 +65,16 @@ return {
 		Size = Vector2.new(230, 151),
 		Ink = Rect.new(10, 11, 219, 140),
 	},
+	CrownSecret = {
+		Image = "rbxassetid://107214964431114",
+		Size = Vector2.new(228, 149),
+		Ink = Rect.new(11, 10, 217, 138),
+	},
+	CrownMythic = {
+		Image = "rbxassetid://129063378678628",
+		Size = Vector2.new(230, 151),
+		Ink = Rect.new(11, 11, 220, 140),
+	},
 	RowSecret = {
 		Image = "rbxassetid://89199438575661",
 		Size = Vector2.new(674, 109),
