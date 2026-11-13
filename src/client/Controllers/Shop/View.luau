@@ -77,10 +77,10 @@ local ROLE = {
 	soonSub = { size = 26, min = 16, cs = 18, cmin = 15, fill = DIM, px = 3 },
 }
 -- price button tiers: box w x h, text size, Robux icon height, icon-to-number gap
--- (frames: the BtnGreen art sits ~3.4 px inside, so the visible ink is the ref 226 x 77 hero / 174 x 46 card)
+-- (frames: the BtnGreen art sits ~4.5 px inside, so the visible face is ~226 x 75 hero / 173 x 45 card)
 local TIER = {
 	hero = { w = 234, h = 83, size = 56, icon = 49, gap = 13 }, -- ink (outline + shadow) 226 x 75 = the reference button
-	card = { w = 178, h = 50, size = 36, icon = 33, gap = 5 },
+	card = { w = 182, h = 55, size = 36, icon = 33, gap = 5 }, -- ink 173 x 45 = the reference button
 	compact = { w = 150, h = 56, size = 26, icon = 26, gap = 4 },
 }
 -- heading plates: sprite, ink box (fitted by aspect, never stretched), card top below the plate top
@@ -101,6 +101,7 @@ local ART = { -- product art keys (Shop\SampleData)
 	Gems3 = "Gems3", -- composed in art()
 }
 local GEM = { Image = Sprites.Gem, Size = Vector2.new(128, 124), Ink = Rect.new(3, 3, 125, 121) } -- the raw HUD gem has transparent margins (measured from its PNG)
+local GEM_PACK = { GemBag = { 130, 128, 69 }, ChestOpenGems = { 148, 137, 73 }, Gems3 = { 138, 92, 63 } } -- gem pack art w, h (the ref widths, fitted by aspect) and centre y (art top ~5 under the card top)
 local BULLET_BOX = { Gem = { 36, 31 }, Dice3 = { 44, 30 }, Potion = { 28, 32 }, Chest = { 48, 33 } } -- Full VISIBLE icon boxes (the ref's sizes), art fitted by aspect
 local BULLET = { Gem = GEM, Dice3 = RollSprites.Dice3, Potion = Q.Potion, Chest = Q.IconChest }
 local CARD_SPARKS = { -- per card art: x / y in art half-sizes from its centre, box
@@ -238,15 +239,16 @@ local function card(parent, name: string, x: number, y: number, w: number, h: nu
 	}, "Frame")
 end
 
--- A rarity glow (the whole soft-edged image, fading to nothing at its own edge) w x h centred at (cx, cy), kept inside its card.
-local function glow(parent, key: string, cx: number, cy: number, w: number, h: number, z: number)
+-- A rarity glow (the whole soft-edged image, fading to nothing at its own edge) d wide at its own aspect, centred at (cx, cy).
+local function glow(parent, key: string, cx: number, cy: number, d: number, z: number)
+	local rec = BagSprites[key]
 	return Draw.img(parent, {
 		Name = "Glow",
-		Image = BagSprites[key].Image,
+		Image = rec.Image,
 		ScaleType = Enum.ScaleType.Stretch,
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromOffset(round(cx), round(cy)),
-		Size = UDim2.fromOffset(round(w), round(h)),
+		Size = UDim2.fromOffset(round(d), round(d * rec.Size.Y / rec.Size.X)),
 		ZIndex = z,
 	})
 end
@@ -291,7 +293,7 @@ local function compute(W: number, H: number, compact: boolean)
 		if compact then
 			return 8 + (if hasDesc then 56 else 50) + 22 + (if hasDesc then 46 else 0) + bh + 8
 		end
-		return (if hasDesc then 163 else 120) + bh - TIER.card.h
+		return (if hasDesc then 163 else 146) + bh - TIER.card.h
 	end
 	L.heroH = if compact then 150 else 208
 	-- Full is drawn in the reference x units (card 373 wide, hero row 1149); a narrower slot scales every x with its card / row so
@@ -392,13 +394,14 @@ function View:_drawHero(L, item, x: number, y: number, w: number)
 	local pitch, top, iconCx, textX, textW, divX, btnX, btnY
 	if c then
 		local aw = L.heroArtW
-		glow(holder, "GlowLegendary", (aw + 16) / 2, h / 2 + 4, aw + 10, h - 10, z)
+		glow(holder, "GlowLegendary", (aw + 16) / 2, h / 2 + 4, math.min(aw, h - 20), z)
 		local frame = Draw.img(
 			holder,
 			{ Name = "ArtFrame", Size = UDim2.fromOffset(aw + 16, h), ZIndex = z, ClipsDescendants = true },
 			"Frame"
 		)
-		whole(frame, ShopSprites.HeroArt, (aw + 16) / 2, h / 2 + 1, aw, z + 1, "Art")
+		local s = math.min(aw, (h - 28) * 710 / 322) / 710 -- the ink (322 of 392 source px tall, centred 24 below the image centre) stays inside the rim
+		whole(frame, ShopSprites.HeroArt, (aw + 16) / 2, h / 2 - 24 * s, 710 * s, z + 1, "Art")
 		pitch, iconCx = 28, 8 + aw + 8 + 14
 		top = h / 2 + 4 - 1.5 * pitch
 		btnX = w - 12 - bw
@@ -413,8 +416,21 @@ function View:_drawHero(L, item, x: number, y: number, w: number)
 		local slack = math.max(0, textW - maxW) / 2 -- centre the bullet block between the art and the divider
 		iconCx, textX = iconCx + slack, textX + slack
 	else
-		for _, g in { { 600, 206 }, { 460, 200 }, { 340, 170 }, { 240, 140 } } do -- stacked: the reference glow is strong and orange to the art's edge
-			glow(holder, "GlowLegendary", 255 * f, 104, g[1] * f, g[2], z)
+		for _, g in
+			{
+				{ -130, 190 },
+				{ -65, 190 },
+				{ 0, 190 },
+				{ 65, 190 },
+				{ 130, 190 },
+				{ -65, 190 },
+				{ 0, 190 },
+				{ 65, 190 },
+				{ 150, 190 },
+			}
+		do -- round glows side by side (strong, as the reference), inside the rim
+			local gx = (246 + g[1]) * f
+			glow(holder, "GlowLegendary", gx, 104, math.min(g[2], 2 * (gx - 8)), z)
 		end
 		local frame = Draw.img(holder, {
 			Name = "ArtFrame",
@@ -422,7 +438,8 @@ function View:_drawHero(L, item, x: number, y: number, w: number)
 			ZIndex = z,
 			ClipsDescendants = true,
 		}, "Frame")
-		whole(frame, ShopSprites.HeroArt, 246 * f, 90, 446 * f, z + 1, "Art") -- visible width incl. its baked sparkles = 684 of 710 source px = the ref's 430
+		local s = 0.5526 * f -- chest top ~19 under the frame top, gem tips ~5 clear of the bottom rim
+		whole(frame, ShopSprites.HeroArt, 246 * f, 108 - 24 * s, 710 * s, z + 1, "Art")
 		pitch, top, iconCx, textX, textW = 32.83, 77.5, 567 * f, 613 * f, 214 * f -- the ref bullet rows 77.5 / 110 / 142.5 / 176
 		divX, btnX, btnY = round(845 * f), round(880 * f), 128 - btnH / 2 -- the button centred on the divider
 	end
@@ -484,22 +501,19 @@ function View:_drawCard(L, item, x: number, y: number, hasDesc: boolean)
 		descY = nameY + 11
 		cx, btnX, btnY = w / 2, (w - bw) / 2, 8 + artH + 22 + (if hasDesc then 46 else 0)
 	else
-		artCx, artCy = (if hasDesc then 84 else 90) * f, if hasDesc then 79 else 60
-		artW, artH = (if hasDesc then 135 else 138) * f, if hasDesc then 115 else 88 -- the ref's visible art sizes
+		local pack = GEM_PACK[item.Art] -- gem packs: the ref's art widths (the card is tall enough for the whole art)
+		artCx, artCy = (if hasDesc then 84 else 90) * f, if hasDesc then 79 else pack[3]
+		artW, artH = (if hasDesc then 135 else pack[1]) * f, if hasDesc then 115 else pack[2] * f
 		nameY, descY = if hasDesc then 26 else 34, 51
 		cx = (if hasDesc then 253 else 273) * f -- the ref's text column sits left on the passes, right on the gem packs
-		btnX, btnY = cx - bw / 2, if hasDesc then 101 else 58
+		btnX, btnY = cx - bw / 2, (if hasDesc then 126 else 83) - bh / 2
 	end
-	-- the glow fades to nothing at its own edge, so it is made larger than the art (a halo shows around it) and kept inside the card rim
-	local gw, gh = artW * 2.2, artH * 2.2
-	gw, gh = math.min(gw, 2 * artCx - 2, 2 * (w - artCx) - 2), math.min(gh, 2 * artCy - 2, 2 * (h - artCy) - 2)
-	if c then
-		gw = math.min(gw, gh) -- phones: a round glow, never the art's 2:1 box
-		gh = gw
-	end
+	-- the glow is round, fades to nothing at its own edge, so it is made larger than the art and kept inside the card's inner face
+	local gm = 8
+	local gd = math.min(artW * 2.2, 2 * (math.min(artCx, w - artCx) - gm), 2 * (math.min(artCy, h - artCy) - gm))
 	local gk = if hasDesc then "GlowLegendary" else "GlowMythic"
 	for _, k in { 1, 1, 0.85, 0.7 } do -- stacked layers: the reference glow is strong, with a clear ring around the art
-		glow(holder, gk, artCx, artCy, gw * k, gh * k, 25)
+		glow(holder, gk, artCx, artCy, gd * k, 25)
 	end
 	art(holder, item.Art, artCx, artCy, artW, artH, 26)
 	local sk = if c then 0.7 else 1
@@ -628,7 +642,7 @@ function View:_build()
 				L,
 				"STARTER",
 				string.upper(sec.Heading or ""),
-				if c then cx else L.x0 + 668,
+				if c then cx else L.x0 + 668 * L.fh, -- scaled with the hero row like every other hero x
 				if c then y else y - 13,
 				false,
 				L.x0 + L.rowW
