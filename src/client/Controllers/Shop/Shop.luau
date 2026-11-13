@@ -26,7 +26,7 @@ local TAB_ICONS = {
 }
 -- Banner side emblem (scroll-ink fractions; y is overridden by the title centring): the chest at 0.89x the first cut so its ink stays >= 4 px off
 -- the Play laurel, 0.81x on Compact (as the Play swords) so it clears the gem pin. Width from the ink aspect (278 x 246): 0.782 * 162 * 1.13 / 774.
-local CHEST = { full = { 0, -0.07, 0.185, 0.782 }, compact = { 0, 0.01, 0.15, 0.633 } }
+local CHEST = { full = { 0, -0.07, 0.183, 0.774 }, compact = { 0, 0.01, 0.15, 0.633 } }
 
 local Shop = {}
 Shop.__index = Shop
@@ -65,6 +65,13 @@ function Shop.new(parent, deps)
 		task.delay(PRESS_COOLDOWN, flight.finish)
 		deps.toast("Shop: coming soon")
 	end)
+	local everyTab = {}
+	for _, tab in ShopLogic.TABS do
+		for _, sec in ShopLogic.sectionsFor(tab.Id, SampleData) do
+			table.insert(everyTab, sec)
+		end
+	end
+	view:SetRoleSample(everyTab)
 	shell:OnTab(function(i)
 		view:SetSections(ShopLogic.sectionsFor(ShopLogic.TABS[i].Id, SampleData))
 	end)

@@ -59,7 +59,7 @@ local ROLE = {
 		size = 30,
 		min = 18,
 		cs = 18,
-		cmin = 15,
+		cmin = 18,
 		fill = Color3.fromRGB(250, 250, 250),
 		line = Color3.fromRGB(69, 8, 46),
 		px = 2,
@@ -79,18 +79,18 @@ local ROLE = {
 -- price button tiers: box w x h, text size, Robux icon height, icon-to-number gap
 -- (frames: the BtnGreen art sits ~3.4 px inside, so the visible ink is the ref 226 x 77 hero / 174 x 46 card)
 local TIER = {
-	hero = { w = 233, h = 84, size = 56, icon = 46, gap = 13 },
-	card = { w = 178, h = 50, size = 50, icon = 33, gap = 5 },
+	hero = { w = 237, h = 90, size = 56, icon = 49, gap = 13 },
+	card = { w = 178, h = 50, size = 36, icon = 33, gap = 5 },
 	compact = { w = 150, h = 56, size = 26, icon = 26, gap = 4 },
 }
 -- heading plates: sprite, ink box (fitted by aspect, never stretched), card top below the plate top
 local HEAD = {
-	STARTER = { rec = ShopSprites.StarterCap, w = 440, h = 82, drop = 8 },
+	STARTER = { rec = ShopSprites.StarterCap, w = 440, h = 78, drop = 8 },
 	GAMEPASSES = { rec = ShopSprites.GPHeading, w = 468, h = 75, below = 77, drop = 10 },
 	GEMS = { rec = ShopSprites.GemsHeading, w = 450, h = 50, below = 57 },
 }
 local RULE = Bag.DividerGold -- centre diamond with a line each side: the halves are cut so each keeps one whole diamond
-local RULE_LEFT, RULE_RIGHT, RULE_LEN = 0, 327, 382 -- source x of the left piece / right piece, source width of each
+local RULE_LEFT, RULE_RIGHT, RULE_LLEN, RULE_RLEN = 0, 334, 378, 375 -- source x / width of the left and right pieces: each ends at its own diamond rim
 local ART = { -- product art keys (Shop\SampleData)
 	HeroArt = ShopSprites.HeroArt,
 	AutoRoll = Sprites.Icon.Roll,
@@ -100,8 +100,9 @@ local ART = { -- product art keys (Shop\SampleData)
 	ChestOpenGems = ShopSprites.ChestOpenGems,
 	Gems3 = "Gems3", -- composed in art()
 }
-local BULLET_BOX = { Gem = { 38, 28 }, Dice3 = { 44, 30 }, Potion = { 28, 32 }, Chest = { 48, 33 } } -- Full icon boxes (the ref's sizes)
-local BULLET = { Gem = Sprites.Gem, Dice3 = RollSprites.Dice3, Potion = Q.Potion, Chest = Q.IconChest }
+local GEM = { Image = Sprites.Gem, Size = Vector2.new(128, 124), Ink = Rect.new(3, 3, 125, 121) } -- the raw HUD gem has transparent margins (measured from its PNG)
+local BULLET_BOX = { Gem = { 36, 31 }, Dice3 = { 44, 30 }, Potion = { 28, 32 }, Chest = { 48, 33 } } -- Full VISIBLE icon boxes (the ref's sizes), art fitted by aspect
+local BULLET = { Gem = GEM, Dice3 = RollSprites.Dice3, Potion = Q.Potion, Chest = Q.IconChest }
 local CARD_SPARKS = { -- per card art: x / y in art half-sizes from its centre, box
 	{ Q.Sparkle1, -0.8, -0.6, 18, 18 },
 	{ Q.Sparkle2, 0.85, -0.65, 18, 18 },
@@ -262,12 +263,15 @@ local function compute(W: number, H: number, compact: boolean)
 		L.inner = W - 40
 		L.cols = if (L.inner - 20) / 3 >= 250 then 3 else 2
 		L.plateK, L.ruleK = 0.64, 0.45
+		L.heroArtW = math.floor(L.inner * 0.37) -- the hero art is ~37% of the hero frame; the bullets get what the art, divider and button leave
+		L.heroBw = 126 -- narrower than the card buttons so the bullets keep 18 design px (14 real) text beside the art
+		L.bulletW = L.inner - L.heroArtW - 80 - L.heroBw
 	else
 		L.pad = { l = 28, r = 28, t = 16, b = 16 }
 		L.barW, L.barInset, L.gap = 12, 9, 15
 		L.inner = W - 56
 		L.cols = 3
-		L.plateK, L.ruleK = 1, 0.7
+		L.plateK, L.ruleK = 1, 0.85
 	end
 	L.colW = math.floor((L.inner - (L.cols - 1) * L.gap) / L.cols)
 	L.rowW = L.cols * L.colW + (L.cols - 1) * L.gap
@@ -344,15 +348,19 @@ function View:_plate(L, key: string, text: string, cx: number, y: number, rules:
 	if rules then
 		local k = L.ruleK
 		local inner = pw / 2 + 7 -- the rules' inner ends: just outside the plate
-		local len = math.min(RULE_LEN, math.floor((cx - inner) / k)) -- source px that fit before the content edge: the outer end is cut, never stretched
-		if len > 0 then
+		local fit = math.floor((cx - inner) / k) -- source px that fit before the content edge: the outer end is cut, never stretched
+		if fit > 0 then
 			for _, side in { -1, 1 } do
+				local len = math.min(if side < 0 then RULE_LLEN else RULE_RLEN, fit)
 				local rp = Draw.img(c, { Name = "Rule", ZIndex = PLATE_Z })
 				rp.Image, rp.ScaleType = RULE.Image, Enum.ScaleType.Stretch
-				rp.ImageRectOffset = Vector2.new(if side < 0 then RULE_LEFT + RULE_LEN - len else RULE_RIGHT, 0)
+				rp.ImageRectOffset = Vector2.new(if side < 0 then RULE_LEFT + RULE_LLEN - len else RULE_RIGHT, 0)
 				rp.ImageRectSize = Vector2.new(len, RULE.Size.Y)
 				rp.AnchorPoint = Vector2.new(if side < 0 then 1 else 0, 0.5)
-				rp.Position = UDim2.fromOffset(round(cx + side * inner), round(cy + (h.drop or 0) * L.plateK)) -- on the text line, not the crown-extended plate centre
+				rp.Position = UDim2.fromOffset(
+					round(cx + side * inner),
+					round(cy + (h.drop or 0) * L.plateK + self._headSize * 0.06)
+				) -- on the heading glyph centre, not the text box or the crown-extended plate centre
 				rp.Size = UDim2.fromOffset(round(len * k), round(RULE.Size.Y * k))
 			end
 		end
@@ -372,19 +380,19 @@ function View:_drawHero(L, item, x: number, y: number, w: number)
 	local holder = card(self._canvas, "Hero", x, y, w, h, 24)
 	local z = 25
 	local btnH = L.btnH(L.heroTier)
-	local bw = round(TIER[L.heroTier].w * f)
+	local bw = if c then L.heroBw else round(TIER[L.heroTier].w * f)
 	local bullets = item.Bullets or {}
 	local bsize = self._bulletSize
 	local pitch, top, iconCx, textX, textW, divX, btnX, btnY
 	if c then
-		local aw = if L.inner >= 700 then 190 else 140
+		local aw = L.heroArtW
 		glow(holder, "GlowLegendary", (aw + 16) / 2, h / 2 + 4, aw + 10, h - 10, z)
 		local frame = Draw.img(
 			holder,
 			{ Name = "ArtFrame", Size = UDim2.fromOffset(aw + 16, h), ZIndex = z, ClipsDescendants = true },
 			"Frame"
 		)
-		whole(frame, ShopSprites.HeroArt, (aw + 16) / 2, h / 2 + 4, aw, z + 1, "Art")
+		whole(frame, ShopSprites.HeroArt, (aw + 16) / 2, h / 2 + 1, aw, z + 1, "Art")
 		pitch, iconCx = 28, 8 + aw + 8 + 14
 		top = h / 2 + 4 - 1.5 * pitch
 		btnX = w - 12 - bw
@@ -399,18 +407,18 @@ function View:_drawHero(L, item, x: number, y: number, w: number)
 		local slack = math.max(0, textW - maxW) / 2 -- centre the bullet block between the art and the divider
 		iconCx, textX = iconCx + slack, textX + slack
 	else
-		glow(holder, "GlowLegendary", 258 * f, 104, 510 * f, 200, z)
-		glow(holder, "GlowLegendary", 258 * f, 104, 330 * f, 170, z)
+		for _, g in { { 600, 206 }, { 460, 200 }, { 340, 170 }, { 240, 140 } } do -- stacked: the reference glow is strong and orange to the art's edge
+			glow(holder, "GlowLegendary", 255 * f, 104, g[1] * f, g[2], z)
+		end
 		local frame = Draw.img(holder, {
 			Name = "ArtFrame",
-			Position = UDim2.fromOffset(round(28 * f), 4),
-			Size = UDim2.fromOffset(round(470 * f), 200),
+			Size = UDim2.fromOffset(round(520 * f), h),
 			ZIndex = z,
 			ClipsDescendants = true,
 		}, "Frame")
-		whole(frame, ShopSprites.HeroArt, 230 * f, 88, 430 * f, z + 1, "Art") -- ink spans local x 43-473, y 9-203 as the ref art box
-		pitch, top, iconCx, textX, textW = 31, 86, 567 * f, 613 * f, 214 * f
-		divX, btnX, btnY = round(845 * f), round(882 * f), 86
+		whole(frame, ShopSprites.HeroArt, 246 * f, 90, 446 * f, z + 1, "Art") -- visible width incl. its baked sparkles = 684 of 710 source px = the ref's 430
+		pitch, top, iconCx, textX, textW = 32.83, 77.5, 567 * f, 613 * f, 214 * f -- the ref bullet rows 77.5 / 110 / 142.5 / 176
+		divX, btnX, btnY = round(845 * f), round(880 * f), 83
 	end
 	for i, b in bullets do
 		local cy = top + (i - 1) * pitch
@@ -471,16 +479,22 @@ function View:_drawCard(L, item, x: number, y: number, hasDesc: boolean)
 		cx, btnX, btnY = w / 2, (w - bw) / 2, 8 + artH + 22 + (if hasDesc then 46 else 0)
 	else
 		artCx, artCy = (if hasDesc then 84 else 90) * f, if hasDesc then 79 else 60
-		artW, artH = (if hasDesc then 148 else 156) * f, if hasDesc then 134 else 104
+		artW, artH = (if hasDesc then 135 else 138) * f, if hasDesc then 115 else 88 -- the ref's visible art sizes
 		nameY, descY = if hasDesc then 26 else 34, 51
 		cx = (if hasDesc then 253 else 273) * f -- the ref's text column sits left on the passes, right on the gem packs
 		btnX, btnY = cx - bw / 2, if hasDesc then 101 else 58
 	end
-	local gw, gh = artW * 1.9, artH * 1.9 -- the glow fades to nothing at its own edge; it is kept inside the card rim
-	gw, gh = math.min(gw, 2 * artCx - 6, 2 * (w - artCx) - 6), math.min(gh, 2 * artCy - 6, 2 * (h - artCy) - 6)
+	-- the glow fades to nothing at its own edge, so it is made larger than the art (a halo shows around it) and kept inside the card rim
+	local gw, gh = artW * 2.2, artH * 2.2
+	gw, gh = math.min(gw, 2 * artCx - 2, 2 * (w - artCx) - 2), math.min(gh, 2 * artCy - 2, 2 * (h - artCy) - 2)
+	if c then
+		gw = math.min(gw, gh) -- phones: a round glow, never the art's 2:1 box
+		gh = gw
+	end
 	local gk = if hasDesc then "GlowLegendary" else "GlowMythic"
-	glow(holder, gk, artCx, artCy, gw, gh, 25)
-	glow(holder, gk, artCx, artCy, gw * 0.65, gh * 0.8, 25) -- a second, tighter layer: the reference glow is strong at the art
+	for _, k in { 1, 1, 0.85, 0.7 } do -- stacked layers: the reference glow is strong, with a clear ring around the art
+		glow(holder, gk, artCx, artCy, gw * k, gh * k, 25)
+	end
 	art(holder, item.Art, artCx, artCy, artW, artH, 26)
 	local sk = if c then 0.7 else 1
 	for _, s in CARD_SPARKS do
@@ -539,7 +553,7 @@ end
 function View:_roles(L)
 	local c = L.compact
 	local heads, names, descs, bullets, hero, cardP = {}, {}, {}, {}, {}, {}
-	for _, sec in self._sections do
+	for _, sec in self._roleSample or self._sections do -- every tab's content, so a card is the same size on each tab
 		table.insert(heads, string.upper(sec.Heading or ""))
 		for _, item in sec.Items or {} do
 			if sec.Kind == "Hero" then
@@ -569,7 +583,7 @@ function View:_roles(L)
 	self._headSize = size("head", heads, if c then 150 else plateW)
 	self._nameSize = size("name", names, if c then L.colW - 24 else 186 * L.fc)
 	self._descSize = size("desc", descs, if c then L.colW - 24 else 186 * L.fc)
-	self._bulletSize = size("bullet", bullets, if c then (L.inner >= 700 and 300 or 184) else 202 * L.fh)
+	self._bulletSize = size("bullet", bullets, if c then L.bulletW else 202 * L.fh)
 	self._priceHero = priceSize(hero, L.heroTier, L.fh)
 	self._priceCard = priceSize(cardP, L.cardTier, L.fc)
 end
@@ -719,6 +733,11 @@ function View:SetSections(sections)
 	self._sections = sections
 	self._scroll.CanvasPosition = Vector2.zero
 	self._rebuild()
+end
+
+-- The sections of every tab: role sizes are fitted across all of them.
+function View:SetRoleSample(sections)
+	self._roleSample = sections
 end
 
 function View:OnAction(cb)
