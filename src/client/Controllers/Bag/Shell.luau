@@ -419,6 +419,7 @@ function Shell.new(parent, deps)
 		tabBar.Size = UDim2.fromOffset(barW, t.tabH)
 		tabBar.UIListLayout.Padding = UDim.new(0, t.tabGap)
 		local icon = t.icon * (deps.tabIconScale or 1)
+		local labelSize = math.huge -- one text size for the whole bar: the largest every label fits at
 		for i, tab in self._tabButtons do
 			local w = if fixedW
 				then TAB_W[i] * tabK
@@ -436,7 +437,11 @@ function Shell.new(parent, deps)
 			tab.Row.Icon.Visible = hasIcon and w >= 150
 			local avail = w - 24 - (if hasIcon and w >= 150 then icon + t.iconGap else 0)
 			tab.Row.Label.UISizeConstraint.MaxSize = Vector2.new(avail, t.tabH)
-			Parts.fit(tab.Row.Label, avail, if w < 170 then 18 else t.tabText, 15)
+			labelSize =
+				math.min(labelSize, Parts.fitSize(tab.Row.Label.Text, avail, if w < 170 then 18 else t.tabText, 15))
+		end
+		for _, tab in self._tabButtons do
+			tab.Row.Label.TextSize = labelSize
 		end
 		self:_skinTabs()
 	end
