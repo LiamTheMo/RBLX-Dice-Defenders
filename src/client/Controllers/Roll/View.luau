@@ -206,13 +206,13 @@ local function compute(W: number, H: number, compact: boolean)
 		L.fx = 2
 		L.rx = L.fx + L.fw + 6
 		L.rw = W - 2 - L.rx
-		L.pityX, L.pityRowW = 4, W - 8
+		L.pityX, L.pityRowW = L.fx + 1, W - 4 - L.fx -- the compact skin draws ~1 real px wider each side
 		local rowW = L.pityRowW
 		local pillW = 104
 		local barL = rowW * 0.02 + pillW + 62
-		local infoX = rowW * 0.02 + pillW + 5 + round(34 * 0.7) / 2 -- 5 px ink gap from the PITY pill
+		local infoX = rowW * 0.03 + pillW + 5 + round(34 * 0.7) / 2 -- 5 px ink gap from the PITY pill
 		L.pity = {
-			pillX = rowW * 0.02,
+			pillX = rowW * 0.03, -- = the bar's right margin
 			pillW = pillW,
 			pillH = 34,
 			pillCy = 22,
@@ -251,16 +251,16 @@ local function compute(W: number, H: number, compact: boolean)
 		L.fx, L.fw = 3, leftW + 1 - 3
 		L.rx = leftW + 10 -- the Bag's rim-to-rim gap between its two panels is 9 px (pixel scan of build_bag_1672)
 		L.rw = W - 2 - L.rx
-		-- the reference pity row sits 23 px / 27 px inside the panel span (x1.04 for our width)
-		L.pityX = L.fx + 24
-		L.pityRowW = W - 2 - 28 - L.pityX
+		-- the pity frame spans both panels' outer rims (the gold rule's span)
+		L.pityX = L.fx
+		L.pityRowW = W - 2 - L.fx
 		local sx = L.pityRowW / 1099 -- the reference row is 1099 wide
 		L.pity = {
-			pillX = 53 * sx,
+			pillX = 62 * sx, -- = the bar's right margin (1099 - 290 - 747)
 			pillW = 157,
 			pillH = 51,
 			pillCy = 43,
-			infoX = 53 * sx + 157 + 5 + round(51 * 0.7) / 2, -- 5 px ink gap from the PITY pill
+			infoX = 62 * sx + 157 + 5 + round(51 * 0.7) / 2, -- 5 px ink gap from the PITY pill
 			barL = 290 * sx,
 			barW = 747 * sx,
 			barH = 30,
@@ -780,6 +780,7 @@ function View.new(slot)
 	)
 	self._scroll, self._canvas = scroll, canvas
 	local pending = false
+	local scaleSeen = {}
 	local function rebuild()
 		if pending then
 			return
@@ -800,6 +801,10 @@ function View.new(slot)
 				for _, c in a:GetChildren() do
 					if c:IsA("UIScale") and c.Name ~= "Pop" then
 						k *= c.Scale
+						if not scaleSeen[c] then -- a later scale change (window resize) must rebuild: K sizes the hit boxes
+							scaleSeen[c] = true
+							table.insert(self._conns, c:GetPropertyChangedSignal("Scale"):Connect(rebuild))
+						end
 					end
 				end
 				a = a.Parent
