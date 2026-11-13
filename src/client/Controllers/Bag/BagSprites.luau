@@ -22,7 +22,7 @@ return {
 		Image = "rbxassetid://98262252383279",
 		Size = Vector2.new(588, 461),
 		Ink = Rect.new(5, 5, 583, 456),
-		Slice = Rect.new(232, 83, 473, 356),
+		Slice = Rect.new(232, 115, 473, 395), -- 115 / 395: short panels show only the first rows of the stretched middle, so the cuts sit where the face is nearly flat (join <= 2 luma levels; 83 / 356 gave 3-4.4)
 	},
 	Detail = {
 		Image = "rbxassetid://102623976015433",
