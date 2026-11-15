@@ -170,6 +170,7 @@ local function render(snap)
 	local phase = snap.Phase
 	local message = MESSAGES[phase] or if Preload.Done then nil else "Loading\u{2026}" -- hold until every menu's art is in
 	ui.Message.Visible = message ~= nil
+	ui.Message.BackgroundTransparency = if Preload.Done then 0.1 else 0 -- opaque while menu art warms up beneath it
 	ui.MessageText.Text = message or ""
 
 	local playing = phase == "Playing"

@@ -1,5 +1,5 @@
 -- Lobby HUD: borderless icons, inline counters, XP line and framed dice slots laid out in design px (1672x941) under one UIScale (no Init/Start).
--- LobbyHud.build(parent, { open = (panel, tab?) -> (), toast = (text) -> () }) -> hud; hud:SetGold(n), hud:SetDeck(ids).
+-- LobbyHud.build(parent, { open = (panel, tab?) -> (), toast = (text) -> () }) -> hud; hud:SetGold(n), hud:SetGems(n), hud:SetXp(level, into, need), hud:SetDeck(ids).
 
 local ContentProvider = game:GetService("ContentProvider")
 
@@ -18,7 +18,7 @@ local DIM = Color3.fromRGB(180, 180, 182) -- ~70% tint of the HUD icons/labels b
 local SELECTED_LABEL = Color3.fromRGB(236, 234, 236) -- the open menu's label stays light (ref #ECEAEC)
 local DESIGN = Vector2.new(1672, 941)
 -- XP bar: design height / track export height (24) is the slice scale; the fill uses the same scale.
-local XP_FILL_CAPS = 112 - (89 - 24) -- narrowest fill: both caps, export px
+local XP_FILL_CAPS = 112 - (89 - 24) -- both caps, export px: below this width the caps shrink with the fill
 local XP_FILL_PAD = 3.95 -- fill box inset from each end of the track, export px, so the pill sits inside the rim (manifest XpFill.pad)
 local BAG_ROW = Vector2.new(880, 50) -- bag-mode bottom row (reference x 405-1285, y 872-922)
 local CELL = Vector2.new(124, 114)
@@ -341,9 +341,7 @@ function LobbyHud.build(parent, cb)
 	list(currencies, Enum.FillDirection.Horizontal, 16)
 	local goldBox, gemBox
 	self.GoldLabel, goldBox = counter(currencies, 1, Sprites.Coin, formatGold(0), GOLD_TEXT)
-	-- Placeholder: the server sends no gems yet.
-	self.GemLabel, gemBox = counter(currencies, 2, Sprites.Gem, "\u{2014}", GEM_TEXT)
-	self.GemLabel:SetAttribute("Placeholder", true)
+	self.GemLabel, gemBox = counter(currencies, 2, Sprites.Gem, "\u{2014}", GEM_TEXT) -- "—" until the first Meta (SetGems)
 
 	local xp = make("Frame", {
 		Name = "XpBar",
@@ -359,7 +357,7 @@ function LobbyHud.build(parent, cb)
 		SliceCenter = Rect.new(22, 10, 94, 14),
 		Size = UDim2.fromScale(1, 1),
 	}, xp)
-	-- Fill is sized to the value (never cropped), at the track's SliceScale and never narrower than its caps.
+	-- Fill is sized to the value (never cropped), at the track's SliceScale (smaller only when shorter than its caps).
 	self.XpFill = make("ImageLabel", {
 		Name = "Fill",
 		BackgroundTransparency = 1,
@@ -369,8 +367,7 @@ function LobbyHud.build(parent, cb)
 		AnchorPoint = Vector2.new(0, 0.5),
 		Visible = false,
 	}, xp)
-	self.XpFill:SetAttribute("Placeholder", true)
-	self.XpFraction = 0 -- Placeholder: no XP data yet, so 0 fill (hidden)
+	self.XpFraction = 0 -- until the first Meta (SetXp): 0 fill (hidden)
 	self.XpBar = xp
 
 	-- LVL / XP text: one centred group. HUD: overlaid on the thin bar (reference y 784-806); bag row: inline, left of the bar.
@@ -395,7 +392,6 @@ function LobbyHud.build(parent, cb)
 			ZIndex = 3,
 		}, xpText)
 		outline(l, 3)
-		l:SetAttribute("Placeholder", true) -- no level/XP from the server yet
 		return l
 	end
 	self.LvlLabel = xpLabel("LvlLabel", "LVL \u{2014}", 1)
@@ -491,9 +487,10 @@ end
 function LobbyHud:_layoutXp(w: number, h: number)
 	local k = h / 24
 	self.XpTrack.SliceScale = k
-	self.XpFill.SliceScale = k
 	self.XpFill.Position = UDim2.new(0, XP_FILL_PAD * k, 0.5, 0)
-	self.XpFill.Size = UDim2.fromOffset(math.max(XP_FILL_CAPS * k, (w - 2 * XP_FILL_PAD * k) * self.XpFraction), 16 * k)
+	local fillW = (w - 2 * XP_FILL_PAD * k) * self.XpFraction
+	self.XpFill.SliceScale = math.min(k, fillW / XP_FILL_CAPS) -- a fill narrower than its caps shrinks the caps, not grows
+	self.XpFill.Size = UDim2.fromOffset(fillW, 16 * k)
 	self.XpFill.Visible = self.XpFraction > 0
 end
 
@@ -578,6 +575,20 @@ end
 
 function LobbyHud:SetGold(gold: number?)
 	self.GoldLabel.Text = formatGold(gold)
+end
+
+function LobbyHud:SetGems(gems: number?)
+	self.GemLabel.Text = formatGold(gems)
+end
+
+-- Meta Level / XpInto / XpNeed; XpNeed = 0 at max level: full bar. Plain numbers as in the reference ("650 / 1000 XP").
+function LobbyHud:SetXp(level: number?, into: number?, need: number?)
+	into, need = into or 0, need or 0
+	self.LvlLabel.Text = "LVL " .. tostring(level or 1)
+	self.XpLabel.Text = if need > 0 then ("%d / %d XP"):format(into, need) else "MAX"
+	self.XpFraction = if need > 0 then math.clamp(into / need, 0, 1) else 1
+	local bar = self.XpBar.Size
+	self:_layoutXp(bar.X.Offset, bar.Y.Offset)
 end
 
 -- ids: array of up to 5 die ids. Mapped dice use their art; others show Icon.Roll tinted by Display colour.

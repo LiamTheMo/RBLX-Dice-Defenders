@@ -220,8 +220,10 @@ local function renderProfile(snap)
 	local body = ui.Panels.Profile.Body
 	clear(body)
 	snap = snap or {}
+	local meta = NetClient.LastMeta or {}
 	local lines = {
 		"Gold: " .. tostring(snap.Gold or 0),
+		"XP: " .. tostring(meta.Xp or 0),
 		"Best wave: " .. tostring(snap.BestWave or 0),
 		"Runs played: " .. tostring(snap.RunsPlayed or 0),
 		"Trial cleared: " .. (snap.TrialCleared and "Yes" or "No"),
@@ -237,7 +239,7 @@ local function renderResult(snap)
 	if show then
 		ui.ResultTitle.Text = RESULT_TITLES[snap.Result] or "Run Ended"
 		ui.ResultWave.Text = "Wave " .. tostring(snap.Wave or 0)
-		ui.ResultReward.Text = snap.RewardGold and ("+" .. snap.RewardGold .. " Gold") or ""
+		ui.ResultReward.Text = ("+%d Gold   +%d XP"):format(snap.RewardGold or 0, snap.RewardXp or 0)
 		ui.ResultReward.Visible = snap.RewardGold ~= nil
 	end
 end
@@ -266,6 +268,11 @@ end
 local function renderMeta()
 	local meta = NetClient.LastMeta
 	ui.LobbyHud:SetDeck(meta and meta.Deck)
+	if meta then
+		ui.LobbyHud:SetGems(meta.Gems)
+		ui.LobbyHud:SetXp(meta.Level, meta.XpInto, meta.XpNeed)
+	end
+	renderProfile(NetClient.Last)
 end
 
 local function build()
