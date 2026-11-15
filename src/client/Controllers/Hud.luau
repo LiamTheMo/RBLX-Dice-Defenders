@@ -10,6 +10,7 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
 local NetClient = require(script.Parent.NetClient)
+local Preload = require(script.Parent.Preload)
 local UiKit = require(script.Parent.UiKit)
 local Display = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Display"))
 
@@ -53,7 +54,7 @@ local function build()
 	gui = make("ScreenGui", {
 		Name = "Hud",
 		ResetOnSpawn = false,
-		DisplayOrder = 5,
+		DisplayOrder = 7, -- above the Lobby (6), so the full-screen message covers the lobby and menus
 		ScreenInsets = Enum.ScreenInsets.DeviceSafeInsets,
 		IgnoreGuiInset = true, -- deliberate: safe-area handled by DeviceSafeInsets; top bar is centred, clear of core buttons
 	})
@@ -167,11 +168,12 @@ end
 
 local function render(snap)
 	local phase = snap.Phase
-	local message = MESSAGES[phase]
+	local message = MESSAGES[phase] or if Preload.Done then nil else "Loading\u{2026}" -- hold until every menu's art is in
 	ui.Message.Visible = message ~= nil
 	ui.MessageText.Text = message or ""
 
 	local playing = phase == "Playing"
+	ui.ToastFrame.Visible = ui.ToastFrame.Visible and playing -- match-only toasts: never over the Lobby's results card
 	ui.Wave.Text = ("Wave %d/10"):format(snap.Wave or 0)
 	ui.Lives.Text = "\u{2665} " .. tostring(snap.Lives or 0)
 	ui.MP.Text = "MP " .. tostring(snap.MP or 0)
@@ -211,6 +213,12 @@ function Hud.Start()
 		end)
 	)
 	table.insert(connections, RunService.Heartbeat:Connect(updateCountdowns))
+	table.insert(
+		connections,
+		Preload.Finished:Connect(function()
+			render(NetClient.Last or { Phase = "Loading" })
+		end)
+	)
 
 	render(NetClient.Last or { Phase = "Loading" })
 end

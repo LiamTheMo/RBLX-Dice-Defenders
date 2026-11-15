@@ -3,7 +3,6 @@
 -- Rows come from NetClient.LastMeta.Quests plus the client-only SampleData (Studio only); re-rendered on NetClient.Meta.
 -- Claim: only real "Claim" rows send ClaimQuest (one in flight per id); the next Meta decides the Claimed state.
 
-local ContentProvider = game:GetService("ContentProvider")
 local ContextActionService = game:GetService("ContextActionService")
 local GuiService = game:GetService("GuiService")
 local RunService = game:GetService("RunService")
@@ -77,40 +76,6 @@ local function achModel(item)
 	}
 end
 
--- art the live (QUESTS-only) menu draws; ACH/MASTERY art loads in Studio only (live players see "coming soon" there)
-local STUDIO = RunService:IsStudio()
-local QUEST_ART = {}
-for _, n in
-	{
-		"BannerSeal",
-		"BannerQuill",
-		"DetailPanel",
-		"Dropdown",
-		"IconTabScroll",
-		"IconTabTrophy",
-		"DetailRibbon",
-		"Row",
-		"RowSelected",
-		"Track",
-		"FillGold",
-		"Stopwatch",
-		"IconQuestScroll",
-		"IconDie",
-		"IconWings",
-		"IconCrown",
-		"IconCalendar",
-		"IconCalendarWeek",
-		"Crown",
-		"Crystals",
-		"RewardBoxPlain",
-		"GlowRadial",
-		"RaysBurst",
-		"ScrollThumbPurple",
-	}
-do
-	QUEST_ART[n] = true
-end
-
 local QuestLog = {}
 QuestLog.__index = QuestLog
 
@@ -134,21 +99,6 @@ function QuestLog.new(parent, deps)
 		detail = Q.DetailPanel,
 		tabIconScale = 1.3, -- ref tab icon ink ~63-70 px (the Bag's 54.5 box shows ~45-51)
 	})
-	local preloaded = false
-	local function preload() -- first open only: stream the art so the first tab switch is not blank
-		if preloaded then
-			return
-		end
-		preloaded = true
-		local list = {}
-		for name, rec in Q do
-			if type(rec) == "table" and rec.Image and (STUDIO or QUEST_ART[name]) then
-				table.insert(list, rec.Image)
-			end
-		end
-		table.insert(list, shell.Banner) -- the shared scroll, gem and emblems (PreloadAsync takes the instance's descendants)
-		task.spawn(pcall, ContentProvider.PreloadAsync, ContentProvider, list)
-	end
 	local toolbar = Toolbar.new(shell.Slots.Toolbar)
 	local quests = Quests.new(shell.Slots.Grid)
 	local achievements = Achievements.new(shell.Slots.Grid)
@@ -412,7 +362,6 @@ function QuestLog.new(parent, deps)
 			shell:SetTab(idx)
 			return
 		end
-		preload()
 		shell:Open()
 		hud:SetBagMode(true, "Quests")
 		timerToken += 1

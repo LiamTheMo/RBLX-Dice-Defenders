@@ -3,7 +3,6 @@
 -- Static render from RollLogic + the client-only SampleData (Studio shows the full reference). Display only: the roll buttons
 -- and (i) just toast; nothing is rolled, spent or sent. The server has no roll feature yet; the Gems balance is Meta's.
 
-local ContentProvider = game:GetService("ContentProvider")
 local ContextActionService = game:GetService("ContextActionService")
 local GuiService = game:GetService("GuiService")
 local RunService = game:GetService("RunService")
@@ -148,7 +147,7 @@ function Roll.new(parent, deps)
 	shell:OnTab(setPool)
 	shell:SetTab(1)
 
-	local preloaded, timerToken = false, 0
+	local timerToken = 0
 	table.insert(
 		conns,
 		NetClient.State:Connect(function(snap)
@@ -184,10 +183,6 @@ function Roll.new(parent, deps)
 	self._open = function()
 		if shell:IsOpen() then
 			return
-		end
-		if not preloaded then
-			preloaded = true
-			task.spawn(pcall, ContentProvider.PreloadAsync, ContentProvider, { shell.Bag }) -- stream the art so the first frame is not blank
 		end
 		render()
 		shell:Open()

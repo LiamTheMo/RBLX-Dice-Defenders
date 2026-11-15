@@ -3,7 +3,6 @@
 -- Renders from PlayLogic with NetClient.Last and the client-only SampleData (Studio shows the full reference) on open and
 -- whenever the phase, best wave or clear state changes; START sends the guarded Start request, one at a time.
 
-local ContentProvider = game:GetService("ContentProvider")
 local ContextActionService = game:GetService("ContextActionService")
 local GuiService = game:GetService("GuiService")
 local RunService = game:GetService("RunService")
@@ -48,14 +47,7 @@ function Play.new(parent, deps)
 	})
 	local view = View.new(shell.Slots.Content)
 
-	local preloaded, busy = false, false
-	local function preload() -- first open only: stream the art so the first frame is not blank
-		if preloaded then
-			return
-		end
-		preloaded = true
-		task.spawn(pcall, ContentProvider.PreloadAsync, ContentProvider, { shell.Bag }) -- Bag draws every Play sprite
-	end
+	local busy = false
 
 	local shown -- the State fields the last render drew
 	local function render()
@@ -125,7 +117,6 @@ function Play.new(parent, deps)
 		if shell:IsOpen() then
 			return
 		end
-		preload()
 		render()
 		shell:Open()
 		hud:SetBagMode(true, "Play")

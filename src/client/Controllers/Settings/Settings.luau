@@ -3,7 +3,6 @@
 -- consumers (Shadows, Show FPS here; Reduced Motion and UI Scale in the Shell). Session only: nothing is saved.
 -- Settings.new(parent, { hud = LobbyHud, toast = (string) -> () }) -> :Open(tab?) :Close() :Toggle(tab?) :IsOpen() :Destroy(); tab = a tab id or index.
 
-local ContentProvider = game:GetService("ContentProvider")
 local ContextActionService = game:GetService("ContextActionService")
 local GuiService = game:GetService("GuiService")
 local Lighting = game:GetService("Lighting")
@@ -45,17 +44,6 @@ local GEAR_Z = 26 -- Window child: above the chrome, content and tabs (21-23), b
 
 local function round(n: number): number
 	return math.floor(n + 0.5)
-end
-
-local function preloadIds(): { string }
-	local seen, ids = {}, {}
-	for _, rec in SettingsSprites do
-		if rec.Image and not seen[rec.Image] then
-			seen[rec.Image] = true
-			table.insert(ids, rec.Image)
-		end
-	end
-	return ids
 end
 
 local Settings = {}
@@ -436,7 +424,7 @@ function Settings.new(parent, deps)
 		hud:SetBagMode(false)
 	end)
 
-	local preloaded = false
+	local opened = false
 	self.Shell, self.View, self._conns, self._gears = shell, view, conns, gears
 	self._teardown = function()
 		cancel()
@@ -451,9 +439,8 @@ function Settings.new(parent, deps)
 	end
 	self._open = function(tab)
 		local index = if type(tab) == "string" then table.find(SettingsLogic.TABS, tab) else tab
-		if not preloaded then
-			preloaded = true
-			task.spawn(pcall, ContentProvider.PreloadAsync, ContentProvider, preloadIds()) -- stream the art so the first frame is not blank
+		if not opened then
+			opened = true
 			shell:SetTab(index or 1) -- GAMEPLAY on first open
 		elseif index then
 			shell:SetTab(index)

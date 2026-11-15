@@ -2,7 +2,6 @@
 -- Shop.new(parent, { hud = LobbyHud, toast = (string) -> () }) -> :Open() :Close() :Toggle() :IsOpen() :Destroy()
 -- Display only: the client-only SampleData shows in Studio; a live server shows the "Coming soon" card on every tab. A price press just toasts.
 
-local ContentProvider = game:GetService("ContentProvider")
 local ContextActionService = game:GetService("ContextActionService")
 local GuiService = game:GetService("GuiService")
 local RunService = game:GetService("RunService")
@@ -10,7 +9,6 @@ local RunService = game:GetService("RunService")
 local NetClient = require(script.Parent.Parent.NetClient)
 local PlaySprites = require(script.Parent.Parent.Play.PlaySprites)
 local QuestSprites = require(script.Parent.Parent.QuestLog.QuestSprites)
-local RollSprites = require(script.Parent.Parent.Roll.RollSprites)
 local SampleData = require(script.Parent.SampleData)
 local Shell = require(script.Parent.Parent.Bag.Shell)
 local ShopLogic = require(script.Parent.ShopLogic)
@@ -31,22 +29,6 @@ local TAB_ICONS = {
 -- Banner side emblem (scroll-ink fractions; y is overridden by the title centring): the chest at 0.89x the first cut so its ink stays >= 4 px off
 -- the Play laurel, 0.81x on Compact (as the Play swords) so it clears the gem pin. Width from the ink aspect (278 x 246): 0.782 * 162 * 1.13 / 774.
 local CHEST = { full = { 0, -0.07, 0.181, 0.766 }, compact = { 0, 0.01, 0.15, 0.633 } }
-
--- Every image the Shop draws: its own sprite records plus the reused ones (the View's product and bullet art).
-local function preloadIds(): { string }
-	local ids = { Sprites.Gem, Sprites.Icon.Roll }
-	for _, rec in
-		{ QuestSprites.Crown, QuestSprites.Potion, QuestSprites.IconChest, RollSprites.Dice3 } -- the Quest/Roll ones are records
-	do
-		table.insert(ids, rec.Image)
-	end
-	for _, rec in ShopSprites do
-		if type(rec) == "table" and rec.Image then
-			table.insert(ids, rec.Image)
-		end
-	end
-	return ids
-end
 
 local Shop = {}
 Shop.__index = Shop
@@ -115,15 +97,14 @@ function Shop.new(parent, deps)
 		end)
 	)
 
-	local preloaded = false
+	local opened = false
 	self.Shell, self.View, self._conns = shell, view, conns
 	self._open = function()
 		if shell:IsOpen() then
 			return
 		end
-		if not preloaded then
-			preloaded = true
-			task.spawn(pcall, ContentProvider.PreloadAsync, ContentProvider, preloadIds()) -- stream the art so the first frame is not blank
+		if not opened then
+			opened = true
 			shell:SetTab(1) -- FEATURED on first open
 		end
 		shell:Open()

@@ -9,7 +9,7 @@ Fps.__index = Fps
 function Fps.new(playerGui: Instance)
 	local self = setmetatable({}, Fps)
 	local gui = Instance.new("ScreenGui")
-	gui.Name, gui.ResetOnSpawn, gui.DisplayOrder = "ShowFps", false, 20 -- above the HUD (5) and menus (6)
+	gui.Name, gui.ResetOnSpawn, gui.DisplayOrder = "ShowFps", false, 20 -- above the HUD (7) and menus (6)
 	gui.Enabled = false
 	local label = Instance.new("TextLabel")
 	label.BackgroundTransparency, label.Text = 1, "-- FPS"

@@ -2,7 +2,6 @@
 -- Daily.new(parent, { hud = LobbyHud, toast = (string) -> () }) -> :Open() :Close() :Toggle() :IsOpen() :Destroy()
 -- Display only: the client-only SampleData shows in Studio (with a sample countdown); a live server shows "Coming soon". CLAIM just toasts.
 
-local ContentProvider = game:GetService("ContentProvider")
 local ContextActionService = game:GetService("ContextActionService")
 local GuiService = game:GetService("GuiService")
 local RunService = game:GetService("RunService")
@@ -95,15 +94,14 @@ function Daily.new(parent, deps)
 		end)
 	)
 
-	local preloaded = false
+	local opened = false
 	self.Shell, self.View, self._conns = shell, view, conns
 	self._open = function()
 		if shell:IsOpen() then
 			return
 		end
-		if not preloaded then
-			preloaded = true
-			task.spawn(pcall, ContentProvider.PreloadAsync, ContentProvider, { shell.Bag }) -- stream the art so the first frame is not blank
+		if not opened then
+			opened = true
 			if DATA then
 				deadline = workspace:GetServerTimeNow() + DATA.NextClaimIn
 			end
