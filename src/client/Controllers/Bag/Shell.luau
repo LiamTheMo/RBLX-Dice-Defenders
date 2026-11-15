@@ -10,6 +10,8 @@
 -- the tab bar keeps the Bag's span so another child with a high LayoutOrder shares the row; a tab without Icon centres its label;
 -- free mode with tabs puts Content under the tab bar).
 -- Opt-in banner options (default = unchanged): banner.noGem = true skips the gem pin; an emblem box (also the side emblem's) may be { full = box, compact = box } to size the emblem per tier.
+-- Opt-in popup (free mode): size = Vector2 visible window ink at the Full tier (design px); the scroll-to-window-bottom group is centred on the screen
+-- inside the free region; phones keep the Compact banner / X / rim and shrink the window and Content uniformly (Content = the Full free box x k); the chrome is two 1:1 edge halves of the Window art.
 
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
@@ -97,6 +99,7 @@ local FOOTER_BOX = Vector2.new(786, 111) -- footer strip box: visible 242-1018 x
 local GRID_INSET = 12 -- GridScroll stops this far above the panel bottom so peeking cards clip inside the rim
 local DETAIL_MAX, DETAIL_MIN = 420, 310
 local MIN_SCALE, MAX_SCALE = 0.8, 1.5
+local WINDOW_ART = require(script.Parent.BagSprites).Window -- popups draw it as two edge halves (popupChrome)
 
 local Shell = {}
 Shell.__index = Shell
@@ -142,6 +145,52 @@ function Shell.new(parent, deps)
 	}, window)
 	Parts.skin(chrome, "Window", TIER.Full.rim)
 	self.Chrome = chrome
+
+	-- Popup chrome: the Window art is wider than a popup, and a squeezed 9-slice centre samples a blurrier mip than the 1:1 corners
+	-- (a step on the rim where they meet). Instead the whole art twice at the rim scale (every column 1:1, sliced vertically only):
+	-- the left copy clipped at the middle, the right copy anchored to the right edge and faded in over BLEND design px across the
+	-- joint (its rim columns there are not the left copy's). ImageRectOffset + Slice and 0-width slice caps both draw wrongly.
+	local BLEND = 48
+	local artL, artR
+	local function popupChrome(w: number, rim: number)
+		local art = WINDOW_ART.Size
+		local aw = math.max(art.X * rim, w / 2 + BLEND)
+		if not artL then
+			chrome.ImageTransparency = 1
+			local function copy(name, into, z)
+				return make("ImageLabel", {
+					Name = name,
+					BackgroundTransparency = 1,
+					Image = WINDOW_ART.Image,
+					ScaleType = Enum.ScaleType.Slice,
+					SliceCenter = WINDOW_ART.Slice,
+					ZIndex = z,
+				}, into)
+			end
+			local clip = make("Frame", {
+				Name = "ChromeL",
+				BackgroundTransparency = 1,
+				ClipsDescendants = true,
+				Size = UDim2.new(0.5, BLEND / 2, 1, 0),
+				ZIndex = Z + 1,
+			}, chrome)
+			artL = copy("Art", clip, Z + 1)
+			artR = copy("ChromeR", chrome, Z + 2) -- above the left copy, below the content (Z + 3 and up)
+			artR.AnchorPoint, artR.Position = Vector2.new(1, 0), UDim2.fromScale(1, 0)
+			make("UIGradient", {}, artR)
+		end
+		for _, half in { artL, artR } do
+			half.Size = UDim2.new(0, aw, 1, 0)
+			half.SliceScale = rim
+		end
+		local u0, u1 = (aw - w / 2 - BLEND / 2) / aw, (aw - w / 2 + BLEND / 2) / aw -- the joint band in the right copy's width
+		artR.UIGradient.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 1),
+			NumberSequenceKeypoint.new(u0, 1),
+			NumberSequenceKeypoint.new(u1, 0),
+			NumberSequenceKeypoint.new(1, 0),
+		})
+	end
 
 	-- Content: left column (toolbar, grid, footer) + detail; free mode: the bare content box only.
 	local free = deps.free
@@ -304,13 +353,35 @@ function Shell.new(parent, deps)
 			elseif self._footerOn then contentH - FOOTER_H - GAP + bump
 			else contentH - cut
 
+		local box = deps.size and Vector2.new(deps.size.X + 2 * full.mx, deps.size.Y + 2 * full.my)
+		local pk, gTop = 1, 0 -- popup: window scale, and the scroll's ink top above the window box (design px)
+		if box then
+			gTop = SB.Ink.Height / 2 * t.inkW / SB.Ink.Width - t.inkCy
+			if compact then
+				pk = math.min(1, ((ins.bottomTopReal - 12 + vpad) / bs - gTop) / (box.Y - full.my), dw / box.X)
+			end
+			winW, hf, side = box.X * pk, box.Y * pk, full.side * pk
+			contentTop = (full.freeTop + full.my) * pk
+			contentH = (box.Y - full.freeTop - full.bottomPad - 2 * full.my) * pk
+		end
+
 		-- Window centred in the free region.
 		local compH = (t.over + hf) * bs
 		-- Free height sits above the window (the bag row is anchored to the screen bottom): the window stays under it
 		local spare = (ins.bottomTopReal - 8 + vpad) - 4 - compH
 		local top = 4 + (if compact or spare < 0 then spare / 2 else spare)
 		window.Size = UDim2.fromOffset(winW, hf)
-		window.Position = UDim2.new(0.5, 0, 0, (top + t.over * bs + hf * bs / 2) / es)
+		if box then -- popup: the group (scroll ink top .. window ink bottom) centred on the screen, kept inside [4, bottomTop - 8 + vpad]
+			local lo, hi = 4, ins.bottomTopReal - 8 + vpad
+			local up, down = (hf / 2 + gTop) * es, (hf / 2 - full.my * pk) * es
+			local cy = if up + down > hi - lo
+				then lo + (hi - lo - up - down) / 2 + up
+				else math.clamp(size.Y / 2 + (up - down) / 2, lo + up, hi - down)
+			window.Position = UDim2.new(0.5, 0, 0, cy / es)
+			popupChrome(window.Size.X.Offset, t.rim)
+		else
+			window.Position = UDim2.new(0.5, 0, 0, (top + t.over * bs + hf * bs / 2) / es)
+		end
 		chrome.SliceScale = t.rim
 
 		content.Position = UDim2.fromOffset(side, contentTop)
