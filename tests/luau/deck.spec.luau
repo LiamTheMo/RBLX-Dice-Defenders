@@ -58,6 +58,17 @@ test("Check: UnknownDie before NotOwned, permutation ok", function()
 	expectEq(bad, "BadDeck", "bad shape")
 end)
 
+test("a Rare die equips once owned and is NotOwned (not UnknownDie) otherwise; Mythic stays unknown", function()
+	local deck = { "C01", "C02", "C03", "C04", "R01" }
+	local profile = { Dice = { C01 = {}, C02 = {}, C03 = {}, C04 = {}, R01 = {} }, Deck = table.clone(GOOD) }
+	expect(Deck.Equip(profile, deck), "owned Rare equips")
+	expectEq(profile.Deck[5], "R01", "deck holds the Rare")
+	local _, code = Deck.Check(OWNED, deck)
+	expectEq(code, "NotOwned", "unowned Rare")
+	local _, mythic = Deck.Check(OWNED, { "C01", "C02", "C03", "C04", "M01" })
+	expectEq(mythic, "UnknownDie", "Mythic is not a playable die")
+end)
+
 test("Equip copies the ids; a rejected equip leaves the profile unchanged", function()
 	local profile = { Dice = OWNED, Deck = table.clone(GOOD) }
 	local ids = { "C05", "C04", "C03", "C02", "C01" }

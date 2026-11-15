@@ -71,7 +71,7 @@ end)
 
 test("featured ids exist with matching rarity", function()
 	for _, f in SampleData.full.Featured do
-		local rarity
+		local rarity = Display.Dice[f.Id] and Display.Dice[f.Id].Rarity
 		for _, d in Display.Locked do
 			if d.Id == f.Id then
 				rarity = d.Rarity

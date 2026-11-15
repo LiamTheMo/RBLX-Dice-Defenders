@@ -393,6 +393,45 @@ test("summons and merges draw only from the passed deck, which Match copies", fu
 	expectEq(state.board[cells[2]].type, "C03", "merge result from the deck")
 end)
 
+test("a Rare/Epic/Legendary deck summons, merges and deals damage", function()
+	local deck = { "R03", "E01", "L03", "R04", "E05" }
+	local state = Match.New(1, Random.new(7), 0, deck)
+	openWave(state)
+	for _ = 1, Balance.BoardCells do
+		state.mp = 100000
+		expect(Match.TrySummon(state), "summon")
+	end
+	local from, to
+	for a = 1, Balance.BoardCells do
+		for b = a + 1, Balance.BoardCells do
+			if from == nil and state.board[a].type == state.board[b].type then
+				from, to = a, b
+			end
+		end
+	end
+	expect(from ~= nil, "15 dice of 5 types hold a same-type pair")
+	expect(Match.TryMerge(state, from, to), "merge")
+	expectEq(state.board[to].pip, 2, "merged pip")
+	expect(table.find(deck, state.board[to].type) ~= nil, "merge result from the deck")
+	local target = addEnemy(state, "Brute", 1e9, 50)
+	runFor(state, 3)
+	expect(target.hp < target.maxHp, "the board dealt damage")
+	expectEq(state.phase, "Playing", "still playing")
+end)
+
+test("stat-only dice: one pip-1 hit deals exactly base, with no perk", function()
+	for id, cfg in Dice.Types do
+		if cfg.rarity ~= "Common" then
+			local state = newState()
+			openWave(state)
+			place(state, 5, id, 1)
+			local brute = addEnemy(state, "Brute", 5000, 56)
+			runFor(state, 0.1)
+			expectEq(brute.maxHp - brute.hp, cfg.base, id .. " first hit")
+		end
+	end
+end)
+
 test("kills count only deaths by damage, never breaches", function()
 	local state = newState()
 	openWave(state)

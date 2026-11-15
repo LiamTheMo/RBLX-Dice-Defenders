@@ -1,4 +1,5 @@
--- DICE tab: owned dice from the Meta payload + the unowned catalogue (locked). Pure data -> models; no UI, no authority.
+-- DICE tab: owned dice from the Meta payload, then unowned playable dice ("Not owned"), then the
+-- unreleased catalogue (Display.Locked). Pure data -> models; no UI, no authority.
 
 local Sprites = require(script.Parent.Parent.Parent.Sprites)
 local Display = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Display"))
@@ -31,9 +32,28 @@ local function inDeck(meta, id: string): boolean
 	return meta ~= nil and meta.Deck ~= nil and table.find(meta.Deck, id) ~= nil
 end
 
+-- Unowned card: the locked look, no EQUIP. `footer` doubles as the button hint; `note` is the detail text.
+local function lockedItem(id: string, name: string, rarity: string, footer: string, note: string)
+	return {
+		Id = id,
+		Name = name,
+		Rarity = rarity,
+		Level = 0,
+		Locked = true,
+		Equipped = false,
+		Icon = art(id),
+		CornerBadge = "Lock",
+		SubTag = string.upper(rarity),
+		Footer = footer,
+		Note = note,
+	}
+end
+
 function Dice.GetItems(meta)
 	local items = {}
+	local owned = {}
 	for _, die in meta and meta.Dice or {} do
+		owned[die.Id] = true
 		local info = Display.Dice[die.Id]
 		if info then
 			local equipped = inDeck(meta, die.Id)
@@ -44,7 +64,7 @@ function Dice.GetItems(meta)
 				Level = die.Level,
 				Equipped = equipped,
 				Icon = art(die.Id),
-				Tint = info.Color,
+				Tint = if art(die.Id) == nil then info.Color else nil, -- elemental art keeps its own colours
 				TopTag = if equipped then "EQUIPPED" else nil,
 				TopTagStyle = "Equipped",
 				SubTag = string.upper(info.Rarity),
@@ -52,19 +72,19 @@ function Dice.GetItems(meta)
 			})
 		end
 	end
+	local unowned = {}
+	for id in Display.Dice do
+		if not owned[id] then
+			table.insert(unowned, id)
+		end
+	end
+	table.sort(unowned)
+	for _, id in unowned do
+		local info = Display.Dice[id]
+		table.insert(items, lockedItem(id, info.Name, info.Rarity, "Not owned", "Not owned"))
+	end
 	for _, die in Display.Locked do
-		table.insert(items, {
-			Id = die.Id,
-			Name = die.Name,
-			Rarity = die.Rarity,
-			Level = 0,
-			Locked = true,
-			Equipped = false,
-			Icon = art(die.Id),
-			CornerBadge = "Lock",
-			SubTag = string.upper(die.Rarity),
-			Footer = "Locked",
-		})
+		table.insert(items, lockedItem(die.Id, die.Name, die.Rarity, "Locked", "Not available yet"))
 	end
 	return items
 end
@@ -81,7 +101,7 @@ local STATS = {
 function Dice.Detail(item)
 	local locked = item.Locked == true
 	local equipped = item.Equipped == true
-	local hint = if locked then "Locked" else nil
+	local hint = if locked then item.Footer else nil
 	local equipOk = not locked and not equipped
 	return {
 		Name = item.Name,
@@ -90,7 +110,7 @@ function Dice.Detail(item)
 		Icon = item.Icon,
 		Tint = item.Tint,
 		Subline = if locked then nil else { Kind = "Level", Value = item.Level, Max = Dice.MaxLevel },
-		Description = if locked then "Not available yet" else "",
+		Description = if locked then item.Note else "",
 		Stats = STATS,
 		Buttons = {
 			{

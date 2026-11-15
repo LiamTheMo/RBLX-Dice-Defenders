@@ -8,23 +8,23 @@ Display.Dice = table.freeze({
 	C03 = table.freeze({ Name = "Hammer", Rarity = "Common", Color = Color3.fromHex("#FB8C00") }),
 	C04 = table.freeze({ Name = "Twinshot", Rarity = "Common", Color = Color3.fromHex("#8E24AA") }),
 	C05 = table.freeze({ Name = "Longshot", Rarity = "Common", Color = Color3.fromHex("#00A86B") }),
+	R01 = table.freeze({ Name = "Frost", Rarity = "Rare", Color = Color3.fromHex("#42AFD7") }),
+	R02 = table.freeze({ Name = "Arc", Rarity = "Rare", Color = Color3.fromHex("#8866CC") }),
+	R03 = table.freeze({ Name = "Volley", Rarity = "Rare", Color = Color3.fromHex("#DB7157") }),
+	R04 = table.freeze({ Name = "Venom", Rarity = "Rare", Color = Color3.fromHex("#8EA112") }),
+	R05 = table.freeze({ Name = "Beacon", Rarity = "Rare", Color = Color3.fromHex("#AE8104") }),
+	E01 = table.freeze({ Name = "Emberstorm", Rarity = "Epic", Color = Color3.fromHex("#AE3204") }),
+	E02 = table.freeze({ Name = "Reactor", Rarity = "Epic", Color = Color3.fromHex("#307326") }),
+	E03 = table.freeze({ Name = "Mirror", Rarity = "Epic", Color = Color3.fromHex("#12A1A1") }),
+	E04 = table.freeze({ Name = "Catalyst", Rarity = "Epic", Color = Color3.fromHex("#A82462") }),
+	E05 = table.freeze({ Name = "Gravity", Rarity = "Epic", Color = Color3.fromHex("#736326") }),
+	L01 = table.freeze({ Name = "Chrono", Rarity = "Legendary", Color = Color3.fromHex("#266E73") }),
+	L02 = table.freeze({ Name = "Forge", Rarity = "Legendary", Color = Color3.fromHex("#AE5F04") }),
+	L03 = table.freeze({ Name = "Prism", Rarity = "Legendary", Color = Color3.fromHex("#ED38FA") }),
 })
 
 -- Catalogue dice with no server config yet: shown as "Not available yet".
 Display.Locked = table.freeze({
-	table.freeze({ Id = "R01", Name = "Frost", Rarity = "Rare" }),
-	table.freeze({ Id = "R02", Name = "Arc", Rarity = "Rare" }),
-	table.freeze({ Id = "R03", Name = "Volley", Rarity = "Rare" }),
-	table.freeze({ Id = "R04", Name = "Venom", Rarity = "Rare" }),
-	table.freeze({ Id = "R05", Name = "Beacon", Rarity = "Rare" }),
-	table.freeze({ Id = "E01", Name = "Emberstorm", Rarity = "Epic" }),
-	table.freeze({ Id = "E02", Name = "Reactor", Rarity = "Epic" }),
-	table.freeze({ Id = "E03", Name = "Mirror", Rarity = "Epic" }),
-	table.freeze({ Id = "E04", Name = "Catalyst", Rarity = "Epic" }),
-	table.freeze({ Id = "E05", Name = "Gravity", Rarity = "Epic" }),
-	table.freeze({ Id = "L01", Name = "Chrono", Rarity = "Legendary" }),
-	table.freeze({ Id = "L02", Name = "Forge", Rarity = "Legendary" }),
-	table.freeze({ Id = "L03", Name = "Prism", Rarity = "Legendary" }),
 	table.freeze({ Id = "M01", Name = "Astral", Rarity = "Mythic" }),
 })
 

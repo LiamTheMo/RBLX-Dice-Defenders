@@ -22,7 +22,7 @@ end
 -- PLACEHOLDER prices in gems (undocumented), keyed by roll count.
 local Prices = { [1] = 100, [10] = 900 }
 
--- Real catalogue ids (Display.Locked: not playable yet).
+-- Real catalogue ids (Display.Dice or Display.Locked).
 local Featured = {
 	{ Id = "L02", Rarity = "Legendary" },
 	{ Id = "M01", Rarity = "Mythic" },
