@@ -244,7 +244,13 @@ function LobbyHud.build(parent, cb)
 			end,
 		},
 		{ "Codes", I.Codes, soon("Codes") },
-		{ "Daily", I.Daily, soon("Daily") },
+		{
+			"Daily",
+			I.Daily,
+			function()
+				open("Daily")
+			end,
+		},
 	}
 	local buttons = {} -- by name: the open menu's button is highlighted (SetBagMode)
 	for i, t in left do
@@ -478,7 +484,7 @@ end
 
 -- A menu open: the deck row and Bottom block hide; currencies, LVL / XP text and the XP bar are re-parented into one
 -- inline centred row (reference y 872-922). Phones: the menu takes that strip too, so the row hides.
--- menu = the HUD button of the open menu ("Bag", "Play", "Quests", "Roll", "Shop"): it keeps the hover look, the rest dim.
+-- menu = the HUD button of the open menu ("Bag", "Play", "Quests", "Roll", "Shop", "Daily"): it keeps the hover look, the rest dim.
 function LobbyHud:SetBagMode(on: boolean, menu: string?)
 	self.BagOn, self.BagMenu = on, menu
 	local phone = UiKit.screenSize(self.Hud.Parent).Y < UiKit.PHONE_H
