@@ -8,7 +8,6 @@ local UiKit = require(script.Parent.Parent.UiKit)
 local Parts = require(script.Parent.Parent.Bag.Parts)
 local Draw = require(script.Parent.Parent.QuestLog.Draw)
 local Sprites = require(script.Parent.Parent.Sprites)
-local spark = require(script.Parent.Parent.Play.View).spark
 
 local Q, Bag = Draw.Q, Draw.Bag
 local make = UiKit.make
@@ -29,8 +28,22 @@ local TEXT_SIZE, TEXT_MIN = 45, 24 -- typed codes shrink to fit, then clip (24 d
 -- Raw-id lobby HUD art drawn by its measured alpha ink (same ids as Sprites; no sprite table entry).
 local GIFT = { Image = Sprites.Icon.Daily, Size = Vector2.new(237, 256), Ink = Rect.new(5, 4, 233, 251) }
 local GEM = { Image = Sprites.Gem, Size = Vector2.new(128, 124), Ink = Rect.new(3, 3, 125, 121) }
-local SPARK_GOLD = Color3.fromRGB(253, 180, 21) -- reference sparkle edge #FDB415
-local SPARK_CORE = 0.65 -- white core size / star size
+-- Sparkle: a small orange glow, then Sparkle1 tinted orange (outer edge), yellow and white. Yellow and white are drawn as crosses
+-- (one narrow and one flat copy, `ratio` of the sprite's aspect) so the arms stay bright and yellow to the tips like the
+-- reference's fat stars, not Sparkle1's thin tapered ones. { ink height, cross ratio (nil = one plain copy), tint }, design px.
+local SPARK_X, SPARK_Y = 113.5, 20
+local SPARK_GLOW = { size = 56, color = Color3.fromRGB(255, 120, 0), transparency = 0.7 }
+local SPARK_YELLOW = Color3.fromRGB(255, 230, 0)
+local SPARK_LAYERS = {
+	{ 44, nil, Color3.fromRGB(255, 130, 0) },
+	{ 40, 0.8, SPARK_YELLOW },
+	{ 40, 0.6, SPARK_YELLOW },
+	{ 32, 0.5, Color3.new(1, 1, 1) },
+	{ 28, nil, Color3.new(1, 1, 1) },
+}
+-- Gems: top 53, clear of the sparkle's visible lower tip (~42); centred 104 off the middle so the inner tip tucks ~2 reference px
+-- behind the gift.
+local GEM_H, GEM_X, GEM_Y = 86, 104, 96
 local FIELD_PAD = 54 -- field ink edge to the text area, both sides (the reference's text start)
 
 local View = {}
@@ -55,15 +68,35 @@ function View.new(slot)
 	fit()
 	table.insert(conns, slot:GetPropertyChangedSignal("Size"):Connect(fit))
 
-	-- Sparkles: the Play bloom + a gold-tinted star + a white core (the reference's gold-edged white stars). One HUD currency gem
-	-- either side, tucked behind the gift (the reference's clusters' ink height).
-	local gemW, gemH = Draw.fitIn(GEM, 1e3, 104)
-	local coreW, coreH = Draw.fitIn(Q.Sparkle1, 40 * SPARK_CORE, 40 * SPARK_CORE)
+	-- Sparkles and one HUD currency gem either side, tucked behind the gift.
+	local gemW, gemH = Draw.fitIn(GEM, 1e3, GEM_H)
 	for sgn = -1, 1, 2 do
-		local x = CX + sgn * 113.5
-		spark(root, Q.Sparkle1, x, 20, 40, Z + 2).ImageColor3 = SPARK_GOLD
-		Draw.apply(Draw.img(root, { Name = "SparkCore", ZIndex = Z + 3 }), Q.Sparkle1, x, 20, coreW, coreH)
-		Draw.apply(Draw.img(root, { Name = "Gem", ZIndex = Z + 1 }), GEM, CX + sgn * 120, 90, gemW, gemH)
+		local x = CX + sgn * SPARK_X
+		local glow = Draw.apply(
+			Draw.img(root, { Name = "SparkGlow", ZIndex = Z }), -- under the gems
+			Q.GlowRadial,
+			x,
+			SPARK_Y,
+			SPARK_GLOW.size,
+			SPARK_GLOW.size
+		)
+		glow.ImageColor3, glow.ImageTransparency = SPARK_GLOW.color, SPARK_GLOW.transparency
+		local z = Z + 1
+		local function spark(w, h, tint)
+			z += 1
+			Draw.apply(Draw.img(root, { Name = "Spark", ZIndex = z }), Q.Sparkle1, x, SPARK_Y, w, h).ImageColor3 = tint
+		end
+		for _, layer in SPARK_LAYERS do
+			local h, ratio, tint = layer[1], layer[2], layer[3]
+			local w = h * Q.Sparkle1.Ink.Width / Q.Sparkle1.Ink.Height
+			if ratio then
+				spark(w * ratio, h, tint)
+				spark(w, h * ratio, tint)
+			else
+				spark(w, h, tint)
+			end
+		end
+		Draw.apply(Draw.img(root, { Name = "Gem", ZIndex = Z + 1 }), GEM, CX + sgn * GEM_X, GEM_Y, gemW, gemH)
 	end
 	local gw, gh = Draw.fitIn(GIFT, 170, 147)
 	Draw.apply(Draw.img(root, { Name = "Gift", ZIndex = Z + 2 }), GIFT, CX, 77, gw, gh)
@@ -99,9 +132,22 @@ function View.new(slot)
 		TextTruncate = Enum.TextTruncate.AtEnd, -- unfocused overflow (None while focused, below)
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.new(0.5, 0, 0.5, -3), -- text centre 3 above the ink centre
-		Size = UDim2.fromOffset(textW, 76),
+		Size = UDim2.fromOffset(textW, 101), -- the field ink's height: a tap anywhere on it focuses
 		ZIndex = Z + 2,
 	}, field)
+	-- Scrolled text puts the caret on the text area's right edge: keep it inside the clip.
+	make("UIPadding", { PaddingRight = UDim.new(0, 8) }, box)
+	-- The field's side insets (outside the text area) focus the box too.
+	field.Active = true
+	table.insert(
+		conns,
+		field.InputBegan:Connect(function(input)
+			local kind = input.UserInputType
+			if kind == Enum.UserInputType.MouseButton1 or kind == Enum.UserInputType.Touch then
+				box:CaptureFocus()
+			end
+		end)
+	)
 	-- Unfocused overflow ends in "..."; while typing the box clips and follows the cursor instead (AtEnd would hide the caret's end).
 	table.insert(
 		conns,

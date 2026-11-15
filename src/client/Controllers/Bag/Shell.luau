@@ -11,7 +11,7 @@
 -- free mode with tabs puts Content under the tab bar).
 -- Opt-in banner options (default = unchanged): banner.noGem = true skips the gem pin; an emblem box (also the side emblem's) may be { full = box, compact = box } to size the emblem per tier.
 -- Opt-in popup (free mode): size = Vector2 visible window ink at the Full tier (design px); the scroll-to-window-bottom group is centred on the screen
--- inside the free region; phones keep the Compact banner / X / rim and shrink the window and Content uniformly (Content = the Full free box x k); the chrome is two 1:1 edge halves of the Window art.
+-- inside the free region; phones keep the Compact banner / X / rim and shrink the window and Content uniformly (Content = the Full free box x k); the chrome is two crossfaded 1:1 copies of the Window art.
 
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
@@ -147,49 +147,48 @@ function Shell.new(parent, deps)
 	self.Chrome = chrome
 
 	-- Popup chrome: the Window art is wider than a popup, and a squeezed 9-slice centre samples a blurrier mip than the 1:1 corners
-	-- (a step on the rim where they meet). Instead the whole art twice at the rim scale (every column 1:1, sliced vertically only):
-	-- the left copy clipped at the middle, the right copy anchored to the right edge and faded in over BLEND design px across the
-	-- joint (its rim columns there are not the left copy's). ImageRectOffset + Slice and 0-width slice caps both draw wrongly.
+	-- (a step on the rim where they meet). Instead the whole art twice at the rim scale (every column 1:1, sliced vertically only),
+	-- the left copy anchored left, the right copy right, crossfaded in two steps around the middle c: the right copy fades in over
+	-- [c - BLEND, c] above the opaque left copy, then the left copy fades out under the opaque right copy over [c, c + BLEND]. Opaque
+	-- rows never thin and the anti-aliased outer edge changes smoothly (a hard clip or one shared band steps or double-counts it).
+	-- ImageRectOffset + Slice and 0-width slice caps both draw wrongly.
 	local BLEND = 48
 	local artL, artR
+	local function band(u0: number, u1: number, from: number, to: number)
+		return NumberSequence.new({
+			NumberSequenceKeypoint.new(0, from),
+			NumberSequenceKeypoint.new(u0, from),
+			NumberSequenceKeypoint.new(u1, to),
+			NumberSequenceKeypoint.new(1, to),
+		})
+	end
 	local function popupChrome(w: number, rim: number)
-		local art = WINDOW_ART.Size
-		local aw = math.max(art.X * rim, w / 2 + BLEND)
+		local aw = math.max(WINDOW_ART.Size.X * rim, w / 2 + 2 * BLEND)
 		if not artL then
 			chrome.ImageTransparency = 1
-			local function copy(name, into, z)
-				return make("ImageLabel", {
+			local function copy(name, z)
+				local img = make("ImageLabel", {
 					Name = name,
 					BackgroundTransparency = 1,
 					Image = WINDOW_ART.Image,
 					ScaleType = Enum.ScaleType.Slice,
 					SliceCenter = WINDOW_ART.Slice,
 					ZIndex = z,
-				}, into)
+				}, chrome)
+				make("UIGradient", {}, img)
+				return img
 			end
-			local clip = make("Frame", {
-				Name = "ChromeL",
-				BackgroundTransparency = 1,
-				ClipsDescendants = true,
-				Size = UDim2.new(0.5, BLEND / 2, 1, 0),
-				ZIndex = Z + 1,
-			}, chrome)
-			artL = copy("Art", clip, Z + 1)
-			artR = copy("ChromeR", chrome, Z + 2) -- above the left copy, below the content (Z + 3 and up)
+			artL = copy("ChromeL", Z + 1)
+			artR = copy("ChromeR", Z + 2) -- above the left copy, below the content (Z + 3 and up)
 			artR.AnchorPoint, artR.Position = Vector2.new(1, 0), UDim2.fromScale(1, 0)
-			make("UIGradient", {}, artR)
 		end
 		for _, half in { artL, artR } do
 			half.Size = UDim2.new(0, aw, 1, 0)
 			half.SliceScale = rim
 		end
-		local u0, u1 = (aw - w / 2 - BLEND / 2) / aw, (aw - w / 2 + BLEND / 2) / aw -- the joint band in the right copy's width
-		artR.UIGradient.Transparency = NumberSequence.new({
-			NumberSequenceKeypoint.new(0, 1),
-			NumberSequenceKeypoint.new(u0, 1),
-			NumberSequenceKeypoint.new(u1, 0),
-			NumberSequenceKeypoint.new(1, 0),
-		})
+		local c, o = w / 2, w - aw -- the joint, and the right copy's left edge (window design px)
+		artL.UIGradient.Transparency = band(c / aw, (c + BLEND) / aw, 0, 1)
+		artR.UIGradient.Transparency = band((c - BLEND - o) / aw, (c - o) / aw, 1, 0)
 	end
 
 	-- Content: left column (toolbar, grid, footer) + detail; free mode: the bare content box only.
@@ -356,10 +355,10 @@ function Shell.new(parent, deps)
 		local box = deps.size and Vector2.new(deps.size.X + 2 * full.mx, deps.size.Y + 2 * full.my)
 		local pk, gTop = 1, 0 -- popup: window scale, and the scroll's ink top above the window box (design px)
 		if box then
-			gTop = SB.Ink.Height / 2 * t.inkW / SB.Ink.Width - t.inkCy
-			if compact then
-				pk = math.min(1, ((ins.bottomTopReal - 12 + vpad) / bs - gTop) / (box.Y - full.my), dw / box.X)
-			end
+			-- headroom above the window box: the scroll's ink top; phones reserve the other menus' banner room (their banner top)
+			gTop = if compact then t.over else SB.Ink.Height / 2 * t.inkW / SB.Ink.Width - t.inkCy
+			-- shrink uniformly whenever the group does not fit the free region (phones, and short desktop windows at the 0.8 floor)
+			pk = math.min(1, ((ins.bottomTopReal - 12 + vpad) / es - gTop) / (box.Y - full.my), availW / es / box.X)
 			winW, hf, side = box.X * pk, box.Y * pk, full.side * pk
 			contentTop = (full.freeTop + full.my) * pk
 			contentH = (box.Y - full.freeTop - full.bottomPad - 2 * full.my) * pk
@@ -374,10 +373,11 @@ function Shell.new(parent, deps)
 		if box then -- popup: the group (scroll ink top .. window ink bottom) centred on the screen, kept inside [4, bottomTop - 8 + vpad]
 			local lo, hi = 4, ins.bottomTopReal - 8 + vpad
 			local up, down = (hf / 2 + gTop) * es, (hf / 2 - full.my * pk) * es
+			-- phones fill the region exactly (pk), so the bounds can cross by a rounding error: max/min, not math.clamp
 			local cy = if up + down > hi - lo
 				then lo + (hi - lo - up - down) / 2 + up
-				else math.clamp(size.Y / 2 + (up - down) / 2, lo + up, hi - down)
-			window.Position = UDim2.new(0.5, 0, 0, cy / es)
+				else math.max(lo + up, math.min(size.Y / 2 + (up - down) / 2, hi - down))
+			window.Position = UDim2.fromScale(0.5, cy / size.Y) -- a scale: offsets snap to whole design px (0.8 real px at the floor)
 			popupChrome(window.Size.X.Offset, t.rim)
 		else
 			window.Position = UDim2.new(0.5, 0, 0, (top + t.over * bs + hf * bs / 2) / es)
