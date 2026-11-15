@@ -1,6 +1,6 @@
--- COSMETICS tab: sample data only (SampleData); every action is a disabled preview.
+-- COSMETICS tab: owned cosmetics from Meta + Catalog (BagLogic.inventory); every action is a disabled preview.
 
-local SampleData = require(script.Parent.Parent.SampleData)
+local BagLogic = require(script.Parent.Parent.BagLogic)
 
 local Cosmetics = {}
 
@@ -18,9 +18,9 @@ Cosmetics.SortOptions = {
 Cosmetics.DefaultSort = "Rarity"
 Cosmetics.EmptyText = "No cosmetics yet"
 
-function Cosmetics.GetItems()
+function Cosmetics.GetItems(meta, catalog)
 	local items = {}
-	for i, c in SampleData.Cosmetics do
+	for i, c in BagLogic.inventory(meta, catalog, "Cosmetics") do
 		items[i] = {
 			Id = c.Id,
 			Name = c.Name,

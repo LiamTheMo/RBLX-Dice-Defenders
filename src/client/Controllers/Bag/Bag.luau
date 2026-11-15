@@ -47,6 +47,7 @@ function Bag.new(parent, deps)
 	local footer, detail = Parts.Footer(shell.Slots.Footer), Parts.Detail(shell.Slots.Detail)
 
 	local meta -- latest Meta payload (NetClient.LastMeta)
+	local catalog -- display catalogue (NetClient.LastCatalog)
 	local state = {} -- per tab: query, sort, selected, scroll
 	local cur = 1 -- tab index being shown
 	local view = {} -- visible items (filtered + sorted)
@@ -111,7 +112,7 @@ function Bag.new(parent, deps)
 	local function render(keepScroll: boolean?)
 		local tab, st = TABS[cur], state[cur]
 		safe("render", function()
-			local items = tab.GetItems(meta)
+			local items = tab.GetItems(meta, catalog)
 			view = BagLogic.sort(BagLogic.filter(items, st.query), st.sort)
 			local found = false
 			for _, it in view do
@@ -262,14 +263,24 @@ function Bag.new(parent, deps)
 		hud:SetBagMode(false)
 	end)
 
+	local function refresh()
+		if shell:IsOpen() then
+			state[cur].scroll = grid:GetScroll()
+			render(true)
+		end
+	end
 	table.insert(
 		conns,
 		NetClient.Meta:Connect(function(m)
 			meta = m
-			if shell:IsOpen() then
-				state[cur].scroll = grid:GetScroll()
-				render(true)
-			end
+			refresh()
+		end)
+	)
+	table.insert(
+		conns,
+		NetClient.Catalog:Connect(function(c)
+			catalog = c
+			refresh()
 		end)
 	)
 	table.insert(
@@ -292,7 +303,7 @@ function Bag.new(parent, deps)
 	self._parts = { toolbar, grid, footer, detail }
 	self._open = function(tab)
 		local idx = tab or 1
-		meta = NetClient.LastMeta
+		meta, catalog = NetClient.LastMeta, NetClient.LastCatalog
 		if shell:IsOpen() then
 			shell:SetTab(idx)
 			return

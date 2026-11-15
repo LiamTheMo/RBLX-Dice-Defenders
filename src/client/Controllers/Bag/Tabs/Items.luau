@@ -1,7 +1,6 @@
--- ITEMS tab: sample data only (SampleData); every action is a disabled preview.
+-- ITEMS tab: owned items from Meta + Catalog (BagLogic.inventory); every action is a disabled preview.
 
 local BagLogic = require(script.Parent.Parent.BagLogic)
-local SampleData = require(script.Parent.Parent.SampleData)
 
 local Items = {}
 
@@ -19,9 +18,9 @@ Items.SortOptions = {
 Items.DefaultSort = "Quantity"
 Items.EmptyText = "No items yet"
 
-function Items.GetItems()
+function Items.GetItems(meta, catalog)
 	local items = {}
-	for i, it in SampleData.Items do
+	for i, it in BagLogic.inventory(meta, catalog, "Items") do
 		items[i] = {
 			Id = it.Id,
 			Name = it.Name,

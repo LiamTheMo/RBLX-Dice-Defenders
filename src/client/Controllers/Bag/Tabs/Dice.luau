@@ -22,6 +22,8 @@ Dice.DefaultSort = "Rarity"
 Dice.EmptyText = "No dice found"
 Dice.MaxLevel = 10 -- ProfileSchema cap
 
+local ABILITY = "Ability: coming soon" -- non-Common dice are stat-only until their abilities are built
+
 -- Die art asset id, or nil (the grid then tints its fallback glyph).
 local function art(id: string): string?
 	local name = Sprites.DieArt[id]
@@ -32,12 +34,15 @@ local function inDeck(meta, id: string): boolean
 	return meta ~= nil and meta.Deck ~= nil and table.find(meta.Deck, id) ~= nil
 end
 
--- Unowned card: the locked look, no EQUIP. `footer` doubles as the button hint; `note` is the detail text.
-local function lockedItem(id: string, name: string, rarity: string, footer: string, note: string)
+-- Unowned card: the locked look, no EQUIP. `footer` doubles as the button hint; `note` is the detail text;
+-- `s` is the die's Catalog entry (nil for the unreleased catalogue).
+local function lockedItem(id: string, name: string, rarity: string, footer: string, note: string, s)
 	return {
 		Id = id,
 		Name = name,
 		Rarity = rarity,
+		Damage = s and s.Damage,
+		Rate = s and s.Rate,
 		Level = 0,
 		Locked = true,
 		Equipped = false,
@@ -49,7 +54,11 @@ local function lockedItem(id: string, name: string, rarity: string, footer: stri
 	}
 end
 
-function Dice.GetItems(meta)
+function Dice.GetItems(meta, catalog)
+	local stats = {} -- Catalog entries (Damage, Rate) by die id
+	for _, s in catalog and catalog.Dice or {} do
+		stats[s.Id] = s
+	end
 	local items = {}
 	local owned = {}
 	for _, die in meta and meta.Dice or {} do
@@ -57,10 +66,13 @@ function Dice.GetItems(meta)
 		local info = Display.Dice[die.Id]
 		if info then
 			local equipped = inDeck(meta, die.Id)
+			local s = stats[die.Id]
 			table.insert(items, {
 				Id = die.Id,
 				Name = info.Name,
 				Rarity = info.Rarity,
+				Damage = s and s.Damage,
+				Rate = s and s.Rate,
 				Level = die.Level,
 				Equipped = equipped,
 				Icon = art(die.Id),
@@ -81,7 +93,8 @@ function Dice.GetItems(meta)
 	table.sort(unowned)
 	for _, id in unowned do
 		local info = Display.Dice[id]
-		table.insert(items, lockedItem(id, info.Name, info.Rarity, "Not owned", "Not owned"))
+		local note = if info.Rarity == "Common" then "Not owned" else "Not owned. " .. ABILITY
+		table.insert(items, lockedItem(id, info.Name, info.Rarity, "Not owned", note, stats[id]))
 	end
 	for _, die in Display.Locked do
 		table.insert(items, lockedItem(die.Id, die.Name, die.Rarity, "Locked", "Not available yet"))
@@ -89,13 +102,19 @@ function Dice.GetItems(meta)
 	return items
 end
 
--- Per-die combat numbers live only in the server config: the rows render a dash until the client gets them.
-local STATS = {
-	{ Icon = "IconSword", Label = "Damage", Value = "\u{2013}" },
-	{ Icon = "IconTarget", Label = "Range", Value = "\u{2013}" },
-	{ Icon = "IconHourglass", Label = "Attack Speed", Value = "\u{2013}" },
-	{ Icon = "IconFlame", Label = "Burn Damage", Value = "\u{2013}" },
-}
+-- Damage and Attack Speed (attacks/s) come from the Catalog; the other rows render a dash until the client gets them.
+local DASH = "\u{2013}"
+local function num(v): string
+	return if type(v) == "number" then string.format("%g", v) else DASH
+end
+local function stats(item)
+	return {
+		{ Icon = "IconSword", Label = "Damage", Value = num(item.Damage) },
+		{ Icon = "IconTarget", Label = "Range", Value = DASH },
+		{ Icon = "IconHourglass", Label = "Attack Speed", Value = num(item.Rate) },
+		{ Icon = "IconFlame", Label = "Burn Damage", Value = DASH },
+	}
+end
 
 -- Buttons: one size, EQUIP only valid for an owned die not in the deck.
 function Dice.Detail(item)
@@ -110,8 +129,8 @@ function Dice.Detail(item)
 		Icon = item.Icon,
 		Tint = item.Tint,
 		Subline = if locked then nil else { Kind = "Level", Value = item.Level, Max = Dice.MaxLevel },
-		Description = if locked then item.Note else "",
-		Stats = STATS,
+		Description = if locked then item.Note elseif item.Rarity ~= "Common" then ABILITY else "",
+		Stats = stats(item),
 		Buttons = {
 			{
 				Id = "Equip",

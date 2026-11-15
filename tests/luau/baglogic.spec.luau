@@ -1,6 +1,10 @@
--- Bag logic: filter, stable sort, count formatting.
+-- Bag logic: filter, stable sort, count formatting, Meta + Catalog inventory rows.
 
-local BagLogic = require(game:GetService("StarterPlayer").StarterPlayerScripts.Client.Controllers.Bag.BagLogic)
+local Bag = game:GetService("StarterPlayer").StarterPlayerScripts.Client.Controllers.Bag
+local BagLogic = require(Bag.BagLogic)
+local Tabs = { require(Bag.Tabs.Materials), require(Bag.Tabs.Items), require(Bag.Tabs.Cosmetics) }
+local DiceTab = require(Bag.Tabs.Dice)
+local Catalog = require(game:GetService("ServerScriptService").Server.Rules.Catalog)
 
 local function ids(list)
 	local out = {}
@@ -113,4 +117,161 @@ test("replaceSlot: rejects duplicate, unowned, bad size, bad slot, nil input", f
 	expect(BagLogic.replaceSlot(deck, nil, "C06", 1) == nil, "nil owned")
 	expect(BagLogic.replaceSlot(deck, owned, nil, 1) == nil, "nil id")
 	expect(BagLogic.replaceSlot({ "C01", "C02", "C03", "C04", 5 }, owned, "C06", 1) == nil, "non-string deck entry")
+end)
+
+local CATALOG = {
+	Materials = {
+		{ Id = "Fragment", Name = "Verdant Fragments", Rarity = "Common", Description = "Shards.", Sell = 2 },
+		{ Id = "Ore", Name = "Ore", Rarity = "Rare", Description = "Rock." },
+		{ Id = "Unowned", Name = "Unowned", Rarity = "Epic", Description = "Not in Meta." },
+	},
+	Items = {
+		{
+			Id = "GoldPouch",
+			Name = "Gold Pouch",
+			Rarity = "Common",
+			Description = "Gold.",
+			Icon = "Coins",
+			Use = "+200 Gold",
+		},
+		{ Id = "XpTome", Name = "XP Tome", Rarity = "Uncommon", Description = "XP.", Sell = 50, Use = "+100 XP" },
+	},
+	Cosmetics = {
+		{
+			Id = "Firefly",
+			Name = "Firefly Trail",
+			Rarity = "Epic",
+			Type = "Effect (Cosmetic)",
+			Slot = "Effect",
+			Description = "F.",
+		},
+		{
+			Id = "Sprout",
+			Name = "Sprout Cap",
+			Rarity = "Uncommon",
+			Type = "Hat (Cosmetic)",
+			Slot = "Hat",
+			Description = "S.",
+		},
+		{
+			Id = "Thorn",
+			Name = "Thornbark Dice",
+			Rarity = "Rare",
+			Type = "Dice Skin (Cosmetic)",
+			Slot = "DiceSkin",
+			Description = "T.",
+		},
+	},
+}
+local META = {
+	Materials = { { Id = "Fragment", Quantity = 1248 }, { Id = "Gone", Quantity = 9 }, { Id = "Ore", Quantity = 3 } },
+	Items = { { Id = "GoldPouch", Quantity = 2 }, { Id = "XpTome", Quantity = 7 } },
+	Cosmetics = { { Id = "Firefly" }, { Id = "Sprout" }, { Id = "Thorn" }, { Id = "Gone" } },
+}
+
+test("inventory: owned quantities joined with catalogue display fields", function()
+	local m = BagLogic.inventory(META, CATALOG, "Materials")
+	expectEq(ids(m), "Fragment,Ore", "Meta order, unowned catalogue entry absent")
+	expect(m[1].Name == "Verdant Fragments" and m[1].Rarity == "Common" and m[1].Description == "Shards.", "fields")
+	expectEq(m[1].Quantity, 1248, "quantity from Meta")
+	expect(m[1].Equipped == nil and m[1].Sell == nil, "no Equipped, no price on a material row")
+	local it = BagLogic.inventory(META, CATALOG, "Items")
+	expect(it[1].Icon == "Coins" and it[2].Icon == nil, "item icon passed through")
+	expectEq(it[2].Quantity, 7, "item quantity")
+	local c = BagLogic.inventory(META, CATALOG, "Cosmetics")
+	expect(c[3].Type == "Dice Skin (Cosmetic)" and c[3].Name == "Thornbark Dice", "cosmetic type")
+	expect(c[1].Equipped == false and c[2].Equipped == false and c[3].Equipped == false, "never equipped yet")
+end)
+
+test("inventory: ids missing from the catalogue are skipped", function()
+	expectEq(#BagLogic.inventory(META, CATALOG, "Materials"), 2, "materials")
+	expectEq(ids(BagLogic.inventory(META, CATALOG, "Cosmetics")), "Firefly,Sprout,Thorn", "cosmetics")
+	expectEq(#BagLogic.inventory(META, { Materials = {} }, "Materials"), 0, "empty catalogue section")
+end)
+
+test("inventory: missing or empty Meta / Catalog give no rows", function()
+	for _, kind in { "Materials", "Items", "Cosmetics" } do
+		expectEq(#BagLogic.inventory(nil, CATALOG, kind), 0, "nil meta " .. kind)
+		expectEq(#BagLogic.inventory(META, nil, kind), 0, "nil catalog " .. kind)
+		expectEq(#BagLogic.inventory({}, {}, kind), 0, "empty " .. kind)
+		expectEq(#BagLogic.inventory({ [kind] = {} }, CATALOG, kind), 0, "nothing owned " .. kind)
+	end
+	for _, tab in Tabs do
+		expectEq(#tab.GetItems(nil, nil), 0, tab.Id .. " before Meta and Catalog")
+	end
+end)
+
+test("tabs: rows sort as the Bag shows them (each tab's default sort)", function()
+	local mat, items, cos = Tabs[1], Tabs[2], Tabs[3]
+	local rows = BagLogic.sort(mat.GetItems(META, CATALOG), mat.DefaultSort)
+	expectEq(ids(rows), "Ore,Fragment", "materials: rarity high to low")
+	expectEq(rows[2].Footer, "x1,248", "materials card count")
+	expectEq(rows[2].TopTag, "COMMON", "materials rarity pill")
+	expectEq(mat.Detail(rows[2]).Stepper.Max, 1248, "detail stepper max")
+	expectEq(
+		ids(BagLogic.sort(items.GetItems(META, CATALOG), items.DefaultSort)),
+		"XpTome,GoldPouch",
+		"items: quantity"
+	)
+	local cosRows = BagLogic.sort(cos.GetItems(META, CATALOG), cos.DefaultSort)
+	expectEq(ids(cosRows), "Firefly,Thorn,Sprout", "cosmetics: rarity")
+	expect(cosRows[2].Footer == "Dice Skin" and cosRows[2].TopTag == nil, "type footer, no EQUIPPED pill")
+end)
+
+test("inventory: every entry the server catalogue sends maps to a full row", function()
+	local catalog = Catalog.Build()
+	for _, kind in { "Materials", "Items", "Cosmetics" } do
+		local meta = { [kind] = {} }
+		for _, c in catalog[kind] do
+			table.insert(meta[kind], { Id = c.Id, Quantity = 1 })
+		end
+		local rows = BagLogic.inventory(meta, catalog, kind)
+		expectEq(#rows, #catalog[kind], kind .. " count")
+		for _, r in rows do
+			expect(type(r.Name) == "string" and type(r.Rarity) == "string", kind .. " name/rarity " .. r.Id)
+			expect(type(r.Description) == "string", kind .. " description " .. r.Id)
+			expect(BagLogic.rarityRank(r.Rarity) > 0, kind .. " known rarity " .. r.Id)
+			expect(kind ~= "Cosmetics" or type(r.Type) == "string", "cosmetic type " .. r.Id)
+		end
+	end
+end)
+
+test("dice detail: Damage and Attack Speed from the Catalog, ability note on non-Common dice", function()
+	local D = "\u{2013}"
+	local catalog = {
+		Dice = {
+			{ Id = "C02", Damage = 9, Rate = 1.75 },
+			{ Id = "R01", Damage = 19, Rate = 1.0 },
+			{ Id = "R02", Damage = 21, Rate = 0.55 },
+		},
+	}
+	local meta = { Dice = { { Id = "C02", Level = 1 }, { Id = "R01", Level = 2 } }, Deck = {} }
+	local function detail(c, id)
+		for _, it in DiceTab.GetItems(meta, c) do
+			if it.Id == id then
+				return DiceTab.Detail(it)
+			end
+		end
+		error("no die " .. id)
+	end
+	local function values(d)
+		local out = {}
+		for i, st in d.Stats do
+			out[i] = st.Value
+		end
+		return table.concat(out, ",")
+	end
+	local needle = detail(catalog, "C02")
+	expectEq(values(needle), `9,{D},1.75,{D}`, "Damage, Range dash, Attack Speed, Burn dash")
+	expectEq(needle.Description, "", "owned Common: no ability note")
+	local frost = detail(catalog, "R01")
+	expectEq(values(frost), `19,{D},1,{D}`, "1.0 shows as 1")
+	expectEq(frost.Description, "Ability: coming soon", "owned Rare")
+	local arc = detail(catalog, "R02")
+	expectEq(values(arc), `21,{D},0.55,{D}`, "unowned playable die shows its stats")
+	expectEq(arc.Description, "Not owned. Ability: coming soon", "unowned Rare")
+	expectEq(detail(nil, "C02").Stats[1].Value, D, "no Catalog yet: dash")
+	local astral = detail(catalog, "M01")
+	expectEq(values(astral), `{D},{D},{D},{D}`, "unreleased die: all dashes")
+	expectEq(astral.Description, "Not available yet", "unreleased die keeps its note")
 end)

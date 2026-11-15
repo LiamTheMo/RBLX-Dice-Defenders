@@ -110,6 +110,11 @@ local function makeNode(path)
 				table.remove(parent)
 				return makeNode(parent)
 			end
+			if name == "WaitForChild" then -- node:WaitForChild("X") is node.X
+				return function(node, childName)
+					return node[childName]
+				end
+			end
 			local child = table.clone(path)
 			table.insert(child, name)
 			return makeNode(child)

@@ -1,7 +1,6 @@
--- MATERIALS tab: sample data only (SampleData); every action is a disabled preview.
+-- MATERIALS tab: owned materials from Meta + Catalog (BagLogic.inventory); every action is a disabled preview.
 
 local BagLogic = require(script.Parent.Parent.BagLogic)
-local SampleData = require(script.Parent.Parent.SampleData)
 
 local Materials = {}
 
@@ -19,9 +18,9 @@ Materials.SortOptions = {
 Materials.DefaultSort = "Rarity"
 Materials.EmptyText = "No materials yet"
 
-function Materials.GetItems()
+function Materials.GetItems(meta, catalog)
 	local items = {}
-	for i, m in SampleData.Materials do
+	for i, m in BagLogic.inventory(meta, catalog, "Materials") do
 		items[i] = {
 			Id = m.Id,
 			Name = m.Name,

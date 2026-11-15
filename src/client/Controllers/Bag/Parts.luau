@@ -1816,7 +1816,7 @@ function Parts.Detail(parent)
 					Size = UDim2.fromOffset(lw, rowH),
 				}, 2)
 				Parts.fit(lbl, lw, 13, 9)
-				Parts.text(r, {
+				local val = Parts.text(r, {
 					Text = st.Value,
 					TextSize = 14,
 					TextXAlignment = Enum.TextXAlignment.Right,
@@ -1825,6 +1825,7 @@ function Parts.Detail(parent)
 					Position = UDim2.new(1, -8, 0, 0),
 					Size = UDim2.fromOffset(20, rowH),
 				}, 2)
+				Parts.fit(val, 20, 14, 9) -- "0.55" would truncate at 14
 			end
 			extraH = top + (math.ceil(math.min(#list, 4) / 2) - 1) * pitch + rowH
 		elseif model.Stepper then

@@ -1,7 +1,7 @@
 -- Roll menu controller: one Shell (banner, close, STANDARD / EVENT tabs + rotation timer) hosting the Roll View.
 -- Roll.new(parent, { hud = LobbyHud, toast = (string) -> () }) -> :Open() :Close() :Toggle() :IsOpen() :Destroy()
 -- Static render from RollLogic + the client-only SampleData (Studio shows the full reference). Display only: the roll buttons
--- and (i) just toast; nothing is rolled, spent or sent. The server has no roll feature or Gems balance yet.
+-- and (i) just toast; nothing is rolled, spent or sent. The server has no roll feature yet; the Gems balance is Meta's.
 
 local ContentProvider = game:GetService("ContentProvider")
 local ContextActionService = game:GetService("ContextActionService")
@@ -110,8 +110,8 @@ function Roll.new(parent, deps)
 
 	local shown -- the State fields the last render drew
 	local function gemsNow()
-		local snap = NetClient.Last
-		local gems = snap and snap.Gems -- no such field yet; the sample balance stands in
+		local meta = NetClient.LastMeta
+		local gems = meta and meta.Gems -- before the first Meta the sample balance stands in (nil live)
 		return if type(gems) == "number" then gems else SampleData.get(RunService:IsStudio()).Gems
 	end
 
@@ -157,7 +157,13 @@ function Roll.new(parent, deps)
 			end
 			if snap.Phase ~= "Lobby" and snap.Phase ~= "Ended" then
 				shell:Close()
-			elseif tostring(gemsNow()) ~= shown then -- State ticks often; rebuild only on a visible change
+			end
+		end)
+	)
+	table.insert(
+		conns,
+		NetClient.Meta:Connect(function()
+			if shell:IsOpen() and tostring(gemsNow()) ~= shown then -- rebuild only on a visible change
 				render()
 			end
 		end)

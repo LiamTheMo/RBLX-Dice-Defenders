@@ -1,4 +1,4 @@
--- Bag pure logic: search filter, stable sort, count formatting. No Roblox APIs (unit-tested headless).
+-- Bag pure logic: search filter, stable sort, count formatting, Meta + Catalog inventory rows. No Roblox APIs (unit-tested headless).
 
 local BagLogic = {}
 
@@ -90,6 +90,33 @@ function BagLogic.formatCount(n: number): string
 		return string.format("%d", math.floor(n / 1000)) .. "K"
 	end
 	return group(n)
+end
+
+-- Owned rows for the MATERIALS / ITEMS / COSMETICS tabs (kind = "Materials" | "Items" | "Cosmetics"): Meta's owned
+-- ids and quantities joined with the Catalog's display fields, in Meta order. Ids the Catalog lacks are skipped;
+-- cosmetics are never Equipped until equipping exists.
+function BagLogic.inventory(meta, catalog, kind: string)
+	local info = {}
+	for _, c in catalog and catalog[kind] or {} do
+		info[c.Id] = c
+	end
+	local rows = {}
+	for _, owned in meta and meta[kind] or {} do
+		local c = info[owned.Id]
+		if c then
+			table.insert(rows, {
+				Id = c.Id,
+				Name = c.Name,
+				Rarity = c.Rarity,
+				Description = c.Description,
+				Quantity = owned.Quantity,
+				Icon = c.Icon,
+				Type = c.Type,
+				Equipped = if kind == "Cosmetics" then false else nil,
+			})
+		end
+	end
+	return rows
 end
 
 -- New 5-id deck with `slot` set to `id`, or nil unless the result is exactly 5 distinct owned ids (a malformed
