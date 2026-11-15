@@ -136,3 +136,37 @@ test("GrantRunReward rejects bad input and leaves the profile unchanged", functi
 	expect(not ok and code == "Overflow", "overflow rejected")
 	expectEq(snapshot(capped), capBefore, "no partial update on overflow")
 end)
+
+test("Sum returns current + delta or a code", function()
+	local ok, result = Economy.Sum(10, 5)
+	expect(ok and result == 15, "gain")
+	ok, result = Economy.Sum(10, -10)
+	expect(ok and result == 0, "spend to zero")
+	ok, result = Economy.Sum(Economy.MAX - 1, 1)
+	expect(ok and result == Economy.MAX, "exactly MAX is allowed")
+	ok, result = Economy.Sum(10, -11)
+	expect(not ok and result == "Insufficient", "negative result")
+	ok, result = Economy.Sum(Economy.MAX, 1)
+	expect(not ok and result == "Overflow", "above MAX")
+	for _, bad in { NAN, INF, -INF, 0.5, -0.5, "5", true, {}, 2e9, -2e9 } do
+		local ok2, code2 = Economy.Sum(10, bad)
+		expect(not ok2 and code2 == "BadAmount", "rejects delta " .. tostring(bad))
+	end
+	for _, corrupt in { NAN, INF, -INF, -5, 1.5, "3", 2e9 } do
+		local ok3, code3 = Economy.Sum(corrupt, 1)
+		expect(not ok3 and code3 == "BadAmount", "rejects current " .. tostring(corrupt))
+	end
+	local ok4, code4 = Economy.Sum(nil, 1)
+	expect(not ok4 and code4 == "BadAmount", "rejects nil current")
+	local ok5, code5 = Economy.Sum(1, nil)
+	expect(not ok5 and code5 == "BadAmount", "rejects nil delta")
+end)
+
+test("TryChange changes only mp and Gold; Gems and Xp belong to Rewards", function()
+	local profile = { Gems = 5, Xp = 40, Materials = {} }
+	for _, key in { "Gems", "Xp", "Materials", "Items", "gems", "XP" } do
+		local ok, code = Economy.TryChange(profile, key, 1)
+		expect(not ok and code == "BadKey", "rejects key " .. key)
+	end
+	expectEq(snapshot(profile), "Gems=5,Materials=" .. tostring(profile.Materials) .. ",Xp=40", "record unchanged")
+end)
