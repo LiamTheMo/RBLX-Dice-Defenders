@@ -16,6 +16,7 @@ local Roll = require(script.Parent.Roll.Roll)
 local Daily = require(script.Parent.Daily.Daily)
 local Shop = require(script.Parent.Shop.Shop)
 local Settings = require(script.Parent.Settings.Settings)
+local Codes = require(script.Parent.Codes.Codes)
 
 local make, panel, label, button = UiKit.make, UiKit.panel, UiKit.label, UiKit.button
 local NAVY, WHITE, GREEN = UiKit.NAVY, UiKit.WHITE, UiKit.GREEN
@@ -64,6 +65,7 @@ local MENUS = {
 	{ Name = "Shop", Key = "Shop" },
 	{ Name = "Daily", Key = "Daily" },
 	{ Name = "Settings", Key = "Settings" },
+	{ Name = "Codes", Key = "Codes" },
 }
 
 local function closeMenus()
@@ -287,6 +289,7 @@ local function build()
 	ui.Shop = Shop.new(ui.Root, { hud = ui.LobbyHud, toast = toast })
 	ui.Daily = Daily.new(ui.Root, { hud = ui.LobbyHud, toast = toast })
 	ui.Settings = Settings.new(ui.Root, { hud = ui.LobbyHud, toast = toast })
+	ui.Codes = Codes.new(ui.Root, { hud = ui.LobbyHud, toast = toast })
 
 	newPanel("Profile")
 
@@ -395,6 +398,9 @@ function Lobby.Destroy()
 	end
 	if ui and ui.Settings then
 		ui.Settings:Destroy()
+	end
+	if ui and ui.Codes then
+		ui.Codes:Destroy()
 	end
 	if gui then
 		gui:Destroy()

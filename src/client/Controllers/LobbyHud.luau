@@ -162,12 +162,7 @@ end
 
 function LobbyHud.build(parent, cb)
 	local self = setmetatable({}, LobbyHud)
-	local open, toast = cb.open, cb.toast
-	local function soon(name)
-		return function()
-			toast(name .. ": coming soon")
-		end
-	end
+	local open = cb.open
 
 	-- State frames aren't on screen until hover/press: preload so the first swap doesn't flash blank.
 	local F = Sprites.Frame
@@ -254,7 +249,13 @@ function LobbyHud.build(parent, cb)
 				open("Play")
 			end,
 		},
-		{ "Codes", I.Codes, soon("Codes") },
+		{
+			"Codes",
+			I.Codes,
+			function()
+				open("Codes")
+			end,
+		},
 		{
 			"Daily",
 			I.Daily,
@@ -498,7 +499,7 @@ end
 
 -- A menu open: the deck row and Bottom block hide; currencies, LVL / XP text and the XP bar are re-parented into one
 -- inline centred row (reference y 872-922). Phones: the menu takes that strip too, so the row hides.
--- menu = the HUD button of the open menu ("Bag", "Play", "Quests", "Roll", "Shop", "Daily", "Settings"): it keeps the hover look, the rest dim.
+-- menu = the HUD button of the open menu ("Bag", "Play", "Quests", "Roll", "Shop", "Daily", "Settings", "Codes"): it keeps the hover look, the rest dim.
 function LobbyHud:SetBagMode(on: boolean, menu: string?)
 	self.BagOn, self.BagMenu = on, menu
 	local phone = UiKit.screenSize(self.Hud.Parent).Y < UiKit.PHONE_H
