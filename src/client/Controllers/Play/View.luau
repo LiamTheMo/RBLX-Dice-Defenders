@@ -169,6 +169,7 @@ end
 
 local View = {}
 View.__index = View
+View.spark = spark -- shared with the Codes popup
 
 -- Layout --------------------------------------------------------------------------------------------------
 
