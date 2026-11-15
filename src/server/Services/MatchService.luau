@@ -6,7 +6,9 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
 local Balance = require(script.Parent.Parent.Config.Balance)
+local Progression = require(script.Parent.Parent.Config.Progression)
 local Net = require(script.Parent.Parent.Infrastructure.Net)
+local Catalog = require(script.Parent.Parent.Rules.Catalog)
 local Deck = require(script.Parent.Parent.Rules.Deck)
 local Formulas = require(script.Parent.Parent.Rules.Formulas)
 local Match = require(script.Parent.Parent.Rules.Match)
@@ -19,6 +21,8 @@ local owner: Player? = nil
 local order: { Player } = {} -- loaded players, oldest first
 local match = nil -- nil = Lobby
 local rewardGold: number? = nil
+local rewardXp: number? = nil
+local catalog = Catalog.Build() -- the same display catalogue for every player
 local lastTick = 0
 local runRng = Random.new()
 local lastDay = Quests.Day(os.time()) -- UTC day of the last Meta day-change check
@@ -63,6 +67,7 @@ local function snapshot(player: Player)
 	out.BossAt = match.bossAt
 	out.Result = match.result
 	out.RewardGold = rewardGold
+	out.RewardXp = rewardXp
 	for i = 1, Balance.BoardCells do
 		local die = match.board[i]
 		if die then
@@ -76,17 +81,48 @@ local function push(player: Player)
 	Net.Fire("State", player, snapshot(player))
 end
 
+local function byId(a, b)
+	return a.Id < b.Id
+end
+
+-- {{Id, Quantity}} sorted by Id for a {[id] = count} map.
+local function quantities(map)
+	local list = {}
+	for id, quantity in map do
+		table.insert(list, { Id = id, Quantity = quantity })
+	end
+	table.sort(list, byId)
+	return list
+end
+
 -- Lobby data for one player, sent to that player only. Arrays only (no sparse keys).
 local function meta(profile)
 	local dice = {}
 	for id, die in profile.Dice do
 		table.insert(dice, { Id = id, Level = die.Level, Copies = die.Copies })
 	end
-	table.sort(dice, function(a, b)
-		return a.Id < b.Id
-	end)
+	table.sort(dice, byId)
+	local cosmetics = {}
+	for id in profile.Cosmetics.Owned do
+		table.insert(cosmetics, { Id = id })
+	end
+	table.sort(cosmetics, byId)
+	local level, xpInto, xpNeed = Progression.Level(profile.Xp, Progression.Account)
 	local view = Quests.View(profile, os.time())
-	return { Dice = dice, Deck = table.clone(profile.Deck), Quests = view.Quests, DailyResetAt = view.DailyResetAt }
+	return {
+		Dice = dice,
+		Deck = table.clone(profile.Deck),
+		Quests = view.Quests,
+		DailyResetAt = view.DailyResetAt,
+		Gems = profile.Gems,
+		Xp = profile.Xp,
+		Level = level,
+		XpInto = xpInto,
+		XpNeed = xpNeed,
+		Materials = quantities(profile.Materials),
+		Items = quantities(profile.Items),
+		Cosmetics = cosmetics,
+	}
 end
 
 local function pushMeta(player: Player)
@@ -129,13 +165,14 @@ local function settle()
 	if profile == nil then
 		return
 	end
-	local ok, gold =
+	local ok, bundle =
 		Quests.SettleRun(profile, match.runId, match.wavesCompleted, match.result == "Won", match.kills, os.time())
 	if not ok then
-		warn("[MatchService] Reward refused: " .. tostring(gold))
+		warn("[MatchService] Reward refused: " .. tostring(bundle))
 		return
 	end
-	rewardGold = gold
+	rewardGold = bundle.Gold or 0 -- a wave-0 loss pays nothing
+	rewardXp = bundle.Xp or 0
 	ProfileService.MarkChanged(owner)
 	task.spawn(ProfileService.SaveNow, owner)
 end
@@ -145,7 +182,7 @@ local function abortMatch()
 		Match.Finish(match, "Aborted")
 		match.rewardGranted = true -- no reward
 		match = nil
-		rewardGold = nil
+		rewardGold, rewardXp = nil, nil
 	end
 end
 
@@ -169,6 +206,7 @@ local function onLoaded(player: Player)
 		owner = player
 	end
 	push(player)
+	Net.Fire("Catalog", player, catalog) -- before the first Meta, which refers to its ids
 	pushMeta(player)
 end
 
@@ -203,7 +241,7 @@ local function handleStart(player: Player): (boolean, string?)
 	if not Deck.Check(profile.Dice, profile.Deck) then
 		return false, "BadDeck" -- never swap in a different deck silently
 	end
-	rewardGold = nil
+	rewardGold, rewardXp = nil, nil
 	match = Match.New(newRunId(profile), Random.new(), workspace:GetServerTimeNow(), profile.Deck)
 	flush(true)
 	return true, nil

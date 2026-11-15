@@ -4,6 +4,9 @@ local Server = game:GetService("ServerScriptService").Server
 local Quests = require(Server.Rules.Quests)
 local Config = require(Server.Config.Quests)
 local ProfileSchema = require(Server.Rules.ProfileSchema)
+local Economy = require(Server.Rules.Economy)
+
+local NAN, INF = 0 / 0, math.huge
 
 local DAY = 86400
 local N = 20000 * DAY -- start of day 20000
@@ -93,8 +96,8 @@ end)
 
 test("SettleRun pays once per runId and counts kills only when paid", function()
 	local p = fresh()
-	local ok, gold = Quests.SettleRun(p, 7, 3, false, 40, N)
-	expect(ok and gold == 59, "paid 50 + 3*3")
+	local ok, bundle = Quests.SettleRun(p, 7, 3, false, 40, N)
+	expect(ok and bundle.Gold == 15 and bundle.Xp == 30 and bundle.Materials.Fragment == 3, "paid 3 waves of a loss")
 	expectEq(p.Daily.Kills, 40, "kills added")
 	expectEq(p.Daily.Day, 20000, "day set")
 	expectEq(p.RunsPlayed, 1, "run counted")
@@ -140,7 +143,7 @@ test("daily quest: rolls to day N+1; yesterday's unclaimed daily is not claimabl
 	local q = fresh()
 	Quests.SettleRun(q, 1, 1, false, 150, N)
 	expect(Quests.Claim(q, "D1", N + 100), "claim today")
-	expectEq(q.Gold, 50 + 3 + 100, "run reward + quest gold")
+	expectEq(q.Gold, 5 + 100, "run reward + quest gold")
 	local _, again = Quests.Claim(q, "D1", N + 200)
 	expectEq(again, "AlreadyClaimed", "once per day")
 end)
@@ -159,5 +162,84 @@ test("a clock going backwards never reopens a claimed day", function()
 	expectEq(p.Daily.Kills, 180, "kills join the stored day")
 	local _, code2 = Quests.Claim(p, "D1", N)
 	expectEq(code2, "AlreadyClaimed", "still claimed after another run")
-	expectEq(p.Gold, gold + 3 + 50, "only the run reward arrived")
+	expectEq(p.Gold, gold + 5, "only the run reward arrived")
+end)
+
+-- Moved from economy.spec with Economy.GrantRunReward.
+test("SettleRun pays Gold 5/wave +30, Xp 10/wave +40, Fragments 1/wave +5 on a win, once per run id", function()
+	local p = fresh()
+	local ok, bundle = Quests.SettleRun(p, 7, 4, false, 0, N)
+	expect(ok and bundle.Gold == 20 and bundle.Xp == 40 and bundle.Materials.Fragment == 4, "4-wave loss")
+	expect(p.Gold == 20 and p.Xp == 40 and p.Materials.Fragment == 4, "paid onto the profile")
+	expectEq(p.Gems, 50, "gems untouched")
+	expect(p.BestWave == 4 and p.RunsPlayed == 1 and p.TrialCleared == false, "stats")
+	expectEq(p.LastRewardRunId, 7, "run id recorded")
+
+	local before = snap(p)
+	local ok2, code2 = Quests.SettleRun(p, 7, 10, true, 5, N)
+	expect(not ok2 and code2 == "AlreadyGranted", "same run id refused")
+	expectEq(snap(p), before, "replay changes nothing")
+
+	local ok3, win = Quests.SettleRun(p, 8, 10, true, 0, N)
+	expect(ok3 and win.Gold == 80 and win.Xp == 140 and win.Materials.Fragment == 15, "10-wave win")
+	expect(p.Gold == 100 and p.Xp == 180 and p.Materials.Fragment == 19, "sums")
+	expect(p.BestWave == 10 and p.TrialCleared == true, "best wave raised, cleared")
+
+	Quests.SettleRun(p, 9, 1, false, 0, N)
+	expect(p.BestWave == 10 and p.TrialCleared == true, "best wave never lowered, cleared never unset")
+end)
+
+test("a wave-0 loss pays nothing but still counts the run and its kills", function()
+	local p = fresh()
+	local ok, bundle = Quests.SettleRun(p, 3, 0, false, 12, N)
+	expect(ok and next(bundle) == nil, "empty bundle")
+	expect(p.Gold == 0 and p.Xp == 0 and p.Gems == 50 and next(p.Materials) == nil, "nothing paid")
+	expect(p.RunsPlayed == 1 and p.LastRewardRunId == 3 and p.Daily.Kills == 12, "run counted once")
+	local _, code = Quests.SettleRun(p, 3, 0, false, 12, N)
+	expectEq(code, "AlreadyGranted", "still once per run id")
+	local _, zeroWin = Quests.SettleRun(p, 4, 0, true, 0, N)
+	expect(zeroWin.Gold == 30 and zeroWin.Xp == 40 and zeroWin.Materials.Fragment == 5, "a win pays its bonus")
+end)
+
+test("SettleRun rejects bad run input and leaves the profile unchanged", function()
+	local p = fresh()
+	local before = snap(p)
+	local cases = {
+		{ nil, 1, false, "BadRun" },
+		{ 0, 1, false, "BadRun" },
+		{ 1.5, 1, false, "BadRun" },
+		{ NAN, 1, false, "BadRun" },
+		{ "1", 1, false, "BadRun" },
+		{ 2 ^ 31, 1, false, "BadRun" },
+		{ 1, -1, false, "BadWaves" },
+		{ 1, 1.5, false, "BadWaves" },
+		{ 1, NAN, false, "BadWaves" },
+		{ 1, INF, false, "BadWaves" },
+		{ 1, 1001, false, "BadWaves" },
+		{ 1, 1, "yes", "BadResult" },
+		{ 1, 1, nil, "BadResult" },
+	}
+	for index, args in cases do
+		local ok, code = Quests.SettleRun(p, args[1], args[2], args[3], 5, N)
+		expect(not ok and code == args[4], "case " .. index .. " -> " .. args[4] .. " (got " .. tostring(code) .. ")")
+	end
+	expectEq(snap(p), before, "profile unchanged")
+end)
+
+test("a full counter refuses the whole run: Overflow, nothing changes, run id not written", function()
+	for _, field in { "Gold", "Xp" } do
+		local p = fresh()
+		p[field] = Economy.MAX
+		local before = snap(p)
+		local ok, code = Quests.SettleRun(p, 1, 5, true, 40, N)
+		expect(not ok and code == "Overflow", field .. " at MAX: Overflow")
+		expectEq(snap(p), before, field .. ": no partial payment, stats or kills")
+		expectEq(p.LastRewardRunId, 0, field .. ": run id not written")
+	end
+	local q = fresh()
+	q.Materials.Fragment = Economy.MAX
+	local before = snap(q)
+	local _, code = Quests.SettleRun(q, 1, 5, true, 40, N)
+	expectEq(code, "Overflow", "fragments at MAX")
+	expectEq(snap(q), before, "fragments: unchanged")
 end)

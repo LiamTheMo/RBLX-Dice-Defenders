@@ -3,7 +3,6 @@
 local Server = game:GetService("ServerScriptService").Server
 local Economy = require(Server.Rules.Economy)
 local Validate = require(Server.Rules.Validate)
-local ProfileSchema = require(Server.Rules.ProfileSchema)
 
 local NAN, INF = 0 / 0, math.huge
 
@@ -79,62 +78,6 @@ test("TryChange rejects NaN, inf, fractions, overflow and bad keys, leaving the 
 		expect(not ok5 and code5 == "BadAmount", "corrupt current value " .. tostring(corrupt))
 		expect(bad.mp == corrupt or bad.mp ~= bad.mp, "corrupt value untouched")
 	end
-end)
-
-test("GrantRunReward pays 50 + 3*waves once per run id and updates the record", function()
-	local profile = ProfileSchema.Default()
-	local ok, gold = Economy.GrantRunReward(profile, 7, 4, false)
-	expect(ok and gold == 62, "62 gold for 4 waves")
-	expectEq(profile.Gold, 62, "gold")
-	expectEq(profile.BestWave, 4, "best wave")
-	expectEq(profile.RunsPlayed, 1, "runs")
-	expectEq(profile.TrialCleared, false, "not cleared")
-	expectEq(profile.LastRewardRunId, 7, "run id recorded")
-
-	local ok2, code2 = Economy.GrantRunReward(profile, 7, 10, true)
-	expect(not ok2 and code2 == "AlreadyGranted", "same run id refused")
-	expectEq(profile.Gold, 62, "no second payment")
-	expectEq(profile.RunsPlayed, 1, "runs unchanged")
-
-	local ok3, gold3 = Economy.GrantRunReward(profile, 8, 10, true)
-	expect(ok3 and gold3 == 80, "win pays 80")
-	expectEq(profile.Gold, 142, "gold sums")
-	expectEq(profile.BestWave, 10, "best wave raised")
-	expectEq(profile.TrialCleared, true, "cleared")
-
-	Economy.GrantRunReward(profile, 9, 1, false)
-	expectEq(profile.BestWave, 10, "best wave never lowered")
-	expectEq(profile.TrialCleared, true, "cleared never unset")
-end)
-
-test("GrantRunReward rejects bad input and leaves the profile unchanged", function()
-	local profile = ProfileSchema.Default()
-	local before = snapshot(profile)
-	local cases = {
-		{ nil, 1, false },
-		{ 0, 1, false },
-		{ 1.5, 1, false },
-		{ NAN, 1, false },
-		{ "1", 1, false },
-		{ 1, -1, false },
-		{ 1, 1.5, false },
-		{ 1, NAN, false },
-		{ 1, INF, false },
-		{ 1, 1, "yes" },
-		{ 1, 1, nil },
-	}
-	for index, args in cases do
-		local ok = Economy.GrantRunReward(profile, args[1], args[2], args[3])
-		expect(not ok, "case " .. index .. " rejected")
-	end
-	expectEq(snapshot(profile), before, "profile unchanged")
-
-	local capped = ProfileSchema.Default()
-	capped.Gold = Economy.MAX - 10
-	local capBefore = snapshot(capped)
-	local ok, code = Economy.GrantRunReward(capped, 1, 5, true)
-	expect(not ok and code == "Overflow", "overflow rejected")
-	expectEq(snapshot(capped), capBefore, "no partial update on overflow")
 end)
 
 test("Sum returns current + delta or a code", function()

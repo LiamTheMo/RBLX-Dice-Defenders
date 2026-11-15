@@ -41,8 +41,17 @@ function Formulas.KindAt(w: number, i: number): string
 	return "Grunt"
 end
 
-function Formulas.RewardGold(wavesCompleted: number): number
-	return Balance.Reward.gold + Balance.Reward.goldPerWave * wavesCompleted
+-- Run reward parts for `waves` cleared; a win adds its bonus.
+function Formulas.RewardGold(waves: number, won: boolean): number
+	return Balance.Reward.goldPerWave * waves + (if won then Balance.Reward.goldWin else 0)
+end
+
+function Formulas.RewardXp(waves: number, won: boolean): number
+	return Balance.Reward.xpPerWave * waves + (if won then Balance.Reward.xpWin else 0)
+end
+
+function Formulas.RewardFragments(waves: number, won: boolean): number
+	return Balance.Reward.fragmentsPerWave * waves + (if won then Balance.Reward.fragmentsWin else 0)
 end
 
 function Formulas.Period(typeId: string): number

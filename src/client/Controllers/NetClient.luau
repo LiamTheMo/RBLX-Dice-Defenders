@@ -2,6 +2,7 @@
 -- only; the server stays the authority (rate limit, seq, rules).
 --   NetClient.State / .Enemies : Signals (snapshot) / (batch)
 --   NetClient.Meta / .LastMeta : lobby payload (dice, deck, quests), same shape of API
+--   NetClient.Catalog / .LastCatalog : display catalogue (sent once, before the first Meta)
 --   NetClient.Last             : latest State snapshot or nil
 --   NetClient.Request(name, ...) -> (ok, code?)   yields
 --   NetClient.Rejected         : Signal (name, code) on every false result
@@ -16,8 +17,10 @@ NetClient.State = Signal.new()
 NetClient.Enemies = Signal.new()
 NetClient.Rejected = Signal.new()
 NetClient.Meta = Signal.new()
+NetClient.Catalog = Signal.new()
 NetClient.Last = nil
 NetClient.LastMeta = nil
+NetClient.LastCatalog = nil
 
 -- Minimum seconds between sends per intent, below the server's token buckets, plus
 -- one request in flight per intent: an honest client can never trip RateLimited.
@@ -68,6 +71,11 @@ function NetClient.Start()
 		end)
 		folder:WaitForChild("Enemies").OnClientEvent:Connect(function(batch)
 			NetClient.Enemies:Fire(batch)
+		end)
+		-- Before Meta: each remote drains its queued events when first connected.
+		folder:WaitForChild("Catalog").OnClientEvent:Connect(function(catalog)
+			NetClient.LastCatalog = catalog
+			NetClient.Catalog:Fire(catalog)
 		end)
 		folder:WaitForChild("Meta").OnClientEvent:Connect(function(meta)
 			NetClient.LastMeta = meta

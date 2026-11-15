@@ -14,7 +14,15 @@ Balance.MaxStep = 0.25 -- largest dt Match.Step simulates at once
 Balance.TickHz = 10
 
 Balance.SummonCost = table.freeze({ base = 10, step = 10 }) -- MP: base + step * summons so far
-Balance.Reward = table.freeze({ gold = 50, goldPerWave = 3 })
+-- Run reward (*tune*): per wave cleared, plus a bonus for a win.
+Balance.Reward = table.freeze({
+	goldPerWave = 5,
+	goldWin = 30,
+	xpPerWave = 10,
+	xpWin = 40,
+	fragmentsPerWave = 1,
+	fragmentsWin = 5,
+})
 
 -- Net: token buckets per player and remote, and the hard-violation kick.
 Balance.Remotes = table.freeze({

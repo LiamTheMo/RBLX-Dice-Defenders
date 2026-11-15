@@ -1,12 +1,15 @@
--- Quest progress, claims and daily kill tracking. Pure: callers pass `now` (unix
--- seconds). Gold only moves through Economy. Progress is derived, never stored:
--- one-time quests read profile stats, the daily reads profile.Daily.Kills.
+-- Quest progress, claims, the run reward and daily kill tracking. Pure: callers
+-- pass `now` (unix seconds). Gold moves only through Economy and Rewards. Progress
+-- is derived, never stored: one-time quests read profile stats, the daily reads
+-- profile.Daily.Kills.
 --
 -- Effective day = max(Day(now), Daily.Day) everywhere, so a clock that goes
 -- backwards can never reopen a claimed day. Daily state rolls only in SettleRun,
 -- and only when the effective day is later than Daily.Day; View and Claim never roll.
 local Config = require(script.Parent.Parent.Config.Quests)
 local Economy = require(script.Parent.Economy)
+local Formulas = require(script.Parent.Formulas)
+local Rewards = require(script.Parent.Rewards)
 local Validate = require(script.Parent.Validate)
 
 local Quests = {}
@@ -87,9 +90,11 @@ function Quests.Claim(profile: any, id: any, now: any): (boolean, string?)
 	return true, nil
 end
 
--- Pays the run reward (Economy.GrantRunReward) and, only if that was paid, adds the
--- run's kills to today's total. Returns (true, gold) or (false, code); codes: BadKills,
--- BadTime, or a GrantRunReward code (a replayed runId is AlreadyGranted: no kills).
+-- Pays the run reward once per run id as one Rewards bundle {Gold?, Xp?, Materials?}
+-- (zero parts left out), then updates the stats and adds the run's kills to today's
+-- total. Returns (true, bundle) or (false, code); codes: BadKills, BadTime, BadRun,
+-- BadWaves, BadResult, AlreadyGranted (a replay: no kills), or a Rewards.Apply code
+-- (Overflow): on any refusal nothing changes, LastRewardRunId included.
 function Quests.SettleRun(profile: any, runId: any, waves: any, won: any, kills: any, now: any): (boolean, any)
 	if not Validate.IsInt(kills, 0, MAX_KILLS_PER_RUN) then
 		return false, "BadKills"
@@ -97,16 +102,39 @@ function Quests.SettleRun(profile: any, runId: any, waves: any, won: any, kills:
 	if not validNow(now) then
 		return false, "BadTime"
 	end
-	local ok, gold = Economy.GrantRunReward(profile, runId, waves, won)
-	if not ok then
-		return false, gold
+	if not Validate.IsInt(runId, 1, 2 ^ 31 - 1) then
+		return false, "BadRun"
 	end
+	if not Validate.IsInt(waves, 0, 1000) then
+		return false, "BadWaves"
+	end
+	if type(won) ~= "boolean" then
+		return false, "BadResult"
+	end
+	if profile.LastRewardRunId == runId then
+		return false, "AlreadyGranted"
+	end
+	local gold, xp, fragments =
+		Formulas.RewardGold(waves, won), Formulas.RewardXp(waves, won), Formulas.RewardFragments(waves, won)
+	local bundle = {
+		Gold = if gold > 0 then gold else nil,
+		Xp = if xp > 0 then xp else nil,
+		Materials = if fragments > 0 then { Fragment = fragments } else nil,
+	}
+	local ok, code = Rewards.Apply(profile, bundle)
+	if not ok then
+		return false, code
+	end
+	profile.LastRewardRunId = runId
+	profile.BestWave = math.max(profile.BestWave, waves)
+	profile.RunsPlayed = math.min(Economy.MAX, profile.RunsPlayed + 1)
+	profile.TrialCleared = profile.TrialCleared or won
 	local day = effectiveDay(profile, now)
 	if day > profile.Daily.Day then
 		profile.Daily = { Day = day, Kills = 0, Claimed = {} }
 	end
 	profile.Daily.Kills = math.min(Economy.MAX, profile.Daily.Kills + kills)
-	return true, gold
+	return true, bundle
 end
 
 return Quests

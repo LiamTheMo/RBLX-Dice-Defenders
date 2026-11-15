@@ -15,7 +15,8 @@ Remotes.Kinds = table.freeze({
 	RedeemCode = "Function", -- (seq, code)
 	State = "Event", -- S -> C snapshot
 	Enemies = "Event", -- S -> C, owner only: {S, H, R, F}
-	Meta = "Event", -- S -> C, owner only: {Dice, Deck, Quests, DailyResetAt}
+	Meta = "Event", -- S -> C, that player only: lobby payload (docs/MVP.md "Meta")
+	Catalog = "Event", -- S -> C, that player only, once on load before Meta: display catalogue
 })
 
 return table.freeze(Remotes)

@@ -1,16 +1,19 @@
--- Persisted player profile, v3 (docs/MVP.md "Profile"). Pure: no Instances.
+-- Persisted player profile, v4 (docs/MVP.md "Profile"). Pure: no Instances.
 -- Default() builds a new profile; Migrate() validates stored data. The store
 -- metadata (profileRevision, sessionLease) rides along but is not gameplay data.
 
 local Codes = require(script.Parent.Parent.Config.Codes)
 local Dice = require(script.Parent.Parent.Config.Dice)
+local Inventory = require(script.Parent.Parent.Config.Inventory)
 local Quests = require(script.Parent.Parent.Config.Quests)
 local Deck = require(script.Parent.Deck)
 local Validate = require(script.Parent.Validate)
 
 local ProfileSchema = {}
 
-ProfileSchema.VERSION = 3
+ProfileSchema.VERSION = 4
+
+local STARTER_GEMS = 50 -- new profiles and every v3 profile once (v3 -> v4)
 
 local function deepCopy(value)
 	if type(value) ~= "table" then
@@ -46,6 +49,11 @@ function ProfileSchema.Default()
 		Claimed = {},
 		Daily = { Day = 0, Kills = 0, Claimed = {} },
 		Redeemed = {},
+		Gems = STARTER_GEMS,
+		Xp = 0,
+		Materials = {},
+		Items = {},
+		Cosmetics = { Owned = {} },
 	}
 end
 
@@ -59,6 +67,11 @@ local MIGRATIONS: { [number]: (any) -> any } = {
 	-- v2 -> v3: Redeemed starts empty (any stray value is dropped).
 	[2] = function(data)
 		data.Redeemed = nil
+		return data
+	end,
+	-- v3 -> v4: the starter Gems; any stray value of a new field is dropped.
+	[3] = function(data)
+		data.Gems, data.Xp, data.Materials, data.Items, data.Cosmetics = STARTER_GEMS, nil, nil, nil, nil
 		return data
 	end,
 }
@@ -111,6 +124,32 @@ local function cleanRedeemed(stored: any)
 		end
 	end
 	return redeemed
+end
+
+-- Positive counts for ids in `catalog` only; walks the catalog like cleanRedeemed.
+local function cleanCounts(stored: any, catalog)
+	local counts = {}
+	if type(stored) == "table" then
+		for id in catalog do
+			if Validate.IsInt(stored[id], 1, Validate.MAX_INT) then
+				counts[id] = stored[id]
+			end
+		end
+	end
+	return counts
+end
+
+local function cleanCosmetics(stored: any)
+	local owned = {}
+	local flags = if type(stored) == "table" then stored.Owned else nil
+	if type(flags) == "table" then
+		for id in Inventory.Cosmetics do
+			if flags[id] == true then
+				owned[id] = true
+			end
+		end
+	end
+	return { Owned = owned }
 end
 
 local function cleanDaily(stored: any)
@@ -168,6 +207,11 @@ function ProfileSchema.Migrate(stored: any)
 		end),
 		Daily = cleanDaily(data.Daily),
 		Redeemed = cleanRedeemed(data.Redeemed),
+		Gems = count(data.Gems),
+		Xp = count(data.Xp),
+		Materials = cleanCounts(data.Materials, Inventory.Materials),
+		Items = cleanCounts(data.Items, Inventory.Items),
+		Cosmetics = cleanCosmetics(data.Cosmetics),
 	}
 
 	-- Store metadata: keep a well-formed lease so a held lease is honoured.
