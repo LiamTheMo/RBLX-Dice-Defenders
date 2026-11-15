@@ -1,6 +1,7 @@
 -- Settings menu controller: one Shell (banner with two dice, close, GAMEPLAY / GRAPHICS / AUDIO / MISC tabs, a gear pair behind the banner)
 -- hosting the Settings View, wired to the SettingsLogic store: control input, the coming-soon toast, close at match start, and the
--- consumers (Shadows, Show FPS here; Reduced Motion and UI Scale in the Shell). Session only: nothing is saved.
+-- consumers (Shadows, Show FPS here; Reduced Motion and UI Scale in the Shell). Saved in the profile: the first Meta loads the
+-- values, and later changes go to the server as one SaveSettings patch 2 s after the last change or at once on close.
 -- Settings.new(parent, { hud = LobbyHud, toast = (string) -> () }) -> :Open(tab?) :Close() :Toggle(tab?) :IsOpen() :Destroy(); tab = a tab id or index.
 
 local ContextActionService = game:GetService("ContextActionService")
@@ -21,6 +22,7 @@ local View = require(script.Parent.View)
 local ACTION = "SettingsClose"
 local STEP = "SettingsSliderStep"
 local SLOP = 10 -- real px a touch must move before it is a drag (sideways) or a list scroll (up / down)
+local SAVE_DELAY = 2 -- seconds after the last change before the SaveSettings patch goes (also the retry delay)
 local SB = PlaySprites.ScrollBase
 local TABS = {
 	GAMEPLAY = { label = "GAMEPLAY", icon = SettingsSprites.TabGameplay, scale = 1.08 },
@@ -110,12 +112,78 @@ function Settings.new(parent, deps)
 	end
 	apply("shadows", SettingsLogic.get("shadows"))
 	apply("showFps", SettingsLogic.get("showFps"))
+
+	-- Saving. Player changes collect in `dirty` (id -> value) and go out as one patch once the saved values have loaded;
+	-- a send NetClient refuses locally (throttle, in flight, no remote yet) is merged back under newer values and retried.
+	local dirty, loaded, loading, destroyed = {}, false, false, false
+	local timer: thread? -- the pending delayed save; a newer saveLater or any saveNow cancels it
+	local saveNow
+	local function stopTimer()
+		if timer then
+			task.cancel(timer)
+			timer = nil
+		end
+	end
+	local function saveLater()
+		stopTimer()
+		timer = task.delay(SAVE_DELAY, function()
+			timer = nil -- running now: nothing to cancel
+			saveNow()
+		end)
+	end
+	function saveNow()
+		stopTimer()
+		if not loaded or next(dirty) == nil then
+			return
+		end
+		local patch = dirty
+		dirty = {}
+		task.spawn(function()
+			local ok, code = NetClient.Request("SaveSettings", patch)
+			if not ok and (code == "Throttled" or code == "Network") then
+				for id, value in patch do
+					if dirty[id] == nil then
+						dirty[id] = value
+					end
+				end
+				if not destroyed then
+					saveLater()
+				end
+			end
+		end)
+	end
+	-- The first Meta carrying Settings loads them (no toast, not sent back); later Metas never overwrite the store.
+	local function load(meta)
+		local saved = if type(meta) == "table" then meta.Settings else nil
+		if loaded or type(saved) ~= "table" then
+			return
+		end
+		loaded, loading = true, true
+		for _, def in SettingsLogic.DEFS do
+			if saved[def.id] ~= nil and dirty[def.id] == nil then -- a change made before the load wins
+				SettingsLogic.set(def.id, saved[def.id])
+			end
+		end
+		if okRm and platformRm and dirty.reducedMotion == nil then
+			SettingsLogic.set("reducedMotion", true)
+		end
+		loading = false
+		if next(dirty) ~= nil then
+			saveLater()
+		end
+	end
 	table.insert(conns, {
 		Disconnect = SettingsLogic.onChanged(function(id, value)
+			if not loading then -- recorded first, so a failing consumer below cannot lose the change
+				dirty[id] = value
+				saveLater()
+			end
 			apply(id, value)
 			view:SetValue(id, value)
 		end),
 	})
+	table.insert(conns, NetClient.Meta:Connect(load))
+	load(NetClient.LastMeta)
 
 	-- Input. A user change of a def nothing reads yet says so once per session.
 	local told = {}
@@ -422,11 +490,14 @@ function Settings.new(parent, deps)
 		unbindStep()
 		ContextActionService:UnbindAction(ACTION)
 		hud:SetBagMode(false)
+		saveNow()
 	end)
 
 	local opened = false
 	self.Shell, self.View, self._conns, self._gears = shell, view, conns, gears
 	self._teardown = function()
+		destroyed = true
+		saveNow() -- last chance for unsent changes; no retry after this
 		cancel()
 		unbindStep()
 		for _, c in buildConns do

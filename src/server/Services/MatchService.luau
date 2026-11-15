@@ -14,6 +14,7 @@ local Deck = require(script.Parent.Parent.Rules.Deck)
 local Formulas = require(script.Parent.Parent.Rules.Formulas)
 local Match = require(script.Parent.Parent.Rules.Match)
 local Quests = require(script.Parent.Parent.Rules.Quests)
+local Settings = require(script.Parent.Parent.Rules.Settings)
 local ProfileService = require(script.Parent.ProfileService)
 
 local MatchService = {}
@@ -129,6 +130,7 @@ local function meta(profile)
 		Materials = quantities(profile.Materials),
 		Items = quantities(profile.Items),
 		Cosmetics = cosmetics,
+		Settings = table.clone(profile.Settings), -- {[settingId] = value}; a missing id is its default
 	}
 end
 
@@ -306,6 +308,16 @@ local function handleClaimQuest(player: Player, id: string): (boolean, string?)
 	return ok, code
 end
 
+local function handleSaveSettings(player: Player, patch: any): (boolean, string?)
+	local profile = ProfileService.Get(player)
+	if profile == nil then
+		return false, "NotLoaded"
+	end
+	Settings.Merge(profile, patch)
+	ProfileService.MarkChanged(player)
+	return true
+end
+
 local function tick()
 	local now = workspace:GetServerTimeNow()
 	if now - lastTick < 1 / Balance.TickHz then
@@ -348,6 +360,7 @@ function MatchService.Init()
 	Net.Handle("Merge", handleMerge)
 	Net.Handle("EquipDeck", handleEquipDeck)
 	Net.Handle("ClaimQuest", handleClaimQuest)
+	Net.Handle("SaveSettings", handleSaveSettings)
 end
 
 function MatchService.Start()

@@ -8,6 +8,15 @@ local Balance = require(Server.Config.Balance)
 local NAN, INF = 0 / 0, math.huge
 local P = table.pack
 
+-- A SaveSettings patch of n well-formed entries with distinct keys.
+local function entries(n)
+	local patch = {}
+	for i = 1, n do
+		patch["k" .. i] = true
+	end
+	return patch
+end
+
 local function make(ready)
 	local env = { t = 100, kicks = {}, logs = {}, calls = 0 }
 	env.guard = RemoteGuard.new({
@@ -111,6 +120,31 @@ test("malformed argument matrix: BadArgs, never reaches the handler, seq not con
 			P(1, "WELCOME", "WELCOME"),
 			P(1, "WELCOME", nil),
 		},
+		SaveSettings = {
+			P(),
+			P(1),
+			P(1, nil),
+			P(1, "shadows"),
+			P(1, 5),
+			P(1, true),
+			P(1, entries(24)), -- more entries than the registry has
+			P(1, { true }), -- array: a number key
+			P(1, { [1] = true, shadows = true }),
+			P(1, { [true] = true }),
+			P(1, { [""] = true }),
+			P(1, { [("k"):rep(33)] = true }),
+			P(1, { shadows = {} }),
+			P(1, { shadows = { true } }),
+			P(1, { uiScale = NAN }),
+			P(1, { uiScale = INF }),
+			P(1, { uiScale = -INF }),
+			P(1, { language = ("x"):rep(33) }),
+			P(1, { language = ("x"):rep(40) }),
+			P(1, { shadows = print }),
+			P(1, setmetatable({}, {})),
+			P(1, { shadows = true }, 1),
+			P(1, { shadows = true }, nil),
+		},
 		Merge = {
 			P(),
 			P(1),
@@ -142,6 +176,7 @@ test("malformed argument matrix: BadArgs, never reaches the handler, seq not con
 		EquipDeck = P(1, { "C01", "C02", "C03", "C04", "C05" }),
 		ClaimQuest = P(1, "S1"),
 		RedeemCode = P(1, "WELCOME"),
+		SaveSettings = P(1, { shadows = false }),
 	}
 	for name in RemoteGuard.Specs do
 		expect(matrix[name] ~= nil and valid[name] ~= nil, name .. " is covered by the matrix")
@@ -476,4 +511,62 @@ test("RedeemCode soft codes are not counted and never kick", function()
 	end
 	expectEq(env.guard:Violations(owner), 0, "no violations")
 	expectEq(#env.kicks, 0, "no kick")
+end)
+
+test("SaveSettings passes the patch through; 23 entries and 1/32-byte keys and values are well formed", function()
+	local env, owner = make(), {}
+	local got
+	env.handler = function(_, ...)
+		got = table.pack(...)
+		return true
+	end
+	local patch = { shadows = false, uiScale = 85, effectsQuality = "Low" }
+	expect(env.call(owner, "SaveSettings", 1, patch), "ok")
+	expect(got.n == 1 and got[1] == patch, "patch passed unchanged")
+	expect(env.call(owner, "SaveSettings", 2, {}), "empty patch")
+	expect(env.call(owner, "SaveSettings", 3, entries(23)), "23 entries (the registry size)")
+	expect(
+		env.call(owner, "SaveSettings", 4, { k = ("x"):rep(32), [("k"):rep(32)] = "" }),
+		"1/32-byte keys, 32/0-byte values"
+	)
+	expect(
+		env.call(owner, "SaveSettings", 5, { nope = 1e300, uiScale = -7.5 }),
+		"unknown keys and odd numbers are the rule's job"
+	)
+	expectEq(env.guard:Violations(owner), 0, "no violations")
+end)
+
+test("SaveSettings bucket is burst 3 at 0.5/s; NetClient's interval never trips it", function()
+	local limits = Balance.Remotes.SaveSettings
+	expect(limits.rate == 0.5 and limits.burst == 3, "Balance")
+	local env, owner = make(), {}
+	local seq = 0
+	local function raw()
+		seq += 1
+		return env.guard:Call(owner, "SaveSettings", env.handler, seq, { shadows = true })
+	end
+	for i = 1, 3 do
+		expect(raw(), "burst " .. i)
+	end
+	local ok, code = raw()
+	expect(not ok and code == "RateLimited", "4th in the same instant limited")
+	env.t += 2
+	expect(raw(), "one token per 2 s")
+	local ok2, code2 = raw()
+	expect(not ok2 and code2 == "RateLimited", "only one refilled")
+	expectEq(env.guard:Violations(owner), 2, "RateLimited is a hard violation")
+
+	local source = __sources["StarterPlayer/StarterPlayerScripts/Client/Controllers/NetClient"]
+	local interval = tonumber(string.match(source or "", "\n%s*SaveSettings = ([%d%.]+),"))
+	expect(
+		interval ~= nil and interval >= 1 / limits.rate,
+		"NetClient SaveSettings interval >= 1/rate: " .. tostring(interval)
+	)
+	local honest, sent = make(), {}
+	for i = 1, 60 do
+		honest.t += interval or 0
+		local okI, codeI = honest.guard:Call(sent, "SaveSettings", honest.handler, i, { shadows = i % 2 == 0 })
+		expect(okI, ("honest send %d (%s)"):format(i, tostring(codeI)))
+	end
+	expectEq(honest.guard:Violations(sent), 0, "honest client never limited")
 end)

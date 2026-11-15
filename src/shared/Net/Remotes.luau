@@ -2,7 +2,7 @@
 -- Remote names under ReplicatedStorage.Remotes (docs/MVP.md, "Remotes").
 -- Function = RemoteFunction (client -> server intent, returns (ok, code?));
 -- Event = RemoteEvent (server -> client). Nothing else is shared with clients
--- except Core/Loader, Core/Signal, Layout and Display.
+-- except Core/Loader, Core/Signal, Layout, Display and SettingsDefs.
 
 local Remotes = {}
 
@@ -13,6 +13,7 @@ Remotes.Kinds = table.freeze({
 	EquipDeck = "Function", -- (seq, ids): 5 distinct owned die ids
 	ClaimQuest = "Function", -- (seq, questId)
 	RedeemCode = "Function", -- (seq, code)
+	SaveSettings = "Function", -- (seq, patch): {[settingId] = value}, cleaned against Shared/SettingsDefs
 	State = "Event", -- S -> C snapshot
 	Enemies = "Event", -- S -> C, owner only: {S, H, R, F}
 	Meta = "Event", -- S -> C, that player only: lobby payload (docs/MVP.md "Meta")

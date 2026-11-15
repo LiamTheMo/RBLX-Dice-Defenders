@@ -24,7 +24,15 @@ NetClient.LastCatalog = nil
 
 -- Minimum seconds between sends per intent, below the server's token buckets, plus
 -- one request in flight per intent: an honest client can never trip RateLimited.
-local MIN_INTERVAL = { Start = 1.0, Summon = 0.25, Merge = 0.25, EquipDeck = 1.0, ClaimQuest = 0.5, RedeemCode = 1.0 }
+local MIN_INTERVAL = {
+	Start = 1.0,
+	Summon = 0.25,
+	Merge = 0.25,
+	EquipDeck = 1.0,
+	ClaimQuest = 0.5,
+	RedeemCode = 1.0,
+	SaveSettings = 2.0,
+}
 local pending = {}
 local seq = 0
 local lastSent = {}
@@ -62,7 +70,7 @@ function NetClient.Start()
 	-- Waiting for the server's remotes must not block the other controllers.
 	task.spawn(function()
 		local folder = ReplicatedStorage:WaitForChild("Remotes")
-		for _, name in { "Start", "Summon", "Merge", "EquipDeck", "ClaimQuest", "RedeemCode" } do
+		for _, name in { "Start", "Summon", "Merge", "EquipDeck", "ClaimQuest", "RedeemCode", "SaveSettings" } do
 			functions[name] = folder:WaitForChild(name)
 		end
 		folder:WaitForChild("State").OnClientEvent:Connect(function(snapshot)

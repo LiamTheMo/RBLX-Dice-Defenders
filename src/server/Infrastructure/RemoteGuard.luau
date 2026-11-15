@@ -8,6 +8,7 @@
 local Balance = require(script.Parent.Parent.Config.Balance)
 local Deck = require(script.Parent.Parent.Rules.Deck)
 local Validate = require(script.Parent.Parent.Rules.Validate)
+local SettingsDefs = require(game:GetService("ReplicatedStorage").Shared.SettingsDefs)
 
 local RemoteGuard = {}
 RemoteGuard.__index = RemoteGuard
@@ -33,6 +34,7 @@ RemoteGuard.Specs = table.freeze({
 			return type(code) == "string" and #code <= 32 and string.find(code, "^[A-Za-z0-9_%-]+$") ~= nil
 		end,
 	}),
+	SaveSettings = table.freeze({ argc = 2, check = SettingsDefs.Shape }),
 	Merge = table.freeze({
 		argc = 3,
 		check = function(from, to)

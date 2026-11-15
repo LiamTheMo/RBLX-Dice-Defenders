@@ -1,4 +1,4 @@
--- Persisted player profile, v5 (docs/MVP.md "Profile"). Pure: no Instances.
+-- Persisted player profile, v6 (docs/MVP.md "Profile"). Pure: no Instances.
 -- Default() builds a new profile; Migrate() validates stored data. The store
 -- metadata (profileRevision, sessionLease) rides along but is not gameplay data.
 
@@ -9,12 +9,13 @@ local Inventory = require(script.Parent.Parent.Config.Inventory)
 local Milestones = require(script.Parent.Parent.Config.Milestones)
 local Progression = require(script.Parent.Parent.Config.Progression)
 local Quests = require(script.Parent.Parent.Config.Quests)
+local SettingsDefs = require(game:GetService("ReplicatedStorage").Shared.SettingsDefs)
 local Deck = require(script.Parent.Deck)
 local Validate = require(script.Parent.Validate)
 
 local ProfileSchema = {}
 
-ProfileSchema.VERSION = 5
+ProfileSchema.VERSION = 6
 
 local STARTER_GEMS = 50 -- new profiles and every v3 profile once (v3 -> v4)
 
@@ -63,6 +64,7 @@ function ProfileSchema.Default()
 		Milestones = {},
 		Achievements = {},
 		Mastery = {},
+		Settings = {},
 	}
 end
 
@@ -87,6 +89,11 @@ local MIGRATIONS: { [number]: (any) -> any } = {
 	[4] = function(data)
 		data.Stats, data.Weekly, data.Login = nil, nil, nil
 		data.Milestones, data.Achievements, data.Mastery = nil, nil, nil
+		return data
+	end,
+	-- v5 -> v6: Settings starts empty (any stray value is dropped).
+	[5] = function(data)
+		data.Settings = nil
 		return data
 	end,
 }
@@ -211,6 +218,18 @@ local function cleanMastery(stored: any)
 	return mastery
 end
 
+-- Saved client settings: the cleaned value of each registry key that has one (a missing key
+-- reads as its default on the client). Walks the registry, so a huge stored table costs nothing.
+local function cleanSettings(stored: any)
+	local settings = {}
+	if type(stored) == "table" then
+		for _, def in SettingsDefs.DEFS do
+			settings[def.id] = SettingsDefs.clean(def, stored[def.id])
+		end
+	end
+	return settings
+end
+
 -- Returns (profile) or (nil, problem). Problems: "Corrupt", "NewerVersion". A nil
 -- `stored` is a brand-new player and yields Default(). Never mutates `stored`.
 function ProfileSchema.Migrate(stored: any)
@@ -271,6 +290,7 @@ function ProfileSchema.Migrate(stored: any)
 		Milestones = cleanFlags(data.Milestones, Milestones.List),
 		Achievements = cleanFlags(data.Achievements, Achievements.List),
 		Mastery = cleanMastery(data.Mastery),
+		Settings = cleanSettings(data.Settings),
 	}
 
 	-- Store metadata: keep a well-formed lease so a held lease is honoured.
