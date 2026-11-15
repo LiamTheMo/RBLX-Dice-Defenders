@@ -6,6 +6,7 @@
 --   Code      what players type, already upper case: A-Z, 0-9, '-' and '_' only, at
 --             most 32 characters. Players may type it in any case.
 --   Gold      Gold granted once per player.
+--   Gems      optional Gems granted with it (one Rules/Rewards bundle).
 --   StartsAt  optional os.time() seconds (UTC): before it the code reads as Invalid.
 --   ExpiresAt optional os.time() seconds (UTC): from then on it reads as Expired.
 -- To retire a code, set ExpiresAt. Never delete an entry: saved flags for ids not in
@@ -15,7 +16,7 @@ local function code(fields)
 end
 
 local List = table.freeze({
-	code({ Id = "welcome", Code = "WELCOME", Gold = 100 }), -- = the D1 daily quest reward
+	code({ Id = "welcome", Code = "WELCOME", Gold = 100 }), -- = the D1 daily quest Gold
 })
 
 local ById, ByCode = {}, {}

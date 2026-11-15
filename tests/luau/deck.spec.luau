@@ -94,7 +94,10 @@ test("quest catalog is well formed", function()
 		seen[q.Id] = true
 		expect(Quests.ById[q.Id] == q, "ById " .. q.Id)
 		expect(type(q.Name) == "string" and type(q.Desc) == "string", "text " .. q.Id)
-		expect(q.Goal % 1 == 0 and q.Goal >= 1 and q.Gold % 1 == 0 and q.Gold >= 1, "numbers " .. q.Id)
-		expect((q.Daily == true) ~= (q.Stat ~= nil and stats[q.Stat] == true), "exactly one source " .. q.Id)
+		expect(q.Goal % 1 == 0 and q.Goal >= 1 and q.Reward.Gold % 1 == 0 and q.Reward.Gold >= 1, "numbers " .. q.Id)
+		local sources = (if q.Daily == true then 1 else 0)
+			+ (if q.Weekly == "Kills" or q.Weekly == "Runs" then 1 else 0)
+			+ (if q.Stat ~= nil and stats[q.Stat] == true then 1 else 0)
+		expectEq(sources, 1, "exactly one source " .. q.Id)
 	end
 end)

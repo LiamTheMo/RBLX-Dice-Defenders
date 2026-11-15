@@ -1,8 +1,8 @@
 -- Redeem codes: Normalize, Claim and a per-player guessing limiter. Pure: callers
--- pass `now` (os.time() seconds). Gold only moves through Economy.
+-- pass `now` (os.time() seconds). A code pays one Rewards.Apply bundle.
 local Balance = require(script.Parent.Parent.Config.Balance)
 local Codes = require(script.Parent.Parent.Config.Codes)
-local Economy = require(script.Parent.Economy)
+local Rewards = require(script.Parent.Rewards)
 
 local Redeem = {}
 
@@ -22,9 +22,9 @@ function Redeem.Normalize(text: any): string?
 end
 
 -- Redeems `text` once per player. Codes: Invalid (unknown or not started yet),
--- Expired, AlreadyRedeemed, or an Economy code (Overflow); a rejection changes
--- nothing. Gold, then the flag, with no yield between. `codes` overrides the
--- catalog (specs only).
+-- Expired, AlreadyRedeemed, or a Rewards.Apply code (Overflow); a rejection changes
+-- nothing. The bundle {Gold, Gems?}, then the flag, with no yield between. `codes`
+-- overrides the catalog (specs only).
 function Redeem.Claim(profile: any, text: any, now: number, codes: any?): (boolean, string?)
 	local key = Redeem.Normalize(text)
 	local entry = if key then (codes or Codes).ByCode[key] else nil
@@ -37,7 +37,7 @@ function Redeem.Claim(profile: any, text: any, now: number, codes: any?): (boole
 	if profile.Redeemed[entry.Id] then
 		return false, "AlreadyRedeemed"
 	end
-	local ok, code = Economy.TryChange(profile, "Gold", entry.Gold)
+	local ok, code = Rewards.Apply(profile, { Gold = entry.Gold, Gems = entry.Gems })
 	if not ok then
 		return false, code
 	end

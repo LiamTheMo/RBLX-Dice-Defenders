@@ -108,4 +108,32 @@ function Rewards.Apply(profile: any, bundle: any): (boolean, string?)
 	return true, nil
 end
 
+-- Display form of a bundle for the Catalog: {{Kind, Id?, Amount}} with counters
+-- first (Gold, Gems, Xp), then each map's ids sorted; a cosmetic's Amount is 1.
+local COUNTER_ORDER = { "Gold", "Gems", "Xp" }
+local MAP_ORDER = { { "Materials", "Material" }, { "Items", "Item" }, { "Dice", "Die" }, { "Cosmetics", "Cosmetic" } }
+
+function Rewards.Lines(bundle): { any }
+	local lines = {}
+	for _, key in COUNTER_ORDER do
+		if bundle[key] ~= nil then
+			table.insert(lines, { Kind = key, Amount = bundle[key] })
+		end
+	end
+	for _, pair in MAP_ORDER do
+		local map = bundle[pair[1]]
+		if map ~= nil then
+			local ids = {}
+			for id in map do
+				table.insert(ids, id)
+			end
+			table.sort(ids)
+			for _, id in ids do
+				table.insert(lines, { Kind = pair[2], Id = id, Amount = if map[id] == true then 1 else map[id] })
+			end
+		end
+	end
+	return lines
+end
+
 return Rewards

@@ -205,7 +205,7 @@ test("shipped catalog: one launch code paying the daily quest's Gold; every code
 	expectEq(#Codes.List, 1, "one code")
 	local welcome = Codes.ByCode.WELCOME
 	expect(welcome ~= nil and welcome.Id == "welcome", "WELCOME -> welcome")
-	expectEq(welcome.Gold, QuestConfig.ById.D1.Gold, "= the D1 daily reward")
+	expectEq(welcome.Gold, QuestConfig.ById.D1.Reward.Gold, "= the D1 daily reward")
 	expectEq(welcome.Gold, 100, "100 Gold")
 	local ids = {}
 	for _, entry in Codes.List do
@@ -241,4 +241,27 @@ test("no module under src/shared or src/client holds a code or a code table", fu
 	expect(__sources["StarterPlayer/StarterPlayerScripts/Client/init.client"] ~= nil, "entry scripts scanned too")
 	local server = __sources["ServerScriptService/Server/Config/Codes"]
 	expect(server ~= nil and string.find(server, "WELCOME", 1, true) ~= nil, "the scan sees the server table")
+end)
+
+test("Claim pays through Rewards.Apply: Gold and optional Gems land whole or not at all, once per code", function()
+	local Rewards = require(Server.Rules.Rewards)
+	local GEMS = { ByCode = { GEM = { Id = "gem", Code = "GEM", Gold = 10, Gems = 5 } } }
+	local p = fresh()
+	expect(Redeem.Claim(p, " gem ", T, GEMS), "redeemed")
+	expect(p.Gold == 10 and p.Gems == 55 and p.Redeemed.gem == true, "Gold and Gems paid, id recorded")
+	local before = snap(p)
+	local _, again = Redeem.Claim(p, "GEM", T, GEMS)
+	expectEq(again, "AlreadyRedeemed", "once")
+	expectEq(snap(p), before, "nothing paid twice")
+	local q = fresh()
+	q.Gems = Economy.MAX
+	local qBefore = snap(q)
+	local ok, code = Redeem.Claim(q, "GEM", T, GEMS)
+	expect(not ok and code == "Overflow", "Gems at the cap: Overflow")
+	expectEq(snap(q), qBefore, "Gold not paid either, code not redeemed")
+	for _, entry in Codes.List do
+		expect(Rewards.Valid({ Gold = entry.Gold, Gems = entry.Gems }), "shipped code is a valid bundle: " .. entry.Id)
+	end
+	local source = __sources["ServerScriptService/Server/Rules/Redeem"]
+	expect(not string.find(source, "TryChange", 1, true), "Redeem pays only through Rewards.Apply")
 end)

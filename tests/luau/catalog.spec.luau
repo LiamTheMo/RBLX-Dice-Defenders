@@ -6,6 +6,12 @@ local Catalog = require(Server.Rules.Catalog)
 local Dice = require(Server.Config.Dice)
 local Inventory = require(Server.Config.Inventory)
 local Codes = require(Server.Config.Codes)
+local Rewards = require(Server.Rules.Rewards)
+local Balance = require(Server.Config.Balance)
+local DailyConfig = require(Server.Config.Daily)
+local MilestoneConfig = require(Server.Config.Milestones)
+local AchievementConfig = require(Server.Config.Achievements)
+local Progression = require(Server.Config.Progression)
 
 -- Deterministic text form; errors on a sparse or mixed table (it would not survive a remote).
 local function dump(v)
@@ -108,4 +114,79 @@ test("no redeem code or code id appears anywhere in the Catalog", function()
 	end
 	local source = __sources["ServerScriptService/Server/Rules/Catalog"]
 	expect(source ~= nil and not string.find(source, "Codes", 1, true), "Catalog never requires Config/Codes")
+end)
+
+test("Rewards.Lines: one {Kind, Id?, Amount} per part in a fixed order", function()
+	local lines = Rewards.Lines({
+		Gems = 5,
+		Gold = 10,
+		Xp = 3,
+		Materials = { Fragment = 2 },
+		Items = { XpTome = 1, GoldPouch = 2 },
+		Dice = { C01 = 1 },
+		Cosmetics = { SproutCap = true },
+	})
+	local want = {
+		{ Kind = "Gold", Amount = 10 },
+		{ Kind = "Gems", Amount = 5 },
+		{ Kind = "Xp", Amount = 3 },
+		{ Kind = "Material", Id = "Fragment", Amount = 2 },
+		{ Kind = "Item", Id = "GoldPouch", Amount = 2 },
+		{ Kind = "Item", Id = "XpTome", Amount = 1 },
+		{ Kind = "Die", Id = "C01", Amount = 1 },
+		{ Kind = "Cosmetic", Id = "SproutCap", Amount = 1 },
+	}
+	expectEq(dump(lines), dump(want), "lines")
+	expectEq(#Rewards.Lines({}), 0, "empty bundle")
+end)
+
+test("Daily, Milestones, Achievements, Mastery and Repeat equal config", function()
+	local c = Catalog.Build()
+	expectEq(#c.Daily.Days, #DailyConfig.Days, "calendar days")
+	for i, day in c.Daily.Days do
+		local cfg = DailyConfig.Days[i]
+		expect(day.Day == i and day.Chest == cfg.Chest, "day " .. i)
+		expectEq(dump(day.Rewards), dump(Rewards.Lines(cfg.Reward)), "day " .. i .. " rewards")
+	end
+	expectEq(c.Daily.Days[7].Chest, true, "day 7 chest")
+	expectEq(#c.Milestones, #MilestoneConfig.List, "milestones")
+	for i, m in c.Milestones do
+		local cfg = MilestoneConfig.List[i]
+		expect(m.Id == cfg.Id and m.Wave == cfg.Wave and m.Reachable == cfg.Reachable, "milestone " .. cfg.Id)
+		expectEq(m.Reachable, m.Wave <= Balance.Waves, cfg.Id .. " reachable")
+		expectEq(dump(m.Rewards), dump(Rewards.Lines(cfg.Reward)), cfg.Id .. " rewards")
+	end
+	expectEq(#c.Achievements, #AchievementConfig.List, "achievements")
+	for i, a in c.Achievements do
+		local cfg = AchievementConfig.List[i]
+		for _, field in { "Id", "Name", "Desc", "Goal", "Badge" } do
+			expectEq(a[field], cfg[field], cfg.Id .. " " .. field)
+		end
+		expectEq(a.Stat, nil, cfg.Id .. " no server-side stat key")
+		expectEq(dump(a.Rewards), dump(Rewards.Lines(cfg.Reward)), cfg.Id .. " rewards")
+	end
+	local curve = Progression.Mastery
+	expectEq(c.Mastery.Max, curve.Max, "mastery max")
+	expectEq(#c.Mastery.Need, curve.Max - 1, "one need per level below max")
+	for level, need in c.Mastery.Need do
+		expectEq(need, curve.Need(level), "need " .. level)
+	end
+	expectEq(#c.Mastery.Milestones, #curve.Milestones, "mastery milestones")
+	for i, m in c.Mastery.Milestones do
+		expectEq(m.Lv, curve.Milestones[i], "milestone level " .. i)
+		expectEq(dump(m.Rewards), dump(Rewards.Lines(curve.Rewards[m.Lv])), "Lv" .. m.Lv .. " rewards")
+	end
+	local r = Balance.Reward
+	local perWave = { Gold = r.goldPerWave, Xp = r.xpPerWave, Materials = { Fragment = r.fragmentsPerWave } }
+	local win = { Gold = r.goldWin, Xp = r.xpWin, Materials = { Fragment = r.fragmentsWin } }
+	expectEq(dump(c.Repeat.PerWave), dump(Rewards.Lines(perWave)), "repeat per wave")
+	expectEq(dump(c.Repeat.Win), dump(Rewards.Lines(win)), "repeat win bonus")
+end)
+
+test("every achievement Badge is a sprite the Quest Log already has", function()
+	local sprites = __sources["StarterPlayer/StarterPlayerScripts/Client/Controllers/QuestLog/QuestSprites"]
+	expect(sprites ~= nil, "QuestSprites scanned")
+	for _, a in Catalog.Build().Achievements do
+		expect(string.find(sprites, "\n\t" .. a.Badge .. " = {", 1, true) ~= nil, a.Id .. " badge " .. a.Badge)
+	end
 end)

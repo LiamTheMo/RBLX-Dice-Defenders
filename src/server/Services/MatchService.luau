@@ -9,6 +9,7 @@ local Balance = require(script.Parent.Parent.Config.Balance)
 local Progression = require(script.Parent.Parent.Config.Progression)
 local Net = require(script.Parent.Parent.Infrastructure.Net)
 local Catalog = require(script.Parent.Parent.Rules.Catalog)
+local Claims = require(script.Parent.Parent.Rules.Claims)
 local Deck = require(script.Parent.Parent.Rules.Deck)
 local Formulas = require(script.Parent.Parent.Rules.Formulas)
 local Match = require(script.Parent.Parent.Rules.Match)
@@ -108,12 +109,18 @@ local function meta(profile)
 	end
 	table.sort(cosmetics, byId)
 	local level, xpInto, xpNeed = Progression.Level(profile.Xp, Progression.Account)
-	local view = Quests.View(profile, os.time())
+	local now = os.time()
+	local view, claims = Quests.View(profile, now), Claims.View(profile, now)
 	return {
 		Dice = dice,
 		Deck = table.clone(profile.Deck),
 		Quests = view.Quests,
 		DailyResetAt = view.DailyResetAt,
+		WeeklyResetAt = view.WeeklyResetAt,
+		Login = claims.Login,
+		Milestones = claims.Milestones,
+		Achievements = claims.Achievements,
+		Mastery = claims.Mastery,
 		Gems = profile.Gems,
 		Xp = profile.Xp,
 		Level = level,
@@ -165,8 +172,15 @@ local function settle()
 	if profile == nil then
 		return
 	end
-	local ok, bundle =
-		Quests.SettleRun(profile, match.runId, match.wavesCompleted, match.result == "Won", match.kills, os.time())
+	local ok, bundle = Quests.SettleRun(
+		profile,
+		match.runId,
+		match.wavesCompleted,
+		match.result == "Won",
+		match.kills,
+		os.time(),
+		match.deck
+	)
 	if not ok then
 		warn("[MatchService] Reward refused: " .. tostring(bundle))
 		return
@@ -285,7 +299,7 @@ local function handleClaimQuest(player: Player, id: string): (boolean, string?)
 	if profile == nil then
 		return false, "NotLoaded"
 	end
-	local ok, code = Quests.Claim(profile, id, os.time())
+	local ok, code = Claims.Claim(profile, id, os.time())
 	if ok then
 		ProfileService.MarkChanged(player)
 	end
@@ -298,7 +312,8 @@ local function tick()
 		return
 	end
 	lastTick = now
-	-- Before the match early-out: the lobby needs the new day's quests too.
+	-- Before the match early-out: the lobby needs the new day's quests and login too
+	-- (a new week always starts on a new day, so this covers the weeklies).
 	local day = Quests.Day(os.time())
 	if day ~= lastDay then
 		lastDay = day

@@ -1,14 +1,25 @@
 -- The client-visible display projection of the server catalogues, sent once per
--- player as the Catalog event. Pure. Arrays only (no sparse keys), each sorted by
--- Id. Never reads the redeem code list.
+-- player as the Catalog event. Pure. Arrays only (no sparse keys); the id lists
+-- below Cosmetics keep config order, the others are sorted by Id. Never reads the
+-- redeem code list.
 --   { StarterDeck = { ids }, Dice = {{Id, Name, Rarity, Damage, Rate}},
 --     Materials = {{Id, Name, Rarity, Description, Sell?}},
 --     Items = {{Id, Name, Rarity, Description, Icon?, Sell?, Use?}},
---     Cosmetics = {{Id, Name, Rarity, Type, Slot, Description}} }
+--     Cosmetics = {{Id, Name, Rarity, Type, Slot, Description}},
+--     Daily = { Days = {{Day, Chest?, Rewards}} }, Milestones = {{Id, Wave, Reachable, Rewards}},
+--     Achievements = {{Id, Name, Desc, Goal, Badge, Rewards}},
+--     Mastery = { Max, Need = { per level 1..Max-1 }, Milestones = {{Lv, Rewards}} },
+--     Repeat = { PerWave = Rewards, Win = Rewards } }
 -- Damage is a die's base damage, Rate its attacks per second; Use is display text
--- ("+100 XP").
+-- ("+100 XP"); Rewards are Rewards.Lines: {{Kind, Id?, Amount}}.
+local Achievements = require(script.Parent.Parent.Config.Achievements)
+local Balance = require(script.Parent.Parent.Config.Balance)
+local Daily = require(script.Parent.Parent.Config.Daily)
 local Dice = require(script.Parent.Parent.Config.Dice)
 local Inventory = require(script.Parent.Parent.Config.Inventory)
+local Milestones = require(script.Parent.Parent.Config.Milestones)
+local Progression = require(script.Parent.Parent.Config.Progression)
+local Rewards = require(script.Parent.Rewards)
 
 local Catalog = {}
 
@@ -42,7 +53,21 @@ local function rows(map, row)
 	return list
 end
 
+-- One row per entry of the array `list`, in order.
+local function map(list, row)
+	local out = {}
+	for _, entry in list do
+		table.insert(out, row(entry))
+	end
+	return out
+end
+
 function Catalog.Build()
+	local mastery, reward = Progression.Mastery, Balance.Reward
+	local need = {}
+	for level = 1, mastery.Max - 1 do
+		need[level] = mastery.Need(level)
+	end
 	return {
 		StarterDeck = table.clone(Dice.Deck),
 		Dice = rows(Dice.Types, function(id, t)
@@ -72,6 +97,43 @@ function Catalog.Build()
 				Description = c.Description,
 			}
 		end),
+		Daily = {
+			Days = map(Daily.Days, function(d)
+				return { Day = d.Day, Chest = d.Chest, Rewards = Rewards.Lines(d.Reward) }
+			end),
+		},
+		Milestones = map(Milestones.List, function(m)
+			return { Id = m.Id, Wave = m.Wave, Reachable = m.Reachable, Rewards = Rewards.Lines(m.Reward) }
+		end),
+		Achievements = map(Achievements.List, function(a)
+			return {
+				Id = a.Id,
+				Name = a.Name,
+				Desc = a.Desc,
+				Goal = a.Goal,
+				Badge = a.Badge,
+				Rewards = Rewards.Lines(a.Reward),
+			}
+		end),
+		Mastery = {
+			Max = mastery.Max,
+			Need = need,
+			Milestones = map(mastery.Milestones, function(level)
+				return { Lv = level, Rewards = Rewards.Lines(mastery.Rewards[level]) }
+			end),
+		},
+		Repeat = {
+			PerWave = Rewards.Lines({
+				Gold = reward.goldPerWave,
+				Xp = reward.xpPerWave,
+				Materials = { Fragment = reward.fragmentsPerWave },
+			}),
+			Win = Rewards.Lines({
+				Gold = reward.goldWin,
+				Xp = reward.xpWin,
+				Materials = { Fragment = reward.fragmentsWin },
+			}),
+		},
 	}
 end
 
