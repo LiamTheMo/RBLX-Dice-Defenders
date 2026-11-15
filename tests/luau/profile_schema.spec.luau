@@ -1,4 +1,4 @@
--- Profile v2: defaults, nil -> default, Corrupt / NewerVersion reported (never
+-- Profile v3: defaults, nil -> default, Corrupt / NewerVersion reported (never
 -- repaired), field sanitising, store metadata kept, input never mutated.
 
 local Server = game:GetService("ServerScriptService").Server
@@ -7,9 +7,9 @@ local Dice = require(Server.Config.Dice)
 
 local NAN, INF = 0 / 0, math.huge
 
-test("default profile has the v2 fields", function()
+test("default profile has the v3 fields", function()
 	local p = ProfileSchema.Default()
-	expectEq(p.Version, 2, "version")
+	expectEq(p.Version, 3, "version")
 	expectEq(p.Gold, 0, "gold")
 	expectEq(p.BestWave, 0, "best wave")
 	expectEq(p.RunsPlayed, 0, "runs")
@@ -24,6 +24,7 @@ test("default profile has the v2 fields", function()
 	end
 	expect(next(p.Claimed) == nil, "nothing claimed")
 	expect(p.Daily.Day == 0 and p.Daily.Kills == 0 and next(p.Daily.Claimed) == nil, "daily empty")
+	expect(next(p.Redeemed) == nil, "nothing redeemed")
 	expect(p.Deck ~= Dice.Deck, "deck is a fresh table")
 end)
 
@@ -55,8 +56,8 @@ test("bad shape is Corrupt, a newer version is NewerVersion; neither is repaired
 			"Corrupt for " .. tostring(type(bad) == "table" and bad.Version or bad)
 		)
 	end
-	local p, problem = ProfileSchema.Migrate({ Version = 3, Gold = 5 })
-	expect(p == nil and problem == "NewerVersion", "v3 refused")
+	local p, problem = ProfileSchema.Migrate({ Version = 4, Gold = 5 })
+	expect(p == nil and problem == "NewerVersion", "v4 refused")
 	local p2, problem2 = ProfileSchema.Migrate({ Version = 99 })
 	expect(p2 == nil and problem2 == "NewerVersion", "v99 refused")
 end)
@@ -150,7 +151,7 @@ test("LastRewardRunId keeps any 31-bit run id; larger or fractional values reset
 	expectEq(ProfileSchema.Migrate({ Version = 1, LastRewardRunId = 5.5 }).LastRewardRunId, 0, "fractional")
 end)
 
-test("v1 -> v2 keeps stats, adds starters, claims nothing, never touches a frozen input", function()
+test("v1 -> v3 keeps stats, adds starters, claims and redeems nothing, never touches a frozen input", function()
 	local stored = table.freeze({
 		Version = 1,
 		Gold = 70,
@@ -162,14 +163,16 @@ test("v1 -> v2 keeps stats, adds starters, claims nothing, never touches a froze
 		-- stray v2-shaped data in a v1 record is discarded by the migration
 		Claimed = table.freeze({ S1 = true }),
 		Deck = table.freeze({ "C01" }),
+		Redeemed = table.freeze({ welcome = true }),
 	})
 	local p = ProfileSchema.Migrate(stored)
-	expect(p.Version == 2 and p.Gold == 70 and p.BestWave == 6 and p.RunsPlayed == 3, "stats kept")
+	expect(p.Version == 3 and p.Gold == 70 and p.BestWave == 6 and p.RunsPlayed == 3, "stats kept")
 	expect(p.TrialCleared == true and p.LastRewardRunId == 99 and p.profileRevision == 4, "rest kept")
 	expectEq(#p.Deck, 5, "starter deck")
 	expect(p.Dice.C05 ~= nil, "starters")
 	expect(next(p.Claimed) == nil, "nothing claimed")
 	expectEq(p.Daily.Day, 0, "daily empty")
+	expect(next(p.Redeemed) == nil, "nothing redeemed")
 end)
 
 test("Dice are sanitised: unknown ids, bad entries, levels and copies; starters re-added", function()
@@ -245,4 +248,61 @@ test("Migrate is idempotent on v2 and never mutates a frozen v2 input", function
 	local frozen = table.freeze({ Version = 2, Dice = table.freeze({ C01 = table.freeze({ Level = 2, Copies = 1 }) }) })
 	local p = ProfileSchema.Migrate(frozen)
 	expectEq(p.Dice.C01.Level, 2, "read from frozen")
+end)
+
+test("v2 -> v3 keeps every v2 field, starts Redeemed empty, never touches a frozen input", function()
+	local stored = table.freeze({
+		Version = 2,
+		Gold = 70,
+		BestWave = 6,
+		RunsPlayed = 3,
+		TrialCleared = true,
+		LastRewardRunId = 99,
+		profileRevision = 4,
+		Dice = table.freeze({ C01 = table.freeze({ Level = 3, Copies = 2 }) }),
+		Deck = table.freeze({ "C05", "C04", "C03", "C02", "C01" }),
+		Claimed = table.freeze({ S1 = true }),
+		Daily = table.freeze({ Day = 7, Kills = 3, Claimed = table.freeze({ D1 = true }) }),
+		sessionLease = table.freeze({ jobId = "A", expiresAt = 9 }),
+		Redeemed = table.freeze({ welcome = true }), -- stray: v2 had no codes
+	})
+	local p = ProfileSchema.Migrate(stored)
+	expect(p.Version == 3 and p.Gold == 70 and p.BestWave == 6 and p.RunsPlayed == 3, "stats kept")
+	expect(p.TrialCleared == true and p.LastRewardRunId == 99 and p.profileRevision == 4, "rest kept")
+	expect(p.Dice.C01.Level == 3 and p.Dice.C01.Copies == 2 and p.Deck[1] == "C05", "dice and deck kept")
+	expect(p.Claimed.S1 == true and p.Daily.Day == 7 and p.Daily.Claimed.D1 == true, "quests kept")
+	expectEq(p.sessionLease.jobId, "A", "lease kept")
+	expect(type(p.Redeemed) == "table" and next(p.Redeemed) == nil, "Redeemed starts empty")
+	expectEq(stored.Version, 2, "input untouched")
+end)
+
+test("Redeemed keeps only true flags for catalog code ids; junk and oversized input cost nothing", function()
+	local p = ProfileSchema.Migrate({
+		Version = 3,
+		Redeemed = { welcome = true, nope = true, WELCOME = true, [1] = true, x = false },
+	})
+	expectEq(p.Redeemed.welcome, true, "catalog id kept")
+	local count = 0
+	for _ in p.Redeemed do
+		count += 1
+	end
+	expectEq(count, 1, "only the catalog id")
+	for _, bad in { { welcome = "true" }, { welcome = 1 }, { welcome = {} }, { welcome = false }, "x", 5, true } do
+		local q = ProfileSchema.Migrate({ Version = 3, Redeemed = bad })
+		expect(type(q.Redeemed) == "table" and next(q.Redeemed) == nil, "junk -> empty: " .. tostring(bad))
+	end
+	local huge = { welcome = true }
+	for i = 1, 100_000 do
+		huge["junk" .. i] = true
+		huge[i] = true
+	end
+	local r = ProfileSchema.Migrate({ Version = 3, Redeemed = huge })
+	count = 0
+	for id in r.Redeemed do
+		count += 1
+		expectEq(id, "welcome", "only catalog ids survive")
+	end
+	expectEq(count, 1, "oversized input bounded by the catalog")
+	local again = ProfileSchema.Migrate(ProfileSchema.DeepCopy(r))
+	expectEq(again.Redeemed.welcome, true, "idempotent")
 end)

@@ -86,6 +86,31 @@ test("malformed argument matrix: BadArgs, never reaches the handler, seq not con
 			P(1, NAN),
 			P(1, "S1", "S1"),
 		},
+		RedeemCode = {
+			P(),
+			P(1),
+			P(1, ""),
+			P(1, ("A"):rep(33)),
+			P(1, ("A"):rep(4096)),
+			P(1, "WEL COME"),
+			P(1, " WELCOME"),
+			P(1, "WELCOME\n"),
+			P(1, "WEL\0COME"),
+			P(1, "WEL\tCOME"),
+			P(1, "WEL\127COME"),
+			P(1, "CAF\u{C9}"),
+			P(1, "WELCOME\u{200B}"),
+			P(1, "WELCOME!"),
+			P(1, "WEL.COME"),
+			P(1, NAN),
+			P(1, 5),
+			P(1, {}),
+			P(1, { "WELCOME" }),
+			P(1, true),
+			P(1, nil),
+			P(1, "WELCOME", "WELCOME"),
+			P(1, "WELCOME", nil),
+		},
 		Merge = {
 			P(),
 			P(1),
@@ -116,7 +141,11 @@ test("malformed argument matrix: BadArgs, never reaches the handler, seq not con
 		Merge = P(1, 1, 2),
 		EquipDeck = P(1, { "C01", "C02", "C03", "C04", "C05" }),
 		ClaimQuest = P(1, "S1"),
+		RedeemCode = P(1, "WELCOME"),
 	}
+	for name in RemoteGuard.Specs do
+		expect(matrix[name] ~= nil and valid[name] ~= nil, name .. " is covered by the matrix")
+	end
 	for name, cases in matrix do
 		for index, args in cases do
 			local env, owner = make(), {}
@@ -388,6 +417,60 @@ test("soft codes from the new handlers are not counted and never kick", function
 			local name = if i <= 3 then "EquipDeck" else "ClaimQuest"
 			local arg = if i <= 3 then { "C01", "C02", "C03", "C04", "C05" } else "S1"
 			local ok, got = env.guard:Call(owner, name, env.handler, seq, arg)
+			expect(not ok and got == code, ("round %d %s"):format(round, code))
+		end
+	end
+	expectEq(env.guard:Violations(owner), 0, "no violations")
+	expectEq(#env.kicks, 0, "no kick")
+end)
+
+test("RedeemCode passes the text through as typed; 1 and 32 bytes of [A-Za-z0-9_-] are well formed", function()
+	local env, owner = make(), {}
+	local got
+	env.handler = function(_, ...)
+		got = table.pack(...)
+		return true
+	end
+	expect(env.call(owner, "RedeemCode", 1, "welcome"), "lower case ok")
+	expect(got.n == 1 and got[1] == "welcome", "text passed unchanged")
+	expect(env.call(owner, "RedeemCode", 2, "a"), "1 byte")
+	expect(env.call(owner, "RedeemCode", 3, ("Z"):rep(32)), "32 bytes")
+	expect(env.call(owner, "RedeemCode", 4, "Az09-_"), "every allowed class")
+end)
+
+test("RedeemCode: replayed and out-of-order seq are BadSeq; bucket is burst 3 at 1/s", function()
+	expectEq(Balance.Remotes.RedeemCode.rate, 1, "rate")
+	expectEq(Balance.Remotes.RedeemCode.burst, 3, "burst")
+	local env, owner = make(), {}
+	expect(env.call(owner, "RedeemCode", 5, "WELCOME"), "5 ok")
+	local _, replay = env.call(owner, "RedeemCode", 5, "WELCOME")
+	expectEq(replay, "BadSeq", "replay")
+	local _, older = env.call(owner, "RedeemCode", 4, "WELCOME")
+	expectEq(older, "BadSeq", "older")
+	expect(env.call(owner, "Summon", 6), "Summon 6")
+	local _, cross = env.call(owner, "RedeemCode", 6, "WELCOME")
+	expectEq(cross, "BadSeq", "seq shared across remotes")
+	expectEq(env.calls, 2, "only valid calls ran")
+	local other = {}
+	for i = 1, 3 do
+		expect(env.guard:Call(other, "RedeemCode", env.handler, i, "X"), "burst " .. i)
+	end
+	local ok, code = env.guard:Call(other, "RedeemCode", env.handler, 4, "X")
+	expect(not ok and code == "RateLimited", "4th in the same instant limited")
+	env.t += 1
+	expect(env.guard:Call(other, "RedeemCode", env.handler, 5, "X"), "one token per second")
+end)
+
+test("RedeemCode soft codes are not counted and never kick", function()
+	local env, owner = make(), {}
+	local seq = 0
+	for round = 1, 15 do
+		for _, code in { "Invalid", "Expired", "AlreadyRedeemed", "RateLimited" } do
+			env.handler = function()
+				return false, code
+			end
+			seq += 1
+			local ok, got = env.call(owner, "RedeemCode", seq, "WELCOME")
 			expect(not ok and got == code, ("round %d %s"):format(round, code))
 		end
 	end

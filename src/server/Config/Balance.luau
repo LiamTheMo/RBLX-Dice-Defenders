@@ -23,8 +23,14 @@ Balance.Remotes = table.freeze({
 	Merge = table.freeze({ rate = 5, burst = 8 }),
 	EquipDeck = table.freeze({ rate = 1, burst = 3 }),
 	ClaimQuest = table.freeze({ rate = 2, burst = 4 }),
+	RedeemCode = table.freeze({ rate = 1, burst = 3 }),
 })
 Balance.KickThreshold = 20
 Balance.LogInterval = 5 -- seconds between violation log lines per player
+
+-- Redeem guessing limiter (Rules/Redeem): failures beyond `freeFailures` lock the
+-- player for lockSeconds, doubling per further failure up to maxLockSeconds; the
+-- kickFailures-th failure of a session kicks.
+Balance.Redeem = table.freeze({ freeFailures = 5, lockSeconds = 15, maxLockSeconds = 600, kickFailures = 50 })
 
 return table.freeze(Balance)

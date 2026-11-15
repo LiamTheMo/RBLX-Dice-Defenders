@@ -12,6 +12,7 @@ Remotes.Kinds = table.freeze({
 	Merge = "Function", -- (seq, from, to)
 	EquipDeck = "Function", -- (seq, ids): 5 distinct owned die ids
 	ClaimQuest = "Function", -- (seq, questId)
+	RedeemCode = "Function", -- (seq, code)
 	State = "Event", -- S -> C snapshot
 	Enemies = "Event", -- S -> C, owner only: {S, H, R, F}
 	Meta = "Event", -- S -> C, owner only: {Dice, Deck, Quests, DailyResetAt}

@@ -38,14 +38,14 @@ MOUNTS = {
 }
 
 
-def module_entries():
+def module_entries(include_scripts: bool = False):
     entries = []
     for prefix, folder in MOUNTS.items():
         if not folder.is_dir():
             continue
         for file in sorted(folder.rglob("*.luau")):
-            # Entry-point scripts are not requirable modules.
-            if file.name.endswith((".server.luau", ".client.luau")):
+            # Entry-point scripts are not requirable modules (only scanned as text).
+            if file.name.endswith((".server.luau", ".client.luau")) and not include_scripts:
                 continue
             parts = list(file.relative_to(folder).with_suffix("").parts)
             if parts[-1] == "init":
@@ -54,19 +54,34 @@ def module_entries():
     return entries
 
 
+def long_string(text: str) -> str:
+    level = 0
+    while "]" + "=" * level + "]" in text + "]":  # + "]": text may end in "]="
+        level += 1
+    return "[" + "=" * level + "[\n" + text + "]" + "=" * level + "]"
+
+
 def build_bundle(spec: Path) -> str:
+    spec_source = spec.read_text(encoding="utf-8")
+    entries = module_entries()
     chunks = [(HERE / "prelude.luau").read_text(encoding="utf-8")]
-    for path, source in module_entries():
+    for path, source in entries:
         chunks.append(
             "__defineModule({path}, function(script)\n{source}\nend)\n".format(
                 path="{" + ", ".join(json.dumps(p) for p in path) + "}",
                 source=source,
             )
         )
+    if "__sources" in spec_source:
+        # Specs that scan the tree (e.g. for server-only data reaching clients) get
+        # every module's and entry script's text as __sources["ReplicatedStorage/Shared/..."].
+        rows = [
+            "[{}] = {},".format(json.dumps("/".join(path)), long_string(source))
+            for path, source in module_entries(include_scripts=True)
+        ]
+        chunks.append("__sources = {\n" + "\n".join(rows) + "\n}\n")
     chunks.append(
-        "__runSpec({name}, function()\n{source}\nend)\n".format(
-            name=json.dumps(spec.name), source=spec.read_text(encoding="utf-8")
-        )
+        "__runSpec({name}, function()\n{source}\nend)\n".format(name=json.dumps(spec.name), source=spec_source)
     )
     return "\n".join(chunks)
 

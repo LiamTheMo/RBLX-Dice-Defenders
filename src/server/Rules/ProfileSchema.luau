@@ -1,7 +1,8 @@
--- Persisted player profile, v2 (docs/MVP.md "Profile"). Pure: no Instances.
+-- Persisted player profile, v3 (docs/MVP.md "Profile"). Pure: no Instances.
 -- Default() builds a new profile; Migrate() validates stored data. The store
 -- metadata (profileRevision, sessionLease) rides along but is not gameplay data.
 
+local Codes = require(script.Parent.Parent.Config.Codes)
 local Dice = require(script.Parent.Parent.Config.Dice)
 local Quests = require(script.Parent.Parent.Config.Quests)
 local Deck = require(script.Parent.Deck)
@@ -9,7 +10,7 @@ local Validate = require(script.Parent.Validate)
 
 local ProfileSchema = {}
 
-ProfileSchema.VERSION = 2
+ProfileSchema.VERSION = 3
 
 local function deepCopy(value)
 	if type(value) ~= "table" then
@@ -44,6 +45,7 @@ function ProfileSchema.Default()
 		Deck = table.clone(Dice.Deck),
 		Claimed = {},
 		Daily = { Day = 0, Kills = 0, Claimed = {} },
+		Redeemed = {},
 	}
 end
 
@@ -52,6 +54,11 @@ local MIGRATIONS: { [number]: (any) -> any } = {
 	-- v1 -> v2: the new fields start empty; sanitising below fills the defaults.
 	[1] = function(data)
 		data.Dice, data.Deck, data.Claimed, data.Daily = nil, nil, nil, nil
+		return data
+	end,
+	-- v2 -> v3: Redeemed starts empty (any stray value is dropped).
+	[2] = function(data)
+		data.Redeemed = nil
 		return data
 	end,
 }
@@ -90,6 +97,20 @@ local function cleanFlags(stored: any, accept: (any) -> boolean)
 		end
 	end
 	return flags
+end
+
+-- Redeemed code ids: `true` flags for ids in the Codes catalog only. Walks the
+-- catalog, not the stored table, so an oversized stored table costs nothing.
+local function cleanRedeemed(stored: any)
+	local redeemed = {}
+	if type(stored) == "table" then
+		for _, entry in Codes.List do
+			if stored[entry.Id] == true then
+				redeemed[entry.Id] = true
+			end
+		end
+	end
+	return redeemed
 end
 
 local function cleanDaily(stored: any)
@@ -146,6 +167,7 @@ function ProfileSchema.Migrate(stored: any)
 			return quest.Daily ~= true
 		end),
 		Daily = cleanDaily(data.Daily),
+		Redeemed = cleanRedeemed(data.Redeemed),
 	}
 
 	-- Store metadata: keep a well-formed lease so a held lease is honoured.

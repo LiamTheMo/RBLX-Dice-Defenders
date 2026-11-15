@@ -26,6 +26,13 @@ RemoteGuard.Specs = table.freeze({
 			return type(id) == "string" and #id >= 1 and #id <= 16
 		end,
 	}),
+	-- 1..32 bytes of ASCII letters, digits, '-' and '_' (no spaces, control bytes or unicode).
+	RedeemCode = table.freeze({
+		argc = 2,
+		check = function(code)
+			return type(code) == "string" and #code <= 32 and string.find(code, "^[A-Za-z0-9_%-]+$") ~= nil
+		end,
+	}),
 	Merge = table.freeze({
 		argc = 3,
 		check = function(from, to)

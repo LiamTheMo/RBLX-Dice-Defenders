@@ -24,19 +24,21 @@
 | Path | Responsibility |
 |---|---|
 | `src/server/init.server.luau` | Boot Services via Loader (from Build-a-Dungeon) |
-| `src/server/Config/{Dice,Enemies,Balance,Quests}.luau` | All balance numbers, starter deck, rate limits, kick threshold, quest catalog. Server-only. |
+| `src/server/Config/{Dice,Enemies,Balance,Quests,Codes}.luau` | All balance numbers, starter deck, rate limits, kick threshold, quest catalog, redeem codes. Server-only. |
 | `src/server/Rules/Deck.luau` | Pure `Shape(ids)` (remote validator), `Check(owned, ids)`, `Equip(profile, ids)` |
 | `src/server/Rules/Quests.luau` | Pure `Day(now)`, `View(profile, now)`, `Claim(profile, id, now)`, `SettleRun(profile, runId, waves, won, kills, now)` (wraps `Economy.GrantRunReward`) |
+| `src/server/Rules/Redeem.luau` | Pure `Normalize(text)`, `Claim(profile, text, now)`, guessing limiter `NewLimiter()` / `Attempt(limiter, profile, text, now)` |
 | `src/server/Rules/Formulas.luau` | Pure formulas above |
 | `src/server/Rules/Board.luau` | Pure summon/merge; validate fully before mutating |
 | `src/server/Rules/Match.luau` | Pure `New(runId, rng, now, deck)`, `Step(state, now)`, `TrySummon`, `TryMerge`; outbox `state.out` |
 | `src/server/Rules/Economy.luau` | **Only** code that changes MP or Gold: `TryChange(record, key, delta)`, `GrantRunReward(profile, runId, waves, won)` |
 | `src/server/Rules/Validate.luau` | `IsInt(v, lo, hi)`: rejects non-number, NaN, ±inf, non-integer, out of range |
-| `src/server/Rules/{ProfileSchema,SessionLease}.luau` | Profile v2 + MIGRATIONS (v1→v2); lease (from Build-a-Dungeon) |
+| `src/server/Rules/{ProfileSchema,SessionLease}.luau` | Profile v3 + MIGRATIONS (v1→v2, v2→v3); lease (from Build-a-Dungeon) |
 | `src/server/Infrastructure/{DataStoreGateway,InMemoryDataStore,ProfileStore}.luau` | Session-locked saves (from Build-a-Dungeon, require paths only) |
 | `src/server/Infrastructure/{RemoteGuard,Net}.luau` | Guarded remotes (adapted from Build-a-Dungeon) |
 | `src/server/Services/ProfileService.luau` | Load/lease/autosave/release/BindToClose (trimmed from Build-a-Dungeon) |
 | `src/server/Services/MatchService.luau` | Owner, remote handlers, 10 Hz tick, State/Enemies/Meta pushes, reward + quest settle + save |
+| `src/server/Services/RedeemService.luau` | `RedeemCode` handler, per-player guessing limiter (cleared on leave), abuse kick |
 | `src/shared/Core/{Loader,Signal}.luau`, `src/shared/Net/Remotes.luau` | Boot, signal, remote names |
 | `src/shared/Layout.luau` | Geometry only: `CellPosition(i)`, path waypoints, `PathLength`, `PositionAt(dist)`, camera |
 | `src/shared/Display.luau` | Dice names/colours/rarity, locked catalog dice (name + rarity only), enemy colours, pip label |
@@ -48,7 +50,7 @@ Pure modules (`Rules/*`, `Config/*`, `Layout`, `Display`) must run under `tests/
 ## Server data model
 - **MatchState** `{runId, rng, deck (own copy), kills, phase="Playing"|"Ended", result, mp, summons, lives, wave, wavesCompleted, waveState="Prep"|"Active", nextWaveAt, bossAt, queue, qi, nextSpawnAt, enemies, nextEnemyId, board[1..15] = Die|false, nextDieId, lastNow, rewardGranted, out}`. Lobby = no MatchState.
 - **Die** `{id, type, pip, cd, hits}`. **Enemy** `{id, kind, hp, maxHp, speed, spawnAt, dist}`; `dist = speed * (now - spawnAt)`.
-- **Profile v2** `{Version=2, Gold, BestWave, RunsPlayed, TrialCleared, LastRewardRunId, Dice={[id]={Level 1..10, Copies}}, Deck={5 ids}, Claimed={[questId]=true}, Daily={Day, Kills, Claimed={[questId]=true}}, profileRevision, sessionLease}`; counts are integers in [0, 1e9]; nil → default; bad shape → Corrupt; newer version → NewerVersion (never repaired or overwritten). Sanitising keeps only known dice (the 5 starters are always present), resets an illegal Deck to the starter deck, and keeps only `true` flags for known quests of the right kind. `MIGRATIONS[1]` (v1→v2) keeps every v1 field and adds the defaults; the store writes the result back on load. Level and Copies are stored and shown but have no source or effect yet.
+- **Profile v3** `{Version=3, Gold, BestWave, RunsPlayed, TrialCleared, LastRewardRunId, Dice={[id]={Level 1..10, Copies}}, Deck={5 ids}, Claimed={[questId]=true}, Daily={Day, Kills, Claimed={[questId]=true}}, Redeemed={[codeId]=true}, profileRevision, sessionLease}`; counts are integers in [0, 1e9]; nil → default; bad shape → Corrupt; newer version → NewerVersion (never repaired or overwritten). Sanitising keeps only known dice (the 5 starters are always present), resets an illegal Deck to the starter deck, and keeps only `true` flags for known quests of the right kind and for code ids in `Config/Codes` (walks the catalog, so a huge stored table is ignored). `MIGRATIONS[1]` (v1→v2) keeps every v1 field and adds the defaults; `MIGRATIONS[2]` (v2→v3) keeps every v2 field and starts `Redeemed` empty; the store writes the result back on load. Level and Copies are stored and shown but have no source or effect yet.
 
 ## Tick
 `RunService.Heartbeat` in MatchService calls `Match.Step(state, workspace:GetServerTimeNow())` at 10 Hz, `dt` clamped to 0.25 s, inside `pcall` (error → result "Error", no reward). Order: wave advance → spawn → move + breach (lose check) → dice attacks → deaths + kill MP → wave clear / win.
@@ -57,7 +59,7 @@ Pure modules (`Rules/*`, `Config/*`, `Layout`, `Display`) must run under `tests/
 
 ## Remotes (client sends intent only)
 Every intent is a RemoteFunction (`InvokeServer`; no `InvokeClient` anywhere) returning `(ok: boolean, code: string?)`. Guard order: token bucket per player+remote → validator with **exact** arg count (pcall) → ready (profile loaded, sender is owner) → `seq` integer in [1, 2^31−1] and greater than the last accepted (consumed even if the rules reject) → handler (validates, then mutates, never yields, pcall).
-Hard violations (RateLimited, BadArgs, BadSeq, and a client firing a server→client event) are logged (throttled) and kick at 20. Soft rejections (NotOwner, NotLoaded, WrongPhase, NoMP, BoardFull, IllegalMerge, BadDeck, UnknownDie, NotOwned, UnknownQuest, NotComplete, AlreadyClaimed, Overflow) are not counted.
+Hard violations (RateLimited, BadArgs, BadSeq, and a client firing a server→client event) are logged (throttled) and kick at 20. Soft rejections (NotOwner, NotLoaded, WrongPhase, NoMP, BoardFull, IllegalMerge, BadDeck, UnknownDie, NotOwned, UnknownQuest, NotComplete, AlreadyClaimed, Overflow, and RedeemCode's Invalid, Expired, AlreadyRedeemed and its own RateLimited) are not counted.
 
 | Remote | Kind | Args | Rules | Rate |
 |---|---|---|---|---|
@@ -66,6 +68,7 @@ Hard violations (RateLimited, BadArgs, BadSeq, and a client firing a server→cl
 | `Merge` | RF | `(seq, from 1..15, to 1..15)` | Playing, merge rules above | 5/s, burst 8 |
 | `EquipDeck` | RF | `(seq, ids)`: plain array, keys exactly 1..5, distinct strings of 1–8 bytes (else BadArgs) | not Playing; every id known (UnknownDie) and owned (NotOwned) | 1/s, burst 3 |
 | `ClaimQuest` | RF | `(seq, id)`: string of 1–16 bytes | any phase; UnknownQuest, AlreadyClaimed, NotComplete, Overflow | 2/s, burst 4 |
+| `RedeemCode` | RF | `(seq, code)`: 1–32 bytes of ASCII letters, digits, `-`, `_` | any phase; trimmed + upper-cased, once per player ever (`Redeemed[Id]`), Gold via Economy. Replies only Invalid (unknown, not started, or Gold cap), Expired, AlreadyRedeemed, RateLimited. Limiter per session: 5 free failures, then each failure locks 15 s doubling to 600 s (locked: RateLimited, code not evaluated, lock not extended); the 50th rejection of a session kicks | 1/s, burst 3 |
 | `State` | RE S→C | snapshot below | on change, ≤ 1 per tick + 1 per intent | — |
 | `Enemies` | RE S→C, owner only | batch below | ≤ 10 Hz, only when non-empty | — |
 | `Meta` | RE S→C, that player only | lobby payload below | on load, on any profile change, on UTC day change | — |
@@ -79,7 +82,7 @@ Hard violations (RateLimited, BadArgs, BadSeq, and a client firing a server→cl
 Live store `DD_Profiles_v1`; Studio uses `DD_Profiles_v1_Studio`, or the in-memory store when Studio has no API access (in-memory is only reachable when `RunService:IsStudio()`). Key `Profile_<userId>`. 120 s lease renewed by each save; LeaseHeld waits up to 130 s; LeaseLost/StaleRevision → profile forgotten, Phase "Failed", no further writes. Saves: match end (after reward), 60 s autosave, leave (release), BindToClose (3 attempts, 25 s). Owner leaving or shutdown mid-match aborts with no reward. Load failure → no board, no rewards, nothing written.
 
 ## Specs (`python tests/luau/run.py`)
-`net_guard` (malformed-arg matrix per remote, rate limit, replay/out-of-order seq shared across remotes, kick at 20 once, soft rejects not counted, throwing handler safe), `economy` (never negative, rejects NaN/inf/fractions/overflow, reward once per run id), `board` (cost sequence, summon/merge legality, full board, no mutation on reject), `match` (formulas, breach/loss, stipend, boss warning ≥ 3 s, kill MP, perk damage, First targeting, scripted win, plays only the passed deck, kills exclude breaches), `deck` (shape matrix, unknown/unowned, no mutation on reject), `quests` (derived progress, settle once per run id, claim once, overflow, fake-clock day roll, clock going backwards, yesterday's daily), `profile_schema` (v2 defaults, v1→v2 migration, NewerVersion, field sanitising), `profile_store`.
+`net_guard` (malformed-arg matrix per remote, rate limit, replay/out-of-order seq shared across remotes, kick at 20 once, soft rejects not counted, throwing handler safe), `economy` (never negative, rejects NaN/inf/fractions/overflow, reward once per run id), `board` (cost sequence, summon/merge legality, full board, no mutation on reject), `match` (formulas, breach/loss, stipend, boss warning ≥ 3 s, kill MP, perk damage, First targeting, scripted win, plays only the passed deck, kills exclude breaches), `deck` (shape matrix, unknown/unowned, no mutation on reject), `quests` (derived progress, settle once per run id, claim once, overflow, fake-clock day roll, clock going backwards, yesterday's daily), `profile_schema` (v3 defaults, v1→v3 and v2→v3 migrations, NewerVersion, field and Redeemed sanitising), `profile_store`, `redeem` (normalise, claim once, expiry windows, overflow, limiter lock/escalation/cap/kick, launch catalog, no code text in shared/client modules).
 
 ## Deferred
 Co-op, queues/parties/teleports, waves 11–100, elites, boss mechanics, Infinite (Start gets a mode argument when it ships), leaderboards, Rare+ dice and any way to acquire dice (so EquipDeck can only reorder the starters), in-match upgrades, dice level effects, shop/chests/crafting/Gems, materials (Verdant Fragments, Universal Dust), the BALANCING starter grant, account XP/level, tutorial, real lobby art, SFX, VFX beyond a hit tracer, generated art and Blender models. A save edited to a far-future `Daily.Day` keeps the daily locked (never pays extra). Known economy gap: losing early earns more Gold per minute than winning; fix before Gold gets a sink.
