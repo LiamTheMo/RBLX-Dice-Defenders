@@ -5,6 +5,7 @@ local ContentProvider = game:GetService("ContentProvider")
 
 local UiKit = require(script.Parent.UiKit)
 local Sprites = require(script.Parent.Sprites)
+local SettingsLogic = require(script.Parent.Settings.SettingsLogic)
 local Display = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Display"))
 
 local make = UiKit.make
@@ -187,6 +188,10 @@ function LobbyHud.build(parent, cb)
 			s = math.max(s, 0.5)
 		end
 		s = math.min(s, 1.5)
+		-- Settings UI Scale: desktop only, phones are already at the touch-size floor (same rule as Shell).
+		if size.Y >= UiKit.PHONE_H then
+			s *= SettingsLogic.get("uiScale") / 100
+		end
 		uiScale.Scale = s
 		hud.Size = UDim2.fromScale(1 / s, 1 / s)
 		if self.BagOn then
@@ -195,6 +200,12 @@ function LobbyHud.build(parent, cb)
 	end
 	parent:GetPropertyChangedSignal("AbsoluteSize"):Connect(rescale)
 	parent:GetAttributeChangedSignal("EmulateSize"):Connect(rescale)
+	-- Registered before any menu Shell, so the insets they read are already rescaled.
+	hud.Destroying:Connect(SettingsLogic.onChanged(function(id)
+		if id == "uiScale" then
+			rescale()
+		end
+	end))
 	rescale()
 
 	local grid = make("Frame", {
@@ -287,10 +298,13 @@ function LobbyHud.build(parent, cb)
 		Icon = I.Settings,
 		IconSize = UDim2.fromOffset(60, 59.4), -- visible gold 51x52 (the recoloured cog shows ~0.86 of its box)
 		Size = UDim2.fromOffset(88, 88),
-		OnClick = soon("Settings"),
+		OnClick = function()
+			open("Settings")
+		end,
 	})
 	gear.Position = UDim2.new(1, -60, 0, 60.5)
 	self.Gear, self.Quests = gear, quests
+	buttons.Settings = gear
 
 	local bottom = make("Frame", {
 		Name = "Bottom",
@@ -484,7 +498,7 @@ end
 
 -- A menu open: the deck row and Bottom block hide; currencies, LVL / XP text and the XP bar are re-parented into one
 -- inline centred row (reference y 872-922). Phones: the menu takes that strip too, so the row hides.
--- menu = the HUD button of the open menu ("Bag", "Play", "Quests", "Roll", "Shop", "Daily"): it keeps the hover look, the rest dim.
+-- menu = the HUD button of the open menu ("Bag", "Play", "Quests", "Roll", "Shop", "Daily", "Settings"): it keeps the hover look, the rest dim.
 function LobbyHud:SetBagMode(on: boolean, menu: string?)
 	self.BagOn, self.BagMenu = on, menu
 	local phone = UiKit.screenSize(self.Hud.Parent).Y < UiKit.PHONE_H

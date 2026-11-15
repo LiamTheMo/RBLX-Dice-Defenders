@@ -15,6 +15,7 @@ local Play = require(script.Parent.Play.Play)
 local Roll = require(script.Parent.Roll.Roll)
 local Daily = require(script.Parent.Daily.Daily)
 local Shop = require(script.Parent.Shop.Shop)
+local Settings = require(script.Parent.Settings.Settings)
 
 local make, panel, label, button = UiKit.make, UiKit.panel, UiKit.label, UiKit.button
 local NAVY, WHITE, GREEN = UiKit.NAVY, UiKit.WHITE, UiKit.GREEN
@@ -62,6 +63,7 @@ local MENUS = {
 	{ Name = "Roll", Key = "Roll" },
 	{ Name = "Shop", Key = "Shop" },
 	{ Name = "Daily", Key = "Daily" },
+	{ Name = "Settings", Key = "Settings" },
 }
 
 local function closeMenus()
@@ -247,7 +249,7 @@ local function renderState(snap)
 	ui.Root.Visible = active
 	if not active then
 		if lobbyActive then
-			showPanel(nil) -- closes all six menus; only on the transition, not every State tick
+			showPanel(nil) -- closes all seven menus; only on the transition, not every State tick
 		end
 		lobbyActive = false
 		ui.ResultBackdrop.Visible = false
@@ -284,6 +286,7 @@ local function build()
 	ui.Roll = Roll.new(ui.Root, { hud = ui.LobbyHud, toast = toast })
 	ui.Shop = Shop.new(ui.Root, { hud = ui.LobbyHud, toast = toast })
 	ui.Daily = Daily.new(ui.Root, { hud = ui.LobbyHud, toast = toast })
+	ui.Settings = Settings.new(ui.Root, { hud = ui.LobbyHud, toast = toast })
 
 	newPanel("Profile")
 
@@ -389,6 +392,9 @@ function Lobby.Destroy()
 	end
 	if ui and ui.Daily then
 		ui.Daily:Destroy()
+	end
+	if ui and ui.Settings then
+		ui.Settings:Destroy()
 	end
 	if gui then
 		gui:Destroy()

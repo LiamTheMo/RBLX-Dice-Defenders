@@ -16,6 +16,7 @@ local UserInputService = game:GetService("UserInputService")
 
 local UiKit = require(script.Parent.Parent.UiKit)
 local Parts = require(script.Parent.Parts)
+local SettingsLogic = require(script.Parent.Parent.Settings.SettingsLogic)
 local PlaySprites = require(script.Parent.Parent.Play.PlaySprites) -- the shared banner art (ScrollBase, GemPin) is cut by slice_play.py
 
 local make = UiKit.make
@@ -268,8 +269,10 @@ function Shell.new(parent, deps)
 		local full = TIER.Full
 		local fullW, fullH = FULL_INK.X + 2 * full.mx, FULL_INK.Y + 2 * full.my
 		local bs = math.clamp(math.min(availW / fullW, availH / (fullH + full.over)), MIN_SCALE, MAX_SCALE)
-		uiScale.Scale = bs
-		scaled.Size = UDim2.fromScale(1 / bs, 1 / bs)
+		-- Settings UI Scale: Full tier only, es = bs at 100% (design layout below still uses bs)
+		local es = if size.Y < UiKit.PHONE_H then bs else bs * (SettingsLogic.get("uiScale") / 100)
+		uiScale.Scale = es
+		scaled.Size = UDim2.fromScale(1 / es, 1 / es)
 		local dw, dh = availW / bs, availH / bs -- design px that remain
 
 		-- Tier: compact only for phone-class heights (as the HUD's 500 px rule); desktops stay full and the
@@ -307,7 +310,7 @@ function Shell.new(parent, deps)
 		local spare = (ins.bottomTopReal - 8 + vpad) - 4 - compH
 		local top = 4 + (if compact or spare < 0 then spare / 2 else spare)
 		window.Size = UDim2.fromOffset(winW, hf)
-		window.Position = UDim2.new(0.5, 0, 0, (top + t.over * bs + hf * bs / 2) / bs)
+		window.Position = UDim2.new(0.5, 0, 0, (top + t.over * bs + hf * bs / 2) / es)
 		chrome.SliceScale = t.rim
 
 		content.Position = UDim2.fromOffset(side, contentTop)
@@ -373,14 +376,14 @@ function Shell.new(parent, deps)
 		-- TextBounds equal the layout at that size), so the model works in real px at R and divides by the scale
 		local bl0, br0 = BEARING_L[str:sub(1, 1)] or BEARING, BEARING_R[str:sub(-1)] or BEARING
 		local function realSize(sz)
-			return math.floor(sz * bs)
+			return math.floor(sz * es)
 		end
 		local function strokeReal() -- the stroke's real thickness plus the white fill's visible edge sitting inside the glyph edge
-			return title.stroke * bs + FILL_EDGE
+			return title.stroke * es + FILL_EDGE
 		end
 		local function outWidth(sz) -- design px
 			local r = realSize(sz)
-			return (Parts.measure(str, r) - (bl0 + br0) * r + 2 * strokeReal()) / bs
+			return (Parts.measure(str, r) - (bl0 + br0) * r + 2 * strokeReal()) / es
 		end
 		local ts = title.size
 		while ts > 12 and lead + outWidth(ts) > flatW do
@@ -393,10 +396,10 @@ function Shell.new(parent, deps)
 		if sideEmblem then
 			sideEmblem.place(sideBox, groupLeft / bannerW, cy)
 		end
-		bannerText.Position = UDim2.fromScale((groupLeft + lead + (strokeReal() - bl0 * rs) / bs) / bannerW, cy)
+		bannerText.Position = UDim2.fromScale((groupLeft + lead + (strokeReal() - bl0 * rs) / es) / bannerW, cy)
 		bannerText.Size = UDim2.new(
 			0,
-			math.max((bn.textW or 0.5) * sbInk[3] * bannerW, Parts.measure(str, rs) / bs + 2 * title.stroke + 4),
+			math.max((bn.textW or 0.5) * sbInk[3] * bannerW, Parts.measure(str, rs) / es + 2 * title.stroke + 4),
 			0,
 			math.ceil(ts * 1.2)
 		)
@@ -456,6 +459,13 @@ function Shell.new(parent, deps)
 		self:_skinTabs()
 	end
 	self._fit = fit
+	table.insert(conns, {
+		Disconnect = SettingsLogic.onChanged(function(id)
+			if id == "uiScale" and bag.Visible then
+				fit()
+			end
+		end),
+	})
 	table.insert(conns, parent:GetAttributeChangedSignal("EmulateSize"):Connect(fit))
 	table.insert(
 		conns,
@@ -578,6 +588,11 @@ function Shell:Open()
 		return
 	end
 	self:Fit()
+	if SettingsLogic.get("reducedMotion") then
+		self._pop.Scale = 1
+		self.Bag.Visible = true
+		return
+	end
 	self._pop.Scale = 0.94
 	self.Bag.Visible = true
 	self._popTween = TweenService:Create(self._pop, TweenInfo.new(0.12, Enum.EasingStyle.Quad), { Scale = 1 })
