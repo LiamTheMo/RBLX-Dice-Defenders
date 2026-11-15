@@ -16,7 +16,6 @@ local Bag, Q = Draw.Bag, Draw.Q
 local PAD_L, PAD_R, PAD_T, PAD_B = 10, 30, 11, 14 -- left/top >= the selected glow bleed; right = scrollbar gutter (only when the grid scrolls)
 local GAP, GAP_Y, GLOW = 8, 13, 10 -- ref: cells ~152x160 on a 160 / 171 pitch -- cell gap; selected cell ink grows by GLOW (5 per side) inside the sprite's own margin
 local CARD_W, CARD_H = 146, 160 -- reference card (visible rim); cell height = width * 160 / 146
-local LOCKED_GREY = Color3.fromRGB(150, 146, 152) -- PillGrey toned toward the reference's dark charcoal pill; the rim stays light
 local BAR = { ScrollTrack = Rect.new(19, 65, 22, 227) }
 
 local function barSkin(inst, name: string, w: number)
@@ -28,13 +27,13 @@ local function barSkin(inst, name: string, w: number)
 end
 
 local function isComplete(b): boolean
-	return not b.Locked and b.Goal > 0 and b.Progress >= b.Goal
+	return b.Goal > 0 and b.Progress >= b.Goal
 end
 
 local Achievements = {}
 
--- Status pill w x h: COMPLETE (sliced green + check), progress (track + fill, "8 / 10" / "LVL 12 / 20") or locked (grey track).
--- pill.Frame; pill:Set(b) with b = { Progress, Goal, Unit?, Locked? }.
+-- Status pill w x h: COMPLETE (sliced green + check) or progress (track + fill, "8 / 10").
+-- pill.Frame; pill:Set(b) with b = { Progress, Goal }.
 function Achievements.pill(
 	parent,
 	name: string,
@@ -59,23 +58,15 @@ function Achievements.pill(
 	local pill = { Frame = frame }
 	function pill:Set(b)
 		local done = isComplete(b)
-		Draw.apply(
-			skin,
-			if done then Q.PillComplete elseif b.Locked then Bag.PillGrey else Q.BarTrackAch,
-			w / 2,
-			h / 2,
-			w,
-			h
-		)
-		skin.ImageColor3 = if b.Locked then LOCKED_GREY else Color3.new(1, 1, 1)
-		local pct = if b.Locked then 0 else QuestLogic.percent(b.Progress, b.Goal)
+		Draw.apply(skin, if done then Q.PillComplete else Q.BarTrackAch, w / 2, h / 2, w, h)
+		local pct = QuestLogic.percent(b.Progress, b.Goal)
 		local inset = math.max(2, math.floor(h * 0.1))
 		local fw = if done then 0 else math.floor((w - 2 * inset) * pct + 0.5)
 		fill.Visible = fw > 0
 		if fw > 0 then
 			Draw.apply(fill, Q.BarFillAch, inset + fw / 2, h / 2, fw, h - 2 * inset)
 		end
-		local text = if done then "COMPLETE" else QuestLogic.progressText(b.Progress, b.Goal, b.Unit)
+		local text = if done then "COMPLETE" else QuestLogic.progressText(b.Progress, b.Goal)
 		local cs = if done then math.floor(h * 0.8) else 0
 		local gap = if done then 4 else 0
 		local avail = w - 12 - cs - gap
@@ -98,7 +89,7 @@ end
 function Achievements.new(parent)
 	local api, conns = {}, {}
 	local items, selected, onSelect = {}, nil, nil
-	local recs = {} -- recs[id] = { skin, w, h, locked }
+	local recs = {} -- recs[id] = { skin, w, h, glow }
 	local barW = 21
 
 	local root = make("Frame", {
@@ -163,7 +154,7 @@ function Achievements.new(parent)
 	table.insert(conns, scroll:GetPropertyChangedSignal("AbsoluteCanvasSize"):Connect(updateBar))
 
 	local function skinCell(rec, on: boolean)
-		local spr = if on then Q.CellSelected elseif rec.locked then Q.CellLocked else Q.CellCopper
+		local spr = if on then Q.CellSelected else Q.CellCopper
 		local ex = if on then GLOW else 0
 		-- rim keeps the thickness the whole-drawn 262 px ink had at this width (k = w / 262)
 		Draw.apply(rec.skin, spr, rec.w / 2, rec.h / 2, rec.w + ex, rec.h + ex, rec.w / Q.CellCopper.Ink.Width)
@@ -174,7 +165,7 @@ function Achievements.new(parent)
 		local btn = Draw.img(scroll, { Name = "Cell_" .. item.Id, LayoutOrder = order }, "ImageButton")
 		Parts.interact(btn)
 		local skin = Draw.img(btn, { Name = "Skin" })
-		local rec = { skin = skin, w = cw, h = ch, locked = item.Locked }
+		local rec = { skin = skin, w = cw, h = ch }
 		local z = skin.ZIndex + 1
 		-- ref: the warm radial glow exists on the SELECTED cell only (Bag legendary glow, clipped to the cell's rounded interior)
 		local box = Draw.img(
@@ -195,16 +186,8 @@ function Achievements.new(parent)
 		skinCell(rec, item.Id == selected)
 		local badge = Draw.img(btn, { Name = "Badge", ZIndex = z + 1 })
 		local brec = Q[item.Badge] or Q.BadgeKing
-		local bw, bh = Draw.fitIn(brec, cw * (if item.Locked then 0.8 else 0.92), ch * 0.52) -- ref crown + laurels ~122 wide in a 146 cell
-		-- locked: a smaller emblem a little left and down keeps the corner padlock clear of it (ref)
-		Draw.apply(
-			badge,
-			brec,
-			cw / 2 - (if item.Locked then cw * 0.04 else 0),
-			ch * (if item.Locked then 0.34 else 0.31),
-			bw,
-			bh
-		)
+		local bw, bh = Draw.fitIn(brec, cw * 0.92, ch * 0.52) -- ref crown + laurels ~122 wide in a 146 cell
+		Draw.apply(badge, brec, cw / 2, ch * 0.31, bw, bh)
 		Parts.text(btn, {
 			Name = "Name",
 			Text = string.upper(item.Name),

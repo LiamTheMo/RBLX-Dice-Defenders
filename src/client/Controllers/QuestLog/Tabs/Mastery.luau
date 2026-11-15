@@ -1,13 +1,14 @@
 -- Quest Log, MASTERY tab: one row per dice (die, name, mastery pill + XP bar, four reward slots) in a ScrollingFrame with the
 -- Bag's styled scrollbar. Mastery.new(Slots.Grid) -> :SetRows(rows) :SetSelected(id) :OnSelect(cb(id, row)) :SetEmptyText(s)
 -- :SetVisible(b) :SetScroll(n) :Destroy(). Mastery.pill / Mastery.bar are shared with the Detail.
--- rows = SampleData.Mastery shape (Id, Name, Level, Xp, XpGoal, Die, Milestones), already sorted/filtered by the controller.
+-- rows = QuestLogic.masteryRows (Id, Name, Level, Xp, XpGoal, Art, Tint?, Milestones), already sorted/filtered by the controller.
 -- Design px. Layout keys on the content width: full (>= 700: pill + 4 slots), mid (360-700: no pill, small slots), tiny (< 360: no slots).
 
 local UiKit = require(script.Parent.Parent.Parent.UiKit)
 local Parts = require(script.Parent.Parent.Parent.Bag.Parts)
 local QuestLogic = require(script.Parent.Parent.QuestLogic)
 local Draw = require(script.Parent.Parent.Draw)
+local WHITE = Color3.new(1, 1, 1)
 
 local make = UiKit.make
 local Bag, Q = Draw.Bag, Draw.Q
@@ -83,7 +84,7 @@ end
 function Mastery.new(parent)
 	local api, conns = {}, {}
 	local rows, selected, onSelect = {}, nil, nil
-	local recs = {} -- recs[id] = { skin, w, h, next = { skin, s, cx, cy } | nil }
+	local recs = {} -- recs[id] = { skin, w, h }
 	local barW = 21
 
 	local root = make("Frame", {
@@ -146,32 +147,16 @@ function Mastery.new(parent)
 	local function skinRow(rec, on: boolean)
 		local ex = if on then SEL else 0
 		Draw.apply(rec.skin, if on then Q.RowSelected else Q.MasteryRow, rec.w / 2, rec.h / 2, rec.w + ex, rec.h + ex)
-		rec.skin.ImageColor3 = if on then Color3.new(1, 1, 1) else Color3.fromRGB(205, 160, 200) -- mute the hot magenta rim
-		local n = rec.next -- the Next slot gets the gold cell only while its row is selected
-		if n then
-			Draw.apply(
-				n.skin,
-				if on then Q.CellSelected else Q.SlotCopper,
-				n.cx,
-				n.cy,
-				n.s + (if on then 8 else 0),
-				n.s + (if on then 8 else 0)
-			)
-		end
+		rec.skin.ImageColor3 = if on then WHITE else Color3.fromRGB(205, 160, 200) -- mute the hot magenta rim
 	end
 
-	local function buildSlot(btn, m, s: number, cx: number, cy: number, z: number, rec, dieKey: string)
+	local function buildSlot(btn, m, s: number, cx: number, cy: number, z: number)
 		local skin = Draw.img(btn, { Name = "Slot" .. m.Lv, ZIndex = z })
-		Draw.apply(skin, Q.SlotCopper, cx, cy, s, s)
-		if m.State == "Next" then
-			rec.next = { skin = skin, s = s, cx = cx, cy = cy }
-		end
+		local ready = m.State == "Claimable" -- the gold cell (the old Next look) and no badge
+		local grow = if ready then 8 else 0
+		Draw.apply(skin, if ready then Q.CellSelected else Q.SlotCopper, cx, cy, s + grow, s + grow)
 		local icon = Draw.img(btn, { Name = "Icon" .. m.Lv, ZIndex = z + 2 })
-		-- ref: Lv.15 is a die filling the tile (no crown-face art: the plain die stands in), Lv.20 a plain gold crown
-		local key = if m.Lv == 15 then dieKey elseif m.Icon == "Crown" then "CrownPlain" else m.Icon
-		local irec = Q[key] or Q.Crystals
-		local iw, ih = Draw.fitIn(irec, s * 0.8, s * 0.78)
-		Draw.apply(icon, irec, cx, cy - s * 0.13, iw, ih)
+		Draw.icon(icon, m.Icon, cx, cy - s * 0.13, s * 0.8, s * 0.78)
 		local size = math.max(11, math.floor(s * 0.25)) -- ref tile label ink 33 wide
 		local label = Parts.text(btn, {
 			Name = "Lv" .. m.Lv,
@@ -183,8 +168,10 @@ function Mastery.new(parent)
 			ZIndex = z + 2,
 		}, 2)
 		Parts.fit(label, s - 4, size, 9)
-		local done = m.State == "Done"
-		local brec = if done then Q.CheckCircle else Bag.Lock
+		if ready then
+			return
+		end
+		local brec = if m.State == "Done" then Q.CheckCircle else Bag.Lock
 		local b = math.floor(s * 0.36)
 		local bw, bh = Draw.fitIn(brec, b, b)
 		local badge = Draw.img(btn, { Name = "Badge" .. m.Lv, ZIndex = z + 3 })
@@ -212,10 +199,8 @@ function Mastery.new(parent)
 		local slotsL = cw - (if full then 14 else 8) - slotsW
 		local dieBox = if full then 82 else 46 -- ref: die ~80x83, 22 from the row edge
 		local dieL = if full then 20 else 8
-		local die = Draw.img(btn, { Name = "Die", ZIndex = z })
-		local drec = Q[row.Die] or Q.DieFire
-		local dw, dh = Draw.fitIn(drec, dieBox, dieBox)
-		Draw.apply(die, drec, dieL + dieBox / 2, cy, dw, dh)
+		local die = Draw.img(btn, { Name = "Die", ImageColor3 = row.Tint or WHITE, ZIndex = z })
+		Draw.icon(die, row.Art, dieL + dieBox / 2, cy, dieBox, dieBox)
 
 		local textL = dieL + dieBox + 8
 		local clusterR = if tiny then cw - 8 else slotsL - 8
@@ -281,9 +266,9 @@ function Mastery.new(parent)
 		end
 
 		if not tiny then
-			for i, m in QuestLogic.masteryMilestones(row) do
+			for i, m in row.Milestones do
 				local cx = slotsL + (i - 1) * (s + sGap) + s / 2
-				buildSlot(btn, m, s, cx, cy, z, rec, row.Die)
+				buildSlot(btn, m, s, cx, cy, z)
 			end
 		end
 		skinRow(rec, row.Id == selected)

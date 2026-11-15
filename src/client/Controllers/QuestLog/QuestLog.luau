@@ -1,20 +1,17 @@
 -- Quest Log controller: one Shell (banner, close, three tabs), the shared Toolbar and Detail, and the Quests list.
--- QuestLog.new(parent, { hud = LobbyHud, toast = (string) -> () }) -> :Open(tab?) :Close() :Toggle() :IsOpen() :SetTab(n) :Destroy()
--- Rows come from NetClient.LastMeta.Quests plus the client-only SampleData (Studio only); re-rendered on NetClient.Meta.
--- Claim: only real "Claim" rows send ClaimQuest (one in flight per id); the next Meta decides the Claimed state.
+-- QuestLog.new(parent, { hud = LobbyHud, toast = (string) -> () (unused) }) -> :Open(tab?) :Close() :Toggle() :IsOpen() :SetTab(n) :Destroy()
+-- Rows come from NetClient.LastMeta (quests, achievement progress, mastery) joined with NetClient.LastCatalog (achievement and
+-- mastery names, goals and rewards); re-rendered on NetClient.Meta.
+-- Claim: a quest row, achievement or mastery milestone the client shows as claimable sends ClaimQuest (one in flight per id);
+-- the server re-checks it and the next Meta decides the Claimed state.
 
 local ContextActionService = game:GetService("ContextActionService")
 local GuiService = game:GetService("GuiService")
-local RunService = game:GetService("RunService")
 
 local NetClient = require(script.Parent.Parent.NetClient)
 local Shell = require(script.Parent.Parent.Bag.Shell)
 local Q = require(script.Parent.QuestSprites)
 local QuestLogic = require(script.Parent.QuestLogic)
--- Live players never see sample progress; Studio keeps it for building against the references.
-local SampleData = if RunService:IsStudio()
-	then require(script.Parent.SampleData)
-	else { Quests = {}, Achievements = {}, Mastery = {} }
 local Toolbar = require(script.Parent.Toolbar)
 local Detail = require(script.Parent.Detail)
 local Quests = require(script.Parent.Tabs.Quests)
@@ -42,8 +39,9 @@ local MASTERY_OPTIONS = {
 	{ Id = "LevelAsc", Label = "Level (Low → High)" },
 	{ Id = "Name", Label = "Name (A → Z)" },
 }
-local ACTION_LABEL = { Claim = "CLAIM", Claimed = "CLAIMED", Soon = "SOON", Progress = "CLAIM" }
+local ACTION_LABEL = { Claim = "CLAIM", Claimed = "CLAIMED", Progress = "CLAIM" } -- Progress: a disabled CLAIM
 
+-- Detail models carry ClaimId, the ClaimQuest id their button sends (nil: nothing to claim).
 local function questModel(row, busy)
 	local state = QuestLogic.claimState(row)
 	return {
@@ -51,28 +49,33 @@ local function questModel(row, busy)
 		Title = "QUEST DETAILS",
 		Name = row.Name,
 		Icon = row.Icon,
+		ClaimId = row.Id,
 		Body = { Desc = row.Desc, Progress = row.Progress, Goal = row.Goal, Gold = row.Gold, Gems = row.Gems },
 		Action = { Label = ACTION_LABEL[state], State = state, Enabled = state == "Claim" and not busy },
 	}
 end
 
-local function achModel(item)
+local function achModel(item, busy)
 	local state = QuestLogic.claimState(item)
 	return {
 		Kind = "Achievement",
 		Title = "ACHIEVEMENT",
 		Name = item.Name,
-		Body = {
-			Desc = item.Desc,
-			Progress = item.Progress,
-			Goal = item.Goal,
-			Unit = item.Unit,
-			Locked = item.Locked,
-			Badge = item.Badge,
-			BadgeBig = item.BadgeBig,
-			Rewards = item.Rewards,
-		},
-		Action = { Label = ACTION_LABEL[state], State = state, Enabled = false }, -- every sample row: never live
+		ClaimId = item.Id,
+		Body = item,
+		Action = { Label = ACTION_LABEL[state], State = state, Enabled = state == "Claim" and not busy },
+	}
+end
+
+local function masteryModel(row, pending)
+	local id, state = QuestLogic.masteryClaim(row)
+	return {
+		Kind = "Mastery",
+		Title = "DICE MASTERY",
+		Name = row.Name,
+		ClaimId = id,
+		Body = row,
+		Action = { Label = ACTION_LABEL[state], State = state, Enabled = id ~= nil and not pending[id] },
 	}
 end
 
@@ -119,15 +122,16 @@ function QuestLog.new(parent, deps)
 		local dailyAt = if meta and type(meta.DailyResetAt) == "number"
 			then meta.DailyResetAt
 			else (now // DAY + 1) * DAY
+		local weeklyAt = meta and meta.WeeklyResetAt
 		quests:SetResetText(
 			QuestLogic.resetText(dailyAt - now),
-			QuestLogic.resetText(QuestLogic.weeklyResetAt(now) - now)
+			if type(weeklyAt) == "number" then QuestLogic.resetText(weeklyAt - now) else nil
 		)
 	end
 
 	local function render()
 		local meta = NetClient.LastMeta
-		local all = QuestLogic.questRows(meta and meta.Quests, SampleData.Quests)
+		local all = QuestLogic.questRows(meta and meta.Quests)
 		rows = QuestLogic.filterQuests(all, query, mode)
 		quests:SetRows(rows)
 		refreshTimers()
@@ -148,9 +152,10 @@ function QuestLog.new(parent, deps)
 	end
 
 	local function renderAch()
-		achItems = QuestLogic.sortAchievements(QuestLogic.filterByName(SampleData.Achievements, query), mode)
+		local all = QuestLogic.achievementRows(NetClient.LastCatalog, NetClient.LastMeta)
+		achItems = QuestLogic.sortAchievements(QuestLogic.filterByName(all, query), mode)
 		achievements:SetItems(achItems)
-		local done, total = QuestLogic.achievementCount(SampleData.Achievements) -- whole list, not the filtered view
+		local done, total = QuestLogic.achievementCount(all) -- whole list, not the filtered view
 		toolbar:SetCount(if total > 0 then done .. " / " .. total else nil)
 		local pick
 		for _, item in achItems do
@@ -169,7 +174,8 @@ function QuestLog.new(parent, deps)
 	end
 
 	local function renderMastery()
-		local list = QuestLogic.sortMastery(QuestLogic.filterByName(SampleData.Mastery, query), mode)
+		local all = QuestLogic.masteryRows(NetClient.LastCatalog, NetClient.LastMeta)
+		local list = QuestLogic.sortMastery(QuestLogic.filterByName(all, query), mode)
 		mastery:SetRows(list)
 		local pick
 		for _, row in list do
@@ -187,6 +193,35 @@ function QuestLog.new(parent, deps)
 		end
 	end
 
+	local function renderTab()
+		local tab = shell:GetTab()
+		if tab == 1 then
+			render()
+		elseif tab == 2 then
+			renderAch()
+		elseif tab == 3 then
+			renderMastery()
+		end
+	end
+
+	-- Sends ClaimQuest(id) once (`ok` = the button is live); the busy button shows until the reply, or the next Meta after a success.
+	local function claim(id: string?, ok: boolean)
+		if not id or not ok or pending[id] then
+			return
+		end
+		pending[id] = true
+		renderTab() -- re-show the detail with the busy button
+		task.spawn(function()
+			local sent = NetClient.Request("ClaimQuest", id) -- rejection toast comes from Lobby; Meta shows the result
+			if not sent then
+				pending[id] = nil
+			end
+			if shell:IsOpen() then
+				renderTab()
+			end
+		end)
+	end
+
 	-- HOOKS ------------------------------------------------------------------------------------------------
 	hooks = {
 		OnSelect = function(id: string, row) -- default: highlight the row and show it in the detail panel
@@ -195,60 +230,25 @@ function QuestLog.new(parent, deps)
 			detail:Show(questModel(row, pending[id]))
 		end,
 		OnClaim = function(id: string, row)
-			if row.Sample then
-				deps.toast("Coming soon!")
-				return
-			end
-			if QuestLogic.claimState(row) ~= "Claim" or pending[id] then
-				return
-			end
-			pending[id] = true
-			hooks.OnSelect(id, row) -- re-show the detail with the busy button
-			task.spawn(function()
-				local ok = NetClient.Request("ClaimQuest", id) -- rejection toast comes from Lobby; Meta shows the result
-				if not ok then
-					pending[id] = nil
-				end
-				if shell:IsOpen() and shell:GetTab() == 1 then
-					render()
-				end
-			end)
+			claim(id, QuestLogic.claimState(row) == "Claim")
 		end,
 		OnAchSelect = function(id: string, item) -- Achievements tab: highlight the cell and show it in the detail panel
 			achSelected = id
 			achievements:SetSelected(id)
-			detail:Show(achModel(item))
+			detail:Show(achModel(item, pending[id]))
 		end,
 		OnMasterySelect = function(id: string, row) -- Mastery tab: highlight the cell and show it in the detail panel
 			masterySelected = id
 			mastery:SetSelected(id)
-			detail:Show({ Kind = "Mastery", Title = "DICE MASTERY", Name = row.Name, Body = row })
+			detail:Show(masteryModel(row, pending))
 		end,
 		OnSearch = function(q: string)
-			local tab = shell:GetTab()
-			if tab >= 1 and tab <= 3 then
-				query = q
-				if tab == 1 then
-					render()
-				elseif tab == 2 then
-					renderAch()
-				else
-					renderMastery()
-				end
-			end
+			query = q
+			renderTab()
 		end,
 		OnOption = function(id: string)
-			local tab = shell:GetTab()
-			if tab >= 1 and tab <= 3 then
-				mode = id
-				if tab == 1 then
-					render()
-				elseif tab == 2 then
-					renderAch()
-				else
-					renderMastery()
-				end
-			end
+			mode = id
+			renderTab()
 		end,
 	}
 	quests:OnSelect(function(id, row)
@@ -269,17 +269,12 @@ function QuestLog.new(parent, deps)
 	toolbar:OnOption(function(id)
 		hooks.OnOption(id)
 	end)
-	detail:OnAction(function()
-		if shell:GetTab() == 2 then
-			deps.toast("Coming soon!") -- sample achievements never touch state or remotes
-		elseif selected then
-			for _, row in rows do
-				if row.Id == selected then
-					hooks.OnClaim(row.Id, row)
-				end
-			end
-		end
+	detail:OnAction(function(_, model)
+		claim(model.ClaimId, model.Action.Enabled)
 	end)
+	quests:SetEmptyText("No quests found")
+	achievements:SetEmptyText("No achievements found")
+	mastery:SetEmptyText("No dice found")
 
 	local function showTab()
 		local tab = shell:GetTab()
@@ -300,17 +295,8 @@ function QuestLog.new(parent, deps)
 		mastery:SetVisible(tab == 3)
 		if tab == 1 then
 			selected = nil
-			quests:SetEmptyText("No quests found")
-			render()
-		elseif tab == 2 then
-			achievements:SetEmptyText(
-				if #SampleData.Achievements == 0 then "Achievements are coming soon!" else "No achievements found"
-			)
-			renderAch()
-		else
-			mastery:SetEmptyText(if #SampleData.Mastery == 0 then "Dice mastery is coming soon!" else "No dice found")
-			renderMastery()
 		end
+		renderTab()
 	end
 
 	shell:SetTabs({
@@ -348,8 +334,8 @@ function QuestLog.new(parent, deps)
 		conns,
 		NetClient.Meta:Connect(function()
 			table.clear(pending)
-			if shell:IsOpen() and shell:GetTab() == 1 then
-				render()
+			if shell:IsOpen() then
+				renderTab()
 			end
 		end)
 	)

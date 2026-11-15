@@ -1,9 +1,9 @@
 -- Quest Log detail panel, one template for all three tabs: a scrolling body (kind-specific widgets) over one bottom action button.
 -- Detail.new(Slots.Detail) -> :Show(model|nil) :OnAction(cb(state, model)) :Destroy
 -- model = { Kind = "Quest" | "Achievement" | "Mastery", Title, Name, Icon (QuestSprites key), Action = { Label, State, Enabled }, Body }
---   Quest Body = { Desc, Progress, Goal, Gold, Gems? } (Gems nil hides the gems box). State = Claim | Claimed | Soon | Progress.
---   Achievement Body = { Desc, Progress, Goal, Unit?, Locked?, Badge, BadgeBig?, Rewards = { { Name, Amount } } }.
---   Mastery Body = the mastery row { Desc, Level, Xp, XpGoal, Die, Milestones } (SampleData.Mastery shape); Title "DICE MASTERY", no Action.
+--   Quest Body = { Desc, Progress, Goal, Gold, Gems? } (Gems nil hides the gems box). State = Claim | Claimed | Progress.
+--   Achievement Body = { Desc, Progress, Goal, Badge, Rewards = Catalog reward lines }; the button sits in its reward row.
+--   Mastery Body = a QuestLogic.masteryRows row; the button sits under the XP bar (compact: right of the reward cards).
 
 local UiKit = require(script.Parent.Parent.UiKit)
 local Parts = require(script.Parent.Parent.Bag.Parts)
@@ -21,11 +21,10 @@ local COMPACT_H = 540 -- slots shorter than this (phones) drop the hero art and 
 local INSET = 12 -- the scroll sits inside the panel rim, so clipped art and the scroll thumb never cross it
 local ACTION_H = 80 -- bottom strip: the button (248x81 box, ink ~238x66, ref 238x~66) stays put while the body scrolls
 local BODY_H = 508
-local MAST_H = 601 -- Mastery body: no action button, so no bottom strip (the scroll is the slot + EXT, so it never scrolls)
+local MAST_H = 601 -- Mastery body: the CLAIM button sits in its body, so no bottom strip (the scroll is the slot + EXT, so it never scrolls)
 local ACH_H = 601 -- Achievement body: the CLAIM button sits in its reward row, so no bottom strip
 -- compact (phone) bodies: a separate stacked layout per kind that fits the panel without scrolling (hero art and description dropped)
 local COMPACT_BODY = { Quest = 216, Achievement = 245, Mastery = 278 }
-local REWARD_ICON = { Crystals = "Crystals", Die = "SkinFire" } -- Die: closest available die art
 local BOX_H, BOX_K = 55, 0.55 -- StatRow boxes: visible height and rim scale
 local RIBBON_W, RIBBON_TEXT, RIBBON_MIN = 300, 26, 14 -- one title ribbon for all three kinds: same width, place and text cap
 local COIN_TEXT = Color3.fromRGB(251, 243, 137)
@@ -319,13 +318,6 @@ function Detail.new(parent)
 	local mPill = Mastery.pill(mastery, "LevelPill", 200, mz + 4)
 	mPill.Frame.AnchorPoint = Vector2.new(0.5, 0.5)
 	local mBar, mBarW
-	local mDesc = Parts.text(mastery, {
-		Name = "Desc",
-		TextSize = 17,
-		TextWrapped = true,
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		ZIndex = mz + 4,
-	}, 2)
 	local mDiv = Draw.img(mastery, { Name = "Divider", ZIndex = mz + 2 })
 	local mNext = Draw.img(mastery, { Name = "NextBanner", ZIndex = mz + 3 })
 	local mNextText = Parts.text(mastery, {
@@ -393,7 +385,7 @@ function Detail.new(parent)
 		end)
 	)
 
-	local function placeAction() -- the strip's size and the button's, for the current tier (the Achievement branch overrides the button)
+	local function placeAction() -- the strip's size and the button's, for the current tier (Achievement / Mastery override the button)
 		actions.Size = UDim2.new(1, 0, 0, actionH())
 		actions.Position = UDim2.new(0.5, 0, 1, if compact then -8 else 8) -- ref: CLAIM sits close to the bottom rim
 		visual:SetAttribute("TextMax", if compact then 32 else 43) -- ref CLAIM ink ~115 wide
@@ -407,7 +399,7 @@ function Detail.new(parent)
 			return
 		end
 		fitScroll()
-		if not (current and current.Kind == "Achievement") then
+		if not current or current.Kind == "Quest" then
 			placeAction()
 		end
 		local W = slotW - 2 * (if slotW >= 380 then 40 else 14)
@@ -560,7 +552,7 @@ function Detail.new(parent)
 		Draw.apply(aGlow, Q.GlowRadial, cx, 140, 260, 210) -- ref: hot orange radial behind the badge over the purple panel
 		aBloom.Visible, aBurst.Visible = not compact, not compact
 		aGlow.Visible = not compact -- its soft square would end in a hard edge at the scroll rim
-		local brec = Q[b.BadgeBig] or Q[b.Badge] or Q.BadgeKing
+		local brec = Q[(b.Badge or "") .. "Big"] or Q[b.Badge] or Q.BadgeKing -- the hero cut when one exists
 		local bw, bh = Draw.fitIn(brec, math.min(250, W - 20), if compact then 96 else 130)
 		Draw.apply(aBadge, brec, cx, if compact then 112 else 140, bw, bh)
 		local reach = math.min(112, W / 2 - 24)
@@ -598,9 +590,8 @@ function Detail.new(parent)
 			aBar = Draw.bar(achievement, "ProgressBar", aBarW, 30, az + 4, 27) -- ref "LVL 10 / 10" ink 120 wide
 		end
 		at(aBar.Frame, cx, 418)
-		local done = not b.Locked and b.Goal > 0 and b.Progress >= b.Goal
-		local pct = if b.Locked then 0 else QuestLogic.percent(b.Progress, b.Goal)
-		aBar:Set(pct, QuestLogic.progressText(b.Progress, b.Goal, b.Unit), done)
+		local done = b.Goal > 0 and b.Progress >= b.Goal
+		aBar:Set(QuestLogic.percent(b.Progress, b.Goal), QuestLogic.progressText(b.Progress, b.Goal), done)
 		at(aRewPill, cx, 483)
 		-- Reward row (ref): two 112x116 boxes left of the CLAIM button (128x59), all centred on y 540.
 		local rowY = 540
@@ -612,9 +603,8 @@ function Detail.new(parent)
 			if entry then
 				local rx = cx + (-122 + (i - 1) * 113) * k
 				Draw.apply(r.box, Bag.StatRow, rx, rowY, 112 * k, 116 * k, BOX_K)
-				local rec = Q[REWARD_ICON[entry.Name] or "Crystals"]
-				local iw, ih = Draw.fitIn(rec, 87 * k, 82 * k) -- ref crystals ~75x80, icons were ~17% small
-				Draw.apply(r.icon, rec, rx + 2, rowY - 12 * k, iw, ih)
+				-- ref crystals ~75x80, icons were ~17% small
+				Draw.icon(r.icon, QuestLogic.rewardIcon(entry), rx + 2, rowY - 12 * k, 87 * k, 82 * k)
 				local rgw, rgh = Draw.fitIn(Bag.GlowLegendary, 100 * k, 100 * k)
 				Draw.apply(r.glow, Bag.GlowLegendary, rx + 2, rowY - 12 * k, rgw, rgh)
 				r.text.Text = "x" .. QuestLogic.format(entry.Amount)
@@ -644,9 +634,7 @@ function Detail.new(parent)
 				if b.Rewards[i] then
 					local rx = cx - 93 + (i - 1) * 76
 					Draw.apply(r.box, Bag.StatRow, rx, y, 72, 66, BOX_K)
-					local rec = Q[REWARD_ICON[b.Rewards[i].Name] or "Crystals"]
-					local iw, ih = Draw.fitIn(rec, 34, 32)
-					Draw.apply(r.icon, rec, rx, y - 10, iw, ih)
+					Draw.icon(r.icon, QuestLogic.rewardIcon(b.Rewards[i]), rx, y - 10, 34, 32)
 					r.text.Size = UDim2.fromOffset(68, 22)
 					at(r.text, rx, y + 22)
 					Parts.fit(r.text, 68, 16, 12)
@@ -677,9 +665,15 @@ function Detail.new(parent)
 		Draw.apply(mRays, Q.Rays, cx, if compact then 108 else 135, rayW, rayH)
 		local hw, hh = Draw.fitIn(Q.Halo, if compact then 140 else 190, if compact then 51 else 69)
 		Draw.apply(mHalo, Q.Halo, cx, if compact then 146 else 164, hw, hh)
-		local drec = Q[b.Die] or Q.DieFire
-		local dw, dh = Draw.fitIn(drec, if compact then 88 else 125, if compact then 90 else 127)
-		Draw.apply(mDie, drec, cx, if compact then 104 else 129, dw, dh)
+		Draw.icon(
+			mDie,
+			b.Art,
+			cx,
+			if compact then 104 else 129,
+			if compact then 88 else 125,
+			if compact then 90 else 127
+		)
+		mDie.ImageColor3 = b.Tint or Color3.new(1, 1, 1) -- the roll glyph takes the die colour; elemental art keeps its own
 		local reach = math.min(112, W / 2 - 24)
 		local sp = {
 			{ Q.Sparkle1, -reach, -50, 36 },
@@ -707,10 +701,14 @@ function Detail.new(parent)
 		end
 		at(mBar.Frame, cx, 291)
 		mBar:Set(b.Xp, b.XpGoal)
-		at(mDesc, cx, 342)
-		mDesc.Size = UDim2.fromOffset(300, 48)
-		mDesc.Text = b.Desc or ""
-		mDesc.TextSize = Parts.fitSize(mDesc.Text, 300 * 2, 20, 13)
+		-- CLAIM (the lowest claimable milestone) where a description line sat: the Achievement detail's button, same art and
+		-- size, centred between the XP bar ink (275..307) and the divider ink (~369..389)
+		visual:SetAttribute("TextMax", 32)
+		hit.Parent = mastery
+		hit.ZIndex = mz + 8
+		hit.Size = UDim2.fromOffset(136, 64)
+		hit.Position = UDim2.fromOffset(cx, 338)
+		visual.Size = UDim2.fromOffset(128, 59)
 		sized(mDiv, Bag.DividerGold, 379, math.min(330, W))
 		local nw = math.min(210, W)
 		sized(mNext, Q.NextRewards, 412, nw)
@@ -729,9 +727,7 @@ function Detail.new(parent)
 			if entry then
 				local rx = cx + (i - 1 - (#rewards - 1) / 2) * (bxw + 5)
 				Draw.apply(r.box, Q.RewardBoxPlain, rx, cy, bxw, bxh)
-				local irec = Q[entry.Icon] or Q.Crystals
-				local iw, ih = Draw.fitIn(irec, 92, 92) -- ref die ~85 wide
-				Draw.apply(r.icon, irec, rx, cy - bxh * 0.17, iw, ih)
+				Draw.icon(r.icon, entry.Icon, rx, cy - bxh * 0.17, 92, 92) -- ref die ~85 wide
 				r.name.Text = entry.Name
 				r.name.Size = UDim2.fromOffset(bxw - 30, 22)
 				at(r.name, rx, cy + bxh * 0.2)
@@ -740,17 +736,19 @@ function Detail.new(parent)
 				local gx = rx - (27 + 4 + 52) / 2 -- lock + "Lv. N" group centred in the box
 				Draw.apply(r.pill, Bag.Search, rx, cy + bxh * 0.37, math.min(bxw - 24, 146), 30)
 				Draw.apply(r.lock, Bag.Lock, gx + 13.5, cy + bxh * 0.37, lw, lh)
+				local locked = entry.State == "Locked" -- a Claimable milestone drops the padlock and centres its level
+				r.lock.Visible = locked
 				r.lv.Text = "Lv. " .. entry.Lv
-				r.lv.TextXAlignment = Enum.TextXAlignment.Left
+				r.lv.TextXAlignment = if locked then Enum.TextXAlignment.Left else Enum.TextXAlignment.Center
 				r.lv.TextSize = 26 -- ref "Lv. 15" ink 52 wide
 				r.lv.Size = UDim2.fromOffset(60, 30)
-				at(r.lv, gx + 27 + 4 + 30, cy + bxh * 0.37)
+				at(r.lv, if locked then gx + 27 + 4 + 30 else rx, cy + bxh * 0.37)
 			end
 		end
-		for _, v in { mFlagL, mFlagR, mRays, mHalo, mDie, mDesc, mDiv } do
+		for _, v in { mFlagL, mFlagR, mRays, mHalo, mDie, mDiv } do
 			v.Visible = not compact
 		end
-		if compact then -- stack: ribbon, name, level pill, XP bar, NEXT REWARDS and two small cards
+		if compact then -- stack: ribbon, name, level pill, XP bar, NEXT REWARDS, then two small cards and CLAIM in one row
 			local slack = math.max(0, math.floor((viewFor("Mastery") - COMPACT_BODY.Mastery) * 0.5))
 			at(mName, cx, 68 + slack * 0.3)
 			mName.Size = UDim2.fromOffset(W - 10, 34)
@@ -759,28 +757,31 @@ function Detail.new(parent)
 			at(mBar.Frame, cx, 133 + slack * 0.7)
 			sized(mNext, Q.NextRewards, 175 + slack * 0.85, nw) -- clear gap under the XP bar
 			at(mNextText, cx, 175 + slack * 0.85)
-			local cw = math.min(86, math.floor((W - 8) / 2))
+			-- the Achievement compact row: two 72-wide cards on its 76 pitch (the old 86-wide card scaled by k), the button right
+			local cw = 72
+			local k = cw / 86
 			local ch = cw * Q.RewardBoxPlain.Ink.Height / Q.RewardBoxPlain.Ink.Width
 			local cyc = 190 + slack + ch / 2
 			for i, r in mRewards do
 				local entry = rewards[i]
 				if entry then
-					local rx = cx + (i - 1 - (#rewards - 1) / 2) * (cw + 5)
+					local rx = cx - 93 + (i - 1) * 76
 					Draw.apply(r.box, Q.RewardBoxPlain, rx, cyc, cw, ch)
-					local irec = Q[entry.Icon] or Q.Crystals
-					local iw, ih = Draw.fitIn(irec, 36, 34)
-					Draw.apply(r.icon, irec, rx, cyc - 19, iw, ih)
+					Draw.icon(r.icon, entry.Icon, rx, cyc - 19 * k, 36 * k, 34 * k)
 					r.name.Size = UDim2.fromOffset(cw - 8, 18)
-					at(r.name, rx, cyc + 8)
-					Parts.fit(r.name, cw - 8, 13, 10) -- smaller type so the label keeps >= 6 px per side
-					Draw.apply(r.pill, Bag.Search, rx, cyc + 27, cw - 12, 20)
-					local lw, lh = Draw.fitIn(Bag.Lock, 14, 14)
-					Draw.apply(r.lock, Bag.Lock, rx - 17, cyc + 27, lw, lh)
-					r.lv.TextSize = 13
-					r.lv.Size = UDim2.fromOffset(36, 18)
-					at(r.lv, rx + 10, cyc + 27)
+					at(r.name, rx, cyc + 8 * k)
+					Parts.fit(r.name, cw - 8, 13, 10) -- smaller type so the label keeps >= 4 px per side
+					Draw.apply(r.pill, Bag.Search, rx, cyc + 27 * k, cw - 12, 20 * k)
+					local lw, lh = Draw.fitIn(Bag.Lock, 14 * k, 14 * k)
+					Draw.apply(r.lock, Bag.Lock, rx - 17 * k, cyc + 27 * k, lw, lh)
+					r.lv.Size = UDim2.fromOffset(36 * k, 18)
+					Parts.fit(r.lv, 36 * k, 13, 9)
+					at(r.lv, if entry.State == "Locked" then rx + 10 * k else rx, cyc + 27 * k)
 				end
 			end
+			hit.Size = UDim2.fromOffset(112, 60)
+			hit.Position = UDim2.fromOffset(cx + (if #rewards > 0 then 79 else 0), cyc)
+			visual.Size = UDim2.fromOffset(104, 56)
 		end
 	end
 
@@ -796,7 +797,7 @@ function Detail.new(parent)
 		fitScroll()
 		scroll.CanvasSize = UDim2.fromOffset(0, bodyH(kind))
 		body.Size = UDim2.fromOffset(body.Size.X.Offset, bodyH(kind))
-		if not ach then -- back in the bottom strip (the Achievement branch moves it into its reward row)
+		if not tall then -- back in the bottom strip (Achievement and Mastery move it into their bodies)
 			hit.Parent = actions
 			hit.ZIndex = actions.ZIndex + 1
 			hit.Position = UDim2.fromScale(0.5, 0.5)

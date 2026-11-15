@@ -1,10 +1,33 @@
--- Quest Log pure logic: row building, filtering, sorting, text formatting. No Roblox APIs (unit-tested headless).
+-- Quest Log pure logic: row building, filtering, sorting, text formatting. No Instances (unit-tested headless).
+-- Display only: claim states and targets just enable buttons; the server re-checks every ClaimQuest.
+
+local Display = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Display"))
+local Sprites = require(script.Parent.Parent.Sprites)
 
 local QuestLogic = {}
 
 local DAY, HOUR, MIN = 86400, 3600, 60
-local REAL_ICONS = { D1 = "IconDie", S1 = "IconQuestScroll", S2 = "IconWings", S3 = "IconCrown" }
+local REAL_ICONS = {
+	D1 = "IconDie",
+	S1 = "IconQuestScroll",
+	S2 = "IconWings",
+	S3 = "IconCrown",
+	W1 = "IconGalaxyDie",
+	W2 = "IconChest",
+}
 local SECTION_ORDER = { "Daily", "Weekly", "Story" }
+-- Reward line Kind -> icon: a QuestSprites key, or the HUD coin / gem asset id (menus reuse the HUD currency icons).
+local REWARD_ICON = {
+	Gold = Sprites.Coin,
+	Gems = Sprites.Gem,
+	Xp = "BadgeXp",
+	Material = "Crystals",
+	Item = "Potion",
+	Die = "IconDie",
+	Cosmetic = "CrownPlain",
+}
+local COUNTER_LABEL = { Gold = "Gold", Gems = "Gems", Xp = "XP" }
+local CATALOG_LIST = { Material = "Materials", Item = "Items", Cosmetic = "Cosmetics", Die = "Dice" }
 
 -- 2,500 / -2,500
 function QuestLogic.format(n: number): string
@@ -27,9 +50,8 @@ function QuestLogic.percent(progress: number, goal: number): number
 	return math.clamp(progress / goal, 0, 1)
 end
 
-function QuestLogic.progressText(progress: number, goal: number, unit: string?): string
-	local prefix = if unit then unit .. " " else ""
-	return prefix .. QuestLogic.format(progress) .. " / " .. QuestLogic.format(goal)
+function QuestLogic.progressText(progress: number, goal: number): string
+	return QuestLogic.format(progress) .. " / " .. QuestLogic.format(goal)
 end
 
 function QuestLogic.resetText(secondsLeft: number): string
@@ -44,7 +66,7 @@ function QuestLogic.resetText(secondsLeft: number): string
 	return "<1m"
 end
 
--- Next Monday 00:00 UTC strictly after `now` (epoch day 0 was a Thursday). Sample timer only.
+-- Next Monday 00:00 UTC strictly after `now` (epoch day 0 was a Thursday). The Roll sample rotation timer only.
 function QuestLogic.weeklyResetAt(now: number): number
 	local day = now // DAY
 	return (day + 7 - (day + 3) % 7) * DAY
@@ -58,7 +80,7 @@ function QuestLogic.claimState(row): string
 	if row.Claimed then
 		return "Claimed"
 	elseif complete(row) then
-		return if row.Sample then "Soon" else "Claim"
+		return "Claim"
 	end
 	return "Progress"
 end
@@ -78,28 +100,21 @@ local function realRow(q)
 		Goal = q.Goal,
 		Progress = q.Progress,
 		Gold = if type(q.Gold) == "number" then q.Gold else 0,
-		Section = if q.Daily then "Daily" else "Story",
+		Gems = if type(q.Gems) == "number" and q.Gems > 0 then q.Gems else nil, -- nil hides the gems box
+		Section = q.Section,
 		Claimed = q.Claimed == true,
-		Sample = false,
 	}
 end
 
--- Real quests (server meta, may be nil/malformed) then sample rows, grouped Daily, Weekly, Story.
-function QuestLogic.questRows(quests, sample)
+-- Meta.Quests (may be nil/malformed) grouped Daily, Weekly, Story by their Section.
+function QuestLogic.questRows(quests)
 	local buckets = { Daily = {}, Weekly = {}, Story = {} }
-	local function add(row)
-		if row and buckets[row.Section] then
-			table.insert(buckets[row.Section], row)
-		end
-	end
 	if type(quests) == "table" then
 		for _, q in quests do
-			add(realRow(q))
-		end
-	end
-	if type(sample) == "table" then
-		for _, row in sample do
-			add(row)
+			local row = realRow(q)
+			if row and buckets[row.Section] then
+				table.insert(buckets[row.Section], row)
+			end
 		end
 	end
 	local out = {}
@@ -176,11 +191,8 @@ local function achPercent(a): number
 	return QuestLogic.percent(a.Progress, a.Goal)
 end
 
--- Complete first, then in progress, locked last.
+-- Complete first, then in progress.
 local function achGroup(a): number
-	if a.Locked then
-		return 3
-	end
 	return if achPercent(a) >= 1 then 1 else 2
 end
 
@@ -221,32 +233,138 @@ end
 function QuestLogic.achievementCount(items): (number, number)
 	local done = 0
 	for _, a in items do
-		if not a.Locked and achPercent(a) >= 1 then
+		if achPercent(a) >= 1 then
 			done += 1
 		end
 	end
 	return done, #items
 end
 
--- {Lv, Icon, Name, State = Done | Next | Locked}
-function QuestLogic.masteryMilestones(row)
-	local out, nextFound = {}, false
-	for _, m in row.Milestones or {} do
-		local state = "Locked"
-		if row.Level >= m.Lv then
-			state = "Done"
-		elseif not nextFound then
-			state, nextFound = "Next", true
+-- Icon for one Catalog reward line {Kind, Id?, Amount}: a QuestSprites key or a raw asset id (draw with Draw.icon).
+function QuestLogic.rewardIcon(line): string
+	return REWARD_ICON[line and line.Kind] or "Crystals"
+end
+
+-- "30 Gems + XP Tome": Catalog reward lines as text; ids are named from the catalogue lists (" x2" when more than one).
+function QuestLogic.rewardsText(lines, catalog): string
+	local parts = {}
+	for _, line in lines or {} do
+		local text = COUNTER_LABEL[line.Kind]
+		if text then
+			text = QuestLogic.format(line.Amount) .. " " .. text
+		else
+			text = line.Id or line.Kind
+			for _, entry in catalog and catalog[CATALOG_LIST[line.Kind]] or {} do
+				if entry.Id == line.Id then
+					text = entry.Name
+				end
+			end
+			if line.Amount > 1 then
+				text ..= " x" .. QuestLogic.format(line.Amount)
+			end
 		end
-		table.insert(out, { Lv = m.Lv, Icon = m.Icon, Name = m.Name, State = state })
+		table.insert(parts, text)
+	end
+	return table.concat(parts, " + ")
+end
+
+-- Catalog.Achievements (config order) joined with Meta.Achievements by Id; one missing from either side is left out.
+-- { Id, Name, Desc, Goal, Badge, Rewards, Progress, Claimed }
+function QuestLogic.achievementRows(catalog, meta)
+	local state = {}
+	for _, s in meta and meta.Achievements or {} do
+		if type(s) == "table" and type(s.Id) == "string" and type(s.Progress) == "number" then
+			state[s.Id] = s
+		end
+	end
+	local out = {}
+	for _, a in catalog and catalog.Achievements or {} do
+		local s = state[a.Id]
+		if s then
+			table.insert(out, {
+				Id = a.Id,
+				Name = a.Name,
+				Desc = a.Desc,
+				Goal = a.Goal,
+				Badge = a.Badge,
+				Rewards = a.Rewards or {},
+				Progress = s.Progress,
+				Claimed = s.Claimed == true,
+			})
+		end
 	end
 	return out
 end
 
--- The first two milestones not yet reached.
+-- Die art: the elemental Sprites.DieArt image, else the roll glyph tinted with the Display colour (the Bag DICE rule).
+local function dieArt(id: string): (string, Color3?)
+	local name = Sprites.DieArt[id]
+	local art = name and Sprites.Dice[name]
+	if art then
+		return art, nil
+	end
+	local info = Display.Dice[id]
+	return Sprites.Icon.Roll, info and info.Color
+end
+
+-- One row per Meta.Mastery entry (owned dice): { Id, Name, Level, Xp, XpGoal, Art, Tint?, Milestones }, each milestone
+-- { Lv, Icon (its first reward line), Name (rewardsText), State = Done (claimed) | Claimable (Level >= Lv) | Locked }.
+function QuestLogic.masteryRows(catalog, meta)
+	local names = {}
+	for _, d in catalog and catalog.Dice or {} do
+		names[d.Id] = d.Name
+	end
+	local milestones = catalog and catalog.Mastery and catalog.Mastery.Milestones or {}
+	local out = {}
+	for _, m in meta and meta.Mastery or {} do
+		if type(m) == "table" and type(m.Id) == "string" and type(m.Level) == "number" then
+			local claimed = {}
+			for _, lv in m.Claimed or {} do
+				claimed[lv] = true
+			end
+			local list = {}
+			for _, ms in milestones do
+				table.insert(list, {
+					Lv = ms.Lv,
+					Icon = QuestLogic.rewardIcon(ms.Rewards[1]),
+					Name = QuestLogic.rewardsText(ms.Rewards, catalog),
+					State = if claimed[ms.Lv] then "Done" elseif m.Level >= ms.Lv then "Claimable" else "Locked",
+				})
+			end
+			local art, tint = dieArt(m.Id)
+			local info = Display.Dice[m.Id]
+			table.insert(out, {
+				Id = m.Id,
+				Name = names[m.Id] or (info and info.Name) or m.Id,
+				Level = m.Level,
+				Xp = m.Xp or 0,
+				XpGoal = m.XpGoal or 0,
+				Art = art,
+				Tint = tint,
+				Milestones = list,
+			})
+		end
+	end
+	return out
+end
+
+-- The Mastery detail's CLAIM: ("<dieId>:<Lv>" of the lowest Claimable milestone or nil, state Claim | Claimed | Progress).
+function QuestLogic.masteryClaim(row): (string?, string)
+	local done = 0
+	for _, m in row.Milestones do
+		if m.State == "Claimable" then
+			return row.Id .. ":" .. m.Lv, "Claim"
+		elseif m.State == "Done" then
+			done += 1
+		end
+	end
+	return nil, if done > 0 and done == #row.Milestones then "Claimed" else "Progress"
+end
+
+-- The first two milestones not yet claimed.
 function QuestLogic.nextRewards(row)
 	local out = {}
-	for _, m in QuestLogic.masteryMilestones(row) do
+	for _, m in row.Milestones do
 		if m.State ~= "Done" and #out < 2 then
 			table.insert(out, m)
 		end

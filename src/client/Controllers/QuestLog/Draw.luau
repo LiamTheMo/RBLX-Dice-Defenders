@@ -66,6 +66,22 @@ function Draw.apply(inst, rec, cx: number, cy: number, inkW: number, inkH: numbe
 	return inst
 end
 
+-- Icon fitted in maxW x maxH centred at (cx, cy): a QuestSprites key (or record) by its ink, or a raw asset id (the HUD
+-- coin / gem, die art) letterboxed with Fit.
+function Draw.icon(inst, ref, cx: number, cy: number, maxW: number, maxH: number)
+	local rec = if type(ref) == "table" then ref else Q[ref]
+	if rec then
+		local w, h = Draw.fitIn(rec, maxW, maxH)
+		return Draw.apply(inst, rec, cx, cy, w, h)
+	end
+	inst.Image = ref or ""
+	inst.ScaleType = Enum.ScaleType.Fit
+	inst.AnchorPoint = Vector2.new(0.5, 0.5)
+	inst.Size = UDim2.fromOffset(round(maxW), round(maxH))
+	inst.Position = UDim2.fromOffset(round(cx), round(cy))
+	return inst
+end
+
 -- Title centre y for a DetailRibbon of ink height inkH drawn at cy: the middle of its front band (sprite row 41, above the ink
 -- centre because the folded tails hang lower), less the ~0.05 x TextSize that caps sit below their text box's centre.
 local RIBBON_BAND_Y = 41

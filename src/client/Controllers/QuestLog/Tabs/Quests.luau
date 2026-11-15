@@ -174,7 +174,7 @@ function Quests.new(parent)
 		local right = cw - (if full then 5 else 6)
 		local claimLeft = right - claimW
 		local regionCx = claimLeft + claimW / 2
-		if state == "Claim" or state == "Soon" then
+		if state == "Claim" then
 			local hit = Draw.img(btn, {
 				Name = "ClaimHit",
 				AnchorPoint = Vector2.new(0.5, 0.5),
@@ -186,9 +186,8 @@ function Quests.new(parent)
 			local visual = Parts.button(hit, {
 				Name = "Claim",
 				Style = "Green",
-				Label = if state == "Soon" then "SOON" else "CLAIM",
+				Label = "CLAIM",
 				TextSize = if full then 22 elseif tiny then 13 else 18,
-				Enabled = state == "Claim",
 				Size = UDim2.fromOffset(claimW + (if tiny then 8 else 3), claimH + 2),
 			})
 			visual.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -268,7 +267,7 @@ function Quests.new(parent)
 		local gold = "+" .. QuestLogic.format(row.Gold or 0)
 		local gems = if row.Gems then "+" .. QuestLogic.format(row.Gems) else nil
 		local rewardLeft = claimLeft - 10
-		local wide = row.Section ~= "Daily" and state ~= "Claim" and state ~= "Soon" and state ~= "Claimed"
+		local wide = row.Section ~= "Daily" and state == "Progress"
 		if full then
 			-- ref: daily gem icon 79 left of CLAIM, coin 91 left of the gem; weekly rows (no button) gem at -96 from the edge, coin 118 left
 			local gemL = if wide then cw - 96 else claimLeft - 79
