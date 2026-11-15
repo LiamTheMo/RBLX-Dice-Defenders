@@ -1,7 +1,7 @@
 -- Daily Rewards menu view: the claim strip, six day cards, the Day 7 chest card and the progress / CLAIM / timer bar, in the shared shell's slot.
--- Visual only: no NetClient, no game data. Design px under the shell's UIScale; the slot's Size offset and "Compact" attribute pick the layout.
--- View.new(slot) -> :SetDays(SampleData.Days) :SetStreak(streak, claimedToday) :SetTimer(prefix?, value?) :SetClaimState("Ready" | "Claimed" | "Soon")
---   :SetSoon(on) :OnAction(cb()) (a CLAIM press while "Ready") :Destroy()
+-- Visual only: no NetClient. Design px under the shell's UIScale; the slot's Size offset and "Compact" attribute pick the layout.
+-- View.new(slot) -> :SetDays(DailyLogic.days(Catalog.Daily.Days)) :SetLogin(Meta.Login) :SetTimer(prefix?, value?)
+--   :SetClaimState("Ready" | "Claimed" | "Soon") :SetSoon(on) (the loading card) :OnAction(cb()) (a CLAIM press while "Ready") :Destroy()
 -- Setters only store state; one deferred rebuild draws it (also on every slot size / Compact change).
 -- Full = the reference in 1197 x 688 content units (x scaled by W / 1197, y by H / 688). Compact = fixed strip and bar, the cards on a
 -- vertical Parts.scrollBar scroll (3 columns, Day 7 below). Card art is drawn WHOLE at one scale per card, placed by its rim centre / bottom.
@@ -18,6 +18,8 @@ local RollSprites = require(script.Parent.Parent.Roll.RollSprites)
 local Sprites = require(script.Parent.Parent.Sprites)
 local UiKit = require(script.Parent.Parent.UiKit)
 
+local Display = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Display"))
+
 local Q = Draw.Q
 local make = UiKit.make
 
@@ -30,8 +32,10 @@ local PANEL_K = 0.5 -- slice scale of every card (as the Shop)
 local REF_W, REF_H = 1197, 688 -- the reference content box
 local S_CARD, S_DAY7 = 0.828, 0.953 -- sprite px -> design px of the small cards / Day 7 at the reference size (text sizes scale with it)
 
--- The raw HUD Gem and Dice have transparent margins: Size / Ink (alpha >= 160) measured from their PNGs in Assets\UI\lobby HUD\export.
+-- The raw HUD Coin, Gem, Roll and Dice have transparent margins: Size / Ink (alpha >= 160) measured from their PNGs in Assets\UI\lobby HUD\export.
+local COIN = { Image = Sprites.Coin, Size = Vector2.new(125, 128), Ink = Rect.new(3, 3, 122, 125) }
 local GEM = { Image = Sprites.Gem, Size = Vector2.new(128, 124), Ink = Rect.new(4, 4, 124, 120) }
+local ROLL = { Image = Sprites.Icon.Roll, Size = Vector2.new(256, 185), Ink = Rect.new(4, 7, 252, 181) } -- dice without art, tinted
 local function hud(id: string, w: number, h: number, r: number, b: number)
 	return { Image = id, Size = Vector2.new(w, h), Ink = Rect.new(6, 6, r, b) }
 end
@@ -149,10 +153,12 @@ local function panel(parent, x: number, y: number, w: number, h: number, z: numb
 	)
 end
 
-local function rewardRec(reward)
+-- The icon record and its tint (nil = untinted). Dice: their elemental art (Sprites.DieArt), else the Roll glyph tinted by
+-- Display colour, as the Bag DICE tab and the HUD deck bar.
+local function rewardRec(reward): (any, Color3?)
 	local kind = reward.Kind
 	if kind == "Coins" then
-		return Draw.Bag.Coins
+		return COIN
 	elseif kind == "Gems" then
 		return GEM
 	elseif kind == "Potion" then
@@ -160,7 +166,12 @@ local function rewardRec(reward)
 	elseif kind == "Crystals" then
 		return Draw.Bag.IconCrystals
 	end
-	return DICE[reward.Die] or DICE.Fire
+	local art = DICE[Sprites.DieArt[reward.Id]]
+	if art then
+		return art
+	end
+	local info = Display.Dice[reward.Id]
+	return ROLL, info and info.Color
 end
 
 -- One reward: the icon (fitted into bw x bh, coins by tier) standing on iconBottom (never over the amount) and its amount centred at (x, ay).
@@ -180,9 +191,9 @@ local function reward(
 	if r.Kind == "Coins" then
 		k = ({ 0.86, 0.93, 1 })[DailyLogic.coinTier(r.Amount)]
 	end
-	local rec = rewardRec(r)
+	local rec, tint = rewardRec(r)
 	local _, ih = Draw.fitIn(rec, bw * k, bh * k)
-	sprite(parent, rec, x, iconBottom - ih / 2, bw * k, bh * k, z, "Icon")
+	sprite(parent, rec, x, iconBottom - ih / 2, bw * k, bh * k, z, "Icon").ImageColor3 = tint or Color3.new(1, 1, 1)
 	label(parent, "Amount", DailyLogic.amountText(r), size, x, ay, z + 2, { px = px })
 end
 
@@ -285,7 +296,8 @@ function View:_day7(L, parent, day, state: string, cx: number, bottom: number)
 	whole(parent, rec, rx, ry, cx, bottom, sd, 24, "Day7")
 	local ax = cx - 0.7 * f -- the content axis: the visible rim's centre (the frame's own padding is lopsided)
 	local min = if L.compact then 18 else math.ceil(12 / K)
-	label(parent, "DayLabel", "DAY 7", fitText("DAY 7", 150 * s, round(52 * f), min), ax, bottom - 410 * sd, 27, {})
+	local dayText = "DAY " .. day.Day
+	label(parent, "DayLabel", dayText, fitText(dayText, 150 * s, round(52 * f), min), ax, bottom - 410 * sd, 27, {})
 	-- the name ribbon, then the chest from just under the DAY 7 tab (rim bottom at sprite y 151) down to behind the ribbon's top edge
 	local rw = 327 * f
 	local rh = rw * Draw.Bag.ItemsNameRibbon.Ink.Height / Draw.Bag.ItemsNameRibbon.Ink.Width
@@ -306,7 +318,7 @@ function View:_day7(L, parent, day, state: string, cx: number, bottom: number)
 	end
 	sprite(parent, DailySprites.Chest, ax, cy, 1e4, chH, 25, "Chest")
 	skin(parent, Draw.Bag.ItemsNameRibbon, ax, ribbonY, rw, rh, 26, "Ribbon")
-	local name = day.Chest or "ROYAL DICE CHEST"
+	local name = "ROYAL CHEST" -- no "DICE": Day 7 pays no dice (Config/Daily); Catalog Chest is only a flag
 	-- one size on the purple plate (centre = the ribbon's, 7 px above its ink centre), >= 8 px clear of both plate ends
 	label(parent, "RibbonText", name, fitText(name, 244 * f, round(34 * f), min), ax, ribbonY - 7 * f, 27, {})
 	local bw, bh = 332 * f, 111 * f
@@ -418,7 +430,7 @@ function View:_drawBar(L, parent)
 		25,
 		"Calendar"
 	)
-	local ptext = DailyLogic.progressText(self._streak)
+	local ptext = DailyLogic.progressText(if self._login then self._login.Streak else 0)
 	local ph = if c then 26 else 41 * sy
 	local ty, pyc = if c then mid - 17 else by(588), if c then mid + 14 else by(631.5)
 	label(
@@ -539,8 +551,8 @@ function View:_drawSoon(L)
 	label(
 		self._soon,
 		"Sub",
-		"Coming soon",
-		fitText("Coming soon", w - 40, if c then 18 else 26, min),
+		"Loading...",
+		fitText("Loading...", w - 40, if c then 18 else 26, min),
 		W / 2,
 		y + (if c then 122 else 190),
 		32,
@@ -592,7 +604,7 @@ function View:_build()
 	for i = 1, 6 do
 		local day = days[i]
 		if day then
-			local state = DailyLogic.cardState(i, self._streak, self._claimedToday)
+			local state = DailyLogic.cardState(day.Day, self._login) -- the label's own day, not the grid slot
 			local cx, bottom
 			if c then
 				local x0 = (L.W - (3 * L.colW + 2 * L.gap)) / 2
@@ -605,7 +617,7 @@ function View:_build()
 		end
 	end
 	if days[7] then
-		local state = DailyLogic.cardState(7, self._streak, self._claimedToday)
+		local state = DailyLogic.cardState(days[7].Day, self._login)
 		local cx, bottom
 		if c then
 			cx, bottom = L.W / 2, L.pad + 2 * L.rows + L.s7 * 519 + 8
@@ -623,7 +635,7 @@ end
 function View.new(slot)
 	local self = setmetatable({}, View)
 	self._conns, self._connsBuild, self._days = {}, {}, {}
-	self._streak, self._claimedToday, self._claim, self._soonOn = 0, false, "Ready", false
+	self._login, self._claim, self._soonOn = nil, "Soon", true
 	local z = slot.ZIndex + 1
 	local root = make(
 		"Frame",
@@ -709,8 +721,9 @@ function View:SetDays(days)
 	self._rebuild()
 end
 
-function View:SetStreak(streak: number, claimedToday: boolean)
-	self._streak, self._claimedToday = streak, claimedToday
+-- Meta.Login {Streak, NextDay?, ...}: card states and the progress pill.
+function View:SetLogin(login)
+	self._login = login
 	self._rebuild()
 end
 

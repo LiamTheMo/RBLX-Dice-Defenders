@@ -1,22 +1,19 @@
 -- Daily Rewards menu controller: one Shell (banner, close) hosting the Daily View.
 -- Daily.new(parent, { hud = LobbyHud, toast = (string) -> () }) -> :Open() :Close() :Toggle() :IsOpen() :Destroy()
--- Display only: the client-only SampleData shows in Studio (with a sample countdown); a live server shows "Coming soon". CLAIM just toasts.
+-- Renders Catalog.Daily + Meta.Login (a loading card until both arrived); CLAIM sends ClaimQuest("LOGIN") and the server's next Meta
+-- shows the result (a rejection is toasted by Lobby's NetClient.Rejected handler). The client never opens a day itself.
 
 local ContextActionService = game:GetService("ContextActionService")
 local GuiService = game:GetService("GuiService")
-local RunService = game:GetService("RunService")
 
 local DailyLogic = require(script.Parent.DailyLogic)
 local NetClient = require(script.Parent.Parent.NetClient)
-local SampleData = require(script.Parent.SampleData)
 local ShopLogic = require(script.Parent.Parent.Shop.ShopLogic)
 local QuestSprites = require(script.Parent.Parent.QuestLog.QuestSprites)
 local Shell = require(script.Parent.Parent.Bag.Shell)
 local Sprites = require(script.Parent.Parent.Sprites)
 local View = require(script.Parent.View)
 
--- Studio-only sample data (nil live: the "Coming soon" card).
-local DATA = if RunService:IsStudio() then SampleData else nil
 local ACTION = "DailyClose"
 local PRESS_COOLDOWN = 0.5 -- UX throttle only
 
@@ -50,28 +47,68 @@ function Daily.new(parent, deps)
 	local view = View.new(shell.Slots.Content)
 	local conns = {}
 
-	local flight = ShopLogic.guard()
-	view:OnAction(function()
-		if not flight.begin() then
-			return
-		end
-		task.delay(PRESS_COOLDOWN, flight.finish)
-		deps.toast("Daily: coming soon")
-	end)
-	local deadline: number? -- sample countdown target, fixed on first open
-	view:SetClaimState(DailyLogic.claimState(DATA))
-	if DATA then
-		view:SetDays(DATA.Days)
-		view:SetStreak(DATA.Streak, DATA.ClaimedToday)
-	else
-		view:SetSoon(true)
-		view:SetTimer(nil)
-	end
+	local deadline: number? -- Login.NextClaimAt while today is claimed
 	local function refreshTimer()
 		if deadline then
 			view:SetTimer("Next claim in:", DailyLogic.timerText(deadline - workspace:GetServerTimeNow()))
 		end
 	end
+	local function render()
+		local catalog, meta = NetClient.LastCatalog, NetClient.LastMeta
+		local days = catalog and catalog.Daily and catalog.Daily.Days
+		local login = meta and meta.Login
+		if type(days) ~= "table" or type(login) ~= "table" then
+			view:SetSoon(true)
+			return
+		end
+		view:SetSoon(false)
+		view:SetDays(DailyLogic.days(days))
+		view:SetLogin(login)
+		view:SetClaimState(DailyLogic.claimState(login))
+		deadline = DailyLogic.timerTarget(login)
+		if deadline then
+			refreshTimer()
+		else
+			view:SetTimer(nil)
+		end
+	end
+
+	local flight = ShopLogic.guard()
+	local metaSeen, awaitMeta = 0, false -- a successful claim holds the button until a Meta newer than the press
+	view:OnAction(function()
+		if not flight.begin() then
+			return
+		end
+		local seen = metaSeen
+		task.spawn(function()
+			if NetClient.Request("ClaimQuest", "LOGIN") then
+				if metaSeen ~= seen then
+					flight.finish()
+				else
+					awaitMeta = true
+				end
+			else
+				task.delay(PRESS_COOLDOWN, flight.finish)
+			end
+		end)
+	end)
+	local function onData()
+		if shell:IsOpen() then
+			render()
+		end
+	end
+	table.insert(conns, NetClient.Catalog:Connect(onData))
+	table.insert(
+		conns,
+		NetClient.Meta:Connect(function()
+			metaSeen += 1
+			if awaitMeta then
+				awaitMeta = false
+				flight.finish()
+			end
+			onData()
+		end)
+	)
 
 	table.insert(
 		conns,
@@ -94,33 +131,24 @@ function Daily.new(parent, deps)
 		end)
 	)
 
-	local opened = false
 	self.Shell, self.View, self._conns = shell, view, conns
 	self._open = function()
 		if shell:IsOpen() then
 			return
 		end
-		if not opened then
-			opened = true
-			if DATA then
-				deadline = workspace:GetServerTimeNow() + DATA.NextClaimIn
-			end
-		end
-		refreshTimer()
+		render()
 		shell:Open()
 		hud:SetBagMode(true, "Daily")
 		timerToken += 1
 		local token = timerToken
-		if deadline then
-			task.spawn(function()
-				while token == timerToken do
-					task.wait(1)
-					if token == timerToken then
-						refreshTimer()
-					end
+		task.spawn(function()
+			while token == timerToken do
+				task.wait(1)
+				if token == timerToken then
+					refreshTimer()
 				end
-			end)
-		end
+			end
+		end)
 		ContextActionService:BindActionAtPriority(ACTION, function(_, inputState)
 			if inputState == Enum.UserInputState.Begin then
 				shell:Close()
