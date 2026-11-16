@@ -91,6 +91,8 @@ for _, o in list do
 	assert(o.Limit == nil or Validate.IsInt(o.Limit, 1, Validate.MAX_INT), "Shop: bad Limit on " .. o.Id)
 	assert(Rewards.Valid(o.Grant), "Shop: bad Grant on " .. o.Id)
 	assert(o.Currency == "Robux" or o.ProductId == nil, "Shop: ProductId on a currency offer " .. o.Id)
+	-- Rules/Shop pays by setting Grant[Currency] = -Price, which would silently replace such a grant
+	assert(o.Currency == "Robux" or o.Grant[o.Currency] == nil, "Shop: offer grants its own price currency " .. o.Id)
 	if o.ProductId ~= nil then
 		assert(Validate.IsInt(o.ProductId, 1, 2 ^ 52) and not byProduct[o.ProductId], "Shop: bad ProductId " .. o.Id)
 		byProduct[o.ProductId] = o
