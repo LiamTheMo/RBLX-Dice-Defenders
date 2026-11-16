@@ -21,7 +21,7 @@ Per each stable ID C01–C05, R01–R05, E01–E05, L01–L03, M01:
 
 ## UI generated asset checklist
 - Lobby home, world selection, stage card (Wave 100 goal), matchmaking solo/duo/experimental squad, Infinite access/season leaderboard.
-- HUD wave/boss/progress, 15-cell board, spawn button and Energy meter, dice detail tooltip, in-match upgrade strip, shared lives/team portraits, pause/reconnect.
+- HUD wave/boss/progress, 15-cell board, spawn button and MP meter, dice detail tooltip, in-match upgrade strip, shared lives/team portraits, pause/reconnect.
 - Collection rarity filters, dice cards, locked state, detail/compare, level/copies, crafting.
 - Gold/Gem wallets, rotating store cards, purchase confirmation, chests, exact pre-open odds, duplicate conversion, pity tracker, Robux offer disclosures and receipt failure state.
 - Daily/weekly quest, profile upgrades, achievements, world clear, rewards, loss, tutorial and settings.

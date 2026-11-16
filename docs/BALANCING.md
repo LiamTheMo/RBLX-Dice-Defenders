@@ -50,7 +50,7 @@ Evaluate at **wave boundaries**, not for each hit; enemies spawned within a wave
 - 20 team lives proposed; ordinary breach -1, Elite -2, Boss -5; zero lives is failure.
 
 ### Party scaling and fairness
-Two players default. Solo campaign clear with a Rare/Epic-accessible deck must remain viable. Team kill Energy is credited to each teammate at `0.75+0.25/n` of normal kill value (rounded with fractional accumulators); wave stipend 6+floor(w/10), max 20 per person. Separate Solo/Duo/Trio/Squad leaderboards; launch only Solo/Duo ranked until 3–4-player tests pass. Evaluate threats against modeled actual total player DPS, not assumed identical players.
+Two players default. Solo campaign clear with a Rare/Epic-accessible deck must remain viable. Team kill MP is credited to each teammate at `0.75+0.25/n` of normal kill value (rounded with fractional accumulators); wave stipend 30+5*floor(w/10), max 100 per person. Separate Solo/Duo/Trio/Squad leaderboards; launch only Solo/Duo ranked until 3–4-player tests pass. Evaluate threats against modeled actual total player DPS, not assumed identical players.
 
 ## 2. Dice damage, pips and merge
 ```text
@@ -61,12 +61,12 @@ hitDamage = max(1, floor(baseDamage*pipMultiplier*persistentLevel*matchUpgrade*b
 ```
 Merge **two dice of the same identity AND same pip (1–6)** to produce a single pip+1 dice at target, with its type re-rolled from five equipped deck dice; pips cap at 7★. Build-around effects can override explicitly but must obey transaction caps. At 7★ multiplier ≈5.23, not 7. Projectile count, DoT and slow utility count toward balance, not merely hitDamage. All status stacking is capped (slow 45%; vulnerability 25%; armor shred 30%) and dangerous feedback loops have an internal cooldown and max proc depth.
 
-## 3. In-match Energy (separate from persistent Gold and Gems)
-Starting Energy: 20. Summon cost after `s` successful summons:
+## 3. In-match MP (separate from persistent Gold and Gems)
+Starting MP: 100 (exactly four summons). Summon cost after `s` successful summons:
 ```text
-cost(s) = min(250, max(10, floor(10*1.085^s)))
+cost(s) = 10 + 10*s                            # 10, 20, 30, 40, ...
 ```
-Base kill Energy: Grunt 3, Runner 3, Brute 5, Swarm 1, Elite 8, Boss 30, adjusted for player count. In-match upgrades for one dice type cost 45 / 90 / 180 / 360 Energy, cap 4 tiers. Match Energy and temporary upgrade tiers **never persist** and **cannot be bought with Robux or Gems**. If summons become unaffordable too soon, lower the exponential cost or add wave stipend, not paid Energy.
+Base kill MP: Grunt 15, Runner 15, Brute 25, Swarm 5, Elite 40, Boss 150, adjusted for player count. In-match upgrades for one dice type cost 225 / 450 / 900 / 1800 MP, cap 4 tiers. Match MP and temporary upgrade tiers **never persist** and **cannot be bought with Robux or Gems**. If summons become unaffordable too soon, lower the cost step or add wave stipend, not paid MP.
 
 ## 4. Persistent economy
 | Currency/resource | Earned from | Used for |
@@ -76,7 +76,7 @@ Base kill Energy: Grunt 3, Runner 3, Brute 5, Swarm 1, Elite 8, Boss 30, adjuste
 | Verdant Fragments | World 1 encounters, bosses and quests | Targeted World 1 dice crafting |
 | Universal Dust | Duplicates, chest rewards, challenges | Rare/Epic/Legendary/Mythic crafting |
 | Dice copies | Chest, shop, stage, crafting | Persistent dice levels |
-| Energy | Kills during a match only | Summons and temporary match upgrades |
+| MP | Kills during a match only | Summons and temporary match upgrades |
 
 **Proposed starter grant:** 500 Gold, 50 Gems, five Common dice, one tutorial chest.  
 **Stage reward seed:** 50+3×waves completed Gold; 40+4×waves completed XP, reduced on repeated clears. First-clear wave 20 guarantees a Rare selection; wave 60 an Epic selection; wave 100 a Legendary blueprint selection + 200 Gems + 800 Gold. Future worlds may unlock via first-clear achievements. Rewards must be idempotent: clear flags prevent reclaims.
@@ -105,11 +105,11 @@ All probabilities shown **before purchase and opening**, including duplicates; n
 | Upgrade | Ranks | Per-rank effect | Total cap |
 |---|---:|---|---|
 | Global Dice Damage | 5 | +1% | +5% |
-| Starting Energy | 5 | +2 | +10 |
+| Starting MP | 5 | +10 | +50 |
 | Gold Gains | 5 | +2% | +10% |
 | Profile XP Gains | 5 | +3% | +15% |
 | Boss Materials | 3 | +2% | +6% |
-| Energy/Kill | 5 | +1% | +5% |
+| MP/Kill | 5 | +1% | +5% |
 
 Costs: each rank `200*2^(rank-1)` Gold for economy tracks, `500*2^(rank-1)` for combat tracks (proposal). Combat effects are capped in Infinite ranked; consider normalized ranked presets. Never sell combat-only upgrade ranks exclusively for Robux.
 

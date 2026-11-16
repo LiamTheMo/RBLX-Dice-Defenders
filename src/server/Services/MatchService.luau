@@ -1,0 +1,463 @@
+-- Thin glue between the remotes, the profile and the pure Rules.Match. Owns the
+-- single match of this server (solo MVP): the owner is the first player whose
+-- profile loaded; everyone else is "NotOwner". Rules stay in Rules/*.
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local Balance = require(script.Parent.Parent.Config.Balance)
+local Progression = require(script.Parent.Parent.Config.Progression)
+local RollConfig = require(script.Parent.Parent.Config.Roll)
+local ShopConfig = require(script.Parent.Parent.Config.Shop)
+local Net = require(script.Parent.Parent.Infrastructure.Net)
+local Bag = require(script.Parent.Parent.Rules.Bag)
+local Catalog = require(script.Parent.Parent.Rules.Catalog)
+local Claims = require(script.Parent.Parent.Rules.Claims)
+local Deck = require(script.Parent.Parent.Rules.Deck)
+local Formulas = require(script.Parent.Parent.Rules.Formulas)
+local Match = require(script.Parent.Parent.Rules.Match)
+local Quests = require(script.Parent.Parent.Rules.Quests)
+local Roll = require(script.Parent.Parent.Rules.Roll)
+local Shop = require(script.Parent.Parent.Rules.Shop)
+local Settings = require(script.Parent.Parent.Rules.Settings)
+local PlayerPolicy = require(script.Parent.PlayerPolicy)
+local ProfileService = require(script.Parent.ProfileService)
+
+local MatchService = {}
+
+local owner: Player? = nil
+local order: { Player } = {} -- loaded players, oldest first
+local match = nil -- nil = Lobby
+local rewardGold: number? = nil
+local rewardXp: number? = nil
+local catalog = Catalog.Build() -- the same display catalogue for every player
+local lastTick = 0
+local runRng = Random.new()
+local rollRng = Random.new() -- server-only: every Roll draw
+local lastDay = Quests.Day(os.time()) -- UTC day of the last Meta day-change check
+
+local function isOwner(player: Player): boolean
+	return owner == player
+end
+
+local function snapshot(player: Player)
+	local profile = ProfileService.Get(player)
+	if profile == nil then
+		return { Phase = if ProfileService.LoadState(player) == "Failed" then "Failed" else "Loading" }
+	end
+	local out = {
+		Gold = profile.Gold,
+		BestWave = profile.BestWave,
+		RunsPlayed = profile.RunsPlayed,
+		TrialCleared = profile.TrialCleared,
+		MP = 0,
+		SummonCost = Formulas.SummonCost(0),
+		Wave = 0,
+		Lives = 0,
+		Board = {},
+	}
+	for i = 1, Balance.BoardCells do
+		out.Board[i] = false
+	end
+	if not isOwner(player) then
+		out.Phase = "NotOwner"
+		return out
+	end
+	if match == nil then
+		out.Phase = "Lobby"
+		return out
+	end
+	out.Phase = match.phase
+	out.MP = match.mp
+	out.SummonCost = Match.SummonCost(match)
+	out.Wave = match.wave
+	out.Lives = match.lives
+	out.NextWaveAt = if match.waveState == "Prep" and match.phase == "Playing" then match.nextWaveAt else nil
+	out.BossAt = match.bossAt
+	out.Result = match.result
+	out.RewardGold = rewardGold
+	out.RewardXp = rewardXp
+	for i = 1, Balance.BoardCells do
+		local die = match.board[i]
+		if die then
+			out.Board[i] = { T = die.type, P = die.pip }
+		end
+	end
+	return out
+end
+
+local function push(player: Player)
+	Net.Fire("State", player, snapshot(player))
+end
+
+local function byId(a, b)
+	return a.Id < b.Id
+end
+
+-- {{Id, Quantity}} sorted by Id for a {[id] = count} map.
+local function quantities(map)
+	local list = {}
+	for id, quantity in map do
+		table.insert(list, { Id = id, Quantity = quantity })
+	end
+	table.sort(list, byId)
+	return list
+end
+
+-- Lobby data for one player, sent to that player only. Arrays only (no sparse keys).
+local function meta(player: Player, profile)
+	local dice = {}
+	for id, die in profile.Dice do
+		table.insert(dice, { Id = id, Level = die.Level, Copies = die.Copies })
+	end
+	table.sort(dice, byId)
+	local equipped = {}
+	for _, id in profile.Cosmetics.Equipped do
+		equipped[id] = true
+	end
+	local cosmetics = {}
+	for id in profile.Cosmetics.Owned do
+		table.insert(cosmetics, { Id = id, Equipped = equipped[id] == true })
+	end
+	table.sort(cosmetics, byId)
+	local locked = {}
+	for id in profile.Locked do
+		table.insert(locked, id)
+	end
+	table.sort(locked)
+	local pity = {}
+	for _, pool in RollConfig.Pools do
+		table.insert(pity, { Pool = pool.Id, Count = profile.RollPity[pool.Id] or 0 })
+	end
+	local purchases = {}
+	for _, offer in ShopConfig.Offers do
+		if offer.Limit then
+			table.insert(purchases, { Id = offer.Id, Count = profile.Purchases[offer.Id] or 0 })
+		end
+	end
+	local level, xpInto, xpNeed = Progression.Level(profile.Xp, Progression.Account)
+	local now = os.time()
+	local view, claims = Quests.View(profile, now), Claims.View(profile, now)
+	return {
+		Dice = dice,
+		Deck = table.clone(profile.Deck),
+		Quests = view.Quests,
+		DailyResetAt = view.DailyResetAt,
+		WeeklyResetAt = view.WeeklyResetAt,
+		Login = claims.Login,
+		Milestones = claims.Milestones,
+		Achievements = claims.Achievements,
+		Mastery = claims.Mastery,
+		Gems = profile.Gems,
+		Xp = profile.Xp,
+		Level = level,
+		XpInto = xpInto,
+		XpNeed = xpNeed,
+		Materials = quantities(profile.Materials),
+		Items = quantities(profile.Items),
+		Cosmetics = cosmetics,
+		Locked = locked, -- sorted locked Material and Item ids
+		Settings = table.clone(profile.Settings), -- {[settingId] = value}; a missing id is its default
+		RollAllowed = PlayerPolicy.RollAllowed(player), -- false until the policy answer arrives (fail closed)
+		Pity = pity, -- {{Pool, Count}}: rolls toward each pool's guarantee, in Config/Roll order
+		Purchases = purchases, -- {{Id, Count}}: purchases of each limited Shop offer, in Config/Shop order
+	}
+end
+
+local function pushMeta(player: Player)
+	local profile = ProfileService.Get(player)
+	if profile ~= nil then
+		Net.Fire("Meta", player, meta(player, profile))
+	end
+end
+
+local function pushAll()
+	for _, player in Players:GetPlayers() do
+		push(player)
+	end
+end
+
+-- Drains the outbox to the owner: Enemies batch if non-empty, State if changed.
+local function flush(intent: boolean?)
+	if match == nil or owner == nil then
+		return
+	end
+	local batch, dirty = Match.TakeOut(match)
+	if #batch.S > 0 or #batch.H > 0 or #batch.R > 0 or #batch.F > 0 then
+		Net.Fire("Enemies", owner, batch)
+	end
+	if dirty or intent then
+		push(owner)
+	end
+end
+
+-- Pays the reward once per match end; Aborted and Error grant nothing.
+local function settle()
+	if match == nil or match.phase ~= "Ended" or match.rewardGranted then
+		return
+	end
+	match.rewardGranted = true
+	if (match.result ~= "Won" and match.result ~= "Lost") or owner == nil then
+		return
+	end
+	local profile = ProfileService.Get(owner)
+	if profile == nil then
+		return
+	end
+	local ok, bundle = Quests.SettleRun(
+		profile,
+		match.runId,
+		match.wavesCompleted,
+		match.result == "Won",
+		match.kills,
+		os.time(),
+		match.deck
+	)
+	if not ok then
+		warn("[MatchService] Reward refused: " .. tostring(bundle))
+		return
+	end
+	rewardGold = bundle.Gold or 0 -- a wave-0 loss pays nothing
+	rewardXp = bundle.Xp or 0
+	ProfileService.MarkChanged(owner)
+	task.spawn(ProfileService.SaveNow, owner)
+end
+
+local function abortMatch()
+	if match then
+		Match.Finish(match, "Aborted")
+		match.rewardGranted = true -- no reward
+		match = nil
+		rewardGold, rewardXp = nil, nil
+	end
+end
+
+local function assignOwner()
+	owner = order[1]
+	pushAll()
+end
+
+local function removeFromOrder(player: Player)
+	local index = table.find(order, player)
+	if index then
+		table.remove(order, index)
+	end
+end
+
+local function onLoaded(player: Player)
+	if table.find(order, player) == nil then
+		table.insert(order, player)
+	end
+	if owner == nil then
+		owner = player
+	end
+	push(player)
+	Net.Fire("Catalog", player, catalog) -- before the first Meta, which refers to its ids
+	pushMeta(player)
+end
+
+-- Before the release save: an owner leaving (or shutdown) aborts without reward.
+local function onRemoving(player: Player)
+	removeFromOrder(player)
+	if player == owner then
+		abortMatch()
+		assignOwner()
+	end
+end
+
+-- runId is a random 31-bit integer so ids never repeat across servers; it only
+-- has to differ from the profile's last paid id.
+local function newRunId(profile): number
+	-- shortcut: a fresh id collides with LastRewardRunId with probability 1/2^31 (re-rolled here); two matches sharing an id elsewhere is accepted.
+	local id = runRng:NextInteger(1, 2 ^ 31 - 1)
+	while id == profile.LastRewardRunId do
+		id = runRng:NextInteger(1, 2 ^ 31 - 1)
+	end
+	return id
+end
+
+local function handleStart(player: Player): (boolean, string?)
+	if match and match.phase ~= "Ended" then
+		return false, "WrongPhase"
+	end
+	local profile = ProfileService.Get(player)
+	if profile == nil then
+		return false, "NotLoaded"
+	end
+	if not Deck.Check(profile.Dice, profile.Deck) then
+		return false, "BadDeck" -- never swap in a different deck silently
+	end
+	rewardGold, rewardXp = nil, nil
+	match = Match.New(newRunId(profile), Random.new(), workspace:GetServerTimeNow(), profile.Deck)
+	flush(true)
+	return true, nil
+end
+
+local function handleSummon(): (boolean, string?)
+	if match == nil then
+		return false, "WrongPhase"
+	end
+	local ok, code = Match.TrySummon(match)
+	flush(true)
+	return ok, code
+end
+
+local function handleMerge(_, from: number, to: number): (boolean, string?)
+	if match == nil then
+		return false, "WrongPhase"
+	end
+	local ok, code = Match.TryMerge(match, from, to)
+	flush(true)
+	return ok, code
+end
+
+local function handleEquipDeck(player: Player, ids: any): (boolean, string?)
+	if match and match.phase == "Playing" then
+		return false, "WrongPhase"
+	end
+	local profile = ProfileService.Get(player)
+	if profile == nil then
+		return false, "NotLoaded"
+	end
+	local ok, code = Deck.Equip(profile, ids)
+	if ok then
+		ProfileService.MarkChanged(player) -- Changed pushes Meta
+	end
+	return ok, code
+end
+
+local function handleClaimQuest(player: Player, id: string): (boolean, string?)
+	local profile = ProfileService.Get(player)
+	if profile == nil then
+		return false, "NotLoaded"
+	end
+	local ok, code = Claims.Claim(profile, id, os.time())
+	if ok then
+		ProfileService.MarkChanged(player)
+	end
+	return ok, code
+end
+
+local function handleSaveSettings(player: Player, patch: any): (boolean, string?)
+	local profile = ProfileService.Get(player)
+	if profile == nil then
+		return false, "NotLoaded"
+	end
+	Settings.Merge(profile, patch)
+	ProfileService.MarkChanged(player)
+	return true
+end
+
+local function handleBagAction(player: Player, action: string, id: string, qty: number): (boolean, string?)
+	local profile = ProfileService.Get(player)
+	if profile == nil then
+		return false, "NotLoaded"
+	end
+	local ok, code = Bag.Act(profile, action, id, qty)
+	if ok then
+		ProfileService.MarkChanged(player) -- Changed pushes State (Gold) and Meta
+	end
+	return ok, code
+end
+
+-- One Roll purchase: Rules/Roll validates, pays one bundle and writes the pity; the client sees the draw only in
+-- RollResult. The policy is read from PlayerPolicy's cache (never yields; unknown = Restricted).
+local function handleRoll(player: Player, poolId: string, count: number): (boolean, string?)
+	local profile = ProfileService.Get(player)
+	if profile == nil then
+		return false, "NotLoaded"
+	end
+	local ok, code, result = Roll.Buy(profile, poolId, count, PlayerPolicy.RollAllowed(player), rollRng)
+	if ok then
+		ProfileService.MarkChanged(player) -- Changed pushes Meta (Gems, dice, pity)
+		Net.Fire("RollResult", player, result)
+	end
+	return ok, code
+end
+
+-- One Gold or Gems Shop purchase: Rules/Shop validates, pays one bundle and counts a limited offer.
+local function handleBuy(player: Player, offerId: string): (boolean, string?)
+	local profile = ProfileService.Get(player)
+	if profile == nil then
+		return false, "NotLoaded"
+	end
+	local ok, code = Shop.Buy(profile, offerId)
+	if ok then
+		ProfileService.MarkChanged(player) -- Changed pushes State (Gold) and Meta
+	end
+	return ok, code
+end
+
+local function tick()
+	local now = workspace:GetServerTimeNow()
+	if now - lastTick < 1 / Balance.TickHz then
+		return
+	end
+	lastTick = now
+	-- Before the match early-out: the lobby needs the new day's quests and login too
+	-- (a new week always starts on a new day, so this covers the weeklies).
+	local day = Quests.Day(os.time())
+	if day ~= lastDay then
+		lastDay = day
+		for _, player in order do
+			pushMeta(player)
+		end
+	end
+	if match == nil or match.phase ~= "Playing" then
+		return
+	end
+	local ok, err = pcall(Match.Step, match, now)
+	if not ok then
+		warn("[MatchService] Step failed: " .. tostring(err))
+		Match.Finish(match, "Error")
+	end
+	settle()
+	flush()
+end
+
+function MatchService.Init()
+	Net.SetReadyCheck(function(player)
+		if ProfileService.Get(player) == nil then
+			return false, "NotLoaded"
+		end
+		if not isOwner(player) then
+			return false, "NotOwner"
+		end
+		return true, nil
+	end)
+	Net.Handle("Start", handleStart)
+	Net.Handle("Summon", handleSummon)
+	Net.Handle("Merge", handleMerge)
+	Net.Handle("EquipDeck", handleEquipDeck)
+	Net.Handle("ClaimQuest", handleClaimQuest)
+	Net.Handle("SaveSettings", handleSaveSettings)
+	Net.Handle("BagAction", handleBagAction)
+	Net.Handle("Roll", handleRoll)
+	Net.Handle("Buy", handleBuy)
+end
+
+function MatchService.Start()
+	ProfileService.Loaded:Connect(onLoaded)
+	ProfileService.Removing:Connect(onRemoving)
+	ProfileService.LoadStateChanged:Connect(function(player)
+		-- A lost lease (Failed) ends the owner's match like leaving: no reward, reassign.
+		if ProfileService.LoadState(player) == "Failed" and table.find(order, player) then
+			onRemoving(player)
+		end
+		push(player)
+	end)
+	ProfileService.Left:Connect(function(player)
+		-- A player who failed to load or lost their lease is not in `order` or is dropped here.
+		if table.find(order, player) then
+			onRemoving(player)
+		end
+	end)
+	ProfileService.Changed:Connect(function(player)
+		push(player) -- Gold/stats live in State (a quest claim changes Gold)
+		pushMeta(player)
+	end)
+	PlayerPolicy.Changed:Connect(pushMeta) -- RollAllowed arrived (no-op before the profile loads)
+	RunService.Heartbeat:Connect(tick)
+end
+
+return MatchService
