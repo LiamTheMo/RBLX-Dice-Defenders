@@ -91,7 +91,10 @@ local function toast(text: string)
 	if anyMenuOpen() then
 		ui.ToastFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 		-- Clamped: on phones the HUD block is hidden and bottomTopReal is the screen height.
-		local y = math.min(ui.LobbyHud:GetBagInsets().bottomTopReal + 26, UiKit.screenSize(ui.Root).Y - 26)
+		local row = ui.LobbyHud.BagRow
+		local y = if row.Visible
+			then row.AbsolutePosition.Y + row.AbsoluteSize.Y / 2
+			else math.min(ui.LobbyHud:GetBagInsets().bottomTopReal + 26, UiKit.screenSize(ui.Root).Y - 26)
 		ui.ToastFrame.Position = UDim2.new(0.5, 0, 0, y)
 	else
 		ui.ToastFrame.AnchorPoint = Vector2.new(0.5, 0)

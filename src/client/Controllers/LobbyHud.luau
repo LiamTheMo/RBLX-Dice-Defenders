@@ -34,6 +34,8 @@ local PROFILE_H = 44 + 36 + 12 -- currencies, gap, XP bar (LVL / XP text overlay
 local DECK_H = 105
 local BOTTOM_H = PROFILE_H + DECK_H + 6
 local BOTTOM_GAP = 21 -- design px from the bottom edge to the Bottom block
+local BAG_ROW_POS = UDim2.new(0.5, 0, 1, -(BOTTOM_GAP - 2 + BAG_ROW.Y / 2) - 4.5) -- default bag-row spot
+local SIDE_Y = -112 -- side columns centred above the Bottom block: block top = H_d - 21 - 203, so the centre is 0.5 * H_d - 112
 
 local LobbyHud = {}
 LobbyHud.__index = LobbyHud
@@ -207,7 +209,7 @@ function LobbyHud.build(parent, cb)
 		Name = "LeftGrid",
 		BackgroundTransparency = 1,
 		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(0, BAG_GRID_X, 0.5, 38),
+		Position = UDim2.new(0, BAG_GRID_X, 0.5, SIDE_Y),
 		Size = UDim2.fromOffset(CELL.X * 2, CELL.Y * 3),
 	}, hud)
 	self.LeftGrid = grid
@@ -289,7 +291,7 @@ function LobbyHud.build(parent, cb)
 		end,
 	})
 	-- mirrors the left grid's outer column; QUESTS is ~16 px wider than CODES, so +8 keeps the same outer label gap
-	quests.Position = UDim2.new(1, -(BAG_GRID_X - BAG_CELL.X.Offset / 2 + 8), 0.5, 20)
+	quests.Position = UDim2.new(1, -(BAG_GRID_X - BAG_CELL.X.Offset / 2 + 8), 0.5, SIDE_Y) -- same centre line as the left grid
 	buttons.Quests = quests
 	self.Buttons = buttons
 
@@ -405,7 +407,7 @@ function LobbyHud.build(parent, cb)
 		Text = "",
 		AutoButtonColor = false,
 		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(0.5, 0, 1, -(BOTTOM_GAP - 2 + BAG_ROW.Y / 2) - 4.5), -- ref content centre y 893.5
+		Position = BAG_ROW_POS, -- ref content centre y 893.5
 		Size = UDim2.fromOffset(BAG_ROW.X, BAG_ROW.Y),
 		Visible = false,
 	}, hud)
@@ -500,6 +502,9 @@ end
 function LobbyHud:SetBagMode(on: boolean, menu: string?)
 	self.BagOn, self.BagMenu = on, menu
 	local phone = UiKit.screenSize(self.Hud.Parent).Y < UiKit.PHONE_H
+	if not on then
+		self.BagRow.Position = BAG_ROW_POS
+	end
 	self.DeckBar.Visible = not on
 	self.Bottom.Visible = not on
 	self.BagRow.Visible = on and not phone
@@ -570,6 +575,13 @@ function LobbyHud:GetBagInsets()
 	return {
 		leftReal = if size.Y < UiKit.PHONE_H then 144 * s - 2 else 198 * s,
 		bottomTopReal = if size.Y < UiKit.PHONE_H then size.Y else size.Y - (BOTTOM_GAP - 2 + BAG_ROW.Y) * s,
+		-- Menus that sit higher pull the row up under them: window bottom + 4 (the vpad gap) + half the row.
+		-- Never lower than the default row (centre H - 48.5 design px).
+		placeRow = function(windowBottomReal: number)
+			local y =
+				math.min(windowBottomReal + 4 + BAG_ROW.Y / 2 * s, size.Y - (BOTTOM_GAP + 2.5 + BAG_ROW.Y / 2) * s)
+			self.BagRow.Position = UDim2.new(0.5, 0, 0, y / s)
+		end,
 	}
 end
 

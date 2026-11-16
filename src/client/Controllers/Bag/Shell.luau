@@ -395,7 +395,7 @@ function Shell.new(parent, deps)
 		local compH = (t.over + hf) * bs
 		-- Free height sits above the window (the bag row is anchored to the screen bottom): the window stays under it
 		local spare = (ins.bottomTopReal - 8 + vpad) - 4 - compH
-		local top = 4 + (if compact or spare < 0 then spare / 2 else spare)
+		local top = 4 + spare / 2
 		window.Size = UDim2.fromOffset(winW, hf)
 		if box then -- popup: the group (scroll ink top .. window ink bottom) centred on the screen, kept inside [4, bottomTop - 8 + vpad]
 			local lo, hi = 4, ins.bottomTopReal - 8 + vpad
@@ -403,11 +403,17 @@ function Shell.new(parent, deps)
 			-- phones fill the region exactly (pk), so the bounds can cross by a rounding error: max/min, not math.clamp
 			local cy = if up + down > hi - lo
 				then lo + (hi - lo - up - down) / 2 + up
-				else math.max(lo + up, math.min(size.Y / 2 + (up - down) / 2, hi - down))
+				else math.max(lo + up, math.min(ins.bottomTopReal / 2 + (up - down) / 2, hi - down))
 			window.Position = UDim2.fromScale(0.5, cy / size.Y) -- a scale: offsets snap to whole design px (0.8 real px at the floor)
 			popupChrome(window.Size.X.Offset, t.rim)
+			if ins.placeRow and self.Bag.Visible then -- the shared bag row follows the OPEN menu only (closed ones refit on resize too)
+				ins.placeRow(cy + down)
+			end
 		else
 			window.Position = UDim2.new(0.5, 0, 0, (top + t.over * bs + hf * bs / 2) / es)
+			if ins.placeRow and self.Bag.Visible then -- the shared bag row follows the OPEN menu only (closed ones refit on resize too)
+				ins.placeRow(top + compH)
+			end
 		end
 		chrome.SliceScale = t.rim
 
@@ -689,14 +695,13 @@ function Shell:Open()
 	if self.Bag.Visible then
 		return
 	end
+	self.Bag.Visible = true -- before Fit (same frame, no flash): only a visible menu places the shared bag row
 	self:Fit()
 	if SettingsLogic.get("reducedMotion") then
 		self._pop.Scale = 1
-		self.Bag.Visible = true
 		return
 	end
 	self._pop.Scale = 0.94
-	self.Bag.Visible = true
 	self._popTween = TweenService:Create(self._pop, TweenInfo.new(0.12, Enum.EasingStyle.Quad), { Scale = 1 })
 	self._popTween:Play()
 end
