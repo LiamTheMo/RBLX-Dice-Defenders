@@ -55,7 +55,7 @@ Two players default. Solo campaign clear with a Rare/Epic-accessible deck must r
 ## 2. Dice damage, pips and merge
 ```text
 pipMultiplier(p) = p^.85                       # 1...7; 7 is ★
-persistentLevel(l) = 1+.03*(l-1)              # l=1...10
+persistentLevel(l) = 1+.03*(l-1)              # l=1...7; proposal, NOT implemented (Formulas ignore level)
 matchUpgrade(t) = 1+.12*t                     # t=0...4
 hitDamage = max(1, floor(baseDamage*pipMultiplier*persistentLevel*matchUpgrade*buffFactor*resistanceFactor))
 ```
@@ -83,7 +83,7 @@ Base kill MP: Grunt 15, Runner 15, Brute 25, Swarm 5, Elite 40, Boss 150, adjust
 
 **Craft seed:** Rare 80 Verdant Fragments + 300 Gold; Epic 250 fragments + 100 Dust + 1,200 Gold; Legendary 900 fragments + 500 Dust + 5,000 Gold + blueprint; Mythic 2,000 fragments + 1,500 Dust + mastery schematic + 12,000 Gold. Every rarity up to Mythic has an achievable non-Robux unlock route. Secret remains unobtainable at launch.
 
-**Persistent leveling:** levels 1–10. For advancing from level `l` to `l+1`, copies needed `max(1,floor(l/2))`, Gold `100*l^1.55*rarityCostFactor` (round to whole coin), where factor Common=1, Rare=1.6, Epic=2.8, Legendary=5, Mythic=8. Level bonuses must remain small to avoid account-power dominance in Ranked.
+**Persistent leveling:** levels 1–7 (`Progression.DieLevel.Max`, *tune*). Implemented: copies needed 1, 1, 1, 2, 2, 3 for 1→2 … 6→7 (total 10, every rarity, spare copies of the same die), no Gold. Proposal, not implemented: for advancing from level `l` to `l+1`, copies needed `max(1,floor(l/2))`, Gold `100*l^1.55*rarityCostFactor` (round to whole coin), where factor Common=1, Rare=1.6, Epic=2.8, Legendary=5, Mythic=8. Level bonuses must remain small to avoid account-power dominance in Ranked.
 
 ### Rotating store
 - Daily: 4 Gold offers + 2 Gem offers; weekly: 3 featured offers + 1 material bundle (proposed).

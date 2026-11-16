@@ -1,11 +1,11 @@
 # Dice Catalog — launch roster and mechanics
-**Status:** 19 proposed launch dice; 18 Common–Legendary available first, single Mythic gated by v1.0 readiness. Secret rarity declared, **zero Secret dice at launch**. All statistics are **level-1, 1-pip tuning seeds**, not confirmed balance. Base DPS = hit damage × attacks/s before armor. Use attack range measured in path segments and normalized across maps.
+**Status:** 19 proposed launch dice; 18 Common–Legendary available first, single Mythic gated by v1.0 readiness. Secret rarity declared, **zero Secret dice at launch**. All statistics are **level-1, 1-pip tuning seeds**, not confirmed balance. Base DPS = hit damage × attacks/s before armor. Every die hits the enemy closest to the exit (global targeting), so there is no range stat.
 
 ## Universal dice rules
 - Each player equips **five unique dice**; summons sample the five with equal probability. A die's visual asset and game definition share a stable unique ID.
 - Pip multiplier for damage/throughput: `P(p)=p^0.85` (provisional). Ability-specific proc rates are normalized to attack rate to avoid rapid fire exploiting chances.
 - Dice merge only with identical type and pips 1–6; rerolls type from deck at target with pip+1. Merge-bonus abilities trigger exactly once per server merge transaction.
-- Levels 1–10 are persistent; increases usually +3% base damage per level, with role-specific alternatives. In-run power tiers are separate.
+- Levels 1–7 are persistent (cap is one constant, *tune*); +3% base damage per level is a proposal, not implemented (level has no combat effect yet), with role-specific alternatives. In-run power tiers are separate.
 - **Status policy:** slow cap 45%; vulnerability cap 25%; armor shred cap 30%; on-hit proc coefficients damp very high-frequency attacks; unique effect IDs avoid multiplicative duplicates.
 - Support dice can deal minimal damage but contribute meaningful utility. No rarity provides unconditional superiority over a well-built deck.
 - All procs have explicit internal cooldowns (ICDs) or event budgets; multi-projectile attacks use per-volley rather than per-hit rolls unless specified.
@@ -17,7 +17,7 @@
 | C02 **Needle** | 9 | 1.75 | On-hit: every 6th hit adds 8 true damage (one stack per dice instance) | Fast single-target |
 | C03 **Hammer** | 30 | 0.55 | Always: +12% against armored targets; slower turn speed | Heavy / armor soft-counter |
 | C04 **Twinshot** | 10 | 0.95 | Every attack: 2 projectiles to same/adjacent targets at 70% damage each; no extra proc rolls | Weak swarm coverage |
-| C05 **Longshot** | 22 | 0.72 | Always: +25% targeting range, -10% vs bosses | Distant lane reach |
+| C05 **Longshot** | 22 | 0.72 | Always: -10% vs bosses (the +25% range perk is moot under global targeting; replacement TBD) | Replacement perk TBD |
 
 ## Rare — 5
 | ID / name | Damage | Attacks/s | Signature and trigger | Intended use |
@@ -70,7 +70,7 @@
 | Mythic | Post-clear mastery quest ending in guaranteed Astral schematic | Repeated world mastery crafting; optional high-tier chest at disclosed low chance |
 | Secret | Not available | Future expansion only |
 
-**Persistent leveling proposal:** Levels 1–10, +3% baseline role-specific stat/level; duplicates + Gold cost increase by level; unlock any dice's defining ability immediately at acquisition, not paywalled behind upgrading. All players receive the exact same **ability rules** at any level; levels change output, not feature ownership. Crafting guarantees targeted unlocks given time investment. Details in BALANCING.md.
+**Persistent leveling proposal:** Levels 1–7, +3% baseline role-specific stat/level (not implemented); level-ups spend spare copies of the same die (1, 1, 1, 2, 2, 3 for 1→2 … 6→7, *tune*), no Gold cost yet; unlock any dice's defining ability immediately at acquisition, not paywalled behind upgrading. All players receive the exact same **ability rules** at any level; levels change output, not feature ownership. Crafting guarantees targeted unlocks given time investment. Details in BALANCING.md.
 
 ## Ability implementation contract
 ```lua
