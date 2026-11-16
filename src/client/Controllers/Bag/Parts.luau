@@ -927,7 +927,9 @@ function Parts.Grid(parent)
 			if item.Count then -- spare copies: the Items count style, over the icon's bottom-right corner
 				local qty = Parts.text(card, { Name = "Qty", Text = item.Count, TextSize = px(tsize(28, 17)) })
 				qty.AnchorPoint = Vector2.new(1, 1)
-				qty.Position = UDim2.new(1, -math.floor(w * 0.13), 0, math.floor(h * tsize(0.645, 0.55)) - px(2))
+				-- bottom edge just above the title's top (the title is centred on that line): never touches long names
+				qty.Position =
+					UDim2.new(1, -math.floor(w * 0.13), 0, math.floor(h * tsize(0.645, 0.55)) - px(tsize(15, 10)))
 				qty.Size = UDim2.fromOffset(math.floor(w * 0.5), px(tsize(28, 17)))
 				qty.TextXAlignment = Enum.TextXAlignment.Right
 			end
