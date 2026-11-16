@@ -110,13 +110,14 @@ end
 
 function RollFlow:Tick(now: number)
 	local s = self.state
-	if (s == "Sending" or s == "Rolling") and now >= self.t0 + RollFlow.TIMEOUT then
+	-- a result in hand proves success, even before a slow reply; checked before the timeout so a long client hitch never drops it
+	if (s == "Sending" or s == "Rolling") and self.buffered and now >= self.t0 + self.spin then
+		self.state, self.t1 = "Revealing", now
+		return { show = "reveal", result = self.buffered }
+	elseif (s == "Sending" or s == "Rolling") and now >= self.t0 + RollFlow.TIMEOUT then
 		abandon(self, now)
 		self.gen += 1 -- whatever arrives later is stale
 		return idle(self, RollFlow.TIMED_OUT)
-	elseif (s == "Sending" or s == "Rolling") and self.buffered and now >= self.t0 + self.spin then -- a result in hand proves success, even before a slow reply
-		self.state, self.t1 = "Revealing", now
-		return { show = "reveal", result = self.buffered }
 	elseif s == "Revealing" and now >= self.t1 + self.reveal then
 		local r = self.buffered
 		self.state, self.buffered = "Idle", nil

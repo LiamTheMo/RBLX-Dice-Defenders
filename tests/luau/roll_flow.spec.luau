@@ -214,6 +214,14 @@ test("a result in hand reveals after the minimum spin even if the reply is slow;
 	expect(f:Reply(a.gen, true, nil, 12) == nil, "the slow reply changes nothing")
 end)
 
+test("a client hitch past the timeout with a result in hand still reveals it", function()
+	local f, a = pressed(0)
+	f:Reply(a.gen, true, nil, 0.1)
+	expect(f:Result(RESULT, 0.2) == nil, "buffered inside the minimum spin")
+	local r = f:Tick(RollFlow.TIMEOUT + 2) -- first wake after a long freeze
+	expect(r ~= nil and r.show == "reveal" and r.result == RESULT, "revealed, not timed out")
+end)
+
 test("reduced motion: no spin and no reveal delay", function()
 	local f, a = pressed(0, true)
 	f:Reply(a.gen, true, nil, 0)
