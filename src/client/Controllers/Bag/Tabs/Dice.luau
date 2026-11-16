@@ -61,8 +61,16 @@ function Dice.GetItems(meta, catalog)
 	end
 	-- Level cap and per-level copy costs come from the Catalog (untrusted: numbers only). nil = not loaded.
 	local DL = catalog and catalog.DieLevel
-	local cap = if DL and type(DL.Max) == "number" then DL.Max else nil
-	local costs = if DL and type(DL.Copies) == "table" then DL.Copies else {}
+	local function whole(n) -- finite whole number >= 1 (NaN/inf/fractions/negatives fail)
+		return type(n) == "number" and n >= 1 and n < math.huge and n % 1 == 0
+	end
+	-- one cost per level-up: also bounds the loop below (a huge finite Max is refused before it runs)
+	local ok = type(DL) == "table" and type(DL.Copies) == "table" and whole(DL.Max) and #DL.Copies == DL.Max - 1
+	for i = 1, ok and DL.Max - 1 or 0 do
+		ok = ok and whole(DL.Copies[i])
+	end
+	local cap = if ok then DL.Max else nil
+	local costs = if ok then DL.Copies else {}
 	local items = {}
 	local owned = {}
 	for _, die in meta and meta.Dice or {} do

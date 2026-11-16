@@ -312,7 +312,12 @@ function Shell.new(parent, deps)
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			Position = UDim2.fromScale(0.5, 0.5),
 			ZIndex = Z + 12,
+			Selectable = false, -- the X stays the one gamepad stop
 		}, close)
+		-- Hit covers the X, so its hover/press drives the X's own feedback (Parts.interact reads DebugState)
+		UiKit.wire(closeHit, function(state)
+			close:SetAttribute("DebugState", if state == "Normal" then nil else state)
+		end)
 		table.insert(
 			conns,
 			closeHit.Activated:Connect(function()

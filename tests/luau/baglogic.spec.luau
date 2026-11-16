@@ -420,6 +420,23 @@ test("dice upgrade: UPGRADE gates on copies, cap and Catalog; copies show on car
 	expect(not button(dn, "Upgrade").Enabled and button(dn, "Upgrade").Hint == "Still loading", "no Catalog hint")
 	local _, du = die(1, 0, { DieLevel = { Max = "x", Copies = "y" } })
 	expect(du.Subline == nil and not button(du, "Upgrade").Enabled, "untrusted Catalog values ignored")
+	local bad = {
+		5,
+		{ Max = 0 / 0, Copies = { 1 } },
+		{ Max = math.huge, Copies = { 1 } },
+		{ Max = 3, Copies = { -1, 1 } },
+		{ Max = 3, Copies = { 1.5, 1 } },
+		{ Max = 3, Copies = { 0 / 0, 1 } },
+		{ Max = 3 },
+		{ Max = 3, Copies = { 1 } },
+	}
+	for i, dl in bad do
+		local _, db = die(1, 9, { DieLevel = dl })
+		expect(
+			db.Subline == nil and not button(db, "Upgrade").Enabled and button(db, "Upgrade").Hint == "Still loading",
+			"malformed DieLevel #" .. i .. " acts as no Catalog"
+		)
+	end
 	for _, it in DiceTab.GetItems({ Dice = {}, Deck = {} }, catalog) do
 		if it.Id == "C02" then
 			local lk = DiceTab.Detail(it)
