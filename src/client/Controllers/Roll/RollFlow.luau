@@ -1,7 +1,7 @@
 -- shortcut: placeholder roll animation, replace with real VFX later
 -- Roll press flow (pure state machine, client display only). The clock is passed in; nothing here reads the outcome, picks
 -- anything at random or draws: the server's RollResult is only buffered and handed back for display once the spin is over.
--- States: Idle -> Sending (press) -> Rolling (reply ok) -> Revealing (result buffered and MIN_SPIN over) -> Idle.
+-- States: Idle -> Sending (press) -> Rolling (reply ok) -> Revealing (result in hand and MIN_SPIN over; from Sending too, as a result proves success) -> Idle.
 -- Every method returns nil or an action { send, show = "rolling"|"reveal"|"idle", toast, result, settle, late }.
 -- Timeout: Sending / Rolling at t0 + TIMEOUT -> toast, Idle (the NetClient request stays open: `open` blocks a new press).
 -- Stale: a roll abandoned (timeout / close) before its result came still has one RollResult on the way; the next Result
@@ -114,7 +114,7 @@ function RollFlow:Tick(now: number)
 		abandon(self, now)
 		self.gen += 1 -- whatever arrives later is stale
 		return idle(self, RollFlow.TIMED_OUT)
-	elseif s == "Rolling" and self.buffered and now >= self.t0 + self.spin then
+	elseif (s == "Sending" or s == "Rolling") and self.buffered and now >= self.t0 + self.spin then -- a result in hand proves success, even before a slow reply
 		self.state, self.t1 = "Revealing", now
 		return { show = "reveal", result = self.buffered }
 	elseif s == "Revealing" and now >= self.t1 + self.reveal then
@@ -129,7 +129,7 @@ end
 function RollFlow:Next(): number?
 	local s = self.state
 	if s == "Sending" or s == "Rolling" then
-		if s == "Rolling" and self.buffered then
+		if self.buffered then
 			return math.min(self.t0 + self.spin, self.t0 + RollFlow.TIMEOUT)
 		end
 		return self.t0 + RollFlow.TIMEOUT

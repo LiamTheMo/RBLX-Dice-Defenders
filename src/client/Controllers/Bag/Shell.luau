@@ -324,6 +324,7 @@ function Shell.new(parent, deps)
 				self:Close()
 			end)
 		)
+		self._closeHit = closeHit
 	end
 
 	-- Fit ------------------------------------------------------------------------------------------------
@@ -713,6 +714,9 @@ function Shell:Close()
 		focused:ReleaseFocus()
 	end
 	self.Bag.Visible = false
+	if self._closeHit then -- a hidden Hit may miss MouseLeave: never reopen with the X stuck in Hover / Pressed
+		self.CloseButton:SetAttribute("DebugState", nil)
+	end
 	for _, cb in self._onClose do
 		cb()
 	end

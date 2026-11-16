@@ -204,6 +204,16 @@ test(
 	end
 )
 
+test("a result in hand reveals after the minimum spin even if the reply is slow; the late reply is ignored", function()
+	local f, a = pressed(0)
+	expect(f:Result(RESULT, 0.1) == nil, "result before the reply is buffered")
+	expectEq(f:Next(), RollFlow.MIN_SPIN, "wakes at the end of the minimum spin, not at the timeout")
+	local r = f:Tick(RollFlow.MIN_SPIN)
+	expect(r ~= nil and r.show == "reveal" and r.result == RESULT, "revealed without waiting for the reply")
+	expect(f:Tick(RollFlow.TIMEOUT + 1) ~= nil and f:IsIdle(), "settles, never times out")
+	expect(f:Reply(a.gen, true, nil, 12) == nil, "the slow reply changes nothing")
+end)
+
 test("reduced motion: no spin and no reveal delay", function()
 	local f, a = pressed(0, true)
 	f:Reply(a.gen, true, nil, 0)
