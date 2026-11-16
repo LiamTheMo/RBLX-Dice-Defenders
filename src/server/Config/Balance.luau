@@ -3,7 +3,7 @@ local Balance = {}
 
 Balance.BoardCells = 15 -- 5 x 3, row-major
 Balance.StartMP = 100 -- exactly four summons: 10 + 20 + 30 + 40
-Balance.StartLives = 20
+Balance.StartLives = 3
 Balance.Waves = 10
 Balance.BossWave = 10
 Balance.MaxAlive = 90

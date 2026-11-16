@@ -42,6 +42,7 @@ Dice.Types = table.freeze({
 	L01 = table.freeze({ name = "Chrono", rarity = "Legendary", base = 30, rate = 0.85 }),
 	L02 = table.freeze({ name = "Forge", rarity = "Legendary", base = 34, rate = 0.75 }),
 	L03 = table.freeze({ name = "Prism", rarity = "Legendary", base = 28, rate = 0.90 }),
+	M01 = table.freeze({ name = "Mimic", rarity = "Mythic", base = 32, rate = 0.80 }),
 })
 
 return table.freeze(Dice)
