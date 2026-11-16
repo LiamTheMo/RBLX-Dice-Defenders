@@ -1,16 +1,15 @@
 -- Play menu controller: one Shell (banner, close; no tabs) hosting the Play View.
 -- Play.new(parent, { hud = LobbyHud, toast = (string) -> () }) -> :Open() :Close() :Toggle() :IsOpen() :Destroy()
--- Renders from PlayLogic with NetClient.Last and the client-only SampleData (Studio shows the full reference) on open and
--- whenever the phase, best wave or clear state changes; START sends the guarded Start request, one at a time.
+-- Renders from PlayLogic with NetClient.Last, LastCatalog and LastMeta on open, whenever the phase, best wave or clear state
+-- changes and on every Catalog / Meta push; START sends the guarded Start request, one at a time. CLAIM sends ClaimQuest for
+-- that milestone, once per id until the next Meta (the server re-checks it and re-pushes Meta).
 
 local ContextActionService = game:GetService("ContextActionService")
 local GuiService = game:GetService("GuiService")
-local RunService = game:GetService("RunService")
 
 local NetClient = require(script.Parent.Parent.NetClient)
 local PlayLogic = require(script.Parent.PlayLogic)
 local PlaySprites = require(script.Parent.PlaySprites)
-local SampleData = require(script.Parent.SampleData)
 local Shell = require(script.Parent.Parent.Bag.Shell)
 local Sprites = require(script.Parent.Parent.Sprites)
 local View = require(script.Parent.View)
@@ -48,16 +47,17 @@ function Play.new(parent, deps)
 	local view = View.new(shell.Slots.Content)
 
 	local busy = false
+	local pending = {} -- milestone ids with a ClaimQuest in flight, held until the next Meta after a success
 
 	local shown -- the State fields the last render drew
 	local function render()
 		local snap = NetClient.Last
 		shown = snap and `{snap.Phase}|{snap.BestWave}|{snap.TrialCleared}`
-		local sample = SampleData.get(RunService:IsStudio())
-		view:SetWorlds(PlayLogic.worlds(snap, sample))
+		local catalog = NetClient.LastCatalog
+		view:SetWorlds(PlayLogic.worlds(snap))
 		view:SetSelected(PlayLogic.WORLD.Id)
-		view:SetMilestones(PlayLogic.milestones(snap, sample), PlayLogic.worldClear(snap))
-		view:SetRepeat(sample.Tiles, sample.Odds)
+		view:SetMilestones(PlayLogic.milestones(catalog, NetClient.LastMeta, pending), PlayLogic.worldClear(snap))
+		view:SetRepeat(PlayLogic.TILES, PlayLogic.repeatLines(catalog))
 		view:SetStartState(PlayLogic.startState(snap, busy))
 	end
 
@@ -66,6 +66,23 @@ function Play.new(parent, deps)
 	end)
 	view:OnLocked(function()
 		deps.toast("Coming soon!")
+	end)
+	view:OnClaim(function(row)
+		local id = PlayLogic.claimTarget(row, pending)
+		if not id then
+			return
+		end
+		pending[id] = true -- set before the yield: a double tap sends once
+		render()
+		task.spawn(function()
+			local ok = NetClient.Request("ClaimQuest", id) -- a rejection toast comes from Lobby; the Meta push shows the claim
+			if not ok then
+				pending[id] = nil
+			end
+			if shell:IsOpen() then
+				render()
+			end
+		end)
 	end)
 	view:OnStart(function()
 		if busy then
@@ -96,6 +113,24 @@ function Play.new(parent, deps)
 				if key ~= shown then
 					render()
 				end
+			end
+		end)
+	)
+
+	table.insert(
+		conns,
+		NetClient.Meta:Connect(function()
+			table.clear(pending)
+			if shell:IsOpen() then
+				render()
+			end
+		end)
+	)
+	table.insert(
+		conns,
+		NetClient.Catalog:Connect(function()
+			if shell:IsOpen() then
+				render()
 			end
 		end)
 	)

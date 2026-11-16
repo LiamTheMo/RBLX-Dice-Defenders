@@ -1,8 +1,9 @@
 -- Play menu view: three columns (worlds | first-time milestones | repeat rewards + START) drawn inside the shared Bag shell's content slot.
 -- Visual only. Design px under the shell's UIScale; the slot's Size offset and "Compact" attribute pick the layout.
--- View.new(slot) -> :SetWorlds(list) :SetSelected(id) :SetMilestones(rows, worldClear) :SetRepeat(tiles, odds)
---   :SetStartState("Ready"|"Busy"|"Disabled") :OnSelect(cb(id)) :OnLocked(cb(id)) :OnStart(cb()) :SetScroll(0) :Destroy()
--- worlds = PlayLogic.worlds, rows = PlayLogic.milestones, tiles / odds = SampleData.get().
+-- View.new(slot) -> :SetWorlds(list) :SetSelected(id) :SetMilestones(rows, worldClear) :SetRepeat(tiles, lines)
+--   :SetStartState("Ready"|"Busy"|"Disabled") :OnSelect(cb(id)) :OnLocked(cb(id)) :OnStart(cb()) :OnClaim(cb(row))
+--   :SetScroll(0) :Destroy()
+-- worlds = PlayLogic.worlds, rows = PlayLogic.milestones, tiles = PlayLogic.TILES, lines = PlayLogic.repeatLines (payout box).
 
 local TextService = game:GetService("TextService")
 
@@ -20,6 +21,7 @@ local WHITE = Color3.new(1, 1, 1)
 local YELLOW = Color3.fromRGB(255, 242, 0)
 local YELLOW_HEX = "#FDEA0A"
 local GREY = Color3.fromRGB(205, 205, 215)
+local GREY_HEX = "#CDCDD7"
 local WARM = Color3.fromRGB(255, 248, 215) -- sparkle tint: near white, pale gold
 local BLOOM = Color3.fromRGB(255, 115, 0) -- warm orange bloom behind the big sparkles
 local GLOW_IN = Color3.fromRGB(253, 239, 10) -- selected card bloom: yellow #FDEF0A inside ...
@@ -29,6 +31,14 @@ local RIM_ORANGE = Color3.fromRGB(248, 130, 20)
 local BAR = { ScrollTrack = Rect.new(19, 65, 22, 227), ScrollThumb = Rect.new(20, 37, 22, 133) } -- narrow centre columns: no horizontal stretch
 local BAR_W = 10 -- track box; the Bag's sprites draw an 8 px ink bar at this width (the Bag's phone scrollbar)
 local ASP = 79 / 391 -- DetailRibbon ink aspect (h / w): ribbons keep it, never stretched
+-- The HUD's currency sprites (owner rule: Gold / Gems always draw these); Size / Ink from Assets/UI/lobby HUD/export.
+local CURRENCY = {
+	Coin = { Image = Sprites.Coin, Size = Vector2.new(125, 128), Ink = Rect.new(3, 3, 122, 125) },
+	Gem = { Image = Sprites.Gem, Size = Vector2.new(128, 124), Ink = Rect.new(4, 4, 124, 120) },
+}
+local CLAIM_W, CLAIM_H = 76, 40 -- desktop CLAIM in the reward icon's column (visible 76 x 40); the hit box is the row's height
+local CLAIM_CW, CLAIM_CH = 76, 28 -- phones: the CLAIM on its own line under the rewards (18 px label), hit box 84 x 56 (>= 44 real px)
+local NOTE = "COMING SOON" -- desktop note under WAVE n for waves the game does not have yet (phones: "SOON" after it)
 
 local function round(n: number): number
 	return math.floor(n + 0.5)
@@ -58,19 +68,6 @@ end
 
 -- Text size: the reference cap height, capped by the reference ink width (the shared font is wider than the reference face); these are the reference ink widths (ref px).
 local TITLE_REF = { ["DICE KINGDOM"] = 213, ["FROST PEAKS"] = 192, ["MAGMA CITADEL"] = 239, ["SHADOW REALM"] = 233 }
-local REW_REF = {
-	["+250"] = 55,
-	["+3"] = 27,
-	["+1"] = 20,
-	CRYSTALS = 79,
-	["LUCK POTIONS"] = 122,
-	["TREASURE CHEST"] = 121,
-	EXCLUSIVE = 82,
-	BANNER = 62,
-	["RARE DIE"] = 78,
-	["CROWN COSMETIC"] = 129,
-	["+5,000 GEMS"] = 100,
-}
 local function titleSize(s: number): number -- one size for every card title: the tightest of the four ref widths
 	local m = 40 * s
 	for name, ref in TITLE_REF do
@@ -80,7 +77,7 @@ local function titleSize(s: number): number -- one size for every card title: th
 end
 
 local function rec(name: string)
-	return PlaySprites[name] or Q[name]
+	return CURRENCY[name] or PlaySprites[name] or Q[name]
 end
 
 -- Centre-anchored (or left-anchored with ax = 0) live text in a box; shrinks to fit w (never under min).
@@ -169,7 +166,6 @@ end
 
 local View = {}
 View.__index = View
-View.spark = spark -- shared with the Codes popup
 
 -- Layout --------------------------------------------------------------------------------------------------
 
@@ -478,10 +474,8 @@ end
 
 -- Per-icon fit boxes (ref ink sizes); the sprite keeps its own aspect inside the box.
 local ICON_BOX = {
-	IconCrystals = { 76, 66 }, -- boxes are sprite Ink sizes: the visible ink draws smaller, scaled so it lands on the ref ink (crystal 67x58, banner 107x62, crown)
-	Potion = { 60, 62 },
-	IconChest = { 84, 62 },
-	RewardBanner = { 140, 64 }, -- ink <= 66 tall: every reward icon stays >= 3 px inside its 72 px row
+	IconCrystals = { 76, 66 }, -- boxes are sprite Ink sizes: the visible ink draws smaller, scaled so it lands on the ref ink (crystal 67x58)
+	Potion = { 60, 62 }, -- ink <= 66 tall: every reward icon stays >= 3 px inside its 72 px row
 	IconGalaxyDie = { 66, 66 },
 }
 
@@ -510,15 +504,15 @@ local function rewardLines(row, lines, cx, cy, w, sizes, z)
 end
 
 local function iconInkW(row, h: number): number
-	if row.Icon == "CrownGems" then
-		return (Draw.fitIn(Q.IconCrown, 70, 46))
+	if row.State == "Claimable" then
+		return CLAIM_W -- the CLAIM button takes the icon's place
 	end
 	local box = ICON_BOX[row.Icon] or { 67, 59 }
 	return (Draw.fitIn(rec(row.Icon), box[1], math.min(box[2], h - 2 * mpx(3) - 2.5)))
 end
 
--- Desktop rows: ONE size per text role (WAVE labels, reward first lines, reward sub-lines) = the largest that fits every row (A-15: the
--- reference cap, <= 110% of the reference ink width); the icon / divider / text columns then follow from the sizes. Never under the 12 real px floor.
+-- Desktop rows: ONE size per text role (WAVE labels, reward lines) = the largest that fits every row (A-15); the WAVE labels keep
+-- theirs while the reward lines can shrink. The icon / divider / text columns then follow from the sizes. Never under the 12 real px floor.
 local function rowRoles(rows, w: number, h: number, f: number)
 	local m5, fl = mpx(5), math.ceil(mpx(12))
 	local three = false
@@ -526,26 +520,18 @@ local function rowRoles(rows, w: number, h: number, f: number)
 		three = three or #r.Lines >= 3
 	end
 	local hs = if h < 72 then math.max(0.85, h / 72) else 1
-	local sw, r1, rs = 26, math.floor((if three then 24 else 26) * hs), math.floor((if three then 18 else 20) * hs)
+	local sw, rs = 26, math.floor((if three then 20 else 22) * hs) -- three 20 px lines fill the row like the reference's 24/18/18
 	local half = 0
 	for _, row in rows do
 		sw = math.min(sw, fitSize("WAVE " .. row.Wave, if tostring(row.Wave):len() >= 3 then 121 else 98, sw, 1))
-		for i, str in row.Lines do
-			local lim = (REW_REF[str] or 1e5) * 1.1
-			if i == 1 then
-				r1 = math.min(r1, fitSize(str, lim, r1, 1))
-			else
-				rs = math.min(rs, fitSize(str, lim, rs, 1))
-			end
-		end
 		half = math.max(half, iconInkW(row, h) / 2)
 	end
-	local function place(a, b, c)
+	local function place(a, c)
 		local wr, ixMin = 0, 0
 		for _, row in rows do
 			ixMin = math.max(ixMin, 31 + measure("WAVE " .. row.Wave, a) + m5 + 3 + iconInkW(row, h) / 2)
-			for i, str in row.Lines do
-				wr = math.max(wr, measure(str, if i == 1 then b else c))
+			for _, str in row.Lines do
+				wr = math.max(wr, measure(str, c))
 			end
 		end
 		wr += 5
@@ -560,40 +546,37 @@ local function rowRoles(rows, w: number, h: number, f: number)
 		local dx = math.min(math.max(250 * f, ix + half + m5 + 1), dxMax)
 		return { ix = ix, dx = dx, tx = math.min(math.max(323 * f, dx + 6 + m5 + wr / 2), txMax), wr = wr }
 	end
-	local t = 1
-	while true do
-		local a, b, c =
-			math.max(fl, math.floor(sw * t)), math.max(fl, math.floor(r1 * t)), math.max(fl, math.floor(rs * t))
-		local pos = place(a, b, c)
-		if pos or (a == fl and b == fl and c == fl) then
-			pos = pos or { ix = 192 * f, dx = 250 * f, tx = 323 * f, wr = 130 }
-			pos.sw, pos.r1, pos.rs = a, b, c
-			return pos
-		end
-		t -= 0.03
+	local function done(pos, a, c)
+		-- the COMING SOON note under WAVE n: one size, its box clear of the widest icon by >= 5 real px
+		pos.sw, pos.rs, pos.nw = a, c, pos.ix - half - m5 - 3 - 31
+		pos.ns = math.max(fl, fitSize(NOTE, pos.nw * 0.95, 16, 1))
+		return pos
 	end
+	for a = math.max(fl, sw), fl, -1 do
+		for c = math.max(fl, math.min(rs, a)), fl, -1 do
+			local pos = place(a, c)
+			if pos then
+				return done(pos, a, c)
+			end
+		end
+	end
+	return done({ ix = 192 * f, dx = 250 * f, tx = 323 * f, wr = 130 }, fl, fl)
 end
 
--- Phone rows stack "WAVE n" over the reward, wrapped at 18 px so nothing truncates.
+-- Phone rows stack "WAVE n" over the rewards (no icon: the Full texts), on one line when they fit at 18 px, else one reward
+-- a line; a reward too long for the row splits at the space that leaves the shorter longest half, so nothing truncates.
+local LINE_P, ROW_PAD = 19, 10 -- phone line pitch and row padding: WAVE + 3 reward lines (86) keep two rows in the list
 local function compactLines(row, avail: number): { string }
-	local src, rew = row.Lines, {}
-	local from = 1
-	if #src >= 2 and src[1]:sub(1, 1) == "+" and measure(src[1], 18) < 60 then
-		rew[1] = src[1] .. " " .. src[2]
-		from = 3
-	end
-	for j = from, #src do
-		table.insert(rew, src[j])
-	end
-	if measure(table.concat(rew, " "), 18) <= avail then
-		return { table.concat(rew, " ") }
+	local src = row.Full or row.Lines
+	if measure(table.concat(src, ", "), 18) <= avail then
+		return { table.concat(src, ", ") }
 	end
 	local out = {}
-	for _, l in rew do
+	for _, l in src do
 		local at, best = nil, 1e9
 		if measure(l, 18) > avail then
 			for pos in l:gmatch("()%s") do
-				local d = math.abs(pos - #l / 2)
+				local d = math.max(measure(l:sub(1, pos - 1), 18), measure(l:sub(pos + 1), 18))
 				if d < best then
 					at, best = pos, d
 				end
@@ -610,10 +593,54 @@ local function compactLines(row, avail: number): { string }
 end
 
 local function compactRowH(row, rowW: number): number
-	return math.max(48, 16 + 20 * (1 + #compactLines(row, rowW - 38)))
+	local claim = if row.State == "Claimable" then CLAIM_CH + 10 else 0 -- 4 px gap + 3 px more each side: the button ink clears the rim
+	return math.max(48, ROW_PAD + LINE_P * (1 + #compactLines(row, rowW - 38)) + claim)
 end
 
-local function buildRow(host, row, x, y, w, h, compact, R)
+-- CLAIM: the START button family (Parts.button, Green) drawn small inside a transparent hit box (>= 44 real px), as the
+-- Quest Log's CLAIM. Busy (a claim in flight) shows it disabled; the controller ignores presses it should not send.
+local function claimButton(
+	parent,
+	row,
+	cx: number,
+	cy: number,
+	w: number,
+	h: number,
+	hitW: number,
+	hitH: number,
+	z,
+	onClaim
+)
+	local hit = Draw.img(parent, {
+		Name = "Claim",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromOffset(round(cx), round(cy)),
+		Size = UDim2.fromOffset(round(hitW), round(hitH)),
+		ZIndex = z,
+	}, "ImageButton")
+	Parts.interact(hit)
+	local visual = Parts.button(hit, {
+		Name = "Visual",
+		Style = "Green",
+		Label = "CLAIM",
+		TextSize = 20,
+		Size = UDim2.fromOffset(round(w), round(h)),
+		Enabled = not row.Busy,
+	})
+	visual.AnchorPoint = Vector2.new(0.5, 0.5)
+	visual.Position = UDim2.fromScale(0.5, 0.5)
+	visual.Interactable = false -- a button still swallows clicks when only Active is false; the hit box takes the tap
+	visual.Selectable = false
+	visual.Label.TextTruncate = Enum.TextTruncate.None
+	hit.Activated:Connect(function()
+		if onClaim then
+			onClaim(row)
+		end
+	end)
+	return hit
+end
+
+local function buildRow(host, row, x, y, w, h, compact, R, onClaim)
 	local frame = Draw.img(host, {
 		Name = "Row" .. row.Wave,
 		Position = UDim2.fromOffset(x, y),
@@ -636,18 +663,12 @@ local function buildRow(host, row, x, y, w, h, compact, R)
 	local d = if compact then 32 else 46
 	local circle = Draw.img(frame, { Name = "Status", ZIndex = z })
 	local cx = if compact then 2 else -10
-	local ring = if row.Reached then 3 else 0 -- gold ring (#FDF201) round the checked circle; the circle shrinks so the total stays d
+	local reached = row.State == "Claimed" or row.State == "Claimable"
+	local ring = if row.State == "Claimed" then 3 else 0 -- gold ring (#FDF201): claimed; the circle shrinks so the total stays d
 	if not compact then
-		d = if row.Reached then 45 else 42.5 -- measured: the check draws ~2 over, the lock ~5 over its ink size; both land on ~47
+		d = if reached then 45 else 42.5 -- measured: the check draws ~2 over, the lock ~5 over its ink size; both land on ~47
 	end
-	Draw.apply(
-		circle,
-		if row.Reached then Q.CheckCircle else PlaySprites.LockCircle,
-		cx,
-		h / 2,
-		d - 2 * ring,
-		d - 2 * ring
-	)
+	Draw.apply(circle, if reached then Q.CheckCircle else PlaySprites.LockCircle, cx, h / 2, d - 2 * ring, d - 2 * ring)
 	if ring > 0 then
 		local rf = make("Frame", {
 			Name = "Ring",
@@ -664,19 +685,23 @@ local function buildRow(host, row, x, y, w, h, compact, R)
 			rf
 		)
 	end
+	local wave, soon, claim = "WAVE " .. row.Wave, row.State == "Soon", row.State == "Claimable"
 	if compact then
 		local avail = w - 38
 		local lines = compactLines(row, avail)
-		local y0 = h / 2 - (1 + #lines) * 10
+		local block = LINE_P * (1 + #lines) + (if claim then CLAIM_CH + 4 else 0)
+		local wy = h / 2 - block / 2 + LINE_P / 2
 		label(frame, {
 			Name = "Wave",
-			Text = "WAVE " .. row.Wave,
+			Text = if soon then `{wave} <font color="{GREY_HEX}">SOON</font>` else wave,
+			Plain = if soon then wave .. " SOON" else nil,
+			Rich = soon,
 			AX = 0,
 			Size = 20,
 			Min = 18,
 			X = 28,
-			Y = y0 + 10,
-			W = avail,
+			Y = wy,
+			W = if soon then avail + 10 else avail,
 			H = 20,
 			Z = z,
 			Stroke = 3,
@@ -689,12 +714,16 @@ local function buildRow(host, row, x, y, w, h, compact, R)
 				Size = 18,
 				Min = 18,
 				X = 28,
-				Y = y0 + 10 + 20 * i,
+				Y = wy + LINE_P * i,
 				W = avail + 10,
 				H = 20,
 				Z = z,
 				Stroke = 2,
 			})
+		end
+		if claim then
+			local cy = wy + LINE_P * #lines + LINE_P / 2 + 4 + CLAIM_CH / 2
+			claimButton(frame, row, 28 + CLAIM_CW / 2, cy, CLAIM_CW, CLAIM_CH, CLAIM_CW + 8, 56, z + 1, onClaim)
 		end
 		return
 	end
@@ -703,37 +732,38 @@ local function buildRow(host, row, x, y, w, h, compact, R)
 	local iconH = math.min(box[2], h - 2 * mpx(3) - 2.5) -- icon ink >= 3 real px inside the row
 	label(frame, {
 		Name = "Wave",
-		Text = "WAVE " .. row.Wave,
+		Text = wave,
 		AX = 0,
 		Size = R.sw,
 		Fixed = true,
 		X = 31, -- ref text starts x 684
-		Y = h / 2,
+		Y = if soon then h / 2 - 9 * h / 72 else h / 2,
 		W = 132,
 		Z = z,
 		Stroke = 3,
 	})
-	if row.Icon == "CrownGems" then
-		icon(frame, Q.IconCrown, ix, h / 2 - 9, 70, 46, z)
-		for i = -1, 1 do
-			local gem = Draw.img(frame, {
-				Name = "Gem",
-				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.fromOffset(round(ix + i * 21), round(h - 11 - mpx(3) - 1)), -- gem bottoms >= 3 real px above the row rim
-				Size = UDim2.fromOffset(20, 20),
-				Image = Sprites.Gem,
-				ZIndex = z + 1,
-			})
-			gem.ScaleType = Enum.ScaleType.Fit
-		end
+	if soon then
+		label(frame, {
+			Name = "Note",
+			Text = NOTE,
+			AX = 0,
+			Size = R.ns,
+			Fixed = true,
+			Color = GREY,
+			X = 31,
+			Y = h / 2 + 15 * h / 72,
+			W = R.nw,
+			Z = z,
+			Stroke = 2,
+		})
+	end
+	if claim then
+		claimButton(frame, row, ix, h / 2, CLAIM_W, CLAIM_H, CLAIM_W, math.max(h, mpx(44)), z, onClaim)
 	else
 		icon(frame, rec(row.Icon), ix, h / 2, box[1], iconH, z)
 	end
 	divider(frame, dx, h / 2 - 27.5, 4, 55, z)
-	local sizes = {}
-	for i = 1, #row.Lines do
-		sizes[i] = if i == 1 then R.r1 else R.rs
-	end
+	local sizes = table.create(#row.Lines, R.rs)
 	rewardLines(frame, row.Lines, R.tx, h / 2, R.wr + 6, sizes, z)
 end
 
@@ -781,6 +811,11 @@ function View:_buildMid()
 
 	-- rows
 	local rows = self._rows
+	local function onClaim(row)
+		if self._onClaim then
+			self._onClaim(row)
+		end
+	end
 	if compact then
 		local sy = rtop + rh + 8
 		local listH = L.H - sy - 62
@@ -800,7 +835,7 @@ function View:_buildMid()
 		scroll.Size = UDim2.fromOffset(midW - lead - 22, sh)
 		scroll.ZIndex = base + 2
 		for i, row in rows do
-			buildRow(scroll, row, 14, (i - 1) * pitch + 3, rowW, pitch - 6, true)
+			buildRow(scroll, row, 14, (i - 1) * pitch + 3, rowW, pitch - 6, true, nil, onClaim)
 		end
 		scroll.CanvasSize = UDim2.fromOffset(0, #rows * pitch)
 	else
@@ -836,7 +871,7 @@ function View:_buildMid()
 			if not tops[i] then
 				break -- the full layout holds the reference's six rows
 			end
-			buildRow(mid, row, 46, round(tops[i] * g), rowW, round(72 * g), false, R)
+			buildRow(mid, row, 46, round(tops[i] * g), rowW, round(72 * g), false, R, onClaim)
 		end
 	end
 
@@ -872,11 +907,11 @@ end
 
 -- Right column ---------------------------------------------------------------------------------------------
 
-local function oddsText(line)
+local function oddsText(line) -- payout box line: a heading token (ends in ":") is yellow
 	local plain, rich = {}, {}
 	for _, tok in line do
 		table.insert(plain, tok)
-		table.insert(rich, if tok:find("%%") then `<font color="{YELLOW_HEX}">{tok}</font>` else tok)
+		table.insert(rich, if tok:sub(-1) == ":" then `<font color="{YELLOW_HEX}">{tok}</font>` else tok)
 	end
 	return table.concat(plain, " "), table.concat(rich, " ")
 end
@@ -939,7 +974,7 @@ function View:_buildRight()
 	local rh = if compact then round(rwR * ASP) else 61
 	local rx = rw / 2 - (if compact then 0 else 2)
 	skin(col, Q.DetailRibbon, rx, y + rh / 2, rwR, rh, nil, base + 1, "Ribbon")
-	local rtitle = if compact then "REPEAT REWARDS" else "REPEAT REWARDS \u{2022} EVERY 10 WAVES"
+	local rtitle = if compact then "REPEAT REWARDS" else "REPEAT REWARDS \u{2022} EVERY RUN"
 	local rwid = if compact then rw * 0.8 - 8 else rwR * 0.95
 	if compact and measure(rtitle, 18) > rwid then
 		rtitle = "REWARDS"
@@ -1024,7 +1059,7 @@ function View:_buildRight()
 		})
 		local top, bot = hh + 1, th - 4 -- the tile body between the header pill and the skin's inner rim
 		local iy = if tight then (top + bot) / 2 else 61.2 * th / 101 -- icon ink >= 3 real px from the header pill and the skin rim
-		icon(
+		local ic = icon(
 			box,
 			rec(tile.Icon),
 			tw / 2,
@@ -1033,6 +1068,21 @@ function View:_buildRight()
 			if tight then bot - top - 2 * mpx(3) - 1 else 62 * th / 101,
 			box.ZIndex + 2
 		)
+		if tile.Soon then -- no run drops these yet: the Bag's disabled look on the icon, SOON over it
+			ic.ImageColor3 = Color3.new(0.5, 0.5, 0.55)
+			ic.ImageTransparency = 0.4
+			label(box, {
+				Name = "Soon",
+				Text = "SOON",
+				Size = 18,
+				Min = 18,
+				X = tw / 2,
+				Y = iy,
+				W = tw - 8,
+				Z = box.ZIndex + 3,
+				Stroke = 2,
+			})
+		end
 	end
 	local rowsN = (#tiles + cols - 1) // cols
 	y += rowsN * th + (rowsN - 1) * tgap + (if compact then 6 else 9)
@@ -1074,29 +1124,14 @@ function View:_buildRight()
 		textCx = math.min(247, (left + right) / 2) -- ref line centre x 1325 (6 px left of the old 253)
 		local free = 2 * math.min(textCx - left, right - textCx)
 		textW = free + 4
-		if #lines == 5 then
-			-- two role sizes (A-15): lines 1-3 and lines 4-5 each take the largest size that fits every member, <= 110% of the reference ink width
-			local refW = { 160, 160, 160, 207, 135 }
-			local s13, s45 = 25, 21
-			for i = 1, 5 do
-				local plain = oddsText(lines[i])
-				local lim = math.min(refW[i] * 1.1, free) * 0.95
-				if i <= 3 then
-					s13 = math.min(s13, fitSize(plain, lim, s13, 1))
-				else
-					s45 = math.min(s45, fitSize(plain, lim, s45, 1))
-				end
-			end
-			sizes = { s13, s13, s13, s45, s45 }
-			local y1, y5 = 13.3 + m5, oh - 14.2 - m5 -- cap centres: line 1 and line 5 keep >= 5 real px to the rim, even spacing between
-			for i = 1, 5 do
-				ys[i] = y1 + (i - 1) * (y5 - y1) / 4
-			end
-		else
-			for i = 1, #lines do
-				ys[i] = oh / 2 + (i - (#lines + 1) / 2) * 30
-				sizes[i] = 25
-			end
+		local size = 25 -- one role size (A-15): the largest that fits every line
+		for _, line in lines do
+			size = math.min(size, fitSize((oddsText(line)), free * 0.95, size, math.ceil(mpx(12))))
+		end
+		local y1, yn = 13.3 + m5, oh - 14.2 - m5 -- cap centres: the first and last lines keep >= 5 real px to the rim, even spacing between
+		for i = 1, #lines do
+			ys[i] = if #lines == 1 then oh / 2 else y1 + (i - 1) * (yn - y1) / (#lines - 1)
+			sizes[i] = size
 		end
 	end
 	for i, line in lines do
@@ -1358,8 +1393,8 @@ function View:SetMilestones(rows, worldClear: boolean?)
 	end
 end
 
-function View:SetRepeat(tiles, odds)
-	self._tiles, self._odds = tiles, odds
+function View:SetRepeat(tiles, lines)
+	self._tiles, self._odds = tiles, lines
 	if self._L then
 		self:_buildRight()
 	end
@@ -1388,6 +1423,10 @@ end
 
 function View:OnStart(cb)
 	self._onStart = cb
+end
+
+function View:OnClaim(cb)
+	self._onClaim = cb
 end
 
 function View:SetScroll(y: number)
