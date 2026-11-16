@@ -28,6 +28,7 @@ local FAILURES: { [string]: Result } = {
 	AlreadyRedeemed = result("You already used that code.", "Info", PRESS, false),
 }
 local RATE_TEXT = "Too many tries! Wait a moment."
+CodesLogic.RATE_TEXT = RATE_TEXT
 local SUCCESS = result("Code redeemed!", "Success", PRESS, true)
 local FALLBACK = result("Something went wrong. Try again.", "Error", PRESS, false)
 
@@ -100,10 +101,15 @@ function CodesLogic.nextStreak(streak: number, ok: boolean, code: string?): numb
 	return 0
 end
 
--- A failure reply the server's limiter counted: any rejection that reached it (not Throttled / Network, which never
--- left the client, nor RateLimited, a refused try). Generic server errors count too: locking early is the safe side.
+-- A failure reply the server's limiter counted: only an evaluated rejection (Rules/Redeem.Attempt's Invalid, Expired,
+-- AlreadyRedeemed). Guard / handler codes and the locked RateLimited reply are not counted there.
 function CodesLogic.isFailure(ok: boolean, code: string?): boolean
-	return not ok and code ~= "Throttled" and code ~= "Network" and code ~= "RateLimited"
+	return not ok and (code == "Invalid" or code == "Expired" or code == "AlreadyRedeemed")
+end
+
+-- Seconds of a running lock left at `now` (lockUntil = when the last lock ends); 0 when none runs.
+function CodesLogic.lockLeft(now: number, lockUntil: number): number
+	return math.max(0, lockUntil - now)
 end
 
 -- The failure count after a reply (per session, like the server's; a success never resets it).

@@ -3,11 +3,9 @@
 local Codes = game:GetService("StarterPlayer").StarterPlayerScripts.Client.Controllers.Codes
 local CodesLogic = require(Codes.CodesLogic)
 
-local SERVER_PATTERN = "^[A-Za-z0-9_%-]+$" -- RemoteGuard's RedeemCode check
-
-local function serverAccepts(s: string): boolean
-	return #s <= 32 and string.find(s, SERVER_PATTERN) ~= nil
-end
+-- The server's real argument check: a guard change that the client sanitiser doesn't follow fails here.
+local serverAccepts =
+	require(game:GetService("ServerScriptService").Server.Infrastructure.RemoteGuard).Specs.RedeemCode.check
 
 local function check(input: string, want: string, wantChanged: boolean, label: string)
 	local got, changed = CodesLogic.sanitize(input)
@@ -61,7 +59,7 @@ end)
 test("sanitize every single byte", function()
 	for b = 0, 255 do
 		local c = string.char(b)
-		local allowed = string.find(c, SERVER_PATTERN) ~= nil
+		local allowed = serverAccepts(c)
 		check(c, if allowed then c else "", not allowed, "byte " .. b)
 	end
 	local allowedCount = 0
@@ -160,13 +158,13 @@ test("failure lock mirrors the server's guessing lock", function()
 	expectEq(CodesLogic.MAX_LOCK_SECONDS, Balance.Redeem.maxLockSeconds, "cap = Balance.Redeem")
 
 	local nf = CodesLogic.nextFailures
-	for _, code in
-		{ "Invalid", "Expired", "AlreadyRedeemed", "Error", "NotLoaded", "BadArgs", "BadSeq", "NotOwner", "Bogus" }
-	do
+	for _, code in { "Invalid", "Expired", "AlreadyRedeemed" } do
 		expectEq(nf(2, false, code), 3, code .. " counts")
 	end
-	for _, code in { "Throttled", "Network", "RateLimited" } do
-		expectEq(nf(2, false, code), 2, code .. " never reached the limiter")
+	for _, code in
+		{ "Throttled", "Network", "RateLimited", "Error", "NotLoaded", "BadArgs", "BadSeq", "NotOwner", "Bogus" }
+	do
+		expectEq(nf(2, false, code), 2, code .. " is not an evaluated rejection")
 	end
 	expectEq(nf(7, true, nil), 7, "a success never resets it")
 
@@ -186,6 +184,11 @@ test("failure lock mirrors the server's guessing lock", function()
 		expectEq(r.clear, false, "keeps the field " .. i)
 	end
 	expectEq(CodesLogic.failureLock(0), 0, "no failures")
+	expectEq(CodesLogic.lockLeft(10, 25), 15, "lock left")
+	expectEq(CodesLogic.lockLeft(25, 25), 0, "lock over")
+	expectEq(CodesLogic.lockLeft(30, 25), 0, "never negative")
+	expectEq(CodesLogic.lockLeft(5, 0), 0, "no lock")
+	expectEq(CodesLogic.RATE_TEXT, "Too many tries! Wait a moment.", "lock text")
 	local net = CodesLogic.result(false, "Network", 0, 9) :: CodesLogic.Result
 	expectEq(net.cooldown, 1, "a network error after the free failures locks nothing")
 	expectEq(net.text, "Something went wrong. Try again.", "network text")

@@ -49,6 +49,8 @@ function Codes.new(parent, deps)
 
 	-- Result line: a token so an old timer never clears a newer message. seconds nil = stays until replaced.
 	local msgToken = 0
+	local lockUntil = 0 -- os.clock() when the mirrored guessing lock ends (0 = none)
+	local showLock
 	local function show(text: string?, tone: string?, seconds: number?)
 		msgToken += 1
 		local token = msgToken
@@ -59,8 +61,16 @@ function Codes.new(parent, deps)
 				if alive and token == msgToken then
 					view:SetMessage(nil)
 					view:SetField("Default")
+					showLock() -- a hint or result timer ending mid-lock hands the line back to the lock message
 				end
 			end)
+		end
+	end
+	-- During a lock, always say why REDEEM is inert; a no-op when none runs.
+	function showLock()
+		local left = CodesLogic.lockLeft(os.clock(), lockUntil)
+		if alive and left > 0 then
+			show(CodesLogic.RATE_TEXT, "Error", left)
 		end
 	end
 
@@ -86,6 +96,9 @@ function Codes.new(parent, deps)
 			show(EMPTY, "Info", CodesLogic.MESSAGE_SECONDS)
 			return
 		elseif m ~= "Ready" then
+			if m == "Cooldown" then
+				showLock()
+			end
 			return
 		end
 		local code = CodesLogic.sanitize(box.Text) -- the field is always clean; never send anything the server's guard rejects
@@ -100,6 +113,7 @@ function Codes.new(parent, deps)
 			local r = CodesLogic.result(ok, err, streak, failures)
 			if alive and r then
 				cooldownUntil = os.clock() + r.cooldown
+				lockUntil = if r.cooldown > CodesLogic.PRESS_COOLDOWN then cooldownUntil else 0
 				if r.clear and box.Text == code then
 					box.Text = ""
 				end
@@ -257,6 +271,7 @@ function Codes.new(parent, deps)
 		end
 		refresh()
 		shell:Open()
+		showLock()
 		hud:SetBagMode(true, "Codes")
 		ContextActionService:BindActionAtPriority(ACTION, function(_, inputState)
 			if inputState == Enum.UserInputState.Begin then
