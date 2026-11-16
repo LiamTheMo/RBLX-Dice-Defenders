@@ -12,6 +12,7 @@
 -- Opt-in banner options (default = unchanged): banner.noGem = true skips the gem pin; an emblem box (also the side emblem's) may be { full = box, compact = box } to size the emblem per tier.
 -- Opt-in popup (free mode): size = Vector2 visible window ink at the Full tier (design px); the scroll-to-window-bottom group is centred on the screen
 -- inside the free region; phones keep the Compact banner / X / rim and shrink the window and Content uniformly (Content = the Full free box x k); the chrome is two crossfaded 1:1 copies of the Window art.
+-- Opt-in popupScale (number, default 1; popup + Full tier only, ignored on phones): multiplies the real scale of the whole popup group (banner, X, rim, window, content) so it shrinks in proportion.
 
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
@@ -302,6 +303,23 @@ function Shell.new(parent, deps)
 		end)
 	)
 	self.CloseButton = close
+	local closeHit -- popupScale only: a transparent child that keeps the X >= 44 real px when the popup is drawn smaller
+	if deps.popupScale then
+		closeHit = make("TextButton", {
+			Name = "Hit",
+			BackgroundTransparency = 1,
+			Text = "",
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			ZIndex = Z + 12,
+		}, close)
+		table.insert(
+			conns,
+			closeHit.Activated:Connect(function()
+				self:Close()
+			end)
+		)
+	end
 
 	-- Fit ------------------------------------------------------------------------------------------------
 	local function fit()
@@ -319,8 +337,11 @@ function Shell.new(parent, deps)
 		local bs = math.clamp(math.min(availW / fullW, availH / (fullH + full.over)), MIN_SCALE, MAX_SCALE)
 		-- Settings UI Scale: Full tier only, es = bs at 100% (design layout below still uses bs)
 		local es = if size.Y < UiKit.PHONE_H then bs else bs * (SettingsLogic.get("uiScale") / 100)
-		uiScale.Scale = es
-		scaled.Size = UDim2.fromScale(1 / es, 1 / es)
+		-- Opt-in popupScale (popup, Full tier only): the whole group is drawn at es x ps; the layout (pk, fit test) still uses es
+		local ps = if deps.popupScale and deps.size and size.Y >= UiKit.PHONE_H then deps.popupScale else 1
+		local eff = es * ps -- real px per design px (= es when the option is absent)
+		uiScale.Scale = eff
+		scaled.Size = UDim2.fromScale(1 / eff, 1 / eff)
 		local dw, dh = availW / bs, availH / bs -- design px that remain
 
 		-- Tier: compact only for phone-class heights (as the HUD's 500 px rule); desktops stay full and the
@@ -372,7 +393,7 @@ function Shell.new(parent, deps)
 		window.Size = UDim2.fromOffset(winW, hf)
 		if box then -- popup: the group (scroll ink top .. window ink bottom) centred on the screen, kept inside [4, bottomTop - 8 + vpad]
 			local lo, hi = 4, ins.bottomTopReal - 8 + vpad
-			local up, down = (hf / 2 + gTop) * es, (hf / 2 - full.my * pk) * es
+			local up, down = (hf / 2 + gTop) * eff, (hf / 2 - full.my * pk) * eff
 			-- phones fill the region exactly (pk), so the bounds can cross by a rounding error: max/min, not math.clamp
 			local cy = if up + down > hi - lo
 				then lo + (hi - lo - up - down) / 2 + up
@@ -447,14 +468,14 @@ function Shell.new(parent, deps)
 		-- TextBounds equal the layout at that size), so the model works in real px at R and divides by the scale
 		local bl0, br0 = BEARING_L[str:sub(1, 1)] or BEARING, BEARING_R[str:sub(-1)] or BEARING
 		local function realSize(sz)
-			return math.floor(sz * es)
+			return math.floor(sz * eff)
 		end
 		local function strokeReal() -- the stroke's real thickness plus the white fill's visible edge sitting inside the glyph edge
-			return title.stroke * es + FILL_EDGE
+			return title.stroke * eff + FILL_EDGE
 		end
 		local function outWidth(sz) -- design px
 			local r = realSize(sz)
-			return (Parts.measure(str, r) - (bl0 + br0) * r + 2 * strokeReal()) / es
+			return (Parts.measure(str, r) - (bl0 + br0) * r + 2 * strokeReal()) / eff
 		end
 		local ts = title.size
 		while ts > 12 and lead + outWidth(ts) > flatW do
@@ -467,10 +488,10 @@ function Shell.new(parent, deps)
 		if sideEmblem then
 			sideEmblem.place(sideBox, groupLeft / bannerW, cy)
 		end
-		bannerText.Position = UDim2.fromScale((groupLeft + lead + (strokeReal() - bl0 * rs) / es) / bannerW, cy)
+		bannerText.Position = UDim2.fromScale((groupLeft + lead + (strokeReal() - bl0 * rs) / eff) / bannerW, cy)
 		bannerText.Size = UDim2.new(
 			0,
-			math.max((bn.textW or 0.5) * sbInk[3] * bannerW, Parts.measure(str, rs) / es + 2 * title.stroke + 4),
+			math.max((bn.textW or 0.5) * sbInk[3] * bannerW, Parts.measure(str, rs) / eff + 2 * title.stroke + 4),
 			0,
 			math.ceil(ts * 1.2)
 		)
@@ -479,6 +500,10 @@ function Shell.new(parent, deps)
 		close.Position = if compact
 			then UDim2.fromOffset(winW - t.mx - 27, t.my + 5)
 			else UDim2.fromOffset(winW - t.mx - 29, t.my + 8.5) -- centre 1432.5, 101.5
+		if closeHit then
+			local minD = 44 / eff -- design px
+			closeHit.Size = UDim2.fromOffset(math.max(close.Size.X.Offset, minD), math.max(close.Size.Y.Offset, minD))
+		end
 
 		-- Tabs: equal widths; label shrinks (>=15) and the icon drops when very narrow.
 		local barW = winW - 2 * (t.mx + 47)

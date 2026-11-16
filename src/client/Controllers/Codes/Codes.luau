@@ -36,6 +36,7 @@ function Codes.new(parent, deps)
 		name = "Codes",
 		free = true,
 		size = Vector2.new(623, 532),
+		popupScale = 2 / 3, -- desktop/tablet draw the popup at 2/3 size; phones keep today's
 		banner = {
 			text = "CODES",
 			emblems = { { sprite = CODES_ICON, box = { 0, 0, 0.25, 1.006 }, side = true } },
