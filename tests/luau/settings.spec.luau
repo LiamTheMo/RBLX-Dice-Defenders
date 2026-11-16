@@ -4,7 +4,7 @@ local SettingsLogic =
 	require(game:GetService("StarterPlayer").StarterPlayerScripts.Client.Controllers.Settings.SettingsLogic)
 
 test("registry", function()
-	expectEq(#SettingsLogic.DEFS, 23, "count")
+	expectEq(#SettingsLogic.DEFS, 20, "count")
 	local seen, perTab, real = {}, {}, {}
 	for _, def in SettingsLogic.DEFS do
 		expect(not seen[def.id], "duplicate " .. def.id)
@@ -16,7 +16,7 @@ test("registry", function()
 			real[def.id] = true
 		end
 	end
-	for tab, n in { GAMEPLAY = 6, GRAPHICS = 6, AUDIO = 5, MISC = 6 } do
+	for tab, n in { GAMEPLAY = 4, GRAPHICS = 6, AUDIO = 5, MISC = 5 } do
 		expectEq(perTab[tab], n, tab)
 	end
 	expectEq(table.concat(SettingsLogic.TABS, ","), "GAMEPLAY,GRAPHICS,AUDIO,MISC", "tab order")
@@ -111,8 +111,6 @@ test("cycle", function()
 	expectEq(SettingsLogic.get("effectsQuality"), "Low", "High -> Low")
 	expect(SettingsLogic.cycle("effectsQuality", -1), "wrap down")
 	expectEq(SettingsLogic.get("effectsQuality"), "High", "Low -> High")
-	expect(not SettingsLogic.cycle("language", 1), "one option")
-	expectEq(SettingsLogic.get("language"), "English", "language stays")
 	expect(not SettingsLogic.cycle("shadows", 1), "not a select")
 end)
 
@@ -122,7 +120,13 @@ test("format", function()
 	expectEq(SettingsLogic.format("shadows", false), "OFF", "off")
 	expectEq(SettingsLogic.format("effectScale"), "75%", "percent")
 	expectEq(SettingsLogic.format("effectsQuality"), "HIGH", "select")
-	expectEq(SettingsLogic.format("language"), "ENGLISH", "language")
+end)
+
+test("removed defs", function()
+	for _, id in { "language", "rangeRings", "placementGrid" } do
+		expect(SettingsLogic.byId[id] == nil, id .. " has no def")
+		expectEq(SettingsLogic.get(id), nil, id .. " get")
+	end
 end)
 
 test("fromFraction", function()

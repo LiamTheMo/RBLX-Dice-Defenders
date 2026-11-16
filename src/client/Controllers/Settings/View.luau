@@ -26,9 +26,7 @@ local FLANK = { left = 335, right = 378, bead = 328, bead2 = 385 } -- DividerGol
 local ICON = {
 	autoSkipWaves = "AutoSkip",
 	damageNumbers = "DamageNumbers",
-	rangeRings = "RangeRings",
 	waveAnnouncements = "Announce",
-	placementGrid = "PlacementGrid",
 	autoCloseMenus = "AutoClose",
 	effectsQuality = "EffectsQuality",
 	projectileEffects = "Projectile",
@@ -46,16 +44,13 @@ local ICON = {
 	showFps = "ShowFps",
 	hideOthersEffects = "HideOthers",
 	notifications = "Notifications",
-	language = "Language",
 }
 
 -- Full-tier icon ink size (w, h) in reference px per setting (measured on the four references); fitted by aspect, centre unchanged.
 local ICON_PX = {
 	autoSkipWaves = { 58, 41 },
 	damageNumbers = { 80, 62 },
-	rangeRings = { 65, 58 },
 	waveAnnouncements = { 72, 57 },
-	placementGrid = { 59, 56 },
 	autoCloseMenus = { 69, 55 },
 	effectsQuality = { 60, 48 },
 	projectileEffects = { 58, 47 },
@@ -73,8 +68,15 @@ local ICON_PX = {
 	showFps = { 56, 48 },
 	hideOthersEffects = { 67, 54 },
 	notifications = { 66, 50 },
-	language = { 56, 56 },
 }
+local MAX_ROWS = 0 -- rows on the fullest tab
+do
+	local perTab = {}
+	for _, def in SettingsLogic.DEFS do
+		perTab[def.tab] = (perTab[def.tab] or 0) + 1
+		MAX_ROWS = math.max(MAX_ROWS, perTab[def.tab])
+	end
+end
 local PX_TO_DU = 1.09 / 0.9693 -- reference px -> design px at the 1620 window, x1.09: the sprite ink box includes a soft glow beyond the measured bright part
 
 -- Text roles (calibrated to the reference widths): size / fit minimum, c = the Compact tier, fill, outline colour, outline px.
@@ -444,7 +446,7 @@ local function drawSelect(L, row, def, z: number, updaters)
 		return hit
 	end
 	local leftHit, rightHit = arrow(artL, left + aL / 2, aL, "Left"), arrow(artR, right - aR / 2, aR, "Right")
-	-- a single option (Language) looks and presses like any selector; Settings toasts "coming soon" instead of cycling
+	-- a single option looks and presses like any selector; Settings toasts "coming soon" instead of cycling
 	updaters[def.id] = function(value)
 		text.Text = SettingsLogic.format(def.id, value)
 		text.TextSize = fitted(text.Text, size, math.min(bodyW - 16, 117))
@@ -636,13 +638,22 @@ function View:_build()
 			table.insert(defs, def)
 		end
 	end
-	local pitch = if not L.compact and self._tab == "AUDIO" then 87.5 else L.pitch -- Audio keeps the wider pitch
+	-- Tabs with fewer rows than the fullest one take the wider (Audio) pitch on Full and sit centred in the list.
+	local short = #defs < MAX_ROWS
+	local pitch = if not L.compact and short then 87.5 else L.pitch
 	local canvasH = math.ceil(L.top + math.max(0, #defs - 1) * pitch + L.rowH + L.bottom)
 	L.rowW = L.listW - L.padL - L.padR
 	if canvasH > L.listH then
 		L.rowW -= if L.compact then L.barW - 2 else L.barW / 2 + 2 -- the scroll bar gets its own strip: it never touches a row
 	end
 	roleSizes(L)
+	local lines, extra = {}, 0
+	for i, def in defs do
+		lines[i] = descLines(L, def)
+		extra += (lines[i] - 1) * round(L.descSize * 1.2)
+	end
+	canvasH = math.max(canvasH, math.ceil(L.top + math.max(0, #defs - 1) * pitch + extra + L.rowH + L.bottom))
+	local shift = if short then math.max(0, math.floor((L.listH - canvasH) / 2)) else 0 -- centred only while it fits (no bar)
 	local z = root.ZIndex
 	drawRule(L, root, z)
 	local panel = drawPanel(L, root, z)
@@ -670,11 +681,10 @@ function View:_build()
 		ZIndex = panel.ZIndex + 2,
 	}, panel)
 	self._list = list
-	local y = L.top
-	for _, def in defs do
-		local lines = descLines(L, def)
-		self:_drawRow(L, list, def, y, lines)
-		y += pitch + (lines - 1) * round(L.descSize * 1.2)
+	local y = L.top + shift
+	for i, def in defs do
+		self:_drawRow(L, list, def, y, lines[i])
+		y += pitch + (lines[i] - 1) * round(L.descSize * 1.2)
 	end
 	canvasH = math.max(canvasH, math.ceil(y - pitch + L.rowH + L.bottom))
 	list.CanvasSize = UDim2.fromOffset(0, canvasH)

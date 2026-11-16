@@ -127,7 +127,7 @@ test("malformed argument matrix: BadArgs, never reaches the handler, seq not con
 			P(1, "shadows"),
 			P(1, 5),
 			P(1, true),
-			P(1, entries(24)), -- more entries than the registry has
+			P(1, entries(21)), -- more entries than the registry has
 			P(1, { true }), -- array: a number key
 			P(1, { [1] = true, shadows = true }),
 			P(1, { [true] = true }),
@@ -601,7 +601,7 @@ test("RedeemCode soft codes are not counted and never kick", function()
 	expectEq(#env.kicks, 0, "no kick")
 end)
 
-test("SaveSettings passes the patch through; 23 entries and 1/32-byte keys and values are well formed", function()
+test("SaveSettings passes the patch through; 20 entries and 1/32-byte keys and values are well formed", function()
 	local env, owner = make(), {}
 	local got
 	env.handler = function(_, ...)
@@ -612,7 +612,7 @@ test("SaveSettings passes the patch through; 23 entries and 1/32-byte keys and v
 	expect(env.call(owner, "SaveSettings", 1, patch), "ok")
 	expect(got.n == 1 and got[1] == patch, "patch passed unchanged")
 	expect(env.call(owner, "SaveSettings", 2, {}), "empty patch")
-	expect(env.call(owner, "SaveSettings", 3, entries(23)), "23 entries (the registry size)")
+	expect(env.call(owner, "SaveSettings", 3, entries(20)), "20 entries (the registry size)")
 	expect(
 		env.call(owner, "SaveSettings", 4, { k = ("x"):rep(32), [("k"):rep(32)] = "" }),
 		"1/32-byte keys, 32/0-byte values"
