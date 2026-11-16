@@ -118,6 +118,92 @@ test("stale result after a timeout is late", function()
 	expect(f:Result(RESULT, 12).late == RESULT, "late")
 end)
 
+test(
+	"Roll.luau skips Meta / Catalog re-renders while the flow is not Idle (pity / gems do not leak the outcome)",
+	function()
+		local f, a = pressed(0)
+		expect(not f:IsIdle(), "sending: refresh gate closed")
+		f:Reply(a.gen, true, nil, 0.1)
+		expect(not f:IsIdle(), "rolling: refresh gate closed")
+		f:Result(RESULT, 0.2)
+		expect(f:Tick(0.6).show == "reveal" and not f:IsIdle(), "revealing: refresh gate closed")
+		expect(f:Tick(0.9).settle == RESULT and f:IsIdle(), "settle opens it (and renders once)")
+		local source = __sources["StarterPlayer/StarterPlayerScripts/Client/Controllers/Roll/Roll"]
+		expect(
+			string.find(source or "", "flow:IsIdle() and select(5, inputs())", 1, true) ~= nil,
+			"refresh is gated on Idle"
+		)
+	end
+)
+
+test("timeout, stale reply ok, press B, A's result arrives: late only; B's own result is revealed", function()
+	local f, a = pressed(0)
+	f:Tick(10)
+	expectEq(f:Reply(a.gen, true, nil, 11), nil, "A's reply ignored")
+	local b = f:Press(12)
+	expect(b.send == true, "B sent")
+	expect(f:Result(RESULT, 12.5).late == RESULT, "A's result is late, not B's")
+	expect(not f:IsIdle(), "B still sending")
+	f:Reply(b.gen, true, nil, 13)
+	local r2 = { Pool = "Standard", Results = { { Id = "C02", Rarity = "Common", New = true } } }
+	expect(f:Result(r2, 13.1).result == r2, "B's own result revealed (spin already over)")
+	-- result before the reply while timed out: consumed as stale, B is unaffected
+	f = RollFlow.new()
+	a = f:Press(0)
+	f:Tick(10)
+	expect(f:Result(RESULT, 10.5).late == RESULT, "late")
+	f:Reply(a.gen, true, nil, 11)
+	b = f:Press(12)
+	f:Reply(b.gen, true, nil, 12.1)
+	f:Result(r2, 12.2)
+	expect(f:Tick(12.6).result == r2, "B reveals")
+	-- a failed or silent A does not poison B
+	f = RollFlow.new()
+	a = f:Press(0)
+	f:Tick(10)
+	f:Reply(a.gen, false, "Error", 11)
+	b = f:Press(12)
+	f:Reply(b.gen, true, nil, 12.1)
+	f:Result(r2, 12.2)
+	expect(f:Tick(12.6).result == r2, "failed A: B reveals")
+	f = RollFlow.new()
+	a = f:Press(0)
+	f:Close(1)
+	f:Reply(a.gen, true, nil, 2)
+	b = f:Press(9)
+	f:Reply(b.gen, true, nil, 9.1)
+	f:Result(r2, 9.2)
+	expect(f:Tick(9.8).result == r2, "A's window (5 s) over: B reveals")
+end)
+
+test(
+	"close with a result buffered but not revealed hands it back to be toasted; after the reveal it does not",
+	function()
+		local f, a = pressed(0)
+		expect(f:Result(RESULT, 0.05) == nil, "result before the reply is buffered")
+		local c = f:Close(0.1)
+		expect(
+			c ~= nil and c.late == RESULT and f:IsIdle(),
+			"closed while Sending: the buffered result comes back as late"
+		)
+		f, a = pressed(0)
+		f:Reply(a.gen, true, nil, 0.1)
+		f:Result(RESULT, 0.2) -- buffered, minimum spin not over
+		c = f:Close(0.3)
+		expect(c ~= nil and c.late == RESULT, "closed while Rolling inside the minimum spin: late")
+		f, a = pressed(0)
+		f:Reply(a.gen, true, nil, 0.1)
+		local r = f:Result(RESULT, 0.7)
+		expect(r ~= nil and r.show == "reveal", "revealing (already toasted by the reveal)")
+		expect(f:Close(0.8) == nil, "closed while Revealing: nothing more to tell")
+		f, a = pressed(0)
+		expect(
+			f:Close(0.1) == nil,
+			"closed with nothing buffered: nothing to tell now (the result that follows is late)"
+		)
+	end
+)
+
 test("reduced motion: no spin and no reveal delay", function()
 	local f, a = pressed(0, true)
 	f:Reply(a.gen, true, nil, 0)

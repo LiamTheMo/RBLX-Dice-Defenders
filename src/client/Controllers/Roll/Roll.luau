@@ -220,7 +220,7 @@ function Roll.new(parent, deps)
 		end)
 	)
 	local function refresh()
-		if shell:IsOpen() and select(5, inputs()) ~= shown then -- rebuild only on a visible change
+		if shell:IsOpen() and flow:IsIdle() and select(5, inputs()) ~= shown then -- only on a visible change, never mid-roll (settle renders)
 			render()
 		end
 	end
@@ -238,7 +238,7 @@ function Roll.new(parent, deps)
 	shell:OnClose(function()
 		ContextActionService:UnbindAction(ACTION)
 		hud:SetBagMode(false)
-		flow:Close()
+		local closed = flow:Close(os.clock())
 		if wake then
 			task.cancel(wake)
 			wake = nil
@@ -246,6 +246,9 @@ function Roll.new(parent, deps)
 		view:SetRolling(nil)
 		view:SetPop(false)
 		result = nil -- the next opening shows the featured dice again
+		if closed and closed.late then -- paid for but closed before the reveal: still tell the player
+			deps.toast(RollLogic.resultToast(closed.late.Results))
+		end
 	end)
 	table.insert(
 		conns,
