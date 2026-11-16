@@ -1,5 +1,5 @@
 -- Die level-up (docs/MVP.md "Remotes", UpgradeDie): spend spare copies of a die for +1 level.
--- Pure, no yields. Costs are Progression.DieLevel.Copies and never leave the server.
+-- Pure, no yields. Costs are Progression.DieLevel.Copies (server config; clients only get a read-only Catalog copy for display).
 local Dice = require(script.Parent.Parent.Config.Dice)
 local Progression = require(script.Parent.Parent.Config.Progression)
 local Economy = require(script.Parent.Economy)
