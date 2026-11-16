@@ -3,10 +3,13 @@
 -- View.new(slot) -> :SetPool("Standard"|"Event") :SetFeatured({ [1..3] = {Id, Rarity, Name}? }, title?) :SetOdds(RollLogic.oddsRows)
 --   :SetPity({Count, Max, Rarity})
 --   :SetButtons({ {Count, Price, Enabled} x2 }) :OnRoll(cb(count)) :OnInfo(cb()) :Destroy()
+-- :SetRolling({ Count, Still }?) shows the placeholder roll animation (neutral dice, grey buttons) until nil; :SetPop(bool) fades the next result tiles in.
+-- shortcut: placeholder roll animation, replace with real VFX later
 -- Setters only store state; one deferred rebuild draws it (also on every slot size / Compact change).
 -- Compact (phones): the same stack with smaller dice and rows inside one ScrollingFrame (it scrolls only when the stack is taller).
 
 local TextService = game:GetService("TextService")
+local TweenService = game:GetService("TweenService")
 
 local UiKit = require(script.Parent.Parent.UiKit)
 local Parts = require(script.Parent.Parent.Bag.Parts)
@@ -362,6 +365,7 @@ end
 
 -- Build -----------------------------------------------------------------------------------------------------
 
+local ROLLING = "ROLLING..."
 local DIE_CX = { 0.216, 0.512, 0.807 } -- reference die centres (fractions of the featured panel width)
 
 function View:_drawFeatured(L, z, Pw: number, Ph: number)
@@ -373,7 +377,7 @@ function View:_drawFeatured(L, z, Pw: number, Ph: number)
 	vis(plate, RollSprites.HeaderPlate, Pw / 2, L.plateTop + L.plateH / 2, plateW, L.plateH)
 	label(panel, {
 		Name = "Title",
-		Text = self._featuredTitle,
+		Text = if self._rolling then ROLLING else self._featuredTitle,
 		Size = self._headF,
 		X = Pw / 2,
 		Y = L.plateTop + L.plateH / 2,
@@ -393,6 +397,42 @@ function View:_drawFeatured(L, z, Pw: number, Ph: number)
 		sideW, mythW = 179, 204 -- reference ink widths
 	end
 	local f = self._featuredIds
+	if self._rolling then -- placeholder: three NEUTRAL dice (never a rarity frame or die id) tumble until the result arrives
+		local dw, dh = Draw.fitIn(RollSprites.Die1, math.min(sideW * 0.7, Pw * 0.2), 1e5)
+		for i = 1, 3 do
+			local cx = if L.compact then Pw / 2 + (i - 2) * L.pillSpacing else Pw * DIE_CX[i]
+			local cy = (top + Ph) / 2
+			local d = make("ImageLabel", {
+				Name = "RollingDie",
+				Image = RollSprites.Die1.Image,
+				BackgroundTransparency = 1,
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromOffset(round(cx), round(cy)),
+				Size = UDim2.fromOffset(round(dw), round(dh)),
+				ScaleType = Enum.ScaleType.Fit,
+				ZIndex = z + 2,
+			}, panel)
+			if not self._rolling.Still then
+				local spin = TweenService:Create(
+					d,
+					TweenInfo.new(0.7, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1),
+					{ Rotation = 360 }
+				)
+				local hop = TweenService:Create(
+					d,
+					TweenInfo.new(0.25, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true, (i - 1) * 0.08),
+					{ Position = UDim2.fromOffset(round(cx), round(cy - dh * 0.15)) }
+				)
+				table.insert(self._tweens, spin)
+				table.insert(self._tweens, hop)
+				spin:Play()
+				hop:Play()
+			end
+		end
+		return
+	end
+	local pop = self._pop
+	self._pop = false
 	for i = 1, 3 do
 		local item = f[i]
 		if item == nil then
@@ -428,6 +468,16 @@ function View:_drawFeatured(L, z, Pw: number, Ph: number)
 		local art, tint = QuestLogic.dieArt(item.Id)
 		Draw.icon(die, art, cx, bottom - h / 2, w, h)
 		die.ImageColor3 = tint or Color3.new(1, 1, 1)
+		if pop then -- placeholder reveal: the die fades in (SetPop is never set under Reduced Motion)
+			die.ImageTransparency = 1
+			local t = TweenService:Create(
+				die,
+				TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+				{ ImageTransparency = 0 }
+			)
+			table.insert(self._tweens, t)
+			t:Play()
+		end
 		local pillRec = if mythic then RollSprites.PillMythic else RollSprites.PillLegendary
 		local word = string.upper(item.Name or rarity)
 		local pillW = if L.compact then L.pillW else (if mythic then 159 else 172)
@@ -666,10 +716,12 @@ function View:_drawButtons(L, z, y: number)
 		{ Art = RollSprites.BtnPurple, Dice = 3, X = L.W / 2 + gap / 2 + bw / 2 },
 	}
 	local btnState = self._buttonState
+	local rolling = self._rolling
 	for i, d in defs do
 		local st = btnState[i] or { Count = if i == 1 then 1 else 10, Price = 0, Enabled = false }
 		-- disabled: the grey button art with its normal white label (legible), no glow
-		local art = if st.Enabled then d.Art else RollSprites.BtnGrey
+		local on = st.Enabled and not rolling -- rolling: every button reads disabled
+		local art = if on then d.Art else RollSprites.BtnGrey
 		local btn = Draw.img(self._canvas, { Name = "Roll" .. st.Count, ZIndex = z }, "ImageButton")
 		vis(btn, art, d.X, y + bh / 2, bw, bh)
 		Parts.interact(btn) -- hover / press scale and the gamepad focus rim
@@ -680,7 +732,7 @@ function View:_drawButtons(L, z, y: number)
 		-- dice icon over a soft glow: ROLL 1 die ~56 x 60 and the ROLL 10 cluster ~80 x 73 visible (reference), centred 73 px in
 		local sc = math.min(bw / 300, bh / 86)
 		local dieCx, dieCy = ox + 73 * sc, oy + bh / 2
-		if st.Enabled then
+		if on then
 			-- a burst on the face behind the dice: a CanvasGroup the size of the pill face (full-radius UICorner, 3 px inside the outline)
 			local inset = 3
 			local gw, gh = bw - 2 * inset, bh - 2 * inset
@@ -730,7 +782,7 @@ function View:_drawButtons(L, z, y: number)
 		local cx = ox + bw * 0.64
 		label(btn, {
 			Name = "Label",
-			Text = `ROLL {st.Count}`,
+			Text = if rolling and rolling.Count == st.Count then ROLLING else `ROLL {st.Count}`,
 			Size = self._btnSize,
 			X = cx,
 			Y = oy + bh * 0.285,
@@ -761,7 +813,7 @@ function View:_drawButtons(L, z, y: number)
 			Z = z + 2,
 			Stroke = 2,
 		})
-		btn:SetAttribute("Enabled", st.Enabled)
+		btn:SetAttribute("Enabled", on)
 		table.insert(
 			self._connsBuild,
 			btn.Activated:Connect(function()
@@ -782,6 +834,7 @@ function View:_build()
 		c:Disconnect()
 	end
 	table.clear(self._connsBuild)
+	self:_stopTweens()
 	clear(self._canvas)
 	local z = self._canvas.ZIndex + 1
 	local s = L.sizes
@@ -821,7 +874,8 @@ function View:_build()
 		roleSize(pcts, rowW * L.rowPctW, s.row, L.minText)
 	)
 	-- the plate titles: the reference sizes differ (FEATURED cap 20, RARITY cap 18), each fitted inside its own plate
-	self._headF = fitSize(self._featuredTitle, L.featPlateW - L.plateClear, s.head, L.minText)
+	self._headF =
+		fitSize(if self._rolling then ROLLING else self._featuredTitle, L.featPlateW - L.plateClear, s.head, L.minText)
 	self._headR = fitSize("RARITY CHANCES", L.rarPlateW - L.plateClear, s.headR, L.minText)
 	local pity = self._pity
 	local barW = L.pity.barW
@@ -857,6 +911,7 @@ function View.new(slot)
 	self._pool = "Standard"
 	self._featuredIds, self._featuredTitle, self._rows, self._pity = {}, "FEATURED DICE", {}, nil
 	self._buttonState = {}
+	self._tweens, self._pop = {}, false
 	local scroll = make("ScrollingFrame", {
 		Name = "RollView",
 		BackgroundTransparency = 1,
@@ -947,6 +1002,23 @@ function View:SetButtons(list)
 	self._rebuild()
 end
 
+function View:_stopTweens()
+	for _, t in self._tweens do
+		t:Cancel()
+		t:Destroy()
+	end
+	table.clear(self._tweens)
+end
+
+function View:SetRolling(state)
+	self._rolling = state
+	self._rebuild()
+end
+
+function View:SetPop(on: boolean)
+	self._pop = on
+end
+
 function View:OnRoll(cb)
 	self._onRoll = cb
 end
@@ -964,6 +1036,7 @@ function View:Destroy()
 	end
 	table.clear(self._conns)
 	table.clear(self._connsBuild)
+	self:_stopTweens()
 	self._scroll:Destroy()
 end
 

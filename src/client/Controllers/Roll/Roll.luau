@@ -11,7 +11,9 @@ local GuiService = game:GetService("GuiService")
 local NetClient = require(script.Parent.Parent.NetClient)
 local Draw = require(script.Parent.Parent.QuestLog.Draw)
 local PlaySprites = require(script.Parent.Parent.Play.PlaySprites)
+local RollFlow = require(script.Parent.RollFlow)
 local RollLogic = require(script.Parent.RollLogic)
+local SettingsLogic = require(script.Parent.Parent.Settings.SettingsLogic)
 local Shell = require(script.Parent.Parent.Bag.Shell)
 local RollSprites = require(script.Parent.RollSprites)
 local View = require(script.Parent.View)
@@ -19,19 +21,7 @@ local View = require(script.Parent.View)
 local ACTION = "RollClose"
 local POOLS = { "Standard", "Event" }
 local POOL = "Standard" -- the Catalog pool the STANDARD tab shows and rolls
-local REPLIES = {
-	Restricted = "Not available in your region",
-	Insufficient = "Not enough Gems",
-	UnknownPool = "Roll unavailable",
-	UnknownPrice = "Roll unavailable",
-	Overflow = "You can't hold that much",
-	NotLoaded = "Still loading",
-	NotOwner = "This server is in use",
-	Throttled = "Slow down",
-	RateLimited = "Slow down",
-	Network = "Connection problem",
-	Error = "Something went wrong",
-}
+local REPLIES = RollFlow.REPLIES
 -- Banner emblems (Roll only, no gem pin): Roll_BannerRing (ink 476 x 182 src px) behind Roll_BannerDieSolo (ink 203 x 220), the ring ~2.9x the die width centred on the die.
 -- Boxes = scroll-ink fractions per tier. The die's top is >= 2 screen px down; the ring's bottom is >= 4 px above the ROLL caps.
 local INK = PlaySprites.ScrollBase.Ink.Height / PlaySprites.ScrollBase.Ink.Width
@@ -126,10 +116,59 @@ function Roll.new(parent, deps)
 		view:SetButtons(RollLogic.buttons(pool, gems, allowed))
 	end
 
-	-- ROLL 1 / ROLL 10: one request in flight plus a short cooldown (UX only; the server checks everything again).
-	local inFlight, cooling = false, false
+	-- ROLL 1 / ROLL 10: RollFlow gates (one request, 0.6 s spin, 10 s timeout); the server checks everything again.
+	-- shortcut: placeholder roll animation, replace with real VFX later
+	local flow = RollFlow.new()
+	local cooling = false -- short press cooldown (UX only)
+	local pressed = 1
+	local wake -- the pending flow tick
+	local apply
+	local function schedule()
+		if wake then
+			task.cancel(wake)
+			wake = nil
+		end
+		local t = flow:Next()
+		if t then
+			wake = task.delay(math.max(0, t - os.clock()), function()
+				wake = nil
+				apply(flow:Tick(os.clock()))
+			end)
+		end
+	end
+	function apply(a)
+		if a then
+			if a.toast then
+				deps.toast(a.toast)
+			end
+			if a.late then -- paid for after the flow moved on: always toast, show it only in an open, idle menu
+				deps.toast(RollLogic.resultToast(a.late.Results))
+				if shell:IsOpen() and flow:IsIdle() then
+					result = a.late
+					render()
+				end
+			elseif a.show == "rolling" then
+				view:SetRolling({ Count = pressed, Still = SettingsLogic.get("reducedMotion") == true })
+			elseif a.show == "reveal" then
+				deps.toast(RollLogic.resultToast(a.result.Results))
+				result = a.result
+				view:SetRolling(nil)
+				view:SetPop(SettingsLogic.get("reducedMotion") ~= true)
+				render()
+			elseif a.show == "idle" then
+				view:SetRolling(nil)
+				view:SetPop(false)
+				render() -- buttons back to the current Meta's state
+			end
+		end
+		schedule()
+	end
 	view:OnRoll(function(count)
-		if inFlight or cooling then
+		local blocked = flow:Blocked()
+		if blocked then
+			apply(blocked)
+			return
+		elseif cooling then
 			return
 		end
 		local meta = NetClient.LastMeta
@@ -144,16 +183,16 @@ function Roll.new(parent, deps)
 			deps.toast(REPLIES.Insufficient)
 			return
 		end
-		inFlight, cooling = true, true
+		cooling = true
 		task.delay(PRESS_COOLDOWN, function()
 			cooling = false
 		end)
+		pressed = count
+		local a = flow:Press(os.clock(), SettingsLogic.get("reducedMotion") == true)
+		apply(a)
 		task.spawn(function()
 			local ok, code = NetClient.Request("Roll", POOL, count)
-			inFlight = false
-			if not ok then
-				deps.toast(REPLIES[code] or tostring(code))
-			end
+			apply(flow:Reply(a.gen, ok, code, os.clock()))
 		end)
 	end)
 	view:OnInfo(function()
@@ -193,16 +232,19 @@ function Roll.new(parent, deps)
 			if type(r) ~= "table" or r.Pool ~= POOL or type(r.Results) ~= "table" or #r.Results == 0 then
 				return
 			end
-			deps.toast(RollLogic.resultToast(r.Results))
-			if shell:IsOpen() then
-				result = r
-				render()
-			end
+			apply(flow:Result(r, os.clock()))
 		end)
 	)
 	shell:OnClose(function()
 		ContextActionService:UnbindAction(ACTION)
 		hud:SetBagMode(false)
+		flow:Close()
+		if wake then
+			task.cancel(wake)
+			wake = nil
+		end
+		view:SetRolling(nil)
+		view:SetPop(false)
 		result = nil -- the next opening shows the featured dice again
 	end)
 	table.insert(
