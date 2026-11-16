@@ -28,7 +28,8 @@ function Formulas.EnemyHp(kind: string, w: number): number
 	if kind == "Boss" then
 		return math.floor(c.bossPerWave * (w - c.bossOffset) + 0.5)
 	end
-	return math.floor(c.base * (1 + c.growth) ^ (w - 1) * Enemies.Kinds[kind].hpMul + 0.5)
+	local ease = math.min(1, c.easeFrom + (1 - c.easeFrom) * (w - 1) / c.easeWaves) -- the first waves face the 4 starting dice
+	return math.floor(c.base * (1 + c.growth) ^ (w - 1) * ease * Enemies.Kinds[kind].hpMul + 0.5)
 end
 
 -- Enemy kind of the 1-based spawn index `i` in wave `w` (the Brute and Boss are queued separately).

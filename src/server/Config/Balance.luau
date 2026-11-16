@@ -16,8 +16,9 @@ Balance.SummonCost = table.freeze({ base = 10, step = 10 }) -- MP: base + step *
 -- Run reward (*tune*): per wave cleared.
 Balance.Reward = table.freeze({ goldPerWave = 5, xpPerWave = 10, fragmentsPerWave = 1 })
 
--- Enemy HP (*tune*): base * (1 + growth)^(w - 1) * hpMul; a boss has bossPerWave * (w - bossOffset).
-Balance.EnemyHp = table.freeze({ base = 80, growth = 0.08, bossPerWave = 1200, bossOffset = 3 })
+-- Enemy HP (*tune*): base * (1 + growth)^(w - 1) * ease * hpMul, ease = min(1, easeFrom + (1 - easeFrom) * (w - 1) / easeWaves); a boss has bossPerWave * (w - bossOffset).
+Balance.EnemyHp =
+	table.freeze({ base = 275, growth = 0.07, easeFrom = 0.4, easeWaves = 3, bossPerWave = 1200, bossOffset = 3 })
 -- Kill MP (*tune*): the first band whose maxWave >= w; Brute pays x5, Boss x10.
 Balance.KillMp = table.freeze({
 	table.freeze({ maxWave = 5, mp = 10 }),

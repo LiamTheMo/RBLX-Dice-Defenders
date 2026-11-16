@@ -5,7 +5,7 @@ local Enemies = {}
 Enemies.Kinds = table.freeze({
 	Grunt = table.freeze({ hpMul = 1, speed = 6, armored = false, lives = 1 }),
 	Runner = table.freeze({ hpMul = 0.5, speed = 9, armored = false, lives = 1 }),
-	Brute = table.freeze({ hpMul = 10, speed = 16 / 3, armored = true, lives = 2 }), -- the big mini-boss
+	Brute = table.freeze({ hpMul = 2, speed = 16 / 3, armored = true, lives = 2 }), -- the big mini-boss
 	Boss = table.freeze({ speed = 3, armored = false, lives = 2 }), -- Thorn Warden
 })
 
