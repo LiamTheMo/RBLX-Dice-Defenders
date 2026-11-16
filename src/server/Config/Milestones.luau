@@ -1,11 +1,8 @@
 -- Play first-time milestones (docs/MVP.md): claimable once when BestWave >= Wave.
--- Only waves the Trial has (Balance.Waves) are Reachable; the others are never
--- claimable but keep real rewards for display. Ids key saved flags: never reuse.
+-- Runs are endless, so every milestone wave is Reachable. Ids key saved flags: never reuse.
 -- Rewards are Rules/Rewards bundles *tune*.
-local Balance = require(script.Parent.Balance)
-
 local function milestone(id: string, wave: number, reward)
-	return table.freeze({ Id = id, Wave = wave, Reachable = wave <= Balance.Waves, Reward = table.freeze(reward) })
+	return table.freeze({ Id = id, Wave = wave, Reachable = true, Reward = table.freeze(reward) })
 end
 
 local List = table.freeze({

@@ -7,6 +7,7 @@
 -- Weekly.Week) everywhere, so a clock that goes backwards can never reopen a claimed
 -- day or week. Daily and Weekly roll only in SettleRun, and only when the effective
 -- period is later than the stored one; View and Claim never roll.
+local Balance = require(script.Parent.Parent.Config.Balance)
 local Config = require(script.Parent.Parent.Config.Quests)
 local Dice = require(script.Parent.Parent.Config.Dice)
 local Economy = require(script.Parent.Economy)
@@ -121,15 +122,7 @@ end
 -- Returns (true, bundle) or (false, code); codes: BadKills, BadTime, BadRun,
 -- BadWaves, BadResult, AlreadyGranted (a replay: no kills), or a Rewards.Apply code
 -- (Overflow): on any refusal nothing changes, LastRewardRunId included.
-function Quests.SettleRun(
-	profile: any,
-	runId: any,
-	waves: any,
-	won: any,
-	kills: any,
-	now: any,
-	deck: { string }?
-): (boolean, any)
+function Quests.SettleRun(profile: any, runId: any, waves: any, kills: any, now: any, deck: { string }?): (boolean, any)
 	if not Validate.IsInt(kills, 0, MAX_KILLS_PER_RUN) then
 		return false, "BadKills"
 	end
@@ -142,14 +135,10 @@ function Quests.SettleRun(
 	if not Validate.IsInt(waves, 0, 1000) then
 		return false, "BadWaves"
 	end
-	if type(won) ~= "boolean" then
-		return false, "BadResult"
-	end
 	if profile.LastRewardRunId == runId then
 		return false, "AlreadyGranted"
 	end
-	local gold, xp, fragments =
-		Formulas.RewardGold(waves, won), Formulas.RewardXp(waves, won), Formulas.RewardFragments(waves, won)
+	local gold, xp, fragments = Formulas.RewardGold(waves), Formulas.RewardXp(waves), Formulas.RewardFragments(waves)
 	local bundle = {
 		Gold = if gold > 0 then gold else nil,
 		Xp = if xp > 0 then xp else nil,
@@ -162,6 +151,7 @@ function Quests.SettleRun(
 	profile.LastRewardRunId = runId
 	profile.BestWave = math.max(profile.BestWave, waves)
 	profile.RunsPlayed = math.min(Economy.MAX, profile.RunsPlayed + 1)
+	local won = waves >= Balance.TrialWave
 	profile.TrialCleared = profile.TrialCleared or won
 	local day = effectiveDay(profile, now)
 	if day > profile.Daily.Day then

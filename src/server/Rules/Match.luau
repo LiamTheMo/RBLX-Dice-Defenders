@@ -17,7 +17,7 @@ local Layout = require(game:GetService("ReplicatedStorage").Shared.Layout)
 
 local Match = {}
 
-local RESULTS = { Won = true, Lost = true, Aborted = true, Error = true }
+local RESULTS = { Lost = true, Aborted = true, Error = true }
 
 local function newOut()
 	return { S = {}, H = {}, R = {}, F = {}, Hidx = {}, dirty = false }
@@ -56,7 +56,7 @@ function Match.SummonCost(state): number
 	return Formulas.SummonCost(state.summons)
 end
 
--- Ends the match once. `result` is Won, Lost, Aborted or Error.
+-- Ends the match once. `result` is Lost, Aborted or Error (a run is endless).
 function Match.Finish(state, result: string): boolean
 	if state.phase ~= "Playing" or not RESULTS[result] then
 		return false
@@ -128,17 +128,23 @@ local function startWave(state)
 	local wave = state.wave + 1
 	state.wave = wave
 	local queue = {}
-	if wave == Balance.BossWave then
-		table.insert(queue, "Boss")
-	end
 	for i = 1, Formulas.WaveCount(wave) do
 		table.insert(queue, Formulas.KindAt(wave, i))
+	end
+	if Formulas.HasBrute(wave) then
+		table.insert(queue, "Brute")
+	end
+	if Formulas.IsBoss(wave) then
+		table.insert(queue, "Boss")
 	end
 	state.queue = queue
 	state.qi = 1
 	state.nextSpawnAt = state.nextWaveAt
 	state.waveState = "Active"
-	state.bossAt = nil
+	-- The warning runs on until the Boss, queued last, actually walks in.
+	state.bossAt = if Formulas.IsBoss(wave)
+		then state.nextSpawnAt + (#queue - 1) * Formulas.SpawnInterval(wave)
+		else nil
 	state.out.dirty = true
 end
 
@@ -233,7 +239,7 @@ local function attack(state, now: number)
 end
 
 -- Advances the match to `now`. Order: wave advance, spawn, move + breach, dice
--- attacks, deaths + kill MP, wave clear / win.
+-- attacks, deaths + kill MP, wave clear.
 function Match.Step(state, now: number)
 	if state.phase ~= "Playing" then
 		return
@@ -275,7 +281,7 @@ function Match.Step(state, now: number)
 	local alive = {}
 	for _, enemy in survivors do
 		if enemy.hp <= 0 then
-			Economy.TryChange(state, "mp", Enemies.Kinds[enemy.kind].mp)
+			Economy.TryChange(state, "mp", Formulas.KillMp(enemy.kind, state.wave))
 			state.kills += 1
 			table.insert(state.out.R, { Id = enemy.id, Why = "Kill" })
 			state.out.dirty = true
@@ -285,20 +291,13 @@ function Match.Step(state, now: number)
 	end
 	state.enemies = alive
 
-	-- Wave clear / win.
+	-- Wave clear.
 	if state.waveState == "Active" and state.qi > #state.queue and #alive == 0 then
 		state.wavesCompleted = state.wave
 		state.out.dirty = true
-		if state.wave >= Balance.Waves then
-			Match.Finish(state, "Won")
-			return
-		end
-		Economy.TryChange(state, "mp", Formulas.Stipend(state.wave))
 		state.waveState = "Prep"
 		state.nextWaveAt = now + Balance.WaveGap
-		if state.wave + 1 == Balance.BossWave then
-			state.bossAt = state.nextWaveAt
-		end
+		state.bossAt = if Formulas.IsBoss(state.wave + 1) then state.nextWaveAt else nil
 	end
 end
 

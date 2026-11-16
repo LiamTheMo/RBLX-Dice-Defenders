@@ -4,8 +4,7 @@ local Balance = {}
 Balance.BoardCells = 15 -- 5 x 3, row-major
 Balance.StartMP = 100 -- exactly four summons: 10 + 20 + 30 + 40
 Balance.StartLives = 3
-Balance.Waves = 10
-Balance.BossWave = 10
+Balance.TrialWave = 10 -- clearing this wave counts as a Trial clear (the run itself is endless)
 Balance.MaxAlive = 90
 Balance.FirstWaveDelay = 4 -- seconds after Start
 Balance.WaveGap = 4 -- seconds after a wave is cleared
@@ -14,15 +13,21 @@ Balance.MaxStep = 0.25 -- largest dt Match.Step simulates at once
 Balance.TickHz = 10
 
 Balance.SummonCost = table.freeze({ base = 10, step = 10 }) -- MP: base + step * summons so far
--- Run reward (*tune*): per wave cleared, plus a bonus for a win.
-Balance.Reward = table.freeze({
-	goldPerWave = 5,
-	goldWin = 30,
-	xpPerWave = 10,
-	xpWin = 40,
-	fragmentsPerWave = 1,
-	fragmentsWin = 5,
+-- Run reward (*tune*): per wave cleared.
+Balance.Reward = table.freeze({ goldPerWave = 5, xpPerWave = 10, fragmentsPerWave = 1 })
+
+-- Enemy HP (*tune*): base * (1 + growth)^(w - 1) * hpMul; a boss has bossPerWave * (w - bossOffset).
+Balance.EnemyHp = table.freeze({ base = 80, growth = 0.08, bossPerWave = 1200, bossOffset = 3 })
+-- Kill MP (*tune*): the first band whose maxWave >= w; Brute pays x5, Boss x10.
+Balance.KillMp = table.freeze({
+	table.freeze({ maxWave = 5, mp = 10 }),
+	table.freeze({ maxWave = 10, mp = 20 }),
+	table.freeze({ maxWave = 15, mp = 30 }),
+	table.freeze({ maxWave = 20, mp = 40 }),
+	table.freeze({ maxWave = math.huge, mp = 50 }),
 })
+Balance.BruteMpMul = 5
+Balance.BossMpMul = 10
 
 -- Net: token buckets per player and remote, and the hard-violation kick.
 Balance.Remotes = table.freeze({

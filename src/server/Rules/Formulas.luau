@@ -24,34 +24,57 @@ function Formulas.SpeedMul(w: number): number
 end
 
 function Formulas.EnemyHp(kind: string, w: number): number
-	return math.floor(80 * (1 + 0.018 * (w - 1)) * Enemies.Kinds[kind].hpMul + 0.5)
+	local c = Balance.EnemyHp
+	if kind == "Boss" then
+		return math.floor(c.bossPerWave * (w - c.bossOffset) + 0.5)
+	end
+	return math.floor(c.base * (1 + c.growth) ^ (w - 1) * Enemies.Kinds[kind].hpMul + 0.5)
 end
 
-function Formulas.Stipend(w: number): number
-	return 30 + 5 * math.floor(w / 10)
-end
-
--- Enemy kind of the 1-based spawn index `i` in wave `w` (the boss is queued separately).
+-- Enemy kind of the 1-based spawn index `i` in wave `w` (the Brute and Boss are queued separately).
 function Formulas.KindAt(w: number, i: number): string
-	if w >= 5 and i % 5 == 0 then
-		return "Brute"
-	elseif w >= 3 and i % 3 == 0 then
+	if w >= 3 and i % 3 == 0 then
 		return "Runner"
 	end
 	return "Grunt"
 end
 
--- Run reward parts for `waves` cleared; a win adds its bonus.
-function Formulas.RewardGold(waves: number, won: boolean): number
-	return Balance.Reward.goldPerWave * waves + (if won then Balance.Reward.goldWin else 0)
+function Formulas.IsBoss(w: number): boolean
+	return w % 5 == 0
 end
 
-function Formulas.RewardXp(waves: number, won: boolean): number
-	return Balance.Reward.xpPerWave * waves + (if won then Balance.Reward.xpWin else 0)
+function Formulas.HasBrute(w: number): boolean
+	return (w >= 3 and w <= 33 and (w - 3) % 5 == 0) or (w >= 36 and w % 2 == 0)
 end
 
-function Formulas.RewardFragments(waves: number, won: boolean): number
-	return Balance.Reward.fragmentsPerWave * waves + (if won then Balance.Reward.fragmentsWin else 0)
+-- MP for a kill in wave `w`.
+function Formulas.KillMp(kind: string, w: number): number
+	local band = 0
+	for _, b in Balance.KillMp do
+		if w <= b.maxWave then
+			band = b.mp
+			break
+		end
+	end
+	if kind == "Brute" then
+		return band * Balance.BruteMpMul
+	elseif kind == "Boss" then
+		return band * Balance.BossMpMul
+	end
+	return band
+end
+
+-- Run reward parts for `waves` cleared.
+function Formulas.RewardGold(waves: number): number
+	return Balance.Reward.goldPerWave * waves
+end
+
+function Formulas.RewardXp(waves: number): number
+	return Balance.Reward.xpPerWave * waves
+end
+
+function Formulas.RewardFragments(waves: number): number
+	return Balance.Reward.fragmentsPerWave * waves
 end
 
 function Formulas.Period(typeId: string): number

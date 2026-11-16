@@ -169,7 +169,7 @@ function PlayLogic.claimTarget(row: any, pending: { [string]: boolean }): string
 end
 
 -- The real per-run payout (Catalog.Repeat) as payout-box lines of tokens; a token ending in ":" is a heading.
---   { {"PER WAVE:"}, {"+5 GOLD", "+10 XP"}, {"+1 FRAGMENT"}, {"WIN:", "+30 GOLD", "+40 XP"}, {"+5 FRAGMENTS"} }
+--   { {"PER WAVE:"}, {"+5 GOLD", "+10 XP"}, {"+1 FRAGMENT"} }
 function PlayLogic.repeatLines(catalog: any): { { string } }
 	local rep = catalog and catalog.Repeat
 	if type(rep) ~= "table" then
@@ -196,7 +196,6 @@ function PlayLogic.repeatLines(catalog: any): { { string } }
 		table.move(named, 1, #named, #lines + 1, lines)
 	end
 	add(rep.PerWave)
-	add(rep.Win, "WIN:")
 	return lines
 end
 

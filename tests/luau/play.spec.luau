@@ -84,7 +84,7 @@ test("milestones: one row per Catalog milestone, states from Meta", function()
 	})
 	local rows = PlayLogic.milestones(CATALOG, m, {})
 	expectEq(#rows, #CATALOG.Milestones, "count")
-	local want = { "Claimable", "Soon", "Soon", "Soon", "Soon", "Soon" }
+	local want = { "Claimable", "Locked", "Locked", "Locked", "Locked", "Locked" } -- endless: every milestone is reachable
 	for i, row in rows do
 		expectEq(row.Id, CATALOG.Milestones[i].Id, "order " .. i)
 		expectEq(row.Wave, CATALOG.Milestones[i].Wave, "wave " .. i)
@@ -106,7 +106,11 @@ test("milestones: one row per Catalog milestone, states from Meta", function()
 		"claimed"
 	)
 	expectEq(PlayLogic.milestones(CATALOG, nil)[1].State, "Locked", "no Meta: reachable is Locked")
-	expectEq(PlayLogic.milestones(CATALOG, nil)[2].State, "Soon", "no Meta: unreachable is Soon")
+	local unreachable = table.clone(CATALOG)
+	unreachable.Milestones = table.clone(CATALOG.Milestones)
+	unreachable.Milestones[2] = table.clone(CATALOG.Milestones[2])
+	unreachable.Milestones[2].Reachable = false
+	expectEq(PlayLogic.milestones(unreachable, nil)[2].State, "Soon", "no Meta: an unreachable milestone is Soon")
 	expectEq(PlayLogic.milestones(CATALOG, m, { P10 = true })[1].Busy, true, "busy")
 	local claimable = PlayLogic.milestones(CATALOG, meta({ { Id = "P20", Claimable = true } }))[2]
 	expectEq(table.concat(claimable.Lines, "|"), "+100 GOLD|+1 FROST DIE", "CLAIM replaces the icon: full texts")
@@ -126,7 +130,7 @@ test("milestones: nil or malformed Catalog / Meta never errors", function()
 			{ Wave = 5 },
 			{ Id = "P10", Wave = 10, Reachable = true, Rewards = { 1, { Kind = "Gold", Amount = 5 } } },
 		},
-		Repeat = { PerWave = "x", Win = { 2, { Kind = "Xp", Amount = 1 } } },
+		Repeat = { PerWave = { 2, { Kind = "Xp", Amount = 1 }, { Kind = "Gold", Amount = 3 } } },
 	}
 	local good = PlayLogic.milestones(bad, nil)
 	expectEq(#good, 1, "malformed Catalog rows skipped")
@@ -150,11 +154,7 @@ test("repeatLines: the real per-run payout, no drop odds", function()
 	for i, line in lines do
 		text[i] = table.concat(line, " ")
 	end
-	expectEq(
-		table.concat(text, "|"),
-		"PER WAVE:|+5 GOLD +10 XP|+1 FRAGMENT|WIN: +30 GOLD +40 XP|+5 FRAGMENTS",
-		"payout from Balance.Reward"
-	)
+	expectEq(table.concat(text, "|"), "PER WAVE:|+5 GOLD +10 XP|+1 FRAGMENT", "payout from Balance.Reward")
 	for _, t in text do
 		expectEq(t:find("%", 1, true), nil, "no odds in " .. t)
 	end

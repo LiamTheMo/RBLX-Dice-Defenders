@@ -45,7 +45,7 @@ local TOASTS = {
 	Throttled = "Slow down",
 	Network = "Connection problem",
 }
-local RESULT_TITLES = { Won = "Victory!", Lost = "Defeat", Aborted = "Run Ended", Error = "Something went wrong" }
+local RESULT_TITLES = { Lost = "Defeat", Aborted = "Run Ended", Error = "Something went wrong" }
 
 local Lobby = {}
 

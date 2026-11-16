@@ -175,7 +175,7 @@ local function render(snap)
 
 	local playing = phase == "Playing"
 	ui.ToastFrame.Visible = ui.ToastFrame.Visible and playing -- match-only toasts: never over the Lobby's results card
-	ui.Wave.Text = ("Wave %d/10"):format(snap.Wave or 0)
+	ui.Wave.Text = ("Wave %d"):format(snap.Wave or 0)
 	ui.Lives.Text = "\u{2665} " .. tostring(snap.Lives or 0)
 	ui.MP.Text = "MP " .. tostring(snap.MP or 0)
 	ui.Gold.Text = "Gold " .. tostring(snap.Gold or 0)

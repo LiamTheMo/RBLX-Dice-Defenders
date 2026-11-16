@@ -192,28 +192,20 @@ local function flush(intent: boolean?)
 	end
 end
 
--- Pays the reward once per match end; Aborted and Error grant nothing.
+-- Pays the reward once per match end; an Aborted run pays like a Lost one, Error grants nothing.
 local function settle()
 	if match == nil or match.phase ~= "Ended" or match.rewardGranted then
 		return
 	end
 	match.rewardGranted = true
-	if (match.result ~= "Won" and match.result ~= "Lost") or owner == nil then
+	if (match.result ~= "Lost" and match.result ~= "Aborted") or owner == nil then
 		return
 	end
 	local profile = ProfileService.Get(owner)
 	if profile == nil then
 		return
 	end
-	local ok, bundle = Quests.SettleRun(
-		profile,
-		match.runId,
-		match.wavesCompleted,
-		match.result == "Won",
-		match.kills,
-		os.time(),
-		match.deck
-	)
+	local ok, bundle = Quests.SettleRun(profile, match.runId, match.wavesCompleted, match.kills, os.time(), match.deck)
 	if not ok then
 		warn("[MatchService] Reward refused: " .. tostring(bundle))
 		return
@@ -227,7 +219,7 @@ end
 local function abortMatch()
 	if match then
 		Match.Finish(match, "Aborted")
-		match.rewardGranted = true -- no reward
+		settle() -- the owner's profile is still loaded: pay as a loss at this moment
 		match = nil
 		rewardGold, rewardXp = nil, nil
 	end
@@ -257,7 +249,7 @@ local function onLoaded(player: Player)
 	pushMeta(player)
 end
 
--- Before the release save: an owner leaving (or shutdown) aborts without reward.
+-- Before the release save: an owner leaving (or shutdown) aborts and settles like a loss.
 local function onRemoving(player: Player)
 	removeFromOrder(player)
 	if player == owner then

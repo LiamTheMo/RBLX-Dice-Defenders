@@ -29,18 +29,18 @@ Players equip a five-dice deck, enter a themed world, summon randomly selected d
 **Late:** maximize efficient decks, chase Legendaries/Mythic through deterministic pity/crafting, compete in Infinite, prepare for future worlds.
 
 ### Core session loop
-Choose deck and mode → matchmake (solo, duo default, optional group) → place dice using MP → kill enemies for MP → adapt positioning, merges and match-level upgrades → survive boss → win at Wave 100 or end Infinite when lives reach zero → receive persistent rewards and progress → craft/upgrade/equip → play again.
+Choose deck and mode → matchmake (solo, duo default, optional group) → place dice using MP → kill enemies for MP → adapt positioning, merges and match-level upgrades → survive bosses → run ends when lives reach zero (MVP: endless, no win) → receive persistent rewards and progress → craft/upgrade/equip → play again.
 
 ## 3. World, stage and map
 ### World 1: **Verdant Circuit** (working name)
 - **One map at launch**, toy-diorama fantasy meadow with five readable player columns, one unmistakable winding monster path, generous attack readability and two boss staging zones; no path hiding behind panels.
 - **Staged objective:** defeat the Wave 100 boss and eliminate remaining enemies while team lives > 0. Complete only once per profile for first-clear bonus; repeat runs grant smaller farm rewards.
-- **Wave progression:** waves 1–100; minor enemy pressure changes throughout; **boss every 10 waves** (10, 20, … 100), escalating boss families; lighter elite/mutator wave every 5 waves without doubling as a boss.
+- **Wave progression:** MVP: endless waves, **boss every 5th wave** (5, 10, 15, …) and a Brute mini-boss on a fixed schedule (MVP.md); full-game target: waves 1–100, boss every 10 waves, escalating boss families; lighter elite/mutator wave every 5 waves without doubling as a boss.
 - **Recommended checkpoints:** waves 1–20 tutorial-friendly; 21–40 status-counter introduction; 41–60 shields/resistances; 61–80 elites and mixed squads; 81–99 high-pressure combinations; 100 world guardian.
 - **Future worlds:** separate reward/material tables, visual themes, path lengths, situational modifiers, local boss roster and stage-specific unlocks. Same dice schema and normalized threat budgeting across worlds. World 2 is NOT required for launch.
 
 ### Enemy path & breach rule
-Enemies travel toward exit; kill before escape. Team starts with **20 Lives** (proposed). Normal breach costs 1, elite 2, boss 5. At zero lives game over. Server controls all path positions, HP, deaths, MP and lives. Bosses may introduce summons, armor, slow immunity windows or ability-lock mechanics; every counter must be readable.
+Enemies travel toward exit; kill before escape. Team starts with **3 Lives** in the MVP (20 proposed for the full game). Normal breach costs 1; Brute and boss 2 in the MVP (elite 2, boss 5 proposed). At zero lives game over. Server controls all path positions, HP, deaths, MP and lives. Bosses may introduce summons, armor, slow immunity windows or ability-lock mechanics; every counter must be readable.
 
 ### Wave cadence
 Staged: next wave after prior wave cleared and 4 s preparation (proposed); cap wait when a slow enemy stalls. Infinite: same virtual wave system, but **also count cumulative kills** for escalation and boss trigger thresholds. Fixed-wave and kill-threshold bosses must not duplicate: first qualifying event queues exactly one boss, then advances the boss threshold. See BALANCING.md.

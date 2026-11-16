@@ -10,7 +10,7 @@
 --     Achievements = {{Id, Name, Desc, Goal, Badge, Rewards}},
 --     Mastery = { Max, Need = { per level 1..Max-1 }, Milestones = {{Lv, Rewards}} },
 --     DieLevel = { Max, Copies = { per level 1..Max-1 } },
---     Repeat = { PerWave = Rewards, Win = Rewards },
+--     Repeat = { PerWave = Rewards },
 --     Roll = { Pools = {{Id, Name, Prices = {{Count, Gems}}, Odds = {{Rarity, Bp}}, Dice = {{Id, Rarity}},
 --              Pity = {Rarity, Max}, Featured = { ids }}} },
 --     Shop = { Offers = {{Id, Tab = "Featured"|"Gems", Name, Currency = "Gold"|"Gems"|"Robux", Price, Rewards,
@@ -136,11 +136,6 @@ function Catalog.Build()
 				Gold = reward.goldPerWave,
 				Xp = reward.xpPerWave,
 				Materials = { Fragment = reward.fragmentsPerWave },
-			}),
-			Win = Rewards.Lines({
-				Gold = reward.goldWin,
-				Xp = reward.xpWin,
-				Materials = { Fragment = reward.fragmentsWin },
 			}),
 		},
 		Roll = {
