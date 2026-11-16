@@ -11,7 +11,8 @@ local ProfileService = require(script.Parent.ProfileService)
 
 local RedeemService = {}
 
--- shortcut: the guessing limiter lives only for this server session; rejoining resets it (at most 50 guesses per join, 1/s).
+-- shortcut: the guessing limiter lives only for this server session; rejoining resets it (5 free guesses, then one per
+-- 15/30/60.. s lock). Fine while every code is public; store failures per UserId before shipping private codes.
 local sessions = {} -- player -> { limiter, lastLog }
 
 local function handleRedeem(player: Player, text: string): (boolean, string?)

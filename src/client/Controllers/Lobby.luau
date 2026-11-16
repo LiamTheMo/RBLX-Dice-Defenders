@@ -253,7 +253,7 @@ local function renderState(snap)
 	ui.Root.Visible = active
 	if not active then
 		if lobbyActive then
-			showPanel(nil) -- closes all seven menus; only on the transition, not every State tick
+			showPanel(nil) -- closes every menu; only on the transition, not every State tick
 		end
 		lobbyActive = false
 		ui.ResultBackdrop.Visible = false
