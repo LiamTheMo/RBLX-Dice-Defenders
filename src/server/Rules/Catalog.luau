@@ -9,6 +9,7 @@
 --     Daily = { Days = {{Day, Chest?, Rewards}} }, Milestones = {{Id, Wave, Reachable, Rewards}},
 --     Achievements = {{Id, Name, Desc, Goal, Badge, Rewards}},
 --     Mastery = { Max, Need = { per level 1..Max-1 }, Milestones = {{Lv, Rewards}} },
+--     DieLevel = { Max, Copies = { per level 1..Max-1 } },
 --     Repeat = { PerWave = Rewards, Win = Rewards },
 --     Roll = { Pools = {{Id, Name, Prices = {{Count, Gems}}, Odds = {{Rarity, Bp}}, Dice = {{Id, Rarity}},
 --              Pity = {Rarity, Max}, Featured = { ids }}} },
@@ -70,7 +71,7 @@ local function map(list, row)
 end
 
 function Catalog.Build()
-	local mastery, reward = Progression.Mastery, Balance.Reward
+	local mastery, reward, dieLevel = Progression.Mastery, Balance.Reward, Progression.DieLevel
 	local need = {}
 	for level = 1, mastery.Max - 1 do
 		need[level] = mastery.Need(level)
@@ -129,6 +130,7 @@ function Catalog.Build()
 				return { Lv = level, Rewards = Rewards.Lines(mastery.Rewards[level]) }
 			end),
 		},
+		DieLevel = { Max = dieLevel.Max, Copies = table.clone(dieLevel.Copies) },
 		Repeat = {
 			PerWave = Rewards.Lines({
 				Gold = reward.goldPerWave,

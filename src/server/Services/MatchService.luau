@@ -20,6 +20,7 @@ local Quests = require(script.Parent.Parent.Rules.Quests)
 local Roll = require(script.Parent.Parent.Rules.Roll)
 local Shop = require(script.Parent.Parent.Rules.Shop)
 local Settings = require(script.Parent.Parent.Rules.Settings)
+local Upgrade = require(script.Parent.Parent.Rules.Upgrade)
 local PlayerPolicy = require(script.Parent.PlayerPolicy)
 local ProfileService = require(script.Parent.ProfileService)
 
@@ -326,6 +327,21 @@ local function handleEquipDeck(player: Player, ids: any): (boolean, string?)
 	return ok, code
 end
 
+local function handleUpgradeDie(player: Player, id: string): (boolean, string?)
+	if match and match.phase == "Playing" then
+		return false, "WrongPhase"
+	end
+	local profile = ProfileService.Get(player)
+	if profile == nil then
+		return false, "NotLoaded"
+	end
+	local ok, code = Upgrade.Die(profile, id)
+	if ok then
+		ProfileService.MarkChanged(player) -- Changed pushes State and Meta
+	end
+	return ok, code
+end
+
 local function handleClaimQuest(player: Player, id: string): (boolean, string?)
 	local profile = ProfileService.Get(player)
 	if profile == nil then
@@ -434,6 +450,7 @@ function MatchService.Init()
 	Net.Handle("BagAction", handleBagAction)
 	Net.Handle("Roll", handleRoll)
 	Net.Handle("Buy", handleBuy)
+	Net.Handle("UpgradeDie", handleUpgradeDie)
 end
 
 function MatchService.Start()

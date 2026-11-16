@@ -215,6 +215,20 @@ test("malformed argument matrix: BadArgs, never reaches the handler, seq not con
 			P(1, ""), -- empty id
 			P(1, ("x"):rep(17)), -- 17-byte id
 		},
+		UpgradeDie = {
+			P(),
+			P(1),
+			P(1, "C01", "C02"), -- extra arg
+			P(1, "C01", nil),
+			P(1, nil),
+			P(1, 5),
+			P(1, true),
+			P(1, {}),
+			P(1, ""),
+			P(1, ("x"):rep(9)), -- 9-byte id
+			P(1, ("x"):rep(4096)),
+			P(1, NAN),
+		},
 		Merge = {
 			P(),
 			P(1),
@@ -250,6 +264,7 @@ test("malformed argument matrix: BadArgs, never reaches the handler, seq not con
 		BagAction = P(1, "Sell", "Fragment", 1),
 		Roll = P(1, "Standard", 1),
 		Buy = P(1, "Frag20"),
+		UpgradeDie = P(1, "C01"),
 	}
 	for name in RemoteGuard.Specs do
 		expect(matrix[name] ~= nil and valid[name] ~= nil, name .. " is covered by the matrix")
@@ -816,5 +831,73 @@ test(
 			expect(okI, ("honest send %d (%s)"):format(i, tostring(codeI)))
 		end
 		expectEq(honest.guard:Violations(sent), 0, "honest client never limited")
+	end
+)
+
+test(
+	"UpgradeDie passes the die id through (1 and 8 bytes); bucket 2/s burst 4; soft codes not counted; seq is shared; NetClient never trips it",
+	function()
+		local limits = Balance.Remotes.UpgradeDie
+		expect(limits.rate == 2 and limits.burst == 4, "Balance")
+		local env, owner = make(), {}
+		local got
+		env.handler = function(_, ...)
+			got = table.pack(...)
+			return true
+		end
+		local seq = 0
+		local function raw(id)
+			seq += 1
+			return env.guard:Call(owner, "UpgradeDie", env.handler, seq, id)
+		end
+		expect(raw("C01"), "ok")
+		expect(got.n == 1 and got[1] == "C01", "args passed")
+		expect(raw("x"), "1-byte id")
+		expect(raw(("x"):rep(8)), "8-byte id (unknown dice are the rule's job)")
+		expect(raw("C01"), "4th burst token")
+		local ok, code = raw("C01")
+		expect(not ok and code == "RateLimited", "5th in the same instant limited")
+		expectEq(env.guard:Violations(owner), 1, "RateLimited is a hard violation")
+
+		local soft = make()
+		for i, c in { "UnknownDie", "NotOwned", "MaxLevel", "Insufficient", "WrongPhase", "BadAmount" } do
+			soft.handler = function()
+				return false, c
+			end
+			local okS, codeS = soft.call(owner, "UpgradeDie", i, "C01")
+			expect(not okS and codeS == c, "soft " .. c)
+		end
+		expectEq(soft.guard:Violations(owner), 0, "soft codes not counted")
+
+		local seqEnv = make()
+		expect(seqEnv.call(owner, "UpgradeDie", 5, "C01"), "first")
+		local dup, dupCode = seqEnv.call(owner, "UpgradeDie", 5, "C01")
+		expect(not dup and dupCode == "BadSeq", "duplicate seq")
+		expectEq(seqEnv.calls, 1, "handler not called for the duplicate")
+		expect(seqEnv.call(owner, "Roll", 10, "Standard", 1), "Roll seq 10")
+		local older, olderCode = seqEnv.call(owner, "UpgradeDie", 9, "C01")
+		expect(not older and olderCode == "BadSeq", "UpgradeDie seq below an earlier Roll seq")
+		expectEq(seqEnv.calls, 2, "handler not called for the older seq")
+
+		local source = __sources["StarterPlayer/StarterPlayerScripts/Client/Controllers/NetClient"]
+		local interval = tonumber(string.match(source or "", "\n%s*UpgradeDie = ([%d%.]+),"))
+		expect(
+			interval ~= nil and interval >= 1 / limits.rate,
+			"NetClient UpgradeDie interval >= 1/rate: " .. tostring(interval)
+		)
+		local honest, sent = make(), {}
+		for i = 1, 60 do
+			honest.t += interval or 0
+			local okI, codeI = honest.guard:Call(sent, "UpgradeDie", honest.handler, i, "C01")
+			expect(okI, ("honest send %d (%s)"):format(i, tostring(codeI)))
+		end
+		expectEq(honest.guard:Violations(sent), 0, "honest client never limited")
+
+		local kicker, bad = make(), {}
+		for i = 1, Balance.KickThreshold + 5 do
+			kicker.env = nil
+			kicker.call(bad, "UpgradeDie", i, 5)
+		end
+		expectEq(#kicker.kicks, 1, "20 BadArgs kick exactly once")
 	end
 )

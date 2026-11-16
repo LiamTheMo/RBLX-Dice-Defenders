@@ -1,4 +1,4 @@
--- Persisted player profile, v9 (docs/MVP.md "Profile"). Pure: no Instances.
+-- Persisted player profile, v10 (docs/MVP.md "Profile"). Pure: no Instances.
 -- Default() builds a new profile; Migrate() validates stored data. The store
 -- metadata (profileRevision, sessionLease) rides along but is not gameplay data.
 
@@ -17,7 +17,7 @@ local Validate = require(script.Parent.Validate)
 
 local ProfileSchema = {}
 
-ProfileSchema.VERSION = 9
+ProfileSchema.VERSION = 10
 
 local STARTER_GEMS = 50 -- new profiles and every v3 profile once (v3 -> v4)
 
@@ -166,20 +166,35 @@ local MIGRATIONS: { [number]: (any) -> any } = {
 		data.Purchases, data.Receipts = nil, nil
 		return data
 	end,
+	-- v9 -> v10: the die level cap drops from 10 to Progression.DieLevel.Max. Levels above it clamp
+	-- to it, with no refund: no code path ever raised a level before v10 (levels 8-10 can only be
+	-- hand edits, never paid for). From v10 on, any future cap cut needs a refunding migration.
+	[9] = function(data)
+		local max = Progression.DieLevel.Max
+		if type(data.Dice) == "table" then
+			for id in Dice.Types do
+				local entry = data.Dice[id]
+				if type(entry) == "table" and Validate.IsInt(entry.Level, max + 1, 10) then
+					entry.Level = max
+				end
+			end
+		end
+		return data
+	end,
 }
 
 local function count(value: any): number
 	return if Validate.IsInt(value, 0, Validate.MAX_INT) then value else 0
 end
 
--- Owned dice: known catalog ids only, Level 1..10, Copies a count; starters always present.
+-- Owned dice: known catalog ids only, Level 1..DieLevel.Max (anything else resets to 1), Copies a count; starters always present.
 local function cleanDice(stored: any)
 	local owned = starterDice()
 	if type(stored) == "table" then
 		for id, entry in stored do
 			if type(id) == "string" and Dice.Types[id] ~= nil and type(entry) == "table" then
 				owned[id] = {
-					Level = if Validate.IsInt(entry.Level, 1, 10) then entry.Level else 1,
+					Level = if Validate.IsInt(entry.Level, 1, Progression.DieLevel.Max) then entry.Level else 1,
 					Copies = count(entry.Copies),
 				}
 			end
