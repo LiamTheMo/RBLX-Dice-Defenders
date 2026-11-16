@@ -507,7 +507,7 @@ function Shell.new(parent, deps)
 			then UDim2.fromOffset(winW - t.mx - 27, t.my + 5)
 			else UDim2.fromOffset(winW - t.mx - 29, t.my + 8.5) -- centre 1432.5, 101.5
 		if closeHit then
-			local minD = 44 / eff -- design px
+			local minD = math.ceil(44 / eff) -- design px (UDim offsets are whole numbers: round up to stay >= 44 real px)
 			closeHit.Size = UDim2.fromOffset(math.max(close.Size.X.Offset, minD), math.max(close.Size.Y.Offset, minD))
 		end
 

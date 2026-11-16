@@ -780,13 +780,14 @@ function View:_drawButtons(L, z, y: number)
 		end
 		-- label above, price chip below
 		local cx = ox + bw * 0.64
+		local busy = rolling and rolling.Count == st.Count
 		label(btn, {
 			Name = "Label",
-			Text = if rolling and rolling.Count == st.Count then ROLLING else `ROLL {st.Count}`,
+			Text = if busy then ROLLING else `ROLL {st.Count}`,
 			Size = self._btnSize,
 			X = cx,
 			Y = oy + bh * 0.285,
-			W = bw * 0.46,
+			W = bw * (if busy then 0.4 else 0.46), -- the longer ROLLING... keeps a margin to the rim and the price chip
 			Z = z + 2,
 		})
 		local chipW, chipH = bw * 0.45, 31 * bh / 86
