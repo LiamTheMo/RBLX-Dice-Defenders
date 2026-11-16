@@ -21,10 +21,8 @@ Dice.SortOptions = {
 }
 Dice.DefaultSort = "Rarity"
 Dice.EmptyText = "No dice found"
-Dice.MaxLevel = 10 -- ProfileSchema cap
 
 local ABILITY = "Ability: coming soon" -- non-Common dice are stat-only until their abilities are built
-local KEEP = "Copies are kept for future level-ups" -- why dice have no LOCK or SELL
 
 -- Die art asset id, or nil (the grid then tints its fallback glyph).
 local function art(id: string): string?
@@ -61,6 +59,10 @@ function Dice.GetItems(meta, catalog)
 	for _, s in catalog and catalog.Dice or {} do
 		stats[s.Id] = s
 	end
+	-- Level cap and per-level copy costs come from the Catalog (untrusted: numbers only). nil = not loaded.
+	local DL = catalog and catalog.DieLevel
+	local cap = if DL and type(DL.Max) == "number" then DL.Max else nil
+	local costs = if DL and type(DL.Copies) == "table" then DL.Copies else {}
 	local items = {}
 	local owned = {}
 	for _, die in meta and meta.Dice or {} do
@@ -69,6 +71,8 @@ function Dice.GetItems(meta, catalog)
 		if info then
 			local equipped = inDeck(meta, die.Id)
 			local s = stats[die.Id]
+			local cost = costs[die.Level]
+			local spare = if type(die.Copies) == "number" then die.Copies else 0
 			table.insert(items, {
 				Id = die.Id,
 				Name = info.Name,
@@ -83,6 +87,10 @@ function Dice.GetItems(meta, catalog)
 				TopTagStyle = "Equipped",
 				SubTag = string.upper(info.Rarity),
 				Footer = "Lv. " .. tostring(die.Level),
+				Count = "x" .. BagLogic.formatCount(spare), -- spare copies (the first copy unlocks the die)
+				Copies = spare,
+				LevelMax = cap,
+				LevelCost = if type(cost) == "number" then cost else nil,
 			})
 		end
 	end
@@ -112,25 +120,37 @@ end
 local function stats(item)
 	return {
 		{ Icon = "IconSword", Label = "Damage", Value = num(item.Damage) },
-		{ Icon = "IconTarget", Label = "Range", Value = DASH },
 		{ Icon = "IconHourglass", Label = "Attack Speed", Value = num(item.Rate) },
 		{ Icon = "IconFlame", Label = "Burn Damage", Value = DASH },
 	}
 end
 
--- Buttons: one size, EQUIP only valid for an owned die not in the deck.
+-- Buttons: one size; EQUIP for an owned die not in the deck, UPGRADE when the spare copies cover the next level.
 function Dice.Detail(item)
 	local locked = item.Locked == true
 	local equipped = item.Equipped == true
 	local hint = if locked then item.Footer else nil
 	local equipOk = not locked and not equipped
+	local max, cost = item.LevelMax, item.LevelCost
+	local loaded = max ~= nil and (cost ~= nil or item.Level >= max)
+	local atMax = loaded and item.Level >= max
+	local upOk = not locked and loaded and not atMax and item.Copies >= cost
+	local upHint = if locked
+		then item.Footer
+		elseif not loaded then "Still loading"
+		elseif atMax then "Max level"
+		elseif upOk then "Upgrade"
+		else ("Need %d copies"):format(cost)
+	local copies = if loaded and not locked
+		then (if atMax then ("Copies %d"):format(item.Copies) else ("Copies %d / %d"):format(item.Copies, cost))
+		else nil
 	return {
 		Name = item.Name,
 		Rarity = item.Rarity,
 		StatusTag = if equipped then "EQUIPPED" else nil,
 		Icon = item.Icon,
 		Tint = item.Tint,
-		Subline = if locked then nil else { Kind = "Level", Value = item.Level, Max = Dice.MaxLevel },
+		Subline = if copies then { Kind = "Level", Value = item.Level, Max = max, Copies = copies } else nil,
 		Description = if locked then item.Note elseif item.Rarity ~= "Common" then ABILITY else "",
 		Stats = stats(item),
 		Buttons = {
@@ -142,12 +162,11 @@ function Dice.Detail(item)
 				Hint = hint or "Already equipped",
 			},
 			{
-				Id = "Lock",
-				Label = "LOCK",
+				Id = "Upgrade",
+				Label = "UPGRADE",
 				Style = "Gold",
-				Icon = "Lock",
-				Enabled = false,
-				Hint = hint or KEEP,
+				Enabled = upOk,
+				Hint = upHint,
 			},
 			{
 				Id = "Sell",
@@ -155,7 +174,7 @@ function Dice.Detail(item)
 				Style = "Red",
 				Icon = "Coins",
 				Enabled = false,
-				Hint = hint or KEEP,
+				Hint = hint or "Copies level this die up",
 			},
 		},
 	}

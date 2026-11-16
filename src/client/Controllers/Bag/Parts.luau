@@ -924,6 +924,13 @@ function Parts.Grid(parent)
 				)
 				place(foot, math.floor(h * tsize(0.895, 0.82)) - lift, w - px(12), px(tsize(22, 17)), 0.5)
 			end
+			if item.Count then -- spare copies: the Items count style, over the icon's bottom-right corner
+				local qty = Parts.text(card, { Name = "Qty", Text = item.Count, TextSize = px(tsize(28, 17)) })
+				qty.AnchorPoint = Vector2.new(1, 1)
+				qty.Position = UDim2.new(1, -math.floor(w * 0.13), 0, math.floor(h * tsize(0.645, 0.55)) - px(2))
+				qty.Size = UDim2.fromOffset(math.floor(w * 0.5), px(tsize(28, 17)))
+				qty.TextXAlignment = Enum.TextXAlignment.Right
+			end
 		elseif item.Footer then -- Items: bold outlined count at the bottom-right, no plate
 			local qty = Parts.text(card, { Name = "Qty", Text = item.Footer, TextSize = px(tsize(34, 22)) })
 			qty.AnchorPoint = Vector2.new(1, 1)
@@ -1584,14 +1591,44 @@ function Parts.Detail(parent)
 		if not sub then
 			return
 		end
+		-- dark pill with a copper rim (no sprite): "Quantity: x1,248"; Gold paints the count yellow
+		local function qtyPill(text, gold, h, w, order)
+			local size = if c then 15 else 28
+			local pw = if c then math.max(150, measure(text, size) + 40) else w
+			local pill =
+				img(subline, { Name = "QtyPill", Size = UDim2.fromOffset(pw, h), LayoutOrder = order }, "Frame")
+			pill.BackgroundTransparency = 0
+			pill.BackgroundColor3 = Color3.fromRGB(75, 24, 62)
+			make("UICorner", { CornerRadius = UDim.new(0.5, 0) }, pill)
+			make("UIStroke", { Color = COPPER, Thickness = 2 }, pill)
+			local lbl = Parts.text(pill, { Text = text, TextSize = size, Size = UDim2.fromScale(1, 1) }, 2)
+			if gold then
+				local a, b = string.match(text, "^(.-)(x[%d,]+)$")
+				if a then
+					lbl.RichText = true
+					lbl.Text = a .. '<font color="' .. GOLD_TEXT .. '">' .. b .. "</font>"
+				end
+			end
+		end
+		local list = subline:FindFirstChildOfClass("UIListLayout")
+		list.FillDirection = Enum.FillDirection.Horizontal
+		list.Padding = UDim.new(0, 10)
 		if sub.Kind == "Level" then
-			subH = if c then 24 else 28
+			local rowH = if c then 24 else 28
+			subH = rowH
+			local row = subline
+			if sub.Copies then -- the level row over a copies pill: the Level subline stacks two rows
+				row = img(subline, { Name = "LevelRow", Size = UDim2.new(1, 0, 0, rowH), LayoutOrder = 1 }, "Frame")
+				centredRow(row, 10)
+				list.FillDirection = Enum.FillDirection.Vertical
+				list.Padding = UDim.new(0, if c then 3 else 4)
+			end
 			local txt = ("Lv. %d / %d"):format(sub.Value, sub.Max)
 			local size = if c then 15 else 26
 			local tw = measure(txt, size) + 6
-			Parts.text(subline, { Text = txt, TextSize = size, Size = UDim2.fromOffset(tw, subH), LayoutOrder = 1 }, 2)
+			Parts.text(row, { Text = txt, TextSize = size, Size = UDim2.fromOffset(tw, rowH), LayoutOrder = 1 }, 2)
 			local barW = math.clamp(bodyW() - tw - 12, 100, 218)
-			local track = img(subline, { Name = "LevelBar", Size = UDim2.fromOffset(barW, 26), LayoutOrder = 2 })
+			local track = img(row, { Name = "LevelBar", Size = UDim2.fromOffset(barW, 26), LayoutOrder = 2 })
 			Parts.skinH(track, "LevelTrack", 26)
 			-- Fill is sized to the value (never cropped): same SliceScale as the track, never narrower than its caps.
 			local ts, fs = Sprites.LevelTrack, Sprites.LevelFill
@@ -1607,24 +1644,14 @@ function Parts.Detail(parent)
 				Visible = sub.Value > 0,
 			})
 			Parts.skin(fill, "LevelFill", k)
-		elseif sub.Kind == "Qty" then
-			-- dark pill with a copper rim (no sprite): "Quantity: x1,248"; Gold paints the count yellow
-			subH = if c then 24 else (sub.H or 36)
-			local size = if c then 15 else 28
-			local pw = if c then math.max(150, measure(sub.Text, size) + 40) else (sub.W or 226)
-			local pill = img(subline, { Name = "QtyPill", Size = UDim2.fromOffset(pw, subH) }, "Frame")
-			pill.BackgroundTransparency = 0
-			pill.BackgroundColor3 = Color3.fromRGB(75, 24, 62)
-			make("UICorner", { CornerRadius = UDim.new(0.5, 0) }, pill)
-			make("UIStroke", { Color = COPPER, Thickness = 2 }, pill)
-			local lbl = Parts.text(pill, { Text = sub.Text, TextSize = size, Size = UDim2.fromScale(1, 1) }, 2)
-			if sub.Gold then
-				local a, b = string.match(sub.Text, "^(.-)(x[%d,]+)$")
-				if a then
-					lbl.RichText = true
-					lbl.Text = a .. '<font color="' .. GOLD_TEXT .. '">' .. b .. "</font>"
-				end
+			if sub.Copies then
+				local ph = if c then 22 else 30
+				qtyPill(sub.Copies, false, ph, 200, 2)
+				subH = rowH + list.Padding.Offset + ph
 			end
+		elseif sub.Kind == "Qty" then
+			subH = if c then 24 else (sub.H or 36)
+			qtyPill(sub.Text, sub.Gold, subH, sub.W or 226, 0)
 		elseif c then
 			subH = 24
 			Parts.Pill(subline, "Purple", sub.Text, { H = subH, MinW = 90, TextSize = 15, Icon = sub.Icon })
@@ -1795,10 +1822,12 @@ function Parts.Detail(parent)
 			local cw = math.floor((bodyW() - 4) / 2)
 			for i = 1, math.min(#list, 4) do
 				local st = list[i]
+				local n = math.min(#list, 4)
+				local rw = if i == n and n % 2 == 1 then bodyW() else cw -- an odd last row spans the grid: no hole
 				local r = img(extra, {
 					Name = "Stat" .. i,
 					Position = UDim2.fromOffset(((i - 1) % 2) * (cw + 4), top + math.floor((i - 1) / 2) * pitch),
-					Size = UDim2.fromOffset(cw, rowH),
+					Size = UDim2.fromOffset(rw, rowH),
 				})
 				Parts.skinH(r, "StatRow", rowH)
 				local ic = img(r, {
@@ -1807,7 +1836,7 @@ function Parts.Detail(parent)
 					Position = UDim2.new(0, 6, 0.5, 0),
 				})
 				Parts.image(ic, st.Icon)
-				local lw = cw - (rowH + 6) - 22
+				local lw = rw - (rowH + 6) - 22
 				local lbl = Parts.text(r, {
 					Text = st.Label,
 					TextSize = 13,
@@ -1879,7 +1908,11 @@ function Parts.Detail(parent)
 		-- one label size on every tab and every row: what the tightest label needs. UNEQUIP has the whole width,
 		-- LOCK shares it with the padlock (setButton's icon inset); 4 px spare for glyph rounding under UIScale.
 		local inset = math.floor(h * 0.5) + 6
-		local text = math.min(Parts.fitSize("UNEQUIP", w - 20, 30, 15), Parts.fitSize("LOCK", w - 20 - inset, 30, 15))
+		local text = math.min(
+			Parts.fitSize("UNEQUIP", w - 20, 30, 15),
+			Parts.fitSize("LOCK", w - 20 - inset, 30, 15),
+			Parts.fitSize("UPGRADE", w - 20, 30, 15)
+		)
 		for _, btn in actions:GetChildren() do
 			if btn:IsA("ImageButton") then
 				btn.Size = UDim2.fromOffset(w, h)

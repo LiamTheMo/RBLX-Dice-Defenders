@@ -263,17 +263,17 @@ test("dice detail: Damage and Attack Speed from the Catalog, ability note on non
 		return table.concat(out, ",")
 	end
 	local needle = detail(catalog, "C02")
-	expectEq(values(needle), `9,{D},1.75,{D}`, "Damage, Range dash, Attack Speed, Burn dash")
+	expectEq(values(needle), `9,1.75,{D}`, "Damage, Attack Speed, Burn dash")
 	expectEq(needle.Description, "", "owned Common: no ability note")
 	local frost = detail(catalog, "R01")
-	expectEq(values(frost), `19,{D},1,{D}`, "1.0 shows as 1")
+	expectEq(values(frost), `19,1,{D}`, "1.0 shows as 1")
 	expectEq(frost.Description, "Ability: coming soon", "owned Rare")
 	local arc = detail(catalog, "R02")
-	expectEq(values(arc), `21,{D},0.55,{D}`, "unowned playable die shows its stats")
+	expectEq(values(arc), `21,0.55,{D}`, "unowned playable die shows its stats")
 	expectEq(arc.Description, "Not owned. Ability: coming soon", "unowned Rare")
 	expectEq(detail(nil, "C02").Stats[1].Value, D, "no Catalog yet: dash")
 	local astral = detail(catalog, "M01")
-	expectEq(values(astral), `{D},{D},{D},{D}`, "unreleased die: all dashes")
+	expectEq(values(astral), `{D},{D},{D}`, "unreleased die: all dashes")
 	expectEq(astral.Description, "Not available yet", "unreleased die keeps its note")
 end)
 
@@ -369,7 +369,7 @@ test("cosmetics detail: EQUIP / UNEQUIP live, LOCK off with a reason, no-visual 
 	)
 end)
 
-test("dice: UNEQUIP ALL resets to the starter deck; LOCK and SELL keep copies", function()
+test("dice: UNEQUIP ALL resets to the starter deck; SELL stays off", function()
 	local starter = { "C01", "C02", "C03", "C04", "C05" }
 	local catalog = { StarterDeck = starter, Dice = {} }
 	local same = DiceTab.Footer({ Deck = table.clone(starter) }, catalog).Button
@@ -383,10 +383,52 @@ test("dice: UNEQUIP ALL resets to the starter deck; LOCK and SELL keep copies", 
 	for _, it in DiceTab.GetItems(meta, catalog) do
 		if it.Id == "C01" then
 			local d = DiceTab.Detail(it)
-			for _, id in { "Lock", "Sell" } do
-				local b = button(d, id)
-				expect(not b.Enabled and b.Hint == "Copies are kept for future level-ups", id .. " reason")
-			end
+			local b = button(d, "Sell")
+			expect(not b.Enabled and b.Hint == "Copies level this die up", "SELL reason")
+			expect(button(d, "Lock") == nil, "no LOCK on dice")
 		end
 	end
+end)
+
+test("dice upgrade: UPGRADE gates on copies, cap and Catalog; copies show on card and detail", function()
+	local DL = { Max = 7, Copies = { 1, 1, 1, 2, 2, 3 } }
+	local catalog = { DieLevel = DL, Dice = {} }
+	local function die(level, copies, c, id)
+		local meta = { Dice = { { Id = id or "C01", Level = level, Copies = copies } }, Deck = {} }
+		for _, it in DiceTab.GetItems(meta, c) do
+			if it.Id == (id or "C01") then
+				return it, DiceTab.Detail(it)
+			end
+		end
+		error("no die")
+	end
+	local _, d = die(4, 2, catalog) -- level 4 costs 2
+	expect(button(d, "Upgrade").Enabled, "UPGRADE on exactly at the cost")
+	expectEq(d.Subline.Copies, "Copies 2 / 2", "detail copies line")
+	expectEq(d.Subline.Max, 7, "Max from the Catalog")
+	local item, d1 = die(4, 1, catalog)
+	expect(not button(d1, "Upgrade").Enabled, "cost - 1 off")
+	expectEq(button(d1, "Upgrade").Hint, "Need 2 copies", "cost hint")
+	expectEq(d1.Subline.Copies, "Copies 1 / 2", "below-cost copies line")
+	expectEq(item.Count, "x1", "card copy count")
+	expectEq(select(1, die(1, 0, catalog)).Count, "x0", "a die owned once shows 0")
+	local _, dm = die(7, 5, catalog)
+	expect(not button(dm, "Upgrade").Enabled and button(dm, "Upgrade").Hint == "Max level", "max level off")
+	expectEq(dm.Subline.Copies, "Copies 5", "max level shows copies alone")
+	local _, dn = die(4, 9, nil)
+	expect(dn.Subline == nil, "no Catalog: no Subline")
+	expect(not button(dn, "Upgrade").Enabled and button(dn, "Upgrade").Hint == "Still loading", "no Catalog hint")
+	local _, du = die(1, 0, { DieLevel = { Max = "x", Copies = "y" } })
+	expect(du.Subline == nil and not button(du, "Upgrade").Enabled, "untrusted Catalog values ignored")
+	for _, it in DiceTab.GetItems({ Dice = {}, Deck = {} }, catalog) do
+		if it.Id == "C02" then
+			local lk = DiceTab.Detail(it)
+			expect(
+				not button(lk, "Upgrade").Enabled and button(lk, "Upgrade").Hint == "Not owned",
+				"unowned: locked footer"
+			)
+			expect(lk.Subline == nil and it.Count == nil, "unowned: no level line or count")
+		end
+	end
+	expect(button(d, "Lock") == nil and button(d, "Upgrade").Style == "Gold", "UPGRADE replaces LOCK")
 end)

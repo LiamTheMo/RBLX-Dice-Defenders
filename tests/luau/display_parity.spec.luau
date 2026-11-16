@@ -6,6 +6,8 @@ local Dice = require(Server.Config.Dice)
 local Enemies = require(Server.Config.Enemies)
 local Board = require(Server.Rules.Board)
 local Formulas = require(Server.Rules.Formulas)
+local Catalog = require(Server.Rules.Catalog)
+local Progression = require(Server.Config.Progression)
 local Display = require(game:GetService("ReplicatedStorage").Shared.Display)
 
 local RARITIES = { Common = true, Rare = true, Epic = true, Legendary = true }
@@ -94,4 +96,11 @@ test("in combat no non-Common is weaker than any Common, at every pip and enemy 
 			end
 		end
 	end
+end)
+
+test("the client holds no die level cap of its own; the Catalog carries the server cap", function()
+	local source = __sources["StarterPlayer/StarterPlayerScripts/Client/Controllers/Bag/Tabs/Dice"]
+	expect(source ~= nil, "Tabs/Dice source readable")
+	expect(not string.find(source, "MaxLevel%s*=%s*%d"), "no hard-coded MaxLevel = <number>")
+	expectEq(Catalog.Build().DieLevel.Max, Progression.DieLevel.Max, "Catalog DieLevel.Max")
 end)

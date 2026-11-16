@@ -34,6 +34,18 @@ local REPLIES = {
 	Throttled = "Slow down",
 	Network = "Connection problem",
 }
+local UPGRADE_REPLIES = { -- UpgradeDie refusals; anything unlisted reads "Something went wrong", never a raw code
+	MaxLevel = "Already max level",
+	UnknownDie = "Unknown die",
+	NotOwned = "You don't own that",
+	WrongPhase = "Not during a match",
+	RateLimited = "Slow down",
+	Insufficient = "Not enough copies",
+	NotLoaded = "Still loading",
+	NotOwner = "This server is in use",
+	Throttled = "Slow down",
+	Network = "Connection problem",
+}
 local DONE =
 	{ Sell = "Sold", Use = "Used", Lock = "Locked", Unlock = "Unlocked", Equip = "Equipped", Unequip = "Unequipped" }
 
@@ -189,6 +201,34 @@ function Bag.new(parent, deps)
 		end)
 	end
 
+	-- One UpgradeDie intent (the server decides level, copies and cost); the new level comes back through Meta.
+	local upgrading = false
+	local function sendUpgrade(id: string)
+		if upgrading then
+			return
+		end
+		upgrading = true
+		local function levelOf()
+			for _, d in if meta then meta.Dice else {} do
+				if d.Id == id and type(d.Level) == "number" then
+					return d.Level
+				end
+			end
+			return nil
+		end
+		local before = levelOf()
+		task.spawn(function()
+			local ok, code = NetClient.Request("UpgradeDie", id)
+			upgrading = false
+			if not ok then
+				toast(UPGRADE_REPLIES[code] or "Something went wrong")
+				return
+			end
+			local level = levelOf() -- the refreshed Meta may land after the reply: only a risen level is trusted
+			toast(if level and before and level > before then ("Upgraded to Lv. %d"):format(level) else "Upgraded")
+		end)
+	end
+
 	local function pickSlot(i: number)
 		if not pending then
 			return
@@ -261,6 +301,8 @@ function Bag.new(parent, deps)
 			local st = state[cur]
 			if btn.Send then -- a BagAction: the stepper's qty for Sell and Use, else 1
 				sendBag(id, st.selected, if id == "Sell" or id == "Use" then st.qty else 1)
+			elseif id == "Upgrade" then
+				sendUpgrade(st.selected)
 			elseif id == "Equip" then
 				pending = st.selected
 				renderFooter()
