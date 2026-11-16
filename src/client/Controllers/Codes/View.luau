@@ -137,13 +137,18 @@ function View.new(slot)
 	}, field)
 	-- Scrolled text puts the caret on the text area's right edge: keep it inside the clip.
 	make("UIPadding", { PaddingRight = UDim.new(0, 8) }, box)
-	-- The field's side insets (outside the text area) focus the box too.
+	-- The field's side insets (outside the text area) focus the box too. Presses on the text area stay the TextBox's own (caret
+	-- placement), whether or not the TextBox passes them on.
 	field.Active = true
 	table.insert(
 		conns,
 		field.InputBegan:Connect(function(input)
 			local kind = input.UserInputType
-			if kind == Enum.UserInputType.MouseButton1 or kind == Enum.UserInputType.Touch then
+			if kind ~= Enum.UserInputType.MouseButton1 and kind ~= Enum.UserInputType.Touch or box:IsFocused() then
+				return
+			end
+			local p, a, s = input.Position, box.AbsolutePosition, box.AbsoluteSize
+			if p.X < a.X or p.X > a.X + s.X or p.Y < a.Y or p.Y > a.Y + s.Y then
 				box:CaptureFocus()
 			end
 		end)
@@ -170,8 +175,8 @@ function View.new(slot)
 		end)
 	)
 
-	-- REDEEM: the Play START / Daily CLAIM button family, visible ink 536 x 114.
-	local bw, bh = Parts.inkBox("BtnGreen", 536, 114)
+	-- REDEEM: the Play START / Daily CLAIM button family, visible ink 540 x 114 (its green reaches the reference's 530.7).
+	local bw, bh = Parts.inkBox("BtnGreen", 540, 114)
 	local button = Parts.button(root, {
 		Name = "Redeem",
 		Style = "Green",
