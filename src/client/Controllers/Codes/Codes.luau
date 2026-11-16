@@ -90,6 +90,7 @@ function Codes.new(parent, deps)
 		end
 		local code = CodesLogic.sanitize(box.Text) -- the field is always clean; never send anything the server's guard rejects
 		waiting = true
+		show(nil) -- a new try drops the previous answer (and its timer) so "REDEEMING..." never sits beside an old error
 		refresh()
 		task.spawn(function()
 			local ok, err = NetClient.Request("RedeemCode", code)
@@ -207,6 +208,8 @@ function Codes.new(parent, deps)
 			conns,
 			root:GetAttributeChangedSignal("PreviewState"):Connect(function()
 				local s = root:GetAttribute("PreviewState")
+				show(nil) -- each preview starts from the live look (no caption or button left over from the last one)
+				refresh()
 				if s == "Waiting" or s == "Cooldown" then
 					view:SetButton(s)
 				elseif type(s) == "string" and s ~= "" then
@@ -214,9 +217,6 @@ function Codes.new(parent, deps)
 					if r then
 						show(r.text, r.tone)
 					end
-				else
-					show(nil)
-					refresh()
 				end
 			end)
 		)
