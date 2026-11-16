@@ -1,5 +1,5 @@
 -- Bag controller: one Shell, four tabs, per-tab view state until close. Reads NetClient, sends intents only
--- (EquipDeck); the deck changes when the server pushes Meta, never optimistically.
+-- (EquipDeck, BagAction); the deck and inventory change when the server pushes Meta, never optimistically.
 -- Bag.new(parent, { hud = LobbyHud, toast = (string) -> () }) -> bag :Open(tab: number?) :Close() :Toggle() :IsOpen() :Destroy()
 
 local ContextActionService = game:GetService("ContextActionService")
@@ -19,6 +19,23 @@ local ACTION = "BagClose"
 local SEND_GAP = 1.0 -- server rate is 1/s: stay at or under it
 
 local TABS = { Dice, Materials, Items, Cosmetics }
+
+-- BagAction replies (NetClient refusals included) and successes, shown through the Bag's toast.
+local REPLIES = {
+	UnknownItem = "Unknown item",
+	NotOwned = "You don't own that",
+	Insufficient = "You don't have that many",
+	Locked = "Unlock it first",
+	NotSellable = "Can't be sold",
+	NotUsable = "Can't be used",
+	Overflow = "You can't hold that much",
+	NotLoaded = "Still loading",
+	NotOwner = "This server is in use",
+	Throttled = "Slow down",
+	Network = "Connection problem",
+}
+local DONE =
+	{ Sell = "Sold", Use = "Used", Lock = "Locked", Unlock = "Unlocked", Equip = "Equipped", Unequip = "Unequipped" }
 
 local Bag = {}
 Bag.__index = Bag
@@ -48,17 +65,18 @@ function Bag.new(parent, deps)
 
 	local meta -- latest Meta payload (NetClient.LastMeta)
 	local catalog -- display catalogue (NetClient.LastCatalog)
-	local state = {} -- per tab: query, sort, selected, scroll
+	local state = {} -- per tab: query, sort, selected, scroll, qty (the stepper's pick)
 	local cur = 1 -- tab index being shown
 	local view = {} -- visible items (filtered + sorted)
 	local model -- current detail model
+	local footerButton -- current footer button model (DICE: UNEQUIP ALL)
 	local pending -- die id waiting for a loadout slot
 	local lastSend, inFlight = -math.huge, false
 	local slotButtons = {}
 
 	local function resetState()
 		for i, tab in TABS do
-			state[i] = { query = "", sort = tab.DefaultSort, selected = nil, scroll = 0 }
+			state[i] = { query = "", sort = tab.DefaultSort, selected = nil, scroll = 0, qty = 1 }
 		end
 		pending = nil
 	end
@@ -80,7 +98,8 @@ function Bag.new(parent, deps)
 		if not tab.Footer then
 			return
 		end
-		local f = tab.Footer(meta)
+		local f = tab.Footer(meta, catalog)
+		footerButton = f.Button
 		footer:SetLabel(if pending then "PICK A SLOT TO REPLACE" else f.Label)
 		footer:SetSlots(f.Slots)
 		for i, s in slotButtons do
@@ -103,7 +122,8 @@ function Bag.new(parent, deps)
 			end
 		end
 		if item and tab.Detail then
-			model = tab.Detail(item)
+			st.qty = BagLogic.stepQty(st.qty, 0, item.Quantity) -- a smaller stack (after a sale) clamps the pick
+			model = tab.Detail(item, st.qty)
 		end
 		detail:Show(model)
 	end
@@ -120,6 +140,7 @@ function Bag.new(parent, deps)
 			end
 			if not found then
 				st.selected = if view[1] then view[1].Id else nil
+				st.qty = 1
 				pending = nil
 			end
 			grid:SetKind(tab.Grid)
@@ -157,6 +178,14 @@ function Bag.new(parent, deps)
 			-- A rejection is toasted by Lobby's NetClient.Rejected handler; success arrives as Meta.
 			NetClient.Request("EquipDeck", ids)
 			inFlight = false
+		end)
+	end
+
+	-- One BagAction; the reply (or NetClient's own refusal) is toasted, the change itself arrives as Meta.
+	local function sendBag(action: string, id: string, qty: number)
+		task.spawn(function()
+			local ok, code = NetClient.Request("BagAction", action, id, qty)
+			toast(if ok then DONE[action] else REPLIES[code] or tostring(code))
 		end)
 	end
 
@@ -207,6 +236,9 @@ function Bag.new(parent, deps)
 	end)
 	grid:OnSelect(function(item)
 		safe("select", function()
+			if state[cur].selected ~= item.Id then
+				state[cur].qty = 1
+			end
 			state[cur].selected = item.Id
 			pending = nil
 			grid:SetSelected(item.Id)
@@ -226,18 +258,40 @@ function Bag.new(parent, deps)
 				toast(hint or "Not available")
 				return
 			end
-			if id == "Equip" then
-				pending = state[cur].selected
+			local st = state[cur]
+			if btn.Send then -- a BagAction: the stepper's qty for Sell and Use, else 1
+				sendBag(id, st.selected, if id == "Sell" or id == "Use" then st.qty else 1)
+			elseif id == "Equip" then
+				pending = st.selected
 				renderFooter()
 				toast("Pick a loadout slot")
 			end
 		end)
 	end)
-	detail:OnStep(function()
-		toast("Coming soon") -- every stepper is a disabled preview for now
+	detail:OnStep(function(delta)
+		safe("step", function()
+			local st = model and model.Stepper
+			if not st then
+				return
+			end
+			if not st.Enabled then
+				toast(st.Hint or "Not available")
+				return
+			end
+			state[cur].qty = BagLogic.stepQty(state[cur].qty, delta, st.Max)
+			renderDetail()
+		end)
 	end)
 	footer:OnButton(function(hint)
-		toast(hint or "Coming soon")
+		safe("footer", function()
+			if footerButton and footerButton.Enabled and footerButton.Deck then
+				pending = nil
+				renderFooter()
+				sendDeck(footerButton.Deck) -- UNEQUIP ALL = the starter deck; a rejection is toasted by Lobby
+			else
+				toast(hint or "Not available")
+			end
+		end)
 	end)
 
 	local function showTab()

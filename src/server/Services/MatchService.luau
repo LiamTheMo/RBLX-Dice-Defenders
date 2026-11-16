@@ -8,6 +8,7 @@ local RunService = game:GetService("RunService")
 local Balance = require(script.Parent.Parent.Config.Balance)
 local Progression = require(script.Parent.Parent.Config.Progression)
 local Net = require(script.Parent.Parent.Infrastructure.Net)
+local Bag = require(script.Parent.Parent.Rules.Bag)
 local Catalog = require(script.Parent.Parent.Rules.Catalog)
 local Claims = require(script.Parent.Parent.Rules.Claims)
 local Deck = require(script.Parent.Parent.Rules.Deck)
@@ -104,11 +105,20 @@ local function meta(profile)
 		table.insert(dice, { Id = id, Level = die.Level, Copies = die.Copies })
 	end
 	table.sort(dice, byId)
+	local equipped = {}
+	for _, id in profile.Cosmetics.Equipped do
+		equipped[id] = true
+	end
 	local cosmetics = {}
 	for id in profile.Cosmetics.Owned do
-		table.insert(cosmetics, { Id = id })
+		table.insert(cosmetics, { Id = id, Equipped = equipped[id] == true })
 	end
 	table.sort(cosmetics, byId)
+	local locked = {}
+	for id in profile.Locked do
+		table.insert(locked, id)
+	end
+	table.sort(locked)
 	local level, xpInto, xpNeed = Progression.Level(profile.Xp, Progression.Account)
 	local now = os.time()
 	local view, claims = Quests.View(profile, now), Claims.View(profile, now)
@@ -130,6 +140,7 @@ local function meta(profile)
 		Materials = quantities(profile.Materials),
 		Items = quantities(profile.Items),
 		Cosmetics = cosmetics,
+		Locked = locked, -- sorted locked Material and Item ids
 		Settings = table.clone(profile.Settings), -- {[settingId] = value}; a missing id is its default
 	}
 end
@@ -318,6 +329,18 @@ local function handleSaveSettings(player: Player, patch: any): (boolean, string?
 	return true
 end
 
+local function handleBagAction(player: Player, action: string, id: string, qty: number): (boolean, string?)
+	local profile = ProfileService.Get(player)
+	if profile == nil then
+		return false, "NotLoaded"
+	end
+	local ok, code = Bag.Act(profile, action, id, qty)
+	if ok then
+		ProfileService.MarkChanged(player) -- Changed pushes State (Gold) and Meta
+	end
+	return ok, code
+end
+
 local function tick()
 	local now = workspace:GetServerTimeNow()
 	if now - lastTick < 1 / Balance.TickHz then
@@ -361,6 +384,7 @@ function MatchService.Init()
 	Net.Handle("EquipDeck", handleEquipDeck)
 	Net.Handle("ClaimQuest", handleClaimQuest)
 	Net.Handle("SaveSettings", handleSaveSettings)
+	Net.Handle("BagAction", handleBagAction)
 end
 
 function MatchService.Start()

@@ -6,6 +6,7 @@
 -- reaching the threshold calls `kick` exactly once. Soft rejections (anything the
 -- ready check or a handler returns) are never counted.
 local Balance = require(script.Parent.Parent.Config.Balance)
+local Bag = require(script.Parent.Parent.Rules.Bag)
 local Deck = require(script.Parent.Parent.Rules.Deck)
 local Validate = require(script.Parent.Parent.Rules.Validate)
 local SettingsDefs = require(game:GetService("ReplicatedStorage").Shared.SettingsDefs)
@@ -35,6 +36,7 @@ RemoteGuard.Specs = table.freeze({
 		end,
 	}),
 	SaveSettings = table.freeze({ argc = 2, check = SettingsDefs.Shape }),
+	BagAction = table.freeze({ argc = 4, check = Bag.Shape }),
 	Merge = table.freeze({
 		argc = 3,
 		check = function(from, to)

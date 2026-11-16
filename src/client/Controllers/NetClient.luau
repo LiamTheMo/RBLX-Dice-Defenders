@@ -32,6 +32,7 @@ local MIN_INTERVAL = {
 	ClaimQuest = 0.5,
 	RedeemCode = 1.0,
 	SaveSettings = 2.0,
+	BagAction = 0.4, -- server bucket 3/s
 }
 local pending = {}
 local seq = 0
@@ -70,7 +71,9 @@ function NetClient.Start()
 	-- Waiting for the server's remotes must not block the other controllers.
 	task.spawn(function()
 		local folder = ReplicatedStorage:WaitForChild("Remotes")
-		for _, name in { "Start", "Summon", "Merge", "EquipDeck", "ClaimQuest", "RedeemCode", "SaveSettings" } do
+		for _, name in
+			{ "Start", "Summon", "Merge", "EquipDeck", "ClaimQuest", "RedeemCode", "SaveSettings", "BagAction" }
+		do
 			functions[name] = folder:WaitForChild(name)
 		end
 		folder:WaitForChild("State").OnClientEvent:Connect(function(snapshot)

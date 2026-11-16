@@ -14,6 +14,7 @@ Remotes.Kinds = table.freeze({
 	ClaimQuest = "Function", -- (seq, questId)
 	RedeemCode = "Function", -- (seq, code)
 	SaveSettings = "Function", -- (seq, patch): {[settingId] = value}, cleaned against Shared/SettingsDefs
+	BagAction = "Function", -- (seq, action, id, qty): Sell/Use/Lock/Unlock/Equip/Unequip (Rules/Bag)
 	State = "Event", -- S -> C snapshot
 	Enemies = "Event", -- S -> C, owner only: {S, H, R, F}
 	Meta = "Event", -- S -> C, that player only: lobby payload (docs/MVP.md "Meta")

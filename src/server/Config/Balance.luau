@@ -33,6 +33,7 @@ Balance.Remotes = table.freeze({
 	ClaimQuest = table.freeze({ rate = 2, burst = 4 }),
 	RedeemCode = table.freeze({ rate = 1, burst = 3 }),
 	SaveSettings = table.freeze({ rate = 0.5, burst = 3 }), -- *tune*
+	BagAction = table.freeze({ rate = 3, burst = 6 }), -- *tune*
 })
 Balance.KickThreshold = 20
 Balance.LogInterval = 5 -- seconds between violation log lines per player

@@ -1,4 +1,4 @@
--- Persisted player profile, v6 (docs/MVP.md "Profile"). Pure: no Instances.
+-- Persisted player profile, v7 (docs/MVP.md "Profile"). Pure: no Instances.
 -- Default() builds a new profile; Migrate() validates stored data. The store
 -- metadata (profileRevision, sessionLease) rides along but is not gameplay data.
 
@@ -15,7 +15,7 @@ local Validate = require(script.Parent.Validate)
 
 local ProfileSchema = {}
 
-ProfileSchema.VERSION = 6
+ProfileSchema.VERSION = 7
 
 local STARTER_GEMS = 50 -- new profiles and every v3 profile once (v3 -> v4)
 
@@ -57,7 +57,7 @@ function ProfileSchema.Default()
 		Xp = 0,
 		Materials = {},
 		Items = {},
-		Cosmetics = { Owned = {} },
+		Cosmetics = { Owned = {}, Equipped = {} },
 		Stats = { Kills = 0, Wins = 0 },
 		Weekly = { Week = 0, Kills = 0, Runs = 0, Claimed = {} },
 		Login = { Streak = 0, LastDay = 0 },
@@ -65,6 +65,7 @@ function ProfileSchema.Default()
 		Achievements = {},
 		Mastery = {},
 		Settings = {},
+		Locked = {},
 	}
 end
 
@@ -94,6 +95,14 @@ local MIGRATIONS: { [number]: (any) -> any } = {
 	-- v5 -> v6: Settings starts empty (any stray value is dropped).
 	[5] = function(data)
 		data.Settings = nil
+		return data
+	end,
+	-- v6 -> v7: Locked and Cosmetics.Equipped start empty (any stray value is dropped).
+	[6] = function(data)
+		data.Locked = nil
+		if type(data.Cosmetics) == "table" then
+			data.Cosmetics.Equipped = nil
+		end
 		return data
 	end,
 }
@@ -159,17 +168,37 @@ local function cleanCounts(stored: any, catalog)
 	return counts
 end
 
+-- Owned cosmetics, and Equipped = {[slot] = id} kept only for an owned id in its own Slot.
 local function cleanCosmetics(stored: any)
-	local owned = {}
+	local owned, equipped = {}, {}
 	local flags = if type(stored) == "table" then stored.Owned else nil
+	local slots = if type(stored) == "table" then stored.Equipped else nil
 	if type(flags) == "table" then
-		for id in Inventory.Cosmetics do
+		for id, cosmetic in Inventory.Cosmetics do
 			if flags[id] == true then
 				owned[id] = true
+				if type(slots) == "table" and slots[cosmetic.Slot] == id then
+					equipped[cosmetic.Slot] = id
+				end
 			end
 		end
 	end
-	return { Owned = owned }
+	return { Owned = owned, Equipped = equipped }
+end
+
+-- Locked Material and Item ids: `true` flags only; walks the catalogue like cleanCounts.
+local function cleanLocked(stored: any)
+	local locked = {}
+	if type(stored) == "table" then
+		for _, catalog in { Inventory.Materials, Inventory.Items } do
+			for id in catalog do
+				if stored[id] == true then
+					locked[id] = true
+				end
+			end
+		end
+	end
+	return locked
 end
 
 local function cleanDaily(stored: any)
@@ -291,6 +320,7 @@ function ProfileSchema.Migrate(stored: any)
 		Achievements = cleanFlags(data.Achievements, Achievements.List),
 		Mastery = cleanMastery(data.Mastery),
 		Settings = cleanSettings(data.Settings),
+		Locked = cleanLocked(data.Locked),
 	}
 
 	-- Store metadata: keep a well-formed lease so a held lease is honoured.

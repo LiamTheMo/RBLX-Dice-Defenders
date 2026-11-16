@@ -1,4 +1,5 @@
--- COSMETICS tab: owned cosmetics from Meta + Catalog (BagLogic.inventory); every action is a disabled preview.
+-- COSMETICS tab: owned cosmetics from Meta + Catalog (BagLogic.inventory). EQUIP / UNEQUIP send BagAction (one
+-- cosmetic per slot, EQUIPPED from Meta); cosmetics have no in-game visuals yet and cannot be locked.
 
 local BagLogic = require(script.Parent.Parent.BagLogic)
 
@@ -57,11 +58,32 @@ function Cosmetics.Detail(item)
 		},
 		Divider = true,
 		DescSize = 23,
-		Description = item.Description,
+		Description = item.Description .. " No visual effect yet.",
 		Buttons = {
-			{ Id = "Equip", Label = "EQUIP", Style = "Green", Enabled = false, Hint = "Coming soon" },
-			{ Id = "Unequip", Label = "UNEQUIP", Style = "Red", Enabled = false, Hint = "Coming soon" },
-			{ Id = "Lock", Label = "LOCK", Style = "Purple", Icon = "Lock", Enabled = false, Hint = "Coming soon" },
+			{
+				Id = "Equip",
+				Label = "EQUIP",
+				Style = "Green",
+				Enabled = not item.Equipped,
+				Hint = "Already equipped",
+				Send = true,
+			},
+			{
+				Id = "Unequip",
+				Label = "UNEQUIP",
+				Style = "Red",
+				Enabled = item.Equipped == true,
+				Hint = "Not equipped",
+				Send = true,
+			},
+			{
+				Id = "Lock",
+				Label = "LOCK",
+				Style = "Purple",
+				Icon = "Lock",
+				Enabled = false,
+				Hint = "Cosmetics can't be locked",
+			},
 		},
 	}
 end

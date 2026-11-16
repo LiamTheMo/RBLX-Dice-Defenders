@@ -1,4 +1,5 @@
--- ITEMS tab: owned items from Meta + Catalog (BagLogic.inventory); every action is a disabled preview.
+-- ITEMS tab: owned items from Meta + Catalog (BagLogic.inventory). USE (items with a Catalog Use text), SELL
+-- (Sell x qty) and LOCK / UNLOCK send BagAction; the server applies its own config bundle and price.
 
 local BagLogic = require(script.Parent.Parent.BagLogic)
 
@@ -28,6 +29,10 @@ function Items.GetItems(meta, catalog)
 			Quantity = it.Quantity,
 			Description = it.Description,
 			Icon = it.Icon,
+			Sell = it.Sell,
+			Use = it.Use,
+			UserLocked = it.UserLocked,
+			CornerBadge = if it.UserLocked then "Lock" else nil, -- the padlock badge; not Locked (= unowned, sorted last)
 			TopTag = string.upper(it.Rarity),
 			Footer = "x" .. BagLogic.formatCount(it.Quantity),
 		}
@@ -35,7 +40,11 @@ function Items.GetItems(meta, catalog)
 	return items
 end
 
-function Items.Detail(item)
+-- `qty` = the stepper's pick (1 when nil), used by both USE and SELL.
+function Items.Detail(item, qty: number?)
+	local locked = item.UserLocked == true
+	local useHint = if locked then "Unlock it first" elseif item.Use == nil then "Can't be used" else nil
+	local sellHint = if locked then "Unlock it first" elseif item.Sell == nil then "Can't be sold" else nil
 	return {
 		Name = item.Name,
 		Rarity = item.Rarity,
@@ -57,19 +66,34 @@ function Items.Detail(item)
 			W = 223,
 			H = 38,
 		},
-		Description = item.Description,
-		Stepper = { Qty = 1, Max = item.Quantity, Enabled = false },
+		Description = item.Description
+			.. (if item.Sell then (" Sells for %s Gold each."):format(BagLogic.formatCount(item.Sell)) else ""),
+		Stepper = {
+			Qty = qty or 1,
+			Max = item.Quantity,
+			Enabled = useHint == nil or sellHint == nil,
+			Hint = useHint or sellHint,
+		},
 		Buttons = {
 			{
 				Id = "Use",
 				Label = "USE",
 				Style = "Green",
 				Icon = "IconFlaskWhite",
-				Enabled = false,
-				Hint = "Coming soon",
+				Enabled = useHint == nil,
+				Hint = useHint,
+				Send = true,
 			},
-			{ Id = "Lock", Label = "LOCK", Style = "Purple", Icon = "Lock", Enabled = false, Hint = "Coming soon" },
-			{ Id = "Sell", Label = "SELL", Style = "Red", Icon = "Coins", Enabled = false, Hint = "Coming soon" },
+			BagLogic.lockButton(locked),
+			{
+				Id = "Sell",
+				Label = "SELL",
+				Style = "Red",
+				Icon = "Coins",
+				Enabled = sellHint == nil,
+				Hint = sellHint,
+				Send = true,
+			},
 		},
 	}
 end

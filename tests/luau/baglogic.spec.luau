@@ -174,7 +174,8 @@ test("inventory: owned quantities joined with catalogue display fields", functio
 	expectEq(ids(m), "Fragment,Ore", "Meta order, unowned catalogue entry absent")
 	expect(m[1].Name == "Verdant Fragments" and m[1].Rarity == "Common" and m[1].Description == "Shards.", "fields")
 	expectEq(m[1].Quantity, 1248, "quantity from Meta")
-	expect(m[1].Equipped == nil and m[1].Sell == nil, "no Equipped, no price on a material row")
+	expect(m[1].Equipped == nil and m[1].Sell == 2 and m[2].Sell == nil, "no Equipped; the Catalog price, if any")
+	expect(m[1].UserLocked == false, "not locked without Meta.Locked")
 	local it = BagLogic.inventory(META, CATALOG, "Items")
 	expect(it[1].Icon == "Coins" and it[2].Icon == nil, "item icon passed through")
 	expectEq(it[2].Quantity, 7, "item quantity")
@@ -274,4 +275,118 @@ test("dice detail: Damage and Attack Speed from the Catalog, ability note on non
 	local astral = detail(catalog, "M01")
 	expectEq(values(astral), `{D},{D},{D},{D}`, "unreleased die: all dashes")
 	expectEq(astral.Description, "Not available yet", "unreleased die keeps its note")
+end)
+
+local function button(model, id)
+	for _, b in model.Buttons do
+		if b.Id == id then
+			return b
+		end
+	end
+	return nil
+end
+
+test("inventory: Meta.Locked marks rows locked; Meta cosmetics carry Equipped", function()
+	local meta = {
+		Materials = { { Id = "Fragment", Quantity = 5 } },
+		Items = { { Id = "XpTome", Quantity = 2 } },
+		Cosmetics = { { Id = "Firefly", Equipped = true }, { Id = "Sprout", Equipped = false } },
+		Locked = { "Fragment" },
+	}
+	local m = BagLogic.inventory(meta, CATALOG, "Materials")
+	expect(m[1].UserLocked == true and m[1].Sell == 2, "locked material, price")
+	local it = BagLogic.inventory(meta, CATALOG, "Items")
+	expect(it[1].UserLocked == false and it[1].Use == "+100 XP" and it[1].Sell == 50, "unlocked item, use and price")
+	local c = BagLogic.inventory(meta, CATALOG, "Cosmetics")
+	expect(c[1].Equipped == true and c[2].Equipped == false, "equipped from Meta")
+	local mat, cos = Tabs[1], Tabs[3]
+	local rows = mat.GetItems(meta, CATALOG)
+	expectEq(rows[1].CornerBadge, "Lock", "locked card shows the padlock")
+	expect(rows[1].Locked == nil, "a player lock never uses the unowned (sorted-last) flag")
+	local cosRows = cos.GetItems(meta, CATALOG)
+	expectEq(cosRows[1].TopTag, "EQUIPPED", "EQUIPPED pill from Meta")
+end)
+
+test("stepQty: 1..owned, MAX picks owned, never above the server's 1e6 cap", function()
+	local BagRule = require(game:GetService("ServerScriptService").Server.Rules.Bag)
+	expectEq(BagLogic.MAX_QTY, BagRule.MAX_QTY, "client cap mirrors the server validator")
+	expectEq(BagLogic.stepQty(1, 1, 5), 2, "+1")
+	expectEq(BagLogic.stepQty(5, 1, 5), 5, "capped at owned")
+	expectEq(BagLogic.stepQty(1, -1, 5), 1, "floor 1")
+	expectEq(BagLogic.stepQty(2, "max", 5), 5, "MAX")
+	expectEq(BagLogic.stepQty(9, 1, 3), 3, "a smaller stack clamps a stale qty")
+	expectEq(BagLogic.stepQty(nil, 0, 4), 1, "nil qty starts at 1")
+	expectEq(BagLogic.stepQty(1, "max", 0), 1, "nothing owned: 1")
+	expectEq(BagLogic.stepQty(1, "max", 5e6), 1e6, "MAX never above 1e6")
+end)
+
+test("materials and items detail: SELL / USE / LOCK states and the Catalog price", function()
+	local mat, items = Tabs[1], Tabs[2]
+	local frag = { Id = "Fragment", Name = "F", Rarity = "Common", Quantity = 8, Description = "Shards.", Sell = 2 }
+	local d = mat.Detail(frag, 3)
+	expect(d.Stepper.Qty == 3 and d.Stepper.Enabled, "stepper live at the chosen qty")
+	expect(button(d, "Sell").Enabled and button(d, "Sell").Send, "SELL live")
+	expect(button(d, "Lock").Enabled and button(d, "Lock").Send, "LOCK live")
+	expect(string.find(d.Description, "2 Gold", 1, true) ~= nil, "server price shown: " .. d.Description)
+	frag.UserLocked = true
+	local dl = mat.Detail(frag)
+	expect(dl.Stepper.Qty == 1 and not dl.Stepper.Enabled, "locked: stepper off, qty defaults to 1")
+	expect(not button(dl, "Sell").Enabled, "locked: SELL off")
+	expect(button(dl, "Unlock").Enabled and button(dl, "Lock") == nil, "locked: UNLOCK instead of LOCK")
+	local ore = mat.Detail({ Id = "Ore", Name = "O", Rarity = "Rare", Quantity = 1, Description = "Rock." })
+	expect(not button(ore, "Sell").Enabled and button(ore, "Sell").Hint == "Can't be sold", "no price: SELL off")
+
+	local pouch =
+		{ Id = "GoldPouch", Name = "G", Rarity = "Common", Quantity = 2, Description = "Gold.", Use = "+200 Gold" }
+	local p = items.Detail(pouch, 2)
+	expect(button(p, "Use").Enabled and button(p, "Use").Send, "USE live")
+	expect(not button(p, "Sell").Enabled, "no Sell: SELL off")
+	expect(p.Stepper.Enabled and p.Stepper.Qty == 2, "stepper live")
+	pouch.UserLocked = true
+	local pl = items.Detail(pouch)
+	expect(not button(pl, "Use").Enabled and button(pl, "Use").Hint == "Unlock it first", "locked: USE off")
+	expect(button(pl, "Unlock").Enabled, "locked: UNLOCK live")
+	local frag2 = items.Detail({ Id = "X", Name = "X", Rarity = "Common", Quantity = 1, Description = "X.", Sell = 5 })
+	expect(not button(frag2, "Use").Enabled and button(frag2, "Use").Hint == "Can't be used", "no Use: USE off")
+end)
+
+test("cosmetics detail: EQUIP / UNEQUIP live, LOCK off with a reason, no-visual note", function()
+	local cos = Tabs[3]
+	local item = { Id = "Thorn", Name = "T", Rarity = "Rare", Type = "Dice Skin (Cosmetic)", Description = "T." }
+	local d = cos.Detail(item)
+	expect(button(d, "Equip").Enabled and button(d, "Equip").Send, "EQUIP live")
+	expect(not button(d, "Unequip").Enabled, "UNEQUIP off when not equipped")
+	expect(
+		not button(d, "Lock").Enabled and not button(d, "Lock").Send and button(d, "Lock").Hint ~= "Coming soon",
+		"LOCK off"
+	)
+	expect(string.find(d.Description, "No visual effect yet", 1, true) ~= nil, "note")
+	item.Equipped = true
+	local e = cos.Detail(item)
+	expect(
+		not button(e, "Equip").Enabled and button(e, "Unequip").Enabled and button(e, "Unequip").Send,
+		"UNEQUIP live"
+	)
+end)
+
+test("dice: UNEQUIP ALL resets to the starter deck; LOCK and SELL keep copies", function()
+	local starter = { "C01", "C02", "C03", "C04", "C05" }
+	local catalog = { StarterDeck = starter, Dice = {} }
+	local same = DiceTab.Footer({ Deck = table.clone(starter) }, catalog).Button
+	expect(not same.Enabled and same.Hint ~= "Coming soon", "already the starter deck: off")
+	local moved = DiceTab.Footer({ Deck = { "C02", "C01", "C03", "C04", "C05" } }, catalog).Button
+	expect(moved.Enabled and moved.Deck == starter, "another order: live, sends the starter deck")
+	expect(not DiceTab.Footer({ Deck = {} }, nil).Button.Enabled, "no Catalog yet: off")
+	expect(BagLogic.sameDeck(starter, table.clone(starter)) and not BagLogic.sameDeck(starter, { "C01" }), "sameDeck")
+	expect(not BagLogic.sameDeck(nil, starter), "sameDeck nil")
+	local meta = { Dice = { { Id = "C01", Level = 1 } }, Deck = starter }
+	for _, it in DiceTab.GetItems(meta, catalog) do
+		if it.Id == "C01" then
+			local d = DiceTab.Detail(it)
+			for _, id in { "Lock", "Sell" } do
+				local b = button(d, id)
+				expect(not b.Enabled and b.Hint == "Copies are kept for future level-ups", id .. " reason")
+			end
+		end
+	end
 end)

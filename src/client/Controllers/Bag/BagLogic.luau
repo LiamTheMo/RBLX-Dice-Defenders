@@ -1,6 +1,9 @@
--- Bag pure logic: search filter, stable sort, count formatting, Meta + Catalog inventory rows. No Roblox APIs (unit-tested headless).
+-- Bag pure logic: search filter, stable sort, count formatting, Meta + Catalog inventory rows, quantity stepper,
+-- deck compare. No Roblox APIs (unit-tested headless).
 
 local BagLogic = {}
+
+BagLogic.MAX_QTY = 1_000_000 -- server's BagAction qty cap (Rules/Bag.MAX_QTY): a larger qty is a hard strike
 
 local RANK = { Mythic = 6, Legendary = 5, Epic = 4, Rare = 3, Uncommon = 2, Common = 1 }
 
@@ -93,12 +96,16 @@ function BagLogic.formatCount(n: number): string
 end
 
 -- Owned rows for the MATERIALS / ITEMS / COSMETICS tabs (kind = "Materials" | "Items" | "Cosmetics"): Meta's owned
--- ids and quantities joined with the Catalog's display fields, in Meta order. Ids the Catalog lacks are skipped;
--- cosmetics are never Equipped until equipping exists.
+-- ids and quantities joined with the Catalog's display fields (Sell price, Use text), in Meta order. Ids the Catalog
+-- lacks are skipped. UserLocked = the player's lock (Meta.Locked); Equipped (cosmetics) comes from Meta.
 function BagLogic.inventory(meta, catalog, kind: string)
 	local info = {}
 	for _, c in catalog and catalog[kind] or {} do
 		info[c.Id] = c
+	end
+	local locked = {}
+	for _, id in meta and meta.Locked or {} do
+		locked[id] = true
 	end
 	local rows = {}
 	for _, owned in meta and meta[kind] or {} do
@@ -112,11 +119,47 @@ function BagLogic.inventory(meta, catalog, kind: string)
 				Quantity = owned.Quantity,
 				Icon = c.Icon,
 				Type = c.Type,
-				Equipped = if kind == "Cosmetics" then false else nil,
+				Sell = c.Sell,
+				Use = c.Use,
+				UserLocked = locked[c.Id] == true,
+				Equipped = if kind == "Cosmetics" then owned.Equipped == true else nil,
 			})
 		end
 	end
 	return rows
+end
+
+-- Stepper: qty after a step (-1, 1 or "max") within 1..min(owned, MAX_QTY).
+function BagLogic.stepQty(qty: number?, delta, owned: number?): number
+	local top = math.max(1, math.min(owned or 1, BagLogic.MAX_QTY))
+	local q = if delta == "max" then top else (qty or 1) + (if type(delta) == "number" then delta else 0)
+	return math.clamp(q, 1, top)
+end
+
+-- True when both decks hold the same ids in the same slots.
+function BagLogic.sameDeck(a, b): boolean
+	if type(a) ~= "table" or type(b) ~= "table" or #a ~= #b then
+		return false
+	end
+	for i, id in a do
+		if b[i] ~= id then
+			return false
+		end
+	end
+	return true
+end
+
+-- LOCK / UNLOCK detail button for a Material or Item (sends BagAction Lock / Unlock). UNLOCK drops the
+-- padlock so the longer label fits the shared action-row text size.
+function BagLogic.lockButton(locked: boolean)
+	return {
+		Id = if locked then "Unlock" else "Lock",
+		Label = if locked then "UNLOCK" else "LOCK",
+		Style = "Purple",
+		Icon = if locked then nil else "Lock",
+		Enabled = true,
+		Send = true,
+	}
 end
 
 -- New 5-id deck with `slot` set to `id`, or nil unless the result is exactly 5 distinct owned ids (a malformed

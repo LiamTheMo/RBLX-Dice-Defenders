@@ -2,6 +2,7 @@
 -- unreleased catalogue (Display.Locked). Pure data -> models; no UI, no authority.
 
 local Sprites = require(script.Parent.Parent.Parent.Sprites)
+local BagLogic = require(script.Parent.Parent.BagLogic)
 local Display = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Display"))
 
 local Dice = {}
@@ -23,6 +24,7 @@ Dice.EmptyText = "No dice found"
 Dice.MaxLevel = 10 -- ProfileSchema cap
 
 local ABILITY = "Ability: coming soon" -- non-Common dice are stat-only until their abilities are built
+local KEEP = "Copies are kept for future level-ups" -- why dice have no LOCK or SELL
 
 -- Die art asset id, or nil (the grid then tints its fallback glyph).
 local function art(id: string): string?
@@ -145,7 +147,7 @@ function Dice.Detail(item)
 				Style = "Gold",
 				Icon = "Lock",
 				Enabled = false,
-				Hint = hint or "Coming soon",
+				Hint = hint or KEEP,
 			},
 			{
 				Id = "Sell",
@@ -153,14 +155,17 @@ function Dice.Detail(item)
 				Style = "Red",
 				Icon = "Coins",
 				Enabled = false,
-				Hint = hint or "Coming soon",
+				Hint = hint or KEEP,
 			},
 		},
 	}
 end
 
-function Dice.Footer(meta)
+-- UNEQUIP ALL resets the loadout to the Catalog's starter deck (EquipDeck needs 5 dice); off when it already is.
+function Dice.Footer(meta, catalog)
 	local deck = meta and meta.Deck or {}
+	local starter = catalog and catalog.StarterDeck
+	local same = BagLogic.sameDeck(deck, starter)
 	local icons, tints = {}, {}
 	for i, id in deck do
 		icons[i] = art(id) or Sprites.Icon.Roll
@@ -171,7 +176,12 @@ function Dice.Footer(meta)
 		Label = ("EQUIPPED LOADOUT (%d/5)"):format(#deck),
 		Slots = icons,
 		Tints = tints,
-		Button = { Label = "UNEQUIP ALL", Enabled = false, Hint = "Coming soon" },
+		Button = {
+			Label = "UNEQUIP ALL",
+			Enabled = starter ~= nil and not same,
+			Hint = if same then "Already the starter deck" else "Still loading",
+			Deck = starter,
+		},
 	}
 end
 
