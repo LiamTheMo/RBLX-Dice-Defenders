@@ -9,6 +9,7 @@ local Balance = require(script.Parent.Parent.Config.Balance)
 local Bag = require(script.Parent.Parent.Rules.Bag)
 local Deck = require(script.Parent.Parent.Rules.Deck)
 local Roll = require(script.Parent.Parent.Rules.Roll)
+local Shop = require(script.Parent.Parent.Rules.Shop)
 local Validate = require(script.Parent.Parent.Rules.Validate)
 local SettingsDefs = require(game:GetService("ReplicatedStorage").Shared.SettingsDefs)
 
@@ -39,6 +40,7 @@ RemoteGuard.Specs = table.freeze({
 	SaveSettings = table.freeze({ argc = 2, check = SettingsDefs.Shape }),
 	BagAction = table.freeze({ argc = 4, check = Bag.Shape }),
 	Roll = table.freeze({ argc = 3, check = Roll.Shape }),
+	Buy = table.freeze({ argc = 2, check = Shop.Shape }),
 	Merge = table.freeze({
 		argc = 3,
 		check = function(from, to)

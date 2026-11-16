@@ -223,3 +223,26 @@ test("Roll: each pool equals Config/Roll (prices, odds summing to 10000, dice, p
 		expect(row.Featured ~= cfg.Featured and row.Odds ~= cfg.Odds, "own copies")
 	end
 end)
+
+test(
+	"Shop: one row per Config/Shop offer with its price, rewards, Limit and ProductId; Available needs a product",
+	function()
+		local ShopConfig = require(Server.Config.Shop)
+		local c = Catalog.Build()
+		expectEq(#c.Shop.Offers, #ShopConfig.Offers, "one row per offer")
+		for i, row in c.Shop.Offers do
+			local o = ShopConfig.Offers[i]
+			expect(row.Id == o.Id and row.Tab == o.Tab and row.Name == o.Name, o.Id .. " id, tab, name")
+			expect(row.Currency == o.Currency and row.Price == o.Price, o.Id .. " currency and price")
+			expect(row.Limit == o.Limit and row.ProductId == o.ProductId, o.Id .. " limit and product")
+			expectEq(dump(row.Rewards), dump(Rewards.Lines(o.Grant)), o.Id .. " rewards")
+			expectEq(row.Available, o.Currency ~= "Robux" or o.ProductId ~= nil, o.Id .. " available")
+			expect(row.Rewards ~= o.Grant, "own copy")
+			expectEq(
+				row.Available,
+				row.Currency ~= "Robux",
+				row.Id .. ": no Robux offer is available while ProductIds are empty"
+			)
+		end
+	end
+)

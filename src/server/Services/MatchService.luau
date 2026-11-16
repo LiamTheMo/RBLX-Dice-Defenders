@@ -8,6 +8,7 @@ local RunService = game:GetService("RunService")
 local Balance = require(script.Parent.Parent.Config.Balance)
 local Progression = require(script.Parent.Parent.Config.Progression)
 local RollConfig = require(script.Parent.Parent.Config.Roll)
+local ShopConfig = require(script.Parent.Parent.Config.Shop)
 local Net = require(script.Parent.Parent.Infrastructure.Net)
 local Bag = require(script.Parent.Parent.Rules.Bag)
 local Catalog = require(script.Parent.Parent.Rules.Catalog)
@@ -17,6 +18,7 @@ local Formulas = require(script.Parent.Parent.Rules.Formulas)
 local Match = require(script.Parent.Parent.Rules.Match)
 local Quests = require(script.Parent.Parent.Rules.Quests)
 local Roll = require(script.Parent.Parent.Rules.Roll)
+local Shop = require(script.Parent.Parent.Rules.Shop)
 local Settings = require(script.Parent.Parent.Rules.Settings)
 local PlayerPolicy = require(script.Parent.PlayerPolicy)
 local ProfileService = require(script.Parent.ProfileService)
@@ -127,6 +129,12 @@ local function meta(player: Player, profile)
 	for _, pool in RollConfig.Pools do
 		table.insert(pity, { Pool = pool.Id, Count = profile.RollPity[pool.Id] or 0 })
 	end
+	local purchases = {}
+	for _, offer in ShopConfig.Offers do
+		if offer.Limit then
+			table.insert(purchases, { Id = offer.Id, Count = profile.Purchases[offer.Id] or 0 })
+		end
+	end
 	local level, xpInto, xpNeed = Progression.Level(profile.Xp, Progression.Account)
 	local now = os.time()
 	local view, claims = Quests.View(profile, now), Claims.View(profile, now)
@@ -152,6 +160,7 @@ local function meta(player: Player, profile)
 		Settings = table.clone(profile.Settings), -- {[settingId] = value}; a missing id is its default
 		RollAllowed = PlayerPolicy.RollAllowed(player), -- false until the policy answer arrives (fail closed)
 		Pity = pity, -- {{Pool, Count}}: rolls toward each pool's guarantee, in Config/Roll order
+		Purchases = purchases, -- {{Id, Count}}: purchases of each limited Shop offer, in Config/Shop order
 	}
 end
 
@@ -366,6 +375,19 @@ local function handleRoll(player: Player, poolId: string, count: number): (boole
 	return ok, code
 end
 
+-- One Gold or Gems Shop purchase: Rules/Shop validates, pays one bundle and counts a limited offer.
+local function handleBuy(player: Player, offerId: string): (boolean, string?)
+	local profile = ProfileService.Get(player)
+	if profile == nil then
+		return false, "NotLoaded"
+	end
+	local ok, code = Shop.Buy(profile, offerId)
+	if ok then
+		ProfileService.MarkChanged(player) -- Changed pushes State (Gold) and Meta
+	end
+	return ok, code
+end
+
 local function tick()
 	local now = workspace:GetServerTimeNow()
 	if now - lastTick < 1 / Balance.TickHz then
@@ -411,6 +433,7 @@ function MatchService.Init()
 	Net.Handle("SaveSettings", handleSaveSettings)
 	Net.Handle("BagAction", handleBagAction)
 	Net.Handle("Roll", handleRoll)
+	Net.Handle("Buy", handleBuy)
 end
 
 function MatchService.Start()

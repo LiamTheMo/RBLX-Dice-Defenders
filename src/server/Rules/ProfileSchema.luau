@@ -1,4 +1,4 @@
--- Persisted player profile, v8 (docs/MVP.md "Profile"). Pure: no Instances.
+-- Persisted player profile, v9 (docs/MVP.md "Profile"). Pure: no Instances.
 -- Default() builds a new profile; Migrate() validates stored data. The store
 -- metadata (profileRevision, sessionLease) rides along but is not gameplay data.
 
@@ -10,13 +10,14 @@ local Milestones = require(script.Parent.Parent.Config.Milestones)
 local Progression = require(script.Parent.Parent.Config.Progression)
 local Quests = require(script.Parent.Parent.Config.Quests)
 local RollConfig = require(script.Parent.Parent.Config.Roll)
+local ShopConfig = require(script.Parent.Parent.Config.Shop)
 local SettingsDefs = require(game:GetService("ReplicatedStorage").Shared.SettingsDefs)
 local Deck = require(script.Parent.Deck)
 local Validate = require(script.Parent.Validate)
 
 local ProfileSchema = {}
 
-ProfileSchema.VERSION = 8
+ProfileSchema.VERSION = 9
 
 local STARTER_GEMS = 50 -- new profiles and every v3 profile once (v3 -> v4)
 
@@ -41,6 +42,38 @@ local function cleanRollPity(stored: any)
 		pity[pool.Id] = if Validate.IsInt(n, 0, pool.Pity.Max - 1) then n else 0
 	end
 	return pity
+end
+
+-- Purchases per limited Config/Shop offer: an integer in 1..Limit (0 is not stored). Walks the offers.
+local function cleanPurchases(stored: any)
+	local purchases = {}
+	if type(stored) == "table" then
+		for _, offer in ShopConfig.Offers do
+			local n = stored[offer.Id]
+			if offer.Limit and Validate.IsInt(n, 1, offer.Limit) then
+				purchases[offer.Id] = n
+			end
+		end
+	end
+	return purchases
+end
+
+-- Marketplace PurchaseIds already granted: strings of 1..64 bytes, deduped, the newest MaxReceipts kept in order.
+local function cleanReceipts(stored: any)
+	local newest, seen = {}, {}
+	if type(stored) == "table" then
+		for i = #stored, 1, -1 do
+			local id = stored[i]
+			if type(id) == "string" and #id >= 1 and #id <= 64 and not seen[id] then
+				seen[id] = true
+				table.insert(newest, 1, id)
+				if #newest >= ShopConfig.MaxReceipts then
+					break
+				end
+			end
+		end
+	end
+	return newest
 end
 
 local function starterDice()
@@ -79,6 +112,8 @@ function ProfileSchema.Default()
 		Settings = {},
 		Locked = {},
 		RollPity = cleanRollPity(nil),
+		Purchases = {},
+		Receipts = {},
 	}
 end
 
@@ -124,6 +159,11 @@ local MIGRATIONS: { [number]: (any) -> any } = {
 		if type(data.Stats) == "table" then
 			data.Stats.Rolls = nil
 		end
+		return data
+	end,
+	-- v8 -> v9: Purchases and Receipts start empty (any stray value is dropped).
+	[8] = function(data)
+		data.Purchases, data.Receipts = nil, nil
 		return data
 	end,
 }
@@ -343,6 +383,8 @@ function ProfileSchema.Migrate(stored: any)
 		Settings = cleanSettings(data.Settings),
 		Locked = cleanLocked(data.Locked),
 		RollPity = cleanRollPity(data.RollPity),
+		Purchases = cleanPurchases(data.Purchases),
+		Receipts = cleanReceipts(data.Receipts),
 	}
 
 	-- Store metadata: keep a well-formed lease so a held lease is honoured.

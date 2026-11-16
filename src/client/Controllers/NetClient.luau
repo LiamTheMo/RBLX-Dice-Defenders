@@ -36,6 +36,7 @@ local MIN_INTERVAL = {
 	SaveSettings = 2.0,
 	BagAction = 0.4, -- server bucket 3/s
 	Roll = 1.0, -- server bucket 1/s, burst 2
+	Buy = 1.0, -- server bucket 1/s, burst 3
 }
 local pending = {}
 local seq = 0
@@ -75,7 +76,18 @@ function NetClient.Start()
 	task.spawn(function()
 		local folder = ReplicatedStorage:WaitForChild("Remotes")
 		for _, name in
-			{ "Start", "Summon", "Merge", "EquipDeck", "ClaimQuest", "RedeemCode", "SaveSettings", "BagAction", "Roll" }
+			{
+				"Start",
+				"Summon",
+				"Merge",
+				"EquipDeck",
+				"ClaimQuest",
+				"RedeemCode",
+				"SaveSettings",
+				"BagAction",
+				"Roll",
+				"Buy",
+			}
 		do
 			functions[name] = folder:WaitForChild(name)
 		end

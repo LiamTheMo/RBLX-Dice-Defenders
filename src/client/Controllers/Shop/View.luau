@@ -1,6 +1,6 @@
 -- Shop menu view: a hero pack, headed card rows and a "coming soon" card, drawn inside the shared shell's content slot.
 -- Visual only: no NetClient, no game data. Design px under the shell's UIScale; the slot's Size offset and "Compact" attribute pick the layout.
--- View.new(slot) -> :SetSections(ShopLogic.sectionsFor(...)) :OnAction(cb(productId)) :Destroy()
+-- View.new(slot) -> :SetSections(ShopLogic.sectionsFor(...), keepScroll?) :OnAction(cb(offerId)) :Destroy()
 -- Setters only store state; one deferred rebuild draws it (also on every slot size / Compact change).
 -- One ScrollingFrame (AutomaticCanvasSize Y) holds everything; the styled bar is Parts.scrollBar. Layers: scroll 23, card skin 24,
 -- card content 25-28, heading plates and rules 30, text 31, bar 31-32, Soon card 30-32 (slot z 22).
@@ -91,8 +91,9 @@ local HEAD = {
 }
 local RULE = Bag.DividerGold -- centre diamond with a line each side: the halves are cut so each keeps one whole diamond
 local RULE_LEFT, RULE_RIGHT, RULE_LLEN, RULE_RLEN = 0, 334, 378, 375 -- source x / width of the left and right pieces: each ends at its own diamond rim
-local ART = { -- product art keys (Shop\SampleData)
+local ART = { -- product art keys (ShopLogic ART)
 	HeroArt = ShopSprites.HeroArt,
+	Potion = Q.Potion,
 	AutoRoll = Sprites.Icon.Roll,
 	Crown = Q.Crown,
 	Clover = ShopSprites.Clover,
@@ -101,9 +102,17 @@ local ART = { -- product art keys (Shop\SampleData)
 	Gems3 = "Gems3", -- composed in art()
 }
 local GEM = { Image = Sprites.Gem, Size = Vector2.new(128, 124), Ink = Rect.new(3, 3, 125, 121) } -- the raw HUD gem has transparent margins (measured from its PNG)
-local GEM_PACK = { GemBag = { 130, 128, 69 }, ChestOpenGems = { 148, 137, 73 }, Gems3 = { 138, 92, 63 } } -- gem pack art w, h (the ref widths, fitted by aspect) and centre y (art top ~5 under the card top)
-local BULLET_BOX = { Gem = { 36, 31 }, Dice3 = { 44, 30 }, Potion = { 28, 32 }, Chest = { 48, 33 } } -- Full VISIBLE icon boxes (the ref's sizes), art fitted by aspect
-local BULLET = { Gem = GEM, Dice3 = RollSprites.Dice3, Potion = Q.Potion, Chest = Q.IconChest }
+local GEM_PACK = {
+	Potion = { 96, 96, 69 },
+	Clover = { 100, 100, 69 },
+	GemBag = { 130, 128, 69 },
+	ChestOpenGems = { 148, 137, 73 },
+	Gems3 = { 138, 92, 63 },
+} -- gem pack art w, h (the ref widths, fitted by aspect) and centre y (art top ~5 under the card top)
+local BULLET_BOX = { Coin = { 36, 36 }, Gem = { 36, 31 }, Dice3 = { 44, 30 }, Potion = { 28, 32 }, Chest = { 48, 33 } } -- Full VISIBLE icon boxes (the ref's sizes), art fitted by aspect
+local BULLET = { Coin = Sprites.Coin, Gem = GEM, Dice3 = RollSprites.Dice3, Potion = Q.Potion, Chest = Q.IconChest }
+local PRICE_ICON = { Robux = ShopSprites.Robux, Gems = GEM, Gold = Sprites.Coin } -- the currency icon of a price button
+local SOON_ICON = { GAMEPASSES = Q.Crown } -- the Soon card's icon per tab (default: the shards)
 local CARD_SPARKS = { -- per card art: x / y in art half-sizes from its centre, box
 	{ Q.Sparkle1, -0.8, -0.6, 18, 18 },
 	{ Q.Sparkle2, 0.85, -0.65, 18, 18 },
@@ -302,11 +311,12 @@ local function compute(W: number, H: number, compact: boolean)
 	return L
 end
 
--- Price button: Parts.button Green (9-slice, interact) + Robux icon + live number as one centred group.
+-- Price button: Parts.button Green (9-slice, interact) + currency icon + live number as one centred group. An item with a
+-- Label (Owned, Not available yet) shows that text alone; Enabled false dims it.
 local function priceButton(
 	parent,
 	tierName: string,
-	price: number,
+	item,
 	size: number,
 	h: number,
 	x: number,
@@ -315,7 +325,10 @@ local function priceButton(
 	bw: number
 )
 	local t = TIER[tierName]
-	local text = ShopLogic.priceText(price)
+	local text = item.Label or ShopLogic.priceText(item.Price)
+	if item.Label then
+		size = roleSize({ text }, bw - 16, size, 12)
+	end
 	local btn = Parts.button(parent, {
 		Name = "Price",
 		Style = "Green",
@@ -324,18 +337,25 @@ local function priceButton(
 		Label = text,
 	})
 	btn.AnchorPoint, btn.Position, btn.ZIndex = Vector2.new(0, 0), UDim2.fromOffset(round(x), round(y)), z
-	local ink = ShopSprites.Robux.Ink
-	local iw = t.icon * ink.Width / ink.Height
+	local ref = PRICE_ICON[item.Currency]
+	local iw = 0
+	if ref and not item.Label then
+		iw = if type(ref) == "table" then t.icon * ref.Ink.Width / ref.Ink.Height else t.icon
+	end
+	local gap = if iw > 0 then t.gap else 0
 	local tw = measure(text, size)
-	local x0 = (bw - (iw + t.gap + tw)) / 2
+	local x0 = (bw - (iw + gap + tw)) / 2
 	local l = btn.Label
 	l.TextColor3, l.TextSize, l.TextXAlignment, l.TextTruncate =
 		ROLE.price.fill, size, Enum.TextXAlignment.Left, Enum.TextTruncate.None
 	l.Position, l.Size, l.ZIndex =
-		UDim2.fromOffset(round(x0 + iw + t.gap), 0), UDim2.fromOffset(math.ceil(tw) + 4, h), z + 1
+		UDim2.fromOffset(round(x0 + iw + gap), 0), UDim2.fromOffset(math.ceil(tw) + 4, h), z + 1
 	local stroke = l:FindFirstChildOfClass("UIStroke")
 	stroke.Color, stroke.Thickness = ROLE.price.line, ROLE.price.px
-	sprite(btn, ShopSprites.Robux, x0 + iw / 2, h / 2, iw, t.icon, z + 1, "RobuxIcon")
+	if iw > 0 then
+		sprite(btn, ref, x0 + iw / 2, h / 2, iw, t.icon, z + 1, "CurrencyIcon")
+	end
+	btn:SetAttribute("Enabled", item.Enabled ~= false)
 	return btn
 end
 
@@ -402,7 +422,7 @@ function View:_drawHero(L, item, x: number, y: number, w: number)
 		local s = math.min(aw, (h - 28) * 710 / 322) / 710 -- the ink (322 of 392 source px tall, centred 24 below the image centre) stays inside the rim
 		whole(frame, ShopSprites.HeroArt, (aw + 16) / 2, h / 2 - 24 * s, 710 * s, z + 1, "Art")
 		pitch, iconCx = 28, 8 + aw + 8 + 14
-		top = h / 2 + 4 - 1.5 * pitch
+		top = h / 2 + 4 - (#bullets - 1) / 2 * pitch
 		btnX = w - 12 - bw
 		divX = btnX - 12
 		textX = iconCx + 14 + 6
@@ -439,7 +459,7 @@ function View:_drawHero(L, item, x: number, y: number, w: number)
 		}, "Frame")
 		local s = 0.5526 * f -- chest top ~19 under the frame top, gem tips ~5 clear of the bottom rim
 		whole(frame, ShopSprites.HeroArt, 246 * f, 108 - 24 * s, 710 * s, z + 1, "Art")
-		pitch, top, iconCx, textX, textW = 32.83, 77.5, 567 * f, 613 * f, 214 * f -- the ref bullet rows 77.5 / 110 / 142.5 / 176
+		pitch, top, iconCx, textX, textW = 32.83, 77.5 + (4 - #bullets) / 2 * 32.83, 567 * f, 613 * f, 214 * f -- the ref bullet rows 77.5 / 110 / 142.5 / 176 (fewer bullets stay centred on them)
 		divX, btnX, btnY = round(845 * f), round(880 * f), 128 - btnH / 2 -- the button centred on the divider
 	end
 	for i, b in bullets do
@@ -471,7 +491,7 @@ function View:_drawHero(L, item, x: number, y: number, w: number)
 end
 
 function View:_buy(parent, tier: string, item, size: number, h: number, x: number, y: number, z: number, bw: number)
-	local btn = priceButton(parent, tier, item.Price, size, h, x, y, z, bw)
+	local btn = priceButton(parent, tier, item, size, h, x, y, z, bw)
 	table.insert(
 		self._connsBuild,
 		btn.Activated:Connect(function()
@@ -539,7 +559,16 @@ function View:_drawSoon(L, sec)
 	local w, h = if c then 340 else 520, if c then 150 else 240
 	local holder = card(self._soon, "SoonCard", (W - w) / 2, (H - h) / 2, w, h, 30)
 	local ih = if c then 60 else 100
-	sprite(holder, ShopSprites.IconShards, w / 2, (if c then 15 else 20) + ih / 2, ih * 2, ih, 31, "Icon")
+	sprite(
+		holder,
+		SOON_ICON[sec.Tab] or ShopSprites.IconShards,
+		w / 2,
+		(if c then 15 else 20) + ih / 2,
+		ih * 2,
+		ih,
+		31,
+		"Icon"
+	)
 	local ts, tmin = role("soon", c)
 	local ss, smin = role("soonSub", c)
 	local title = string.upper(sec.Heading or "")
@@ -749,9 +778,11 @@ function View.new(slot)
 	return self
 end
 
-function View:SetSections(sections)
+function View:SetSections(sections, keepScroll: boolean?)
 	self._sections = sections
-	self._scroll.CanvasPosition = Vector2.zero
+	if not keepScroll then
+		self._scroll.CanvasPosition = Vector2.zero
+	end
 	self._rebuild()
 end
 

@@ -1,25 +1,38 @@
 -- Shop menu controller: one Shell (banner, close, FEATURED / GAMEPASSES / GEMS / SHARDS tabs) hosting the Shop View.
 -- Shop.new(parent, { hud = LobbyHud, toast = (string) -> () }) -> :Open() :Close() :Toggle() :IsOpen() :Destroy()
--- Display only: the client-only SampleData shows in Studio; a live server shows the "Coming soon" card on every tab. A price press just toasts.
+-- Renders the server's Catalog.Shop offers with the Gems (Meta) and Gold (State) balances. A Gold or Gems offer sends Buy(id);
+-- an available Robux offer only prompts the developer product (the server grants it from the Marketplace receipt); an
+-- offer without a ProductId shows "Not available yet". GAMEPASSES and SHARDS show the "Coming soon" card.
 
 local ContextActionService = game:GetService("ContextActionService")
 local GuiService = game:GetService("GuiService")
-local RunService = game:GetService("RunService")
+local MarketplaceService = game:GetService("MarketplaceService")
+local Players = game:GetService("Players")
 
 local NetClient = require(script.Parent.Parent.NetClient)
 local PlaySprites = require(script.Parent.Parent.Play.PlaySprites)
 local QuestSprites = require(script.Parent.Parent.QuestLog.QuestSprites)
-local SampleData = require(script.Parent.SampleData)
 local Shell = require(script.Parent.Parent.Bag.Shell)
 local ShopLogic = require(script.Parent.ShopLogic)
 local ShopSprites = require(script.Parent.ShopSprites)
 local Sprites = require(script.Parent.Parent.Sprites)
 local View = require(script.Parent.View)
 
--- Studio-only sample products (nil live: every tab shows "Coming soon").
-local DATA = if RunService:IsStudio() then SampleData else nil
 local ACTION = "ShopClose"
 local PRESS_COOLDOWN = 0.5 -- UX throttle only
+local REPLIES = {
+	Insufficient = "Not enough currency",
+	SoldOut = "Already owned",
+	UnknownOffer = "Not available yet",
+	NotAvailable = "Not available yet",
+	Overflow = "You can't hold that much",
+	NotLoaded = "Still loading",
+	NotOwner = "This server is in use",
+	Throttled = "Slow down",
+	RateLimited = "Slow down",
+	Network = "Connection problem",
+	Error = "Something went wrong",
+}
 local TAB_ICONS = {
 	FEATURED = ShopSprites.IconStar,
 	GAMEPASSES = QuestSprites.Crown,
@@ -59,30 +72,66 @@ function Shop.new(parent, deps)
 	shell:SetTabs(tabs)
 	local view = View.new(shell.Slots.Content)
 
+	local tab = 1
+	local shown -- ShopLogic.key of the last render
+	local function data()
+		return ShopLogic.data(NetClient.LastCatalog, NetClient.LastMeta, NetClient.Last)
+	end
+	local function render(keepScroll: boolean)
+		local d = data()
+		shown = ShopLogic.key(d)
+		local everyTab = {}
+		for _, t in ShopLogic.TABS do
+			for _, sec in ShopLogic.sectionsFor(t.Id, d) do
+				table.insert(everyTab, sec)
+			end
+		end
+		view:SetRoleSample(everyTab)
+		view:SetSections(ShopLogic.sectionsFor(ShopLogic.TABS[tab].Id, d), keepScroll)
+	end
+	local function refresh()
+		if shell:IsOpen() and ShopLogic.key(data()) ~= shown then -- redraw only on a visible change
+			render(true)
+		end
+	end
+
 	local flight = ShopLogic.guard()
-	view:OnAction(function(_productId)
+	view:OnAction(function(offerId)
 		if not flight.begin() then
 			return
 		end
-		task.delay(PRESS_COOLDOWN, flight.finish)
-		deps.toast("Shop: coming soon")
-	end)
-	local everyTab = {}
-	for _, tab in ShopLogic.TABS do
-		for _, sec in ShopLogic.sectionsFor(tab.Id, DATA) do
-			table.insert(everyTab, sec)
+		local d = data()
+		local offer = ShopLogic.offer(d, offerId)
+		local action, arg = ShopLogic.press(offer, d)
+		if action == "Buy" then
+			task.spawn(function()
+				local ok, code = NetClient.Request("Buy", offerId)
+				deps.toast(if ok then `Bought {(offer :: any).Name}` else REPLIES[code] or tostring(code))
+				task.delay(PRESS_COOLDOWN, flight.finish)
+			end)
+			return
 		end
-	end
-	view:SetRoleSample(everyTab)
-	shell:OnTab(function(i)
-		view:SetSections(ShopLogic.sectionsFor(ShopLogic.TABS[i].Id, DATA))
+		task.delay(PRESS_COOLDOWN, flight.finish)
+		if action == "Prompt" then
+			pcall(MarketplaceService.PromptProductPurchase, MarketplaceService, Players.LocalPlayer, arg) -- the server grants on the receipt
+		else
+			deps.toast(arg)
+		end
 	end)
+	shell:OnTab(function(i)
+		tab = i
+		render(false)
+	end)
+	table.insert(conns, NetClient.Meta:Connect(refresh))
+	table.insert(conns, NetClient.Catalog:Connect(refresh))
 
 	table.insert(
 		conns,
 		NetClient.State:Connect(function(snap)
 			if shell:IsOpen() and snap.Phase ~= "Lobby" and snap.Phase ~= "Ended" then
 				shell:Close() -- a match started
+			else
+				refresh() -- Gold lives in State
 			end
 		end)
 	)
@@ -107,6 +156,7 @@ function Shop.new(parent, deps)
 			opened = true
 			shell:SetTab(1) -- FEATURED on first open
 		end
+		render(false) -- the balances and offers as of now
 		shell:Open()
 		hud:SetBagMode(true, "Shop")
 		ContextActionService:BindActionAtPriority(ACTION, function(_, inputState)

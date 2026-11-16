@@ -31,8 +31,7 @@ Inventory.Items = table.freeze({
 		Name = "XP Tome",
 		Rarity = "Uncommon",
 		Description = "Read it for 100 account XP.",
-		Use = { Xp = 100 }, -- *tune*
-		Sell = 50, -- *tune*
+		Use = { Xp = 100 }, -- *tune*; no Sell: the Shop sells tomes for Gems, so selling them would turn Gems into Gold
 	}),
 	GoldPouch = entry({
 		Name = "Gold Pouch",

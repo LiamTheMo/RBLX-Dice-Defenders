@@ -239,7 +239,7 @@ test("Config/Inventory: ids, sell prices, use bundles and display fields", funct
 	end
 	expect(count >= 6, "catalogue has entries (" .. count .. ")")
 	expectEq(Inventory.Items.GoldPouch.Sell, nil, "Gold Pouch is not sellable")
-	expect(Inventory.Items.XpTome.Sell < Inventory.Items.XpTome.Use.Xp, "XP Tome sells below what it grants")
+	expectEq(Inventory.Items.XpTome.Sell, nil, "XP Tome is not sellable: the Shop sells it for Gems")
 end)
 
 test("tables with metatables or frozen write targets are refused before any write", function()

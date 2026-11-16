@@ -35,6 +35,7 @@ Balance.Remotes = table.freeze({
 	SaveSettings = table.freeze({ rate = 0.5, burst = 3 }), -- *tune*
 	BagAction = table.freeze({ rate = 3, burst = 6 }), -- *tune*
 	Roll = table.freeze({ rate = 1, burst = 2 }), -- *tune*
+	Buy = table.freeze({ rate = 1, burst = 3 }), -- *tune*
 })
 Balance.KickThreshold = 20
 Balance.LogInterval = 5 -- seconds between violation log lines per player

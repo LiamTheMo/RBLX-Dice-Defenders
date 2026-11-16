@@ -11,7 +11,9 @@
 --     Mastery = { Max, Need = { per level 1..Max-1 }, Milestones = {{Lv, Rewards}} },
 --     Repeat = { PerWave = Rewards, Win = Rewards },
 --     Roll = { Pools = {{Id, Name, Prices = {{Count, Gems}}, Odds = {{Rarity, Bp}}, Dice = {{Id, Rarity}},
---              Pity = {Rarity, Max}, Featured = { ids }}} } }
+--              Pity = {Rarity, Max}, Featured = { ids }}} },
+--     Shop = { Offers = {{Id, Tab = "Featured"|"Gems", Name, Currency = "Gold"|"Gems"|"Robux", Price, Rewards,
+--              Limit?, ProductId?, Available}} } }
 -- Damage is a die's base damage, Rate its attacks per second; Use is display text
 -- ("+100 XP"); Rewards are Rewards.Lines: {{Kind, Id?, Amount}}. Roll odds are basis points (sum 10000): the menu
 -- shows exactly these numbers.
@@ -23,6 +25,7 @@ local Inventory = require(script.Parent.Parent.Config.Inventory)
 local Milestones = require(script.Parent.Parent.Config.Milestones)
 local Progression = require(script.Parent.Parent.Config.Progression)
 local RollConfig = require(script.Parent.Parent.Config.Roll)
+local ShopConfig = require(script.Parent.Parent.Config.Shop)
 local Rewards = require(script.Parent.Rewards)
 
 local Catalog = {}
@@ -148,6 +151,21 @@ function Catalog.Build()
 					Dice = map(pool.Dice, table.clone),
 					Pity = table.clone(pool.Pity),
 					Featured = table.clone(pool.Featured),
+				}
+			end),
+		},
+		Shop = {
+			Offers = map(ShopConfig.Offers, function(o)
+				return {
+					Id = o.Id,
+					Tab = o.Tab,
+					Name = o.Name,
+					Currency = o.Currency,
+					Price = o.Price,
+					Rewards = Rewards.Lines(o.Grant),
+					Limit = o.Limit,
+					ProductId = o.ProductId,
+					Available = o.Currency ~= "Robux" or o.ProductId ~= nil, -- a Robux offer needs its developer product
 				}
 			end),
 		},
