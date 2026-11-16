@@ -1,4 +1,4 @@
--- Profile v7: defaults, nil -> default, Corrupt / NewerVersion reported (never
+-- Profile v8: defaults, nil -> default, Corrupt / NewerVersion reported (never
 -- repaired), field sanitising, store metadata kept, input never mutated.
 
 local Server = game:GetService("ServerScriptService").Server
@@ -7,9 +7,11 @@ local Dice = require(Server.Config.Dice)
 
 local NAN, INF = 0 / 0, math.huge
 
-test("default profile has the v7 fields", function()
+test("default profile has the v8 fields", function()
 	local p = ProfileSchema.Default()
-	expectEq(p.Version, 7, "version")
+	expectEq(p.Version, 8, "version")
+	expectEq(p.RollPity.Standard, 0, "no rolls toward the Standard guarantee")
+	expectEq(p.Stats.Rolls, 0, "no rolls")
 	expectEq(p.Gold, 0, "gold")
 	expectEq(p.Gems, 50, "starter gems")
 	expectEq(p.Xp, 0, "xp")
@@ -63,8 +65,8 @@ test("bad shape is Corrupt, a newer version is NewerVersion; neither is repaired
 			"Corrupt for " .. tostring(type(bad) == "table" and bad.Version or bad)
 		)
 	end
-	local p, problem = ProfileSchema.Migrate({ Version = 8, Gold = 5 })
-	expect(p == nil and problem == "NewerVersion", "v8 refused")
+	local p, problem = ProfileSchema.Migrate({ Version = 9, Gold = 5 })
+	expect(p == nil and problem == "NewerVersion", "v9 refused")
 	local p2, problem2 = ProfileSchema.Migrate({ Version = 99 })
 	expect(p2 == nil and problem2 == "NewerVersion", "v99 refused")
 end)
@@ -158,7 +160,7 @@ test("LastRewardRunId keeps any 31-bit run id; larger or fractional values reset
 	expectEq(ProfileSchema.Migrate({ Version = 1, LastRewardRunId = 5.5 }).LastRewardRunId, 0, "fractional")
 end)
 
-test("v1 -> v7 keeps stats, adds starters and 50 Gems, claims and redeems nothing, input untouched", function()
+test("v1 -> v8 keeps stats, adds starters and 50 Gems, claims and redeems nothing, input untouched", function()
 	local stored = table.freeze({
 		Version = 1,
 		Gold = 70,
@@ -175,7 +177,7 @@ test("v1 -> v7 keeps stats, adds starters and 50 Gems, claims and redeems nothin
 		Materials = table.freeze({ Fragment = 9 }),
 	})
 	local p = ProfileSchema.Migrate(stored)
-	expect(p.Version == 7 and p.Gold == 70 and p.BestWave == 6 and p.RunsPlayed == 3, "stats kept")
+	expect(p.Version == 8 and p.Gold == 70 and p.BestWave == 6 and p.RunsPlayed == 3, "stats kept")
 	expect(p.TrialCleared == true and p.LastRewardRunId == 99 and p.profileRevision == 4, "rest kept")
 	expectEq(#p.Deck, 5, "starter deck")
 	expect(p.Dice.C05 ~= nil, "starters")
@@ -260,7 +262,7 @@ test("Migrate is idempotent on v2 and never mutates a frozen v2 input", function
 	expectEq(p.Dice.C01.Level, 2, "read from frozen")
 end)
 
-test("v2 -> v7 keeps every v2 field, starts Redeemed empty, never touches a frozen input", function()
+test("v2 -> v8 keeps every v2 field, starts Redeemed empty, never touches a frozen input", function()
 	local stored = table.freeze({
 		Version = 2,
 		Gold = 70,
@@ -277,7 +279,7 @@ test("v2 -> v7 keeps every v2 field, starts Redeemed empty, never touches a froz
 		Redeemed = table.freeze({ welcome = true }), -- stray: v2 had no codes
 	})
 	local p = ProfileSchema.Migrate(stored)
-	expect(p.Version == 7 and p.Gold == 70 and p.BestWave == 6 and p.RunsPlayed == 3, "stats kept")
+	expect(p.Version == 8 and p.Gold == 70 and p.BestWave == 6 and p.RunsPlayed == 3, "stats kept")
 	expect(p.TrialCleared == true and p.LastRewardRunId == 99 and p.profileRevision == 4, "rest kept")
 	expectEq(p.Gems, 50, "starter gems")
 	expect(p.Dice.C01.Level == 3 and p.Dice.C01.Copies == 2 and p.Deck[1] == "C05", "dice and deck kept")
@@ -318,7 +320,7 @@ test("Redeemed keeps only true flags for catalog code ids; junk and oversized in
 	expectEq(again.Redeemed.welcome, true, "idempotent")
 end)
 
-test("v3 -> v7 keeps every v3 value, adds 50 Gems and empty inventories, never touches a frozen input", function()
+test("v3 -> v8 keeps every v3 value, adds 50 Gems and empty inventories, never touches a frozen input", function()
 	local stored = table.freeze({
 		Version = 3,
 		Gold = 70,
@@ -341,7 +343,7 @@ test("v3 -> v7 keeps every v3 value, adds 50 Gems and empty inventories, never t
 		Cosmetics = table.freeze({ Owned = table.freeze({ ThornDice = true }) }),
 	})
 	local p = ProfileSchema.Migrate(stored)
-	expect(p.Version == 7 and p.Gold == 70 and p.BestWave == 6 and p.RunsPlayed == 3, "stats kept")
+	expect(p.Version == 8 and p.Gold == 70 and p.BestWave == 6 and p.RunsPlayed == 3, "stats kept")
 	expect(p.TrialCleared == true and p.LastRewardRunId == 99 and p.profileRevision == 4, "rest kept")
 	expect(p.Dice.C01.Level == 3 and p.Dice.C01.Copies == 2 and p.Deck[1] == "C05", "dice and deck kept")
 	expect(p.Claimed.S1 == true and p.Daily.Day == 7 and p.Daily.Claimed.D1 == true, "quests kept")
@@ -352,7 +354,7 @@ test("v3 -> v7 keeps every v3 value, adds 50 Gems and empty inventories, never t
 	expect(next(p.Cosmetics.Owned) == nil, "stray cosmetics dropped")
 	expectEq(stored.Version, 3, "input untouched")
 	local again = ProfileSchema.Migrate(ProfileSchema.DeepCopy(p))
-	expect(again.Gems == 50 and again.Version == 7, "idempotent: no second grant")
+	expect(again.Gems == 50 and again.Version == 8, "idempotent: no second grant")
 end)
 
 test("Gems, Xp, Materials, Items and Cosmetics keep only valid counts for catalogue ids", function()
@@ -440,7 +442,7 @@ test("default profile starts every v5 progress field empty", function()
 	expect(next(p.Milestones) == nil and next(p.Achievements) == nil and next(p.Mastery) == nil, "flags and mastery")
 end)
 
-test("v4 -> v7 keeps every v4 value and drops stray values of the new fields; frozen input untouched", function()
+test("v4 -> v8 keeps every v4 value and drops stray values of the new fields; frozen input untouched", function()
 	local f = table.freeze
 	local stored = f({
 		Version = 4,
@@ -470,7 +472,7 @@ test("v4 -> v7 keeps every v4 value and drops stray values of the new fields; fr
 		Mastery = f({ C01 = f({ Xp = 50, Claimed = f({ ["5"] = true }) }) }),
 	})
 	local p = ProfileSchema.Migrate(stored)
-	expect(p.Version == 7 and p.Gold == 70 and p.Gems == 120 and p.Xp == 345, "counters kept, no second Gem grant")
+	expect(p.Version == 8 and p.Gold == 70 and p.Gems == 120 and p.Xp == 345, "counters kept, no second Gem grant")
 	expect(p.BestWave == 6 and p.RunsPlayed == 3 and p.TrialCleared and p.LastRewardRunId == 99, "stats kept")
 	expect(p.Dice.C01.Copies == 2 and p.Dice.R01 ~= nil and p.Deck[1] == "R01", "dice and deck kept")
 	expect(p.Claimed.S1 and p.Daily.Day == 7 and p.Daily.Claimed.D1 and p.Redeemed.welcome, "claims kept")
@@ -485,16 +487,17 @@ test("v4 -> v7 keeps every v4 value and drops stray values of the new fields; fr
 	expectEq(snap(ProfileSchema.Migrate(ProfileSchema.DeepCopy(p))), snap(p), "idempotent")
 end)
 
-test("v1 -> v7 chain ends with the v5 and v6 defaults", function()
+test("v1 -> v8 chain ends with the v5, v6 and v8 defaults", function()
 	local p = ProfileSchema.Migrate(table.freeze({
 		Version = 1,
 		Gold = 5,
 		Login = table.freeze({ Streak = 4 }),
 		Settings = table.freeze({ shadows = false }),
 	}))
-	expect(p.Version == 7 and p.Gold == 5 and p.Gems == 50, "v1 data kept, starter Gems once")
+	expect(p.Version == 8 and p.Gold == 5 and p.Gems == 50, "v1 data kept, starter Gems once")
 	expect(p.Login.Streak == 0 and p.Stats.Kills == 0 and next(p.Mastery) == nil, "v5 fields start empty")
 	expect(next(p.Settings) == nil, "v6 Settings start empty")
+	expect(p.RollPity.Standard == 0 and p.Stats.Rolls == 0, "v8 roll fields start empty")
 end)
 
 test("v5 fields keep only valid counts, known ids, true flags and milestone levels", function()
@@ -582,7 +585,7 @@ test("oversized junk Mastery, Milestones and Achievements tables load fast and c
 	expectEq(snap(p.Mastery), snap({ C01 = { Xp = 5, Claimed = { ["5"] = true } } }), "mastery: C01 only")
 end)
 
-test("v5 -> v7 keeps every v5 value and drops a stray Settings; frozen input untouched", function()
+test("v5 -> v8 keeps every v5 value and drops a stray Settings; frozen input untouched", function()
 	local f = table.freeze
 	local fields = {
 		Version = 5,
@@ -620,17 +623,22 @@ test("v5 -> v7 keeps every v5 value and drops a stray Settings; frozen input unt
 	}
 	local stored = f(fields)
 	local p = ProfileSchema.Migrate(stored)
-	expectEq(p.Version, 7, "version")
+	expectEq(p.Version, 8, "version")
 	expect(next(p.Settings) == nil, "stray Settings dropped")
 	for key, value in fields do
 		if key == "Cosmetics" then
 			expectEq(snap(p.Cosmetics.Owned), snap(value.Owned), "Cosmetics.Owned kept")
+		elseif key == "Stats" then
+			expectEq(snap(p.Stats), snap({ Kills = 500, Wins = 3, Rolls = 0 }), "Stats kept, Rolls starts at 0")
 		elseif key ~= "Version" and key ~= "Settings" then
 			expectEq(snap(p[key]), snap(value), key .. " kept")
 		end
 	end
 	for key in ProfileSchema.Default() do
-		expect(key == "Settings" or key == "Locked" or fields[key] ~= nil, "the v5 sample covers " .. key)
+		expect(
+			key == "Settings" or key == "Locked" or key == "RollPity" or fields[key] ~= nil,
+			"the v5 sample covers " .. key
+		)
 	end
 	expectEq(stored.Version, 5, "input untouched")
 	expectEq(snap(ProfileSchema.Migrate(ProfileSchema.DeepCopy(p))), snap(p), "idempotent")
@@ -686,7 +694,7 @@ test("a 10,000-entry junk Settings table loads fast and clean", function()
 	expectEq(snap(p.Settings), snap({ shadows = false }), "only the registry key survives")
 end)
 
-test("v6 -> v7 keeps every v6 value and drops stray Locked and Equipped; frozen input untouched", function()
+test("v6 -> v8 keeps every v6 value and drops stray Locked and Equipped; frozen input untouched", function()
 	local f = table.freeze
 	local fields = {
 		Version = 6,
@@ -725,17 +733,19 @@ test("v6 -> v7 keeps every v6 value and drops stray Locked and Equipped; frozen 
 	}
 	local stored = f(fields)
 	local p = ProfileSchema.Migrate(stored)
-	expectEq(p.Version, 7, "version")
+	expectEq(p.Version, 8, "version")
 	expect(next(p.Locked) == nil, "stray Locked dropped")
 	expect(next(p.Cosmetics.Equipped) == nil, "stray Equipped dropped")
 	expectEq(snap(p.Cosmetics.Owned), snap(fields.Cosmetics.Owned), "Cosmetics.Owned kept")
 	for key, value in fields do
-		if key ~= "Version" and key ~= "Locked" and key ~= "Cosmetics" then
+		if key == "Stats" then
+			expectEq(snap(p.Stats), snap({ Kills = 500, Wins = 3, Rolls = 0 }), "Stats kept, Rolls starts at 0")
+		elseif key ~= "Version" and key ~= "Locked" and key ~= "Cosmetics" then
 			expectEq(snap(p[key]), snap(value), key .. " kept")
 		end
 	end
 	for key in ProfileSchema.Default() do
-		expect(fields[key] ~= nil, "the v6 sample covers " .. key)
+		expect(key == "RollPity" or fields[key] ~= nil, "the v6 sample covers " .. key)
 	end
 	expectEq(stored.Version, 6, "input untouched")
 	expectEq(snap(ProfileSchema.Migrate(ProfileSchema.DeepCopy(p))), snap(p), "idempotent")
@@ -792,5 +802,97 @@ test("v7 Cosmetics.Equipped keeps an owned id in its own slot only", function()
 	})
 	expect(os.clock() - started < 0.5, "bounded by the config")
 	expectEq(snap(q.Cosmetics.Equipped), snap({ DiceSkin = "ThornDice" }), "junk dropped")
+	expectEq(snap(ProfileSchema.Migrate(ProfileSchema.DeepCopy(p))), snap(p), "idempotent")
+end)
+
+test("v7 -> v8 keeps every v7 value, starts RollPity and Stats.Rolls empty; frozen input untouched", function()
+	local f = table.freeze
+	local fields = {
+		Version = 7,
+		Gold = 70,
+		Gems = 120,
+		Xp = 345,
+		BestWave = 6,
+		RunsPlayed = 3,
+		TrialCleared = true,
+		LastRewardRunId = 99,
+		profileRevision = 4,
+		Dice = f({
+			C01 = f({ Level = 3, Copies = 2 }),
+			C02 = f({ Level = 1, Copies = 0 }),
+			C03 = f({ Level = 1, Copies = 0 }),
+			C04 = f({ Level = 1, Copies = 0 }),
+			C05 = f({ Level = 1, Copies = 0 }),
+			R01 = f({ Level = 2, Copies = 1 }),
+		}),
+		Deck = f({ "R01", "C02", "C03", "C04", "C05" }),
+		Claimed = f({ S1 = true }),
+		Daily = f({ Day = 7, Kills = 3, Claimed = f({ D1 = true }) }),
+		Redeemed = f({ welcome = true }),
+		Materials = f({ Fragment = 9 }),
+		Items = f({ XpTome = 2 }),
+		Cosmetics = f({ Owned = f({ ThornDice = true }), Equipped = f({ DiceSkin = "ThornDice" }) }),
+		Stats = f({ Kills = 500, Wins = 3, Rolls = 40 }), -- stray Rolls: v7 had no rolls
+		Weekly = f({ Week = 9, Kills = 9, Runs = 9, Claimed = f({ W1 = true }) }),
+		Login = f({ Streak = 3, LastDay = 7 }),
+		Milestones = f({ P10 = true }),
+		Achievements = f({ A1 = true }),
+		Mastery = f({ C01 = f({ Xp = 50, Claimed = f({ ["5"] = true }) }) }),
+		Settings = f({ shadows = false, uiScale = 75 }),
+		Locked = f({ Fragment = true }),
+		sessionLease = f({ jobId = "A", expiresAt = 9 }),
+		RollPity = f({ Standard = 50 }), -- stray: v7 had no pity
+	}
+	local stored = f(fields)
+	local p = ProfileSchema.Migrate(stored)
+	expectEq(p.Version, 8, "version")
+	expectEq(snap(p.RollPity), snap({ Standard = 0 }), "stray RollPity dropped")
+	expectEq(snap(p.Stats), snap({ Kills = 500, Wins = 3, Rolls = 0 }), "stray Stats.Rolls dropped, the rest kept")
+	for key, value in fields do
+		if key ~= "Version" and key ~= "RollPity" and key ~= "Stats" then
+			expectEq(snap(p[key]), snap(value), key .. " kept")
+		end
+	end
+	for key in ProfileSchema.Default() do
+		expect(fields[key] ~= nil, "the v7 sample covers " .. key)
+	end
+	expectEq(stored.Version, 7, "input untouched")
+	expectEq(snap(ProfileSchema.Migrate(ProfileSchema.DeepCopy(p))), snap(p), "idempotent")
+	local bare = ProfileSchema.Migrate({ Version = 7, Stats = "x" })
+	expect(bare.Stats.Rolls == 0 and bare.RollPity.Standard == 0, "a v7 without Stats gets the defaults")
+end)
+
+test("v8 RollPity keeps an integer in 0..Max-1 per Config/Roll pool; Stats.Rolls is a count", function()
+	local p = ProfileSchema.Migrate({
+		Version = 8,
+		RollPity = { Standard = 79, Event = 5, [1] = 3 },
+		Stats = { Rolls = 1234 },
+	})
+	expectEq(snap(p.RollPity), snap({ Standard = 79 }), "79 kept, unknown pools dropped")
+	expectEq(p.Stats.Rolls, 1234, "rolls kept")
+	for _, bad in { 80, 81, -1, 1.5, 0 / 0, math.huge, "5", true, {} } do
+		local q = ProfileSchema.Migrate({ Version = 8, RollPity = { Standard = bad } })
+		expectEq(q.RollPity.Standard, 0, "pity " .. tostring(bad) .. " -> 0")
+	end
+	for _, bad in { -1, 1.5, 0 / 0, math.huge, "5", true, {} } do
+		expectEq(
+			ProfileSchema.Migrate({ Version = 8, Stats = { Rolls = bad } }).Stats.Rolls,
+			0,
+			"rolls " .. tostring(bad)
+		)
+	end
+	for _, bad in { "x", 5, true } do
+		expectEq(ProfileSchema.Migrate({ Version = 8, RollPity = bad }).RollPity.Standard, 0, "non-table -> 0")
+	end
+	expectEq(ProfileSchema.Migrate({ Version = 8, Stats = { Rolls = 2e9 } }).Stats.Rolls, 0, "above 1e9 -> 0")
+	local junk = { Standard = 7 }
+	for i = 1, 10_000 do
+		junk["junk" .. i] = 1
+		junk[i] = 1
+	end
+	local started = os.clock()
+	local q = ProfileSchema.Migrate({ Version = 8, RollPity = junk })
+	expect(os.clock() - started < 0.5, "bounded by Config/Roll")
+	expectEq(snap(q.RollPity), snap({ Standard = 7 }), "junk dropped")
 	expectEq(snap(ProfileSchema.Migrate(ProfileSchema.DeepCopy(p))), snap(p), "idempotent")
 end)

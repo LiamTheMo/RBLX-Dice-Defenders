@@ -306,6 +306,7 @@ local function dieArt(id: string): (string, Color3?)
 	local info = Display.Dice[id]
 	return Sprites.Icon.Roll, info and info.Color
 end
+QuestLogic.dieArt = dieArt -- the Roll menu's die tiles use the same rule
 
 -- One row per Meta.Mastery entry (owned dice): { Id, Name, Level, Xp, XpGoal, Art, Tint?, Milestones }, each milestone
 -- { Lv, Icon (its first reward line), Name (rewardsText), State = Done (claimed) | Claimable (Level >= Lv) | Locked }.

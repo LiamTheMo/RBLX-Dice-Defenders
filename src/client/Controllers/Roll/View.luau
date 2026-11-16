@@ -1,6 +1,7 @@
 -- Roll menu view: featured dice | rarity chances, pity row and the two ROLL buttons, drawn inside the shared shell's content slot.
 -- Visual only: no NetClient, no game data. Design px under the shell's UIScale; the slot's Size offset and "Compact" attribute pick the layout.
--- View.new(slot) -> :SetPool("Standard"|"Event") :SetFeatured({ {Id, Rarity} x3 }) :SetOdds(RollLogic.oddsRows) :SetPity({Count, Max, Rarity})
+-- View.new(slot) -> :SetPool("Standard"|"Event") :SetFeatured({ [1..3] = {Id, Rarity, Name}? }, title?) :SetOdds(RollLogic.oddsRows)
+--   :SetPity({Count, Max, Rarity})
 --   :SetButtons({ {Count, Price, Enabled} x2 }) :OnRoll(cb(count)) :OnInfo(cb()) :Destroy()
 -- Setters only store state; one deferred rebuild draws it (also on every slot size / Compact change).
 -- Compact (phones): the same stack with smaller dice and rows inside one ScrollingFrame (it scrolls only when the stack is taller).
@@ -11,6 +12,7 @@ local UiKit = require(script.Parent.Parent.UiKit)
 local Parts = require(script.Parent.Parent.Bag.Parts)
 local Draw = require(script.Parent.Parent.QuestLog.Draw)
 local Sprites = require(script.Parent.Parent.Sprites)
+local QuestLogic = require(script.Parent.Parent.QuestLog.QuestLogic)
 local RollLogic = require(script.Parent.RollLogic)
 local RollSprites = require(script.Parent.RollSprites)
 
@@ -371,7 +373,7 @@ function View:_drawFeatured(L, z, Pw: number, Ph: number)
 	vis(plate, RollSprites.HeaderPlate, Pw / 2, L.plateTop + L.plateH / 2, plateW, L.plateH)
 	label(panel, {
 		Name = "Title",
-		Text = string.upper("Featured Dice"),
+		Text = self._featuredTitle,
 		Size = self._headF,
 		X = Pw / 2,
 		Y = L.plateTop + L.plateH / 2,
@@ -393,8 +395,11 @@ function View:_drawFeatured(L, z, Pw: number, Ph: number)
 	local f = self._featuredIds
 	for i = 1, 3 do
 		local item = f[i]
+		if item == nil then
+			continue -- an empty slot (a single roll result sits in the middle)
+		end
 		local cx = if L.compact then Pw / 2 + (i - 2) * L.pillSpacing else Pw * DIE_CX[i]
-		local rarity = if item then item.Rarity else (if i == 2 then "Mythic" else "Legendary")
+		local rarity = item.Rarity
 		local mythic = rarity == "Mythic"
 		local rec = RollSprites[if mythic then "DieMythic" else "DieLegendary"]
 		local w, h = Draw.fitIn(rec, if mythic then mythW else sideW, 1e5)
@@ -417,10 +422,14 @@ function View:_drawFeatured(L, z, Pw: number, Ph: number)
 				glow(panel, cx, gcy, gd + 60 + d, Color3.fromRGB(255, 130, 20), 0, z + 1)
 			end
 		end
+		-- the die's own art (Sprites.DieArt, else the roll glyph tinted with its colour, as the Bag DICE tab), fitted in the
+		-- box the rarity art sizes
 		local die = Draw.img(panel, { Name = "Die", ZIndex = z + 2 })
-		vis(die, rec, cx, bottom - h / 2, w, h)
+		local art, tint = QuestLogic.dieArt(item.Id)
+		Draw.icon(die, art, cx, bottom - h / 2, w, h)
+		die.ImageColor3 = tint or Color3.new(1, 1, 1)
 		local pillRec = if mythic then RollSprites.PillMythic else RollSprites.PillLegendary
-		local word = string.upper(rarity)
+		local word = string.upper(item.Name or rarity)
 		local pillW = if L.compact then L.pillW else (if mythic then 159 else 172)
 		local pillPad = if L.compact then 12 else 14 -- label width = pill width - pad
 		local bgp = Draw.img(panel, { Name = "RarityPill", ZIndex = z + 3 })
@@ -635,7 +644,7 @@ function View:_drawPity(L, z, y: number)
 		})
 		label(self._canvas, {
 			Name = "Count",
-			Text = `{pity.Count} / {pity.Max}`,
+			Text = RollLogic.pityText(pity.Count, pity.Max),
 			Rich = `<font color="{YELLOW}">{pity.Count} /</font> {pity.Max}`, -- reference: the count and the slash are yellow
 			Size = self._countSize,
 			AX = 1,
@@ -812,14 +821,14 @@ function View:_build()
 		roleSize(pcts, rowW * L.rowPctW, s.row, L.minText)
 	)
 	-- the plate titles: the reference sizes differ (FEATURED cap 20, RARITY cap 18), each fitted inside its own plate
-	self._headF = fitSize("FEATURED DICE", L.featPlateW - L.plateClear, s.head, L.minText)
+	self._headF = fitSize(self._featuredTitle, L.featPlateW - L.plateClear, s.head, L.minText)
 	self._headR = fitSize("RARITY CHANCES", L.rarPlateW - L.plateClear, s.headR, L.minText)
 	local pity = self._pity
 	local barW = L.pity.barW
 	self._pitySize, self._countSize = s.pity, s.count
 	if pity then
 		self._pitySize = fitSize(`Guaranteed {pity.Rarity} in {pity.Max} rolls!`, barW * 0.7, s.pity, L.minText)
-		self._countSize = fitSize(`{pity.Count} / {pity.Max}`, barW * 0.22, s.count, L.minText)
+		self._countSize = fitSize(RollLogic.pityText(pity.Count, pity.Max), barW * 0.22, s.count, L.minText)
 	end
 	self._pityFraction = if pity then RollLogic.pityFraction(pity.Count, pity.Max) else 0
 	local labels, prices = {}, {}
@@ -846,7 +855,7 @@ function View.new(slot)
 	local self = setmetatable({}, View)
 	self._conns, self._connsBuild = {}, {}
 	self._pool = "Standard"
-	self._featuredIds, self._rows, self._pity = {}, {}, nil
+	self._featuredIds, self._featuredTitle, self._rows, self._pity = {}, "FEATURED DICE", {}, nil
 	self._buttonState = {}
 	local scroll = make("ScrollingFrame", {
 		Name = "RollView",
@@ -917,8 +926,9 @@ function View:SetPool(pool: string)
 	self._rebuild()
 end
 
-function View:SetFeatured(list)
+function View:SetFeatured(list, title: string?)
 	self._featuredIds = list
+	self._featuredTitle = title or "FEATURED DICE"
 	self._rebuild()
 end
 

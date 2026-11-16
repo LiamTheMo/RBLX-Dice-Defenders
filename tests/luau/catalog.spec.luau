@@ -190,3 +190,36 @@ test("every achievement Badge is a sprite the Quest Log already has", function()
 		expect(string.find(sprites, "\n\t" .. a.Badge .. " = {", 1, true) ~= nil, a.Id .. " badge " .. a.Badge)
 	end
 end)
+
+test("Roll: each pool equals Config/Roll (prices, odds summing to 10000, dice, pity, Featured)", function()
+	local RollConfig = require(Server.Config.Roll)
+	local c = Catalog.Build()
+	expectEq(#c.Roll.Pools, #RollConfig.Pools, "one row per pool")
+	for i, row in c.Roll.Pools do
+		local cfg = RollConfig.Pools[i]
+		expect(row.Id == cfg.Id and row.Name == cfg.Name, cfg.Id .. " id and name")
+		local function same(field, keys)
+			expectEq(#row[field], #cfg[field], cfg.Id .. " " .. field .. " count")
+			for j, entry in row[field] do
+				for _, key in keys do
+					expectEq(entry[key], cfg[field][j][key], ("%s %s %d %s"):format(cfg.Id, field, j, key))
+				end
+			end
+		end
+		same("Prices", { "Count", "Gems" })
+		same("Odds", { "Rarity", "Bp" })
+		same("Dice", { "Id", "Rarity" })
+		local sum = 0
+		for _, o in row.Odds do
+			sum += o.Bp
+		end
+		expectEq(sum, 10000, cfg.Id .. " odds sum")
+		expect(row.Pity.Rarity == cfg.Pity.Rarity and row.Pity.Max == cfg.Pity.Max, cfg.Id .. " pity")
+		expectEq(dump(row.Featured), dump(cfg.Featured), cfg.Id .. " featured")
+		for _, id in row.Featured do
+			expect(Dice.Types[id] ~= nil, id .. " grantable")
+		end
+		expect(row.ByRarity == nil, "no server lookup tables")
+		expect(row.Featured ~= cfg.Featured and row.Odds ~= cfg.Odds, "own copies")
+	end
+end)

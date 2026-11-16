@@ -1,24 +1,37 @@
--- Roll menu controller: one Shell (banner, close, STANDARD / EVENT tabs + rotation timer) hosting the Roll View.
+-- Roll menu controller: one Shell (banner, close, STANDARD / EVENT tabs) hosting the Roll View.
 -- Roll.new(parent, { hud = LobbyHud, toast = (string) -> () }) -> :Open() :Close() :Toggle() :IsOpen() :Destroy()
--- Static render from RollLogic + the client-only SampleData (Studio shows the full reference). Display only: the roll buttons
--- and (i) just toast; nothing is rolled, spent or sent. The server has no roll feature yet; the Gems balance is Meta's.
+-- Renders the server's numbers only: odds, prices, pity max and featured dice from Catalog.Roll, Gems / pity count /
+-- RollAllowed from Meta. ROLL 1 / ROLL 10 send Roll(pool, count); the draw arrives as RollResult (shown in the featured
+-- panel as "YOUR ROLL" until the menu closes, plus a toast). Not allowed (paid random items policy): buttons off and
+-- "Not available in your region". The EVENT tab shows "No event right now"; there is no rotation timer yet.
 
 local ContextActionService = game:GetService("ContextActionService")
 local GuiService = game:GetService("GuiService")
-local RunService = game:GetService("RunService")
 
 local NetClient = require(script.Parent.Parent.NetClient)
 local Draw = require(script.Parent.Parent.QuestLog.Draw)
 local PlaySprites = require(script.Parent.Parent.Play.PlaySprites)
-local QuestLogic = require(script.Parent.Parent.QuestLog.QuestLogic)
 local RollLogic = require(script.Parent.RollLogic)
-local SampleData = require(script.Parent.SampleData)
 local Shell = require(script.Parent.Parent.Bag.Shell)
 local RollSprites = require(script.Parent.RollSprites)
 local View = require(script.Parent.View)
 
 local ACTION = "RollClose"
 local POOLS = { "Standard", "Event" }
+local POOL = "Standard" -- the Catalog pool the STANDARD tab shows and rolls
+local REPLIES = {
+	Restricted = "Not available in your region",
+	Insufficient = "Not enough Gems",
+	UnknownPool = "Roll unavailable",
+	UnknownPrice = "Roll unavailable",
+	Overflow = "You can't hold that much",
+	NotLoaded = "Still loading",
+	NotOwner = "This server is in use",
+	Throttled = "Slow down",
+	RateLimited = "Slow down",
+	Network = "Connection problem",
+	Error = "Something went wrong",
+}
 -- Banner emblems (Roll only, no gem pin): Roll_BannerRing (ink 476 x 182 src px) behind Roll_BannerDieSolo (ink 203 x 220), the ring ~2.9x the die width centred on the die.
 -- Boxes = scroll-ink fractions per tier. The die's top is >= 2 screen px down; the ring's bottom is >= 4 px above the ROLL caps.
 local INK = PlaySprites.ScrollBase.Ink.Height / PlaySprites.ScrollBase.Ink.Width
@@ -80,74 +93,82 @@ function Roll.new(parent, deps)
 	divider.BackgroundTransparency = 0 -- Draw.img makes frames clear
 	local timer = Draw.timerPill(bar, 0, 0, TIMER_W, bar.ZIndex + 1)
 	timer.Group.LayoutOrder = 10
+	-- no rotation yet: the divider and timer keep their slot in the tab row (the tabs must not move), contents hidden
+	divider.Visible = false
+	for _, c in timer.Group:GetChildren() do
+		if c:IsA("GuiObject") then
+			c.Visible = false
+		end
+	end
 	local view = View.new(shell.Slots.Content)
 
-	local function rotationEnd()
-		return SampleData.get(RunService:IsStudio()).RotationEnd -- nil live: no countdown
-	end
-
-	local function refreshTimer()
-		local rotation = rotationEnd()
-		if rotation then
-			local now = workspace:GetServerTimeNow()
-			timer:Set("Rotates in:", QuestLogic.resetText(rotation(now) - now))
-		end
-	end
-
-	local function setPool(i)
-		local standard = i == 1
-		view:SetPool(POOLS[i])
-		-- the divider + timer keep their slot in the tab row (the tabs must not move); only their contents hide
-		local on = standard and rotationEnd() ~= nil
-		divider.Visible = on
-		for _, c in timer.Group:GetChildren() do
-			if c:IsA("GuiObject") then
-				c.Visible = on
-			end
-		end
-	end
-
-	local shown -- the State fields the last render drew
-	local function gemsNow()
+	local result -- the last RollResult of this opening (shown in the featured panel until the menu closes)
+	local shown -- the Catalog / Meta fields the last render drew
+	-- (pool, gems, allowed, pity count, key of those) from the latest Catalog and Meta
+	local function inputs()
+		local pool = RollLogic.pool(NetClient.LastCatalog, POOL)
 		local meta = NetClient.LastMeta
-		local gems = meta and meta.Gems -- before the first Meta the sample balance stands in (nil live)
-		return if type(gems) == "number" then gems else SampleData.get(RunService:IsStudio()).Gems
+		local gems = if meta and type(meta.Gems) == "number" then meta.Gems else nil
+		local allowed = meta ~= nil and meta.RollAllowed == true
+		local pity = RollLogic.pityCount(meta, POOL)
+		return pool, gems, allowed, pity, `{pool ~= nil}|{gems}|{allowed}|{pity}`
 	end
-
 	local function render()
-		local sample = SampleData.get(RunService:IsStudio())
-		local gems = gemsNow()
-		shown = tostring(gems)
-		refreshTimer()
-		view:SetFeatured(sample.Featured)
-		view:SetOdds(RollLogic.oddsRows(sample.Odds))
-		view:SetPity(sample.Pity)
-		local buttons = {}
-		for i, count in { 1, 10 } do
-			local price = sample.Prices[count]
-			buttons[i] = { Count = count, Price = price, Enabled = RollLogic.canAfford(gems, price) }
+		local pool, gems, allowed, pity, key = inputs()
+		shown = key
+		if result then
+			view:SetFeatured(RollLogic.resultTiles(result.Results), "YOUR ROLL")
+		else
+			view:SetFeatured(RollLogic.featured(pool))
 		end
-		view:SetButtons(buttons)
+		view:SetOdds(RollLogic.oddsRows(pool))
+		view:SetPity(if pool then { Count = pity, Max = pool.Pity.Max, Rarity = pool.Pity.Rarity } else nil)
+		view:SetButtons(RollLogic.buttons(pool, gems, allowed))
 	end
 
-	local cooling = false
-	view:OnRoll(function()
-		if cooling then
+	-- ROLL 1 / ROLL 10: one request in flight plus a short cooldown (UX only; the server checks everything again).
+	local inFlight, cooling = false, false
+	view:OnRoll(function(count)
+		if inFlight or cooling then
 			return
 		end
-		cooling = true
+		local meta = NetClient.LastMeta
+		local pool = RollLogic.pool(NetClient.LastCatalog, POOL)
+		if meta == nil or pool == nil then
+			deps.toast(REPLIES.NotLoaded)
+			return
+		elseif meta.RollAllowed ~= true then
+			deps.toast(REPLIES.Restricted)
+			return
+		elseif not RollLogic.canAfford(meta.Gems, RollLogic.price(pool, count)) then
+			deps.toast(REPLIES.Insufficient)
+			return
+		end
+		inFlight, cooling = true, true
 		task.delay(PRESS_COOLDOWN, function()
 			cooling = false
 		end)
-		deps.toast("Roll: coming soon")
+		task.spawn(function()
+			local ok, code = NetClient.Request("Roll", POOL, count)
+			inFlight = false
+			if not ok then
+				deps.toast(REPLIES[code] or tostring(code))
+			end
+		end)
 	end)
 	view:OnInfo(function()
-		deps.toast("Odds and pity are previews until rolls launch")
+		local pool = RollLogic.pool(NetClient.LastCatalog, POOL)
+		deps.toast(
+			if pool
+				then `Base odds per roll; a {pool.Pity.Rarity} is guaranteed by roll {pool.Pity.Max}`
+				else REPLIES.NotLoaded
+		)
 	end)
-	shell:OnTab(setPool)
+	shell:OnTab(function(i)
+		view:SetPool(POOLS[i])
+	end)
 	shell:SetTab(1)
 
-	local timerToken = 0
 	table.insert(
 		conns,
 		NetClient.State:Connect(function(snap)
@@ -159,18 +180,30 @@ function Roll.new(parent, deps)
 			end
 		end)
 	)
+	local function refresh()
+		if shell:IsOpen() and select(5, inputs()) ~= shown then -- rebuild only on a visible change
+			render()
+		end
+	end
+	table.insert(conns, NetClient.Meta:Connect(refresh))
+	table.insert(conns, NetClient.Catalog:Connect(refresh))
 	table.insert(
 		conns,
-		NetClient.Meta:Connect(function()
-			if shell:IsOpen() and tostring(gemsNow()) ~= shown then -- rebuild only on a visible change
+		NetClient.RollResult:Connect(function(r)
+			if type(r) ~= "table" or r.Pool ~= POOL or type(r.Results) ~= "table" or #r.Results == 0 then
+				return
+			end
+			deps.toast(RollLogic.resultToast(r.Results))
+			if shell:IsOpen() then
+				result = r
 				render()
 			end
 		end)
 	)
 	shell:OnClose(function()
 		ContextActionService:UnbindAction(ACTION)
-		timerToken += 1
 		hud:SetBagMode(false)
+		result = nil -- the next opening shows the featured dice again
 	end)
 	table.insert(
 		conns,
@@ -187,16 +220,10 @@ function Roll.new(parent, deps)
 		render()
 		shell:Open()
 		hud:SetBagMode(true, "Roll")
-		timerToken += 1
-		local token = timerToken
-		task.spawn(function()
-			while token == timerToken do
-				task.wait(1)
-				if token == timerToken and shell:GetTab() == 1 then
-					refreshTimer()
-				end
-			end
-		end)
+		local meta = NetClient.LastMeta
+		if meta and meta.RollAllowed ~= true then
+			deps.toast(REPLIES.Restricted)
+		end
 		ContextActionService:BindActionAtPriority(ACTION, function(_, inputState)
 			if inputState == Enum.UserInputState.Begin then
 				shell:Close()

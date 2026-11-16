@@ -3,6 +3,7 @@
 --   NetClient.State / .Enemies : Signals (snapshot) / (batch)
 --   NetClient.Meta / .LastMeta : lobby payload (dice, deck, quests), same shape of API
 --   NetClient.Catalog / .LastCatalog : display catalogue (sent once, before the first Meta)
+--   NetClient.RollResult       : Signal (result) after one of this player's Roll requests succeeded
 --   NetClient.Last             : latest State snapshot or nil
 --   NetClient.Request(name, ...) -> (ok, code?)   yields
 --   NetClient.Rejected         : Signal (name, code) on every false result
@@ -18,6 +19,7 @@ NetClient.Enemies = Signal.new()
 NetClient.Rejected = Signal.new()
 NetClient.Meta = Signal.new()
 NetClient.Catalog = Signal.new()
+NetClient.RollResult = Signal.new()
 NetClient.Last = nil
 NetClient.LastMeta = nil
 NetClient.LastCatalog = nil
@@ -33,6 +35,7 @@ local MIN_INTERVAL = {
 	RedeemCode = 1.0,
 	SaveSettings = 2.0,
 	BagAction = 0.4, -- server bucket 3/s
+	Roll = 1.0, -- server bucket 1/s, burst 2
 }
 local pending = {}
 local seq = 0
@@ -72,7 +75,7 @@ function NetClient.Start()
 	task.spawn(function()
 		local folder = ReplicatedStorage:WaitForChild("Remotes")
 		for _, name in
-			{ "Start", "Summon", "Merge", "EquipDeck", "ClaimQuest", "RedeemCode", "SaveSettings", "BagAction" }
+			{ "Start", "Summon", "Merge", "EquipDeck", "ClaimQuest", "RedeemCode", "SaveSettings", "BagAction", "Roll" }
 		do
 			functions[name] = folder:WaitForChild(name)
 		end
@@ -91,6 +94,9 @@ function NetClient.Start()
 		folder:WaitForChild("Meta").OnClientEvent:Connect(function(meta)
 			NetClient.LastMeta = meta
 			NetClient.Meta:Fire(meta)
+		end)
+		folder:WaitForChild("RollResult").OnClientEvent:Connect(function(result)
+			NetClient.RollResult:Fire(result)
 		end)
 	end)
 end

@@ -1,4 +1,4 @@
--- Persisted player profile, v7 (docs/MVP.md "Profile"). Pure: no Instances.
+-- Persisted player profile, v8 (docs/MVP.md "Profile"). Pure: no Instances.
 -- Default() builds a new profile; Migrate() validates stored data. The store
 -- metadata (profileRevision, sessionLease) rides along but is not gameplay data.
 
@@ -9,13 +9,14 @@ local Inventory = require(script.Parent.Parent.Config.Inventory)
 local Milestones = require(script.Parent.Parent.Config.Milestones)
 local Progression = require(script.Parent.Parent.Config.Progression)
 local Quests = require(script.Parent.Parent.Config.Quests)
+local RollConfig = require(script.Parent.Parent.Config.Roll)
 local SettingsDefs = require(game:GetService("ReplicatedStorage").Shared.SettingsDefs)
 local Deck = require(script.Parent.Deck)
 local Validate = require(script.Parent.Validate)
 
 local ProfileSchema = {}
 
-ProfileSchema.VERSION = 7
+ProfileSchema.VERSION = 8
 
 local STARTER_GEMS = 50 -- new profiles and every v3 profile once (v3 -> v4)
 
@@ -30,6 +31,17 @@ local function deepCopy(value)
 	return copy
 end
 ProfileSchema.DeepCopy = deepCopy
+
+-- Rolls since the last Pity.Rarity die per Config/Roll pool: an integer in 0..Max-1, else 0. Walks the pools, so a
+-- huge stored table costs nothing.
+local function cleanRollPity(stored: any)
+	local pity = {}
+	for _, pool in RollConfig.Pools do
+		local n = if type(stored) == "table" then stored[pool.Id] else nil
+		pity[pool.Id] = if Validate.IsInt(n, 0, pool.Pity.Max - 1) then n else 0
+	end
+	return pity
+end
 
 local function starterDice()
 	local owned = {}
@@ -58,7 +70,7 @@ function ProfileSchema.Default()
 		Materials = {},
 		Items = {},
 		Cosmetics = { Owned = {}, Equipped = {} },
-		Stats = { Kills = 0, Wins = 0 },
+		Stats = { Kills = 0, Wins = 0, Rolls = 0 },
 		Weekly = { Week = 0, Kills = 0, Runs = 0, Claimed = {} },
 		Login = { Streak = 0, LastDay = 0 },
 		Milestones = {},
@@ -66,6 +78,7 @@ function ProfileSchema.Default()
 		Mastery = {},
 		Settings = {},
 		Locked = {},
+		RollPity = cleanRollPity(nil),
 	}
 end
 
@@ -102,6 +115,14 @@ local MIGRATIONS: { [number]: (any) -> any } = {
 		data.Locked = nil
 		if type(data.Cosmetics) == "table" then
 			data.Cosmetics.Equipped = nil
+		end
+		return data
+	end,
+	-- v7 -> v8: RollPity and Stats.Rolls start empty (any stray value is dropped).
+	[7] = function(data)
+		data.RollPity = nil
+		if type(data.Stats) == "table" then
+			data.Stats.Rolls = nil
 		end
 		return data
 	end,
@@ -310,7 +331,7 @@ function ProfileSchema.Migrate(stored: any)
 		Materials = cleanCounts(data.Materials, Inventory.Materials),
 		Items = cleanCounts(data.Items, Inventory.Items),
 		Cosmetics = cleanCosmetics(data.Cosmetics),
-		Stats = { Kills = count(stats.Kills), Wins = count(stats.Wins) },
+		Stats = { Kills = count(stats.Kills), Wins = count(stats.Wins), Rolls = count(stats.Rolls) },
 		Weekly = cleanWeekly(data.Weekly),
 		Login = {
 			Streak = if Validate.IsInt(login.Streak, 0, 7) then login.Streak else 0,
@@ -321,6 +342,7 @@ function ProfileSchema.Migrate(stored: any)
 		Mastery = cleanMastery(data.Mastery),
 		Settings = cleanSettings(data.Settings),
 		Locked = cleanLocked(data.Locked),
+		RollPity = cleanRollPity(data.RollPity),
 	}
 
 	-- Store metadata: keep a well-formed lease so a held lease is honoured.

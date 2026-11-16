@@ -9,9 +9,12 @@
 --     Daily = { Days = {{Day, Chest?, Rewards}} }, Milestones = {{Id, Wave, Reachable, Rewards}},
 --     Achievements = {{Id, Name, Desc, Goal, Badge, Rewards}},
 --     Mastery = { Max, Need = { per level 1..Max-1 }, Milestones = {{Lv, Rewards}} },
---     Repeat = { PerWave = Rewards, Win = Rewards } }
+--     Repeat = { PerWave = Rewards, Win = Rewards },
+--     Roll = { Pools = {{Id, Name, Prices = {{Count, Gems}}, Odds = {{Rarity, Bp}}, Dice = {{Id, Rarity}},
+--              Pity = {Rarity, Max}, Featured = { ids }}} } }
 -- Damage is a die's base damage, Rate its attacks per second; Use is display text
--- ("+100 XP"); Rewards are Rewards.Lines: {{Kind, Id?, Amount}}.
+-- ("+100 XP"); Rewards are Rewards.Lines: {{Kind, Id?, Amount}}. Roll odds are basis points (sum 10000): the menu
+-- shows exactly these numbers.
 local Achievements = require(script.Parent.Parent.Config.Achievements)
 local Balance = require(script.Parent.Parent.Config.Balance)
 local Daily = require(script.Parent.Parent.Config.Daily)
@@ -19,6 +22,7 @@ local Dice = require(script.Parent.Parent.Config.Dice)
 local Inventory = require(script.Parent.Parent.Config.Inventory)
 local Milestones = require(script.Parent.Parent.Config.Milestones)
 local Progression = require(script.Parent.Parent.Config.Progression)
+local RollConfig = require(script.Parent.Parent.Config.Roll)
 local Rewards = require(script.Parent.Rewards)
 
 local Catalog = {}
@@ -133,6 +137,19 @@ function Catalog.Build()
 				Xp = reward.xpWin,
 				Materials = { Fragment = reward.fragmentsWin },
 			}),
+		},
+		Roll = {
+			Pools = map(RollConfig.Pools, function(pool)
+				return {
+					Id = pool.Id,
+					Name = pool.Name,
+					Prices = map(pool.Prices, table.clone),
+					Odds = map(pool.Odds, table.clone),
+					Dice = map(pool.Dice, table.clone),
+					Pity = table.clone(pool.Pity),
+					Featured = table.clone(pool.Featured),
+				}
+			end),
 		},
 	}
 end

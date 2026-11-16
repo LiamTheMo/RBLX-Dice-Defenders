@@ -181,6 +181,28 @@ test("malformed argument matrix: BadArgs, never reaches the handler, seq not con
 			P(1, "Unequip", "ThornDice", 2),
 			P(1, "Unequip", "", 2),
 		},
+		Roll = {
+			P(),
+			P(1),
+			P(1, "Standard"), -- missing count
+			P(1, "Standard", 1, 1), -- extra arg
+			P(1, "Standard", 1, nil),
+			P(1, 5, 1), -- non-string pool
+			P(1, nil, 1),
+			P(1, {}, 1),
+			P(1, true, 1),
+			P(1, "", 1),
+			P(1, ("x"):rep(17), 1), -- 17-byte pool
+			P(1, "Standard", 0),
+			P(1, "Standard", 11),
+			P(1, "Standard", -1),
+			P(1, "Standard", 1.5),
+			P(1, "Standard", NAN),
+			P(1, "Standard", INF),
+			P(1, "Standard", "1"),
+			P(1, "Standard", nil),
+			P(1, "Standard", {}),
+		},
 		Merge = {
 			P(),
 			P(1),
@@ -214,6 +236,7 @@ test("malformed argument matrix: BadArgs, never reaches the handler, seq not con
 		RedeemCode = P(1, "WELCOME"),
 		SaveSettings = P(1, { shadows = false }),
 		BagAction = P(1, "Sell", "Fragment", 1),
+		Roll = P(1, "Standard", 1),
 	}
 	for name in RemoteGuard.Specs do
 		expect(matrix[name] ~= nil and valid[name] ~= nil, name .. " is covered by the matrix")
@@ -665,3 +688,70 @@ test("BagAction bucket is burst 6 at 3/s; soft codes are not counted; NetClient'
 	end
 	expectEq(honest.guard:Violations(sent), 0, "honest client never limited")
 end)
+
+test("Roll passes pool and count through; 1/16-byte pools and counts 1..10 are well formed", function()
+	local env, owner = make(), {}
+	local got
+	env.handler = function(_, ...)
+		got = table.pack(...)
+		return true
+	end
+	expect(env.call(owner, "Roll", 1, "Standard", 10), "ok")
+	expect(got.n == 2 and got[1] == "Standard" and got[2] == 10, "args passed")
+	expect(env.call(owner, "Roll", 2, "x", 1), "1-byte pool")
+	expect(
+		env.call(owner, "Roll", 3, ("x"):rep(16), 5),
+		"16-byte pool, count 5 (unknown pools and prices are the rule's job)"
+	)
+	expectEq(env.guard:Violations(owner), 0, "no violations")
+end)
+
+test(
+	"Roll bucket is burst 2 at 1/s; double-fire is limited; soft codes are not counted; NetClient's interval never trips it",
+	function()
+		local limits = Balance.Remotes.Roll
+		expect(limits.rate == 1 and limits.burst == 2, "Balance")
+		local env, owner = make(), {}
+		local seq = 0
+		local function raw()
+			seq += 1
+			return env.guard:Call(owner, "Roll", env.handler, seq, "Standard", 1)
+		end
+		for i = 1, 2 do
+			expect(raw(), "burst " .. i)
+		end
+		local ok, code = raw()
+		expect(not ok and code == "RateLimited", "3rd in the same instant limited")
+		expectEq(env.calls, 2, "the limited call never reached the handler")
+		env.t += 1
+		expect(raw(), "one token per second")
+		expectEq(env.guard:Violations(owner), 1, "RateLimited is a hard violation")
+		local replay = env.guard:Call(owner, "Roll", env.handler, seq, "Standard", 1)
+		expect(not replay, "a replayed seq (double-fire of the same request) is refused")
+
+		local soft = make()
+		for i, c in { "UnknownPool", "UnknownPrice", "Restricted", "Insufficient", "Overflow" } do
+			soft.handler = function()
+				return false, c
+			end
+			local okS, codeS = soft.call(owner, "Roll", i, "Standard", 1)
+			expect(not okS and codeS == c, "soft " .. c)
+		end
+		expectEq(soft.guard:Violations(owner), 0, "soft codes not counted")
+
+		local source = __sources["StarterPlayer/StarterPlayerScripts/Client/Controllers/NetClient"]
+		local interval = tonumber(string.match(source or "", "\n%s*Roll = ([%d%.]+),"))
+		expect(
+			interval ~= nil and interval >= 1 / limits.rate,
+			"NetClient Roll interval >= 1/rate: " .. tostring(interval)
+		)
+		local honest, sent = make(), {}
+		for i = 1, 60 do
+			honest.t += interval or 0
+			local okI, codeI =
+				honest.guard:Call(sent, "Roll", honest.handler, i, "Standard", if i % 2 == 0 then 10 else 1)
+			expect(okI, ("honest send %d (%s)"):format(i, tostring(codeI)))
+		end
+		expectEq(honest.guard:Violations(sent), 0, "honest client never limited")
+	end
+)

@@ -7,6 +7,7 @@ local RunService = game:GetService("RunService")
 
 local Balance = require(script.Parent.Parent.Config.Balance)
 local Progression = require(script.Parent.Parent.Config.Progression)
+local RollConfig = require(script.Parent.Parent.Config.Roll)
 local Net = require(script.Parent.Parent.Infrastructure.Net)
 local Bag = require(script.Parent.Parent.Rules.Bag)
 local Catalog = require(script.Parent.Parent.Rules.Catalog)
@@ -15,7 +16,9 @@ local Deck = require(script.Parent.Parent.Rules.Deck)
 local Formulas = require(script.Parent.Parent.Rules.Formulas)
 local Match = require(script.Parent.Parent.Rules.Match)
 local Quests = require(script.Parent.Parent.Rules.Quests)
+local Roll = require(script.Parent.Parent.Rules.Roll)
 local Settings = require(script.Parent.Parent.Rules.Settings)
+local PlayerPolicy = require(script.Parent.PlayerPolicy)
 local ProfileService = require(script.Parent.ProfileService)
 
 local MatchService = {}
@@ -28,6 +31,7 @@ local rewardXp: number? = nil
 local catalog = Catalog.Build() -- the same display catalogue for every player
 local lastTick = 0
 local runRng = Random.new()
+local rollRng = Random.new() -- server-only: every Roll draw
 local lastDay = Quests.Day(os.time()) -- UTC day of the last Meta day-change check
 
 local function isOwner(player: Player): boolean
@@ -99,7 +103,7 @@ local function quantities(map)
 end
 
 -- Lobby data for one player, sent to that player only. Arrays only (no sparse keys).
-local function meta(profile)
+local function meta(player: Player, profile)
 	local dice = {}
 	for id, die in profile.Dice do
 		table.insert(dice, { Id = id, Level = die.Level, Copies = die.Copies })
@@ -119,6 +123,10 @@ local function meta(profile)
 		table.insert(locked, id)
 	end
 	table.sort(locked)
+	local pity = {}
+	for _, pool in RollConfig.Pools do
+		table.insert(pity, { Pool = pool.Id, Count = profile.RollPity[pool.Id] or 0 })
+	end
 	local level, xpInto, xpNeed = Progression.Level(profile.Xp, Progression.Account)
 	local now = os.time()
 	local view, claims = Quests.View(profile, now), Claims.View(profile, now)
@@ -142,13 +150,15 @@ local function meta(profile)
 		Cosmetics = cosmetics,
 		Locked = locked, -- sorted locked Material and Item ids
 		Settings = table.clone(profile.Settings), -- {[settingId] = value}; a missing id is its default
+		RollAllowed = PlayerPolicy.RollAllowed(player), -- false until the policy answer arrives (fail closed)
+		Pity = pity, -- {{Pool, Count}}: rolls toward each pool's guarantee, in Config/Roll order
 	}
 end
 
 local function pushMeta(player: Player)
 	local profile = ProfileService.Get(player)
 	if profile ~= nil then
-		Net.Fire("Meta", player, meta(profile))
+		Net.Fire("Meta", player, meta(player, profile))
 	end
 end
 
@@ -341,6 +351,21 @@ local function handleBagAction(player: Player, action: string, id: string, qty: 
 	return ok, code
 end
 
+-- One Roll purchase: Rules/Roll validates, pays one bundle and writes the pity; the client sees the draw only in
+-- RollResult. The policy is read from PlayerPolicy's cache (never yields; unknown = Restricted).
+local function handleRoll(player: Player, poolId: string, count: number): (boolean, string?)
+	local profile = ProfileService.Get(player)
+	if profile == nil then
+		return false, "NotLoaded"
+	end
+	local ok, code, result = Roll.Buy(profile, poolId, count, PlayerPolicy.RollAllowed(player), rollRng)
+	if ok then
+		ProfileService.MarkChanged(player) -- Changed pushes Meta (Gems, dice, pity)
+		Net.Fire("RollResult", player, result)
+	end
+	return ok, code
+end
+
 local function tick()
 	local now = workspace:GetServerTimeNow()
 	if now - lastTick < 1 / Balance.TickHz then
@@ -385,6 +410,7 @@ function MatchService.Init()
 	Net.Handle("ClaimQuest", handleClaimQuest)
 	Net.Handle("SaveSettings", handleSaveSettings)
 	Net.Handle("BagAction", handleBagAction)
+	Net.Handle("Roll", handleRoll)
 end
 
 function MatchService.Start()
@@ -407,6 +433,7 @@ function MatchService.Start()
 		push(player) -- Gold/stats live in State (a quest claim changes Gold)
 		pushMeta(player)
 	end)
+	PlayerPolicy.Changed:Connect(pushMeta) -- RollAllowed arrived (no-op before the profile loads)
 	RunService.Heartbeat:Connect(tick)
 end
 
