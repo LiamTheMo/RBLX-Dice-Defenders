@@ -309,8 +309,8 @@ function Detail.new(parent)
 		section(qProgBox, qProgChip, 221, 275)
 		section(qRewBox, qRewChip, 296, 368)
 		qObj.Text = b.Desc or ""
-		qObj.Size = UDim2.fromOffset(BW - 20, 50)
-		put(qObj, cx, 175 + dy)
+		qObj.Size = UDim2.fromOffset(BW - 20, 36)
+		put(qObj, cx, 181 + dy) -- starts under the OBJECTIVE chip
 		qObj.TextSize = Kit.fitSize(qObj.Text, (BW - 20) * 1.8, 16, 10)
 		while qObj.TextBounds.Y > qObj.AbsoluteSize.Y and qObj.TextSize > 11 do -- wrapped value must stay inside its box, clear of the chip
 			qObj.TextSize -= 1
@@ -428,9 +428,12 @@ function Detail.new(parent)
 		local claimable = m.Action and m.Action.State == "Claim"
 		local shift = if claimable then 14 else 0 -- CLAIM squeezes between the description and the rule; the cards keep their size
 		mDesc.Text = "Increase the power of " .. dieName .. " to unlock exclusive rewards!"
-		mDesc.Size = UDim2.fromOffset(BW - 8, 44)
-		put(mDesc, cx, 228 + dy - shift)
-		mDesc.TextSize = Kit.fitSize(mDesc.Text, (BW - 8) * 1.9, 16, 11)
+		mDesc.Size = UDim2.fromOffset(BW - 8, if claimable then 36 else 44)
+		put(mDesc, cx, (if claimable then 223 else 228) + dy)
+		mDesc.TextSize = Kit.fitSize(mDesc.Text, (BW - 8) * 1.9, if claimable then 12 else 16, 9)
+		while mDesc.TextBounds.Y > mDesc.AbsoluteSize.Y and mDesc.TextSize > 10 do -- never over the XP bar or CLAIM
+			mDesc.TextSize -= 1
+		end
 		local cardH = 138
 		mRule.Size = UDim2.fromOffset(BW, 8)
 		put(mRule, cx, 258 + dy + shift)
@@ -494,7 +497,7 @@ function Detail.new(parent)
 			end
 		end
 		if claimable then
-			placeAction(mas, cx, 254 + dy, 226, 30, 24)
+			placeAction(mas, cx, 253 + dy, 226, 30, 24)
 		end
 	end
 

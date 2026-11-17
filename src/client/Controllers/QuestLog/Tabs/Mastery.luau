@@ -208,7 +208,7 @@ function Mastery.new(parent)
 			local colW = math.max(60, slotsL - 8 - textL)
 			local name = Kit.text(btn, {
 				Name = "Name",
-				Text = `{dieName} <font color="#FFC833">Lv. {row.Level}</font>`,
+				Text = `{row.Name} <font color="#FFC833">Lv. {row.Level}</font>`, -- phone: no " Dice" suffix
 				RichText = true,
 				TextSize = 17,
 				TextTruncate = Enum.TextTruncate.None,
@@ -218,7 +218,10 @@ function Mastery.new(parent)
 				Size = UDim2.fromOffset(colW, 24),
 				ZIndex = z,
 			}, 2)
-			name.TextSize = Kit.fitSize(`{dieName} Lv. {row.Level}`, colW, 17, 10)
+			name.TextSize = math.max(
+				Parts.fitSize(`{row.Name} Lv. {row.Level}`, colW, math.floor(17 * Kit.S + 0.5), 1),
+				math.ceil(10 * Kit.minHit / 44) -- never under 10 real px
+			)
 			local xp = Kit.bar(btn, {
 				Name = "XpBar",
 				AnchorPoint = Vector2.new(0, 0.5),

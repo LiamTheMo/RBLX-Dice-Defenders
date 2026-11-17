@@ -38,7 +38,7 @@ function Achievements.status(parent, props, textSize: number)
 			Style = "Green",
 			Label = "COMPLETE",
 			Icon = Parts.CheckKey,
-			TextSize = math.floor(textSize * Kit.S),
+			TextSize = math.max(9, math.min(math.floor(textSize * Kit.S), h - 10)), -- the line must fit the pill's label height
 			Size = UDim2.fromOffset(w, h),
 		})
 	done.Interactable, done.Selectable = false, false

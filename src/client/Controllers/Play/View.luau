@@ -401,7 +401,7 @@ local function buildRow(list, row, y: number, w: number, h: number, R, onClaim, 
 			Name = "Claim",
 			BackgroundTransparency = 1,
 			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.fromOffset(round(R.ix), round(h / 2)),
+			Position = UDim2.fromOffset(round(if R.noIcon then w - 49 else R.ix), round(h / 2)),
 			Size = UDim2.fromOffset(78, math.max(h, hitMin)),
 			ZIndex = z + 1,
 		}, strip)
@@ -455,7 +455,7 @@ local function buildRow(list, row, y: number, w: number, h: number, R, onClaim, 
 end
 
 -- One size per text role for every row: the largest WAVE and reward-line sizes whose columns fit the row width.
-local function rowRoles(rows, w: number, h: number, hasClaim: boolean)
+local function rowRoles(rows, w: number, h: number, hasClaim: boolean, phone: boolean)
 	local fl = floorSize()
 	local bd = math.min(h - 14, 40)
 	local waveX = 10 + bd + 10
@@ -489,10 +489,10 @@ local function rowRoles(rows, w: number, h: number, hasClaim: boolean)
 			dx = dx,
 			ix = ix,
 			tx = dx + 9 + wr / 2,
-			noIcon = not icon,
+			noIcon = not withIcon,
 		}
 	end
-	for a = 22, math.min(fl, 22), -1 do
+	for a = 22, if phone then 23 else math.min(fl, 22), -1 do -- phones: never a reward icon, so no icon pass
 		for c = cmax, math.min(fl, cmax), -1 do
 			local R = try(a, c, true)
 			if R then
@@ -500,7 +500,7 @@ local function rowRoles(rows, w: number, h: number, hasClaim: boolean)
 			end
 		end
 	end
-	if not hasClaim then -- a narrow row (phones) drops the reward icon: lock | WAVE n | reward text, measured, never overlapping
+	if phone or not hasClaim then -- a narrow row (phones) drops the reward icon: lock | WAVE n | reward text, measured, never overlapping
 		for a = 22, 10, -1 do
 			for c = cmax, math.min(8, cmax), -1 do
 				local R = try(a, c, false)
@@ -540,7 +540,7 @@ function View:_buildMid(pnl)
 	local rw = w - 24
 	local list = scroll(pnl, "Rows", 12, HEAD_H, rw + 12, listH)
 	list.ScrollBarThickness = 4
-	local R = rowRoles(rows, rw, rh, hasClaim)
+	local R = rowRoles(rows, if L.h < 440 and hasClaim then rw - 84 else rw, rh, hasClaim, L.h < 440) -- phones: CLAIM takes the right 84 px
 	local pitch = 65
 	local hitMin = math.ceil(44 / K)
 	for i, row in rows do
@@ -743,17 +743,17 @@ function View:_buildRanks()
 			Size = UDim2.fromScale(1, 1),
 			ZIndex = card.ZIndex + 5,
 		}, card)
-		local sh = ch - 16
 		local art = PlaySprites[rk.Art]
-		local sw = sh * art.Size.X / art.Size.Y
+		local sw = math.min((ch - 16) * art.Size.X / art.Size.Y, cw * 0.3) -- narrow phone cards: the shield leaves the name room
+		local sh = sw * art.Size.Y / art.Size.X
 		icon(card, art, 10 + sw / 2, ch / 2, sw, sh, card.ZIndex + 1)
 		local tx = 10 + sw + 12
 		local nameW = cw - tx - 12 - (if rk.Locked then ch * 0.3 + 8 else 0)
 		label(card, {
 			Name = "Name",
 			Text = rk.Name,
-			Size = fitSize(rk.Name, nameW, math.min(36, math.floor(ch * 0.4)), 8),
-			Fixed = true,
+			Size = math.min(36, math.floor(ch * 0.4)),
+			Min = 8, -- label() shrinks the name to its box (floor 8), never cuts it
 			AX = 0,
 			X = tx,
 			Y = ch / 2,
