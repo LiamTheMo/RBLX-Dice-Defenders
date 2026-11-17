@@ -3,40 +3,22 @@
 -- Renders the server's numbers only: odds, prices, pity max and featured dice from Catalog.Roll, Gems / pity count /
 -- RollAllowed from Meta. ROLL 1 / ROLL 10 send Roll(pool, count); the draw arrives as RollResult (shown in the featured
 -- panel as "YOUR ROLL" until the menu closes, plus a toast). Not allowed (paid random items policy): buttons off and
--- "Not available in your region". The EVENT tab shows "No event right now"; there is no rotation timer yet.
+-- "Not available in your region". The EVENT tab shows "No event right now"; no rotation timer exists (plan A8), so none is drawn and the tab row has no gap for one.
 
 local ContextActionService = game:GetService("ContextActionService")
 local GuiService = game:GetService("GuiService")
 
 local NetClient = require(script.Parent.Parent.NetClient)
-local Draw = require(script.Parent.Parent.QuestLog.Draw)
-local PlaySprites = require(script.Parent.Parent.Play.PlaySprites)
 local RollFlow = require(script.Parent.RollFlow)
 local RollLogic = require(script.Parent.RollLogic)
 local SettingsLogic = require(script.Parent.Parent.Settings.SettingsLogic)
 local Shell = require(script.Parent.Parent.Bag.Shell)
-local RollSprites = require(script.Parent.RollSprites)
 local View = require(script.Parent.View)
 
 local ACTION = "RollClose"
 local POOLS = { "Standard", "Event" }
 local POOL = "Standard" -- the Catalog pool the STANDARD tab shows and rolls
 local REPLIES = RollFlow.REPLIES
--- Banner emblems (Roll only, no gem pin): Roll_BannerRing (ink 476 x 182 src px) behind Roll_BannerDieSolo (ink 203 x 220), the ring ~2.9x the die width centred on the die.
--- Boxes = scroll-ink fractions per tier. The die's top is >= 2 screen px down; the ring's bottom is >= 4 px above the ROLL caps.
-local INK = PlaySprites.ScrollBase.Ink.Height / PlaySprites.ScrollBase.Ink.Width
-local function dieBoxes(h, top, inkW, ringUp)
-	local scrollH = inkW * INK
-	local w = h * 203 / 220
-	local rw = 2.8 * w
-	local rh = rw * 182 / 476
-	local ring = { 0.5 - rw / 2 / inkW, (top + h / 2 - rh / 2 - ringUp) / scrollH, rw / inkW, rh / scrollH }
-	local die = { 0.5 - w / 2 / inkW, top / scrollH, w / inkW, h / scrollH }
-	return ring, die
-end
-local RING_FULL, DIE_FULL = dieBoxes(57, -34.6, 488.5, 0)
-local RING_COMPACT, DIE_COMPACT = dieBoxes(28, -18.1, 220, 0)
-local TIMER_W, SEP_W = 223, 30 -- the Quest Log pill width (full tier)
 local PRESS_COOLDOWN = 0.5 -- UX throttle only
 
 local Roll = {}
@@ -52,44 +34,10 @@ function Roll.new(parent, deps)
 		end,
 		name = "Roll",
 		free = true,
-		tabW = 278.3, -- the Bag's mean tab width: two tabs keep its height, sprites and text role
-		tabReserve = SEP_W + TIMER_W + 16, -- (+ the two layout gaps) phones: the tabs shrink to leave this much of the row for the divider and timer
-		banner = {
-			text = "ROLL",
-			textW = 0.45,
-			noGem = true,
-			emblems = {
-				{ sprite = RollSprites.BannerRing, box = { full = RING_FULL, compact = RING_COMPACT } },
-				{ sprite = RollSprites.BannerDieSolo, box = { full = DIE_FULL, compact = DIE_COMPACT } },
-			},
-		},
+		tabW = 296, -- mockup STANDARD 296 / EVENT 284 (mean)
+		banner = { text = "ROLL" },
 	})
 	shell:SetTabs({ { Id = "Standard", Label = "STANDARD" }, { Id = "Event", Label = "EVENT" } })
-	-- rotation timer after the tabs: white divider, then the Quest Log's timer pill
-	local bar = shell.TabBar
-	local sep = Draw.img(
-		bar,
-		{ Name = "Sep", LayoutOrder = 5, Size = UDim2.fromOffset(SEP_W, 40), ZIndex = bar.ZIndex + 1 },
-		"Frame"
-	)
-	local divider = Draw.img(sep, {
-		Name = "Divider",
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromOffset(4, 31),
-		BackgroundColor3 = Color3.new(1, 1, 1),
-		BorderSizePixel = 0,
-	}, "Frame")
-	divider.BackgroundTransparency = 0 -- Draw.img makes frames clear
-	local timer = Draw.timerPill(bar, 0, 0, TIMER_W, bar.ZIndex + 1)
-	timer.Group.LayoutOrder = 10
-	-- no rotation yet: the divider and timer keep their slot in the tab row (the tabs must not move), contents hidden
-	divider.Visible = false
-	for _, c in timer.Group:GetChildren() do
-		if c:IsA("GuiObject") then
-			c.Visible = false
-		end
-	end
 	local view = View.new(shell.Slots.Content)
 
 	local result -- the last RollResult of this opening (shown in the featured panel until the menu closes)
@@ -114,6 +62,7 @@ function Roll.new(parent, deps)
 		view:SetOdds(RollLogic.oddsRows(pool))
 		view:SetPity(if pool then { Count = pity, Max = pool.Pity.Max, Rarity = pool.Pity.Rarity } else nil)
 		view:SetButtons(RollLogic.buttons(pool, gems, allowed))
+		view:SetNotice(if not allowed then "region" elseif gems ~= nil then "gems" else nil) -- why a disabled button is off (its chip says so)
 	end
 
 	-- ROLL 1 / ROLL 10: RollFlow gates (one request, 0.6 s spin, 10 s timeout); the server checks everything again.
