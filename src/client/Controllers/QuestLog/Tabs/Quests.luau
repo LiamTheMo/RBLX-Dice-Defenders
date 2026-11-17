@@ -1,34 +1,32 @@
--- Quest Log, QUESTS tab: sections (DAILY / WEEKLY / STORY) of quest rows in one ScrollingFrame with the Bag's styled scrollbar.
--- Quests.new(Slots.Grid) -> :SetRows(rows) :SetResetText(daily, weekly) :SetSelected(id) :OnSelect(cb(id)) :OnClaim(cb(id, row))
--- :SetEmptyText(s) :SetScroll(n) :Destroy(). Visual only; rows come from QuestLogic.questRows (already filtered).
--- Design px. Row layout keys on the content width: full (>= 700), mid (360-700: desc hidden, rewards stacked), tiny (< 360: no rewards).
+-- Quest Log, QUESTS tab: sections (DAILY / WEEKLY / STORY) of quest rows in one ScrollingFrame with a code-drawn scrollbar.
+-- Quests.new(grid) -> :SetRows(rows) :SetResetText(daily, weekly) :SetSelected(id) :OnSelect(cb(id, row)) :OnClaim(cb(id, row))
+-- :SetEmptyText(s) :SetScroll(n) :SetVisible(b) :Destroy(). Visual only; rows come from QuestLogic.questRows (already filtered).
+-- Design px; `grid` is the list panel's interior. Row layout keys on the width: full (>= 560) or narrow (phones: two lines, stacked rewards).
+-- Name paths: QuestsTab.QuestScroll.Head_<Section> / Row_<Id> (.Claim / .Progress), QuestsTab.ScrollTrack.
 
 local UiKit = require(script.Parent.Parent.Parent.UiKit)
 local Parts = require(script.Parent.Parent.Parent.Bag.Parts)
 local HudSprites = require(script.Parent.Parent.Parent.Sprites)
 local QuestLogic = require(script.Parent.Parent.QuestLogic)
-local Draw = require(script.Parent.Parent.Draw)
+local Kit = require(script.Parent.Parent.Kit)
 
 local make = UiKit.make
-local Bag, Q = Draw.Bag, Draw.Q
+local WHITE = Color3.new(1, 1, 1)
 
-local PAD_L, PAD_R, PAD_T, PAD_B = 14, 28, 2, 16 -- left/top >= the selected glow; right = scrollbar gutter
-local ROW_H, GAP, HEAD_H = 60, 5, 54 -- ref: rows ~60 tall on a 65 pitch; ribbon top -> first row top 61
-local COIN_TEXT = Color3.fromRGB(251, 243, 137)
-local GREEN_TEXT = Color3.fromRGB(120, 235, 90)
+local PAD_L, PAD_R, PAD_T, PAD_B = 8, 30, 6, 6 -- right = scrollbar gutter
+local ROW_H, GAP, HEAD_H, SEC_GAP = 50, 5, 40, 12
 local SECTIONS = {
-	{ Id = "Daily", Title = "DAILY QUESTS", Icon = Q.IconCalendar, Reset = true },
-	{ Id = "Weekly", Title = "WEEKLY QUESTS", Icon = Q.IconCalendarWeek, Reset = true },
-	{ Id = "Story", Title = "STORY QUESTS", Icon = Q.IconQuestScroll, Reset = false },
+	{ Id = "Daily", Title = "DAILY QUESTS", Icon = "QuestCalendar", Reset = true },
+	{ Id = "Weekly", Title = "WEEKLY QUESTS", Icon = "QuestCalendarWeek", Reset = true, Mark = "7" },
+	{ Id = "Story", Title = "STORY QUESTS", Icon = "IconQuestScroll", Reset = false },
 }
-local BAR = { ScrollTrack = Rect.new(19, 65, 22, 227) } -- narrow centre column: no horizontal stretch
 
-local function barSkin(inst, name: string, w: number)
-	local s = Bag[name]
-	inst.Image = s.Image
-	inst.ScaleType = Enum.ScaleType.Slice
-	inst.SliceCenter = BAR[name]
-	inst.SliceScale = w / s.Size.X
+local function icon(parent, ref, props)
+	props.BackgroundTransparency = 1
+	props.ZIndex = props.ZIndex or parent.ZIndex + 1
+	local i = make("ImageLabel", props, parent)
+	Kit.setIcon(i, ref)
+	return i
 end
 
 local Quests = {}
@@ -37,8 +35,8 @@ function Quests.new(parent)
 	local api, conns = {}, {}
 	local rows, selected, onSelect, onClaim = {}, nil, nil, nil
 	local resetText = { Daily = nil, Weekly = nil }
-	local recs, heads = {}, {} -- recs[id] = { skin, w, h }; heads[sectionId] = { pill, label }
-	local barW, mode = 21, "full"
+	local setOns, heads = {}, {} -- setOns[id](bool); heads[sectionId] = timer
+	local narrow = false
 
 	local root = make("Frame", {
 		Name = "QuestsTab",
@@ -54,7 +52,7 @@ function Quests.new(parent)
 		CanvasSize = UDim2.new(),
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		ScrollingDirection = Enum.ScrollingDirection.Y,
-		ScrollBarThickness = 0, -- the styled bar below replaces the native one; wheel, touch and drag still scroll
+		ScrollBarThickness = 0, -- the code-drawn bar below replaces the native one; wheel, touch and drag still scroll
 		ScrollBarImageTransparency = 1, -- a 0-thickness bar still draws a 1 px hairline
 		ZIndex = root.ZIndex + 1,
 	}, root)
@@ -65,355 +63,307 @@ function Quests.new(parent)
 		PaddingBottom = UDim.new(0, PAD_B),
 	}, scroll)
 	make("UIListLayout", { Padding = UDim.new(0, GAP), SortOrder = Enum.SortOrder.LayoutOrder }, scroll)
-	local empty = Parts.text(root, {
+	local empty = Kit.text(root, {
 		Name = "EmptyLabel",
 		Text = "No quests yet",
 		TextSize = 24,
 		TextWrapped = true,
-		TextColor3 = Color3.fromRGB(205, 210, 235),
+		TextColor3 = Kit.Soft,
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
 		Size = UDim2.new(1, -60, 0, 80),
 		Visible = false,
 		ZIndex = scroll.ZIndex + 1,
 	})
-	local track = Draw.img(root, {
-		Name = "ScrollTrack",
-		AnchorPoint = Vector2.new(1, 0),
-		Visible = false,
-		ZIndex = scroll.ZIndex + 2,
-	})
-	local thumb = Draw.img(track, { Name = "Thumb", ZIndex = track.ZIndex + 1 })
-
-	local function updateBar()
-		local h = parent.Size.Y.Offset
-		local y, maxY = scroll.CanvasPosition.Y, math.max(0, scroll.AbsoluteCanvasSize.Y - scroll.AbsoluteWindowSize.Y)
-		track.Visible = maxY > 1 and h > 0
-		local win, canvas = scroll.AbsoluteWindowSize.Y, math.max(1, scroll.AbsoluteCanvasSize.Y)
-		local thumbH = math.clamp(math.floor(h * win / canvas), 40, math.max(40, h))
-		Draw.thumb(thumb, barW, thumbH, math.floor((h - thumbH) * (if maxY > 0 then y / maxY else 0)))
-	end
-	table.insert(conns, scroll:GetPropertyChangedSignal("CanvasPosition"):Connect(updateBar))
-	table.insert(conns, scroll:GetPropertyChangedSignal("AbsoluteCanvasSize"):Connect(updateBar))
-
-	local function setReset(head, text: string?)
-		head.timer.Group.Visible = text ~= nil and text ~= "" and head.fits
-		if text and text ~= "" then
-			head.timer:Set("Resets in:", text)
-		end
-	end
+	local sbar = Kit.scrollbar(root, scroll, scroll.ZIndex + 2)
 
 	local function buildHeader(sec, order: number, first: boolean, cw: number)
-		local small = mode ~= "full"
-		local bw = math.min(if small then 230 else 300, cw - 6)
-		local bh = bw * Q.DetailRibbon.Ink.Height / Q.DetailRibbon.Ink.Width
-		local iconSize = if small then 44 else 56
-		-- ref: last row -> next ribbon top ~20; the first ribbon (or its icon) taller than HEAD_H drops until its top clears the clip by 3+
-		local pre = if first then math.max(0, math.ceil(math.max(bh, iconSize) / 2 - HEAD_H / 2) + 3) else 17
-		local f = Draw.img(scroll, {
+		local f = make("Frame", {
 			Name = "Head_" .. sec.Id,
+			BackgroundTransparency = 1,
 			LayoutOrder = order,
-			Size = UDim2.fromOffset(cw, HEAD_H + pre),
-		}, "Frame")
-		local cy = pre + HEAD_H / 2
-		local banner = Draw.img(f, { Name = "Banner" })
-		Draw.apply(banner, Q.DetailRibbon, bw / 2, cy, bw, bh)
-		local icon = Draw.img(f, { Name = "Icon", ZIndex = banner.ZIndex + 2 })
-		local iw, ih = Draw.fitIn(sec.Icon, iconSize, iconSize)
-		Draw.apply(icon, sec.Icon, bw * 0.15, cy, iw, ih)
-		local textL = bw * 0.15 + iconSize / 2 + 6
-		local textW = bw - 0.1 * bw - textL
-		local title = Parts.text(f, {
+			Size = UDim2.fromOffset(cw, HEAD_H + (if first then 0 else SEC_GAP - GAP)),
+			ZIndex = scroll.ZIndex + 1,
+		}, scroll)
+		local topPad = if first then 0 else SEC_GAP - GAP
+		local strip = f -- plain header (mockup): title, large calendar icon, clock + "Resets in"
+		local isz = if narrow then 36 else 44
+		local ic = icon(f, sec.Icon, {
+			Name = "Icon",
+			AnchorPoint = Vector2.new(0, 0.5),
+			Position = UDim2.fromOffset(if narrow then 4 else 8, topPad + HEAD_H / 2),
+			Size = UDim2.fromOffset(isz, isz),
+			ZIndex = strip.ZIndex + 1,
+		})
+		if sec.Mark then -- the weekly calendar's page number (live text, the art is a blank page)
+			make("TextLabel", {
+				Name = "Mark",
+				BackgroundTransparency = 1,
+				Font = Enum.Font.FredokaOne,
+				Text = sec.Mark,
+				TextSize = math.floor(isz * 0.42),
+				TextColor3 = Color3.fromRGB(215, 40, 52),
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromScale(0.5, 0.64),
+				Size = UDim2.fromScale(0.6, 0.4),
+				ZIndex = ic.ZIndex + 1,
+			}, ic)
+		end
+		local timerW = if narrow then 150 else 226
+		local textL = (if narrow then 4 else 8) + isz + 8
+		local timer
+		if sec.Reset then
+			timer = Kit.timer(f, {
+				Name = "Reset",
+				AnchorPoint = Vector2.new(1, 0.5),
+				Position = UDim2.fromOffset(cw - 6, topPad + HEAD_H / 2),
+				Size = UDim2.fromOffset(timerW, if narrow then 26 else 32),
+				ZIndex = strip.ZIndex + 1,
+			})
+			heads[sec.Id] = timer
+			if resetText[sec.Id] then
+				timer:Set("Resets in:", resetText[sec.Id])
+			end
+		end
+		local avail = cw - textL - (if sec.Reset then timerW + 12 else 8)
+		local title = Kit.text(f, {
 			Name = "Title",
 			Text = sec.Title,
-			TextSize = if small then 22 else 29, -- ref label cap ~19
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Size = UDim2.fromOffset(textW, 40),
-			ZIndex = banner.ZIndex + 1,
-		}, 3)
-		Parts.fit(title, textW, title.TextSize, 14)
-		title.Position =
-			UDim2.fromOffset(math.floor(textL + textW / 2), math.floor(Draw.ribbonTextY(cy, bh, title.TextSize) + 0.5))
-		if sec.Reset then
-			local pw = if small then 170 else 223 -- ref pill ~223 wide
-			local timer = Draw.timerPill(f, cw - pw, cy, pw, banner.ZIndex)
-			-- the pill and the banner must not collide on narrow slots
-			local head = { timer = timer, fits = cw - pw - bw >= 6 }
-			heads[sec.Id] = head
-			setReset(head, resetText[sec.Id])
-		end
+			TextSize = if narrow then 19 else 25,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			AnchorPoint = Vector2.new(0, 0.5),
+			Position = UDim2.fromOffset(textL, topPad + HEAD_H / 2),
+			Size = UDim2.fromOffset(math.max(20, avail), HEAD_H),
+			ZIndex = strip.ZIndex + 1,
+		}, 2)
+		Kit.fit(title, avail, title.TextSize, 12)
 	end
 
-	-- Row ----------------------------------------------------------------------------------------------------
-	local function skinRow(rec, on: boolean)
-		local ex = if on then 8 else 0
-		Draw.apply(rec.skin, if on then Q.RowSelected else Q.Row, rec.w / 2, rec.h / 2, rec.w + ex, rec.h + ex)
+	local function claimButton(btn, row, x: number, cy: number, w: number, h: number, textSize: number)
+		local hitH = math.min(btn.Size.Y.Offset, math.max(h, Kit.minHit))
+		local hit = make("TextButton", {
+			Name = "ClaimHit",
+			BackgroundTransparency = 1,
+			Text = "",
+			AnchorPoint = Vector2.new(0, 0.5),
+			Position = UDim2.fromOffset(x - math.max(0, (Kit.minHit - w) / 2), cy),
+			Size = UDim2.fromOffset(math.max(w, Kit.minHit), hitH),
+			ZIndex = btn.ZIndex + 4,
+		}, btn)
+		local visual = Parts.button(hit, {
+			Name = "Claim",
+			Style = "Green",
+			Label = "CLAIM",
+			TextSize = textSize,
+			Size = UDim2.fromOffset(w, h),
+		})
+		visual.AnchorPoint = Vector2.new(0.5, 0.5)
+		visual.Position = UDim2.fromScale(0.5, 0.5)
+		visual.Interactable = false -- the transparent hit button above takes the tap
+		visual.Selectable = false
+		UiKit.wire(hit, function(state)
+			visual:SetAttribute("DebugState", if state == "Normal" then nil else state)
+		end)
+		hit.Activated:Connect(function()
+			if onClaim then
+				onClaim(row.Id, row)
+			end
+		end)
 	end
 
 	local function buildRow(row, order: number, cw: number)
-		local full, tiny = mode == "full", mode == "tiny"
 		local state = QuestLogic.claimState(row)
-		local btn = Draw.img(scroll, {
+		local rowH = math.max(if narrow then 56 else ROW_H, Kit.minHit)
+		local btn, setOn = Kit.card(scroll, {
 			Name = "Row_" .. row.Id,
 			LayoutOrder = order,
-			Size = UDim2.fromOffset(cw, ROW_H),
-		}, "ImageButton")
-		Parts.interact(btn)
-		local skin = Draw.img(btn, { Name = "Skin" })
-		local rec = { skin = skin, w = cw, h = ROW_H }
-		recs[row.Id] = rec
-		skinRow(rec, row.Id == selected)
-		if state == "Claimed" then
-			skin.ImageColor3 = Color3.fromRGB(200, 200, 200)
-		end
-		local z = skin.ZIndex + 1
-		local cy = ROW_H / 2
-
-		-- Right to left: claim, gem, coin, bar; the left column keeps the rest.
-		local claimW, claimH = (if full then 97 elseif tiny then 44 else 72), (if full then 48 else 42)
-		local right = cw - (if full then 5 else 6)
-		local claimLeft = right - claimW
-		local regionCx = claimLeft + claimW / 2
-		if state == "Claim" then
-			local hit = Draw.img(btn, {
-				Name = "ClaimHit",
-				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.fromOffset(regionCx, cy),
-				Size = UDim2.fromOffset(claimW + 14, 56),
-				ZIndex = z + 4,
-			}, "ImageButton")
-			Parts.interact(hit)
-			local visual = Parts.button(hit, {
-				Name = "Claim",
-				Style = "Green",
-				Label = "CLAIM",
-				TextSize = if full then 22 elseif tiny then 13 else 18,
-				Size = UDim2.fromOffset(claimW + (if tiny then 8 else 3), claimH + 2),
-			})
-			visual.AnchorPoint = Vector2.new(0.5, 0.5)
-			visual.Position = UDim2.fromScale(0.5, 0.5)
-			visual.Interactable = false -- the transparent hit button above takes the tap (Active=false still swallows clicks)
-			visual.Selectable = false
-			hit.Activated:Connect(function()
-				if onClaim then
-					onClaim(row.Id, row)
-				end
-			end)
-		elseif state == "Claimed" then
-			local g = Draw.img(btn, { Name = "ClaimedCheck", ZIndex = z + 1 })
-			local cw2, ch2 = Draw.fitIn(Bag.Check, 26, 26)
-			local labelW = claimW - 26
-			Draw.apply(g, Bag.Check, claimLeft + 13, cy, cw2, ch2)
-			local l = Parts.text(btn, {
-				Name = "ClaimedText",
-				Text = "CLAIMED",
-				TextSize = if full then 18 else 14,
-				TextColor3 = GREEN_TEXT,
-				TextXAlignment = Enum.TextXAlignment.Left,
-				AnchorPoint = Vector2.new(0, 0.5),
-				Position = UDim2.fromOffset(claimLeft + 30, cy),
-				Size = UDim2.fromOffset(math.max(10, labelW + 18), 28),
-				ZIndex = z + 1,
-			}, 2)
-			Parts.fit(l, l.Size.X.Offset, l.TextSize, 10)
-		end
-
-		local function reward(
-			icon,
-			text: string,
-			color: Color3,
-			cx: number,
-			y: number,
-			size: number,
-			iconSize: number,
-			tw: number?
-		)
-			local ic = Draw.img(btn, {
-				Name = "RewardIcon",
-				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.fromOffset(cx + iconSize / 2, y),
-				Size = UDim2.fromOffset(iconSize, iconSize),
-				Image = icon,
-				ScaleType = Enum.ScaleType.Fit,
-				ZIndex = z + 1,
-			})
-			local t = Parts.text(btn, {
-				Name = "RewardText",
-				Text = text,
-				TextSize = size,
-				TextColor3 = color,
-				TextXAlignment = Enum.TextXAlignment.Left,
-				AnchorPoint = Vector2.new(0, 0.5),
-				Position = UDim2.fromOffset(cx + iconSize + 4, y),
-				Size = UDim2.fromOffset(tw or (if full then 54 else 64), 28),
-				ZIndex = z + 1,
-			}, 2)
-			Parts.fit(t, t.Size.X.Offset, size, 12)
-			return ic, t
-		end
-		-- compact: centre a stack of reward groups (icon + text) as one block on cx; each group is left-aligned in it
-		local function centreOn(cx: number, groups)
-			local widest = 0
-			for _, g in groups do
-				widest = math.max(widest, g[1].Size.X.Offset + 4 + g[2].TextBounds.X)
-			end
-			for _, g in groups do
-				local left = cx - widest / 2
-				g[1].Position = UDim2.fromOffset(left + g[1].Size.X.Offset / 2, g[1].Position.Y.Offset)
-				g[2].Position = UDim2.fromOffset(left + g[1].Size.X.Offset + 4, g[2].Position.Y.Offset)
-			end
-		end
-		local nameR: number? -- phone: right edge of the name (above the coin on a button row, free to the rim otherwise)
-		local gold = "+" .. QuestLogic.format(row.Gold or 0)
-		local gems = if row.Gems then "+" .. QuestLogic.format(row.Gems) else nil
-		local rewardLeft = claimLeft - 10
-		local wide = row.Section ~= "Daily" and state == "Progress"
-		if full then
-			-- ref: daily gem icon 79 left of CLAIM, coin 91 left of the gem; weekly rows (no button) gem at -96 from the edge, coin 118 left
-			local gemL = if wide then cw - 96 else claimLeft - 79
-			if gems then
-				reward(HudSprites.Gem, gems, Color3.new(1, 1, 1), gemL, cy, 22, 32, 56) -- ref "+25" ink 30 wide
-			end
-			rewardLeft = gemL - (if wide then 118 else 91)
-			reward(HudSprites.Coin, gold, COIN_TEXT, rewardLeft, cy, 22, 32, if wide then 70 else 54) -- ref "+500" ink 41 wide
-			rewardLeft -= if wide then 17 else 10
-		elseif not tiny then
-			rewardLeft = claimLeft - 10 - 86 -- every row reserves the button column; the reward sits left of it, or centred in it when the row has no button
-			local stack = { { reward(HudSprites.Coin, gold, COIN_TEXT, rewardLeft, cy - 14, 15, 24) } }
-			if gems then
-				table.insert(stack, { reward(HudSprites.Gem, gems, Color3.new(1, 1, 1), rewardLeft, cy + 14, 15, 24) })
-			end
-			if state == "Progress" then
-				centreOn(regionCx, stack)
-			end
-			rewardLeft -= 8
-		else
-			-- phone: every row reserves the button column (equal bars). A row with a button puts its coin on the name line
-			-- above the bar; a row without one centres the coin in that column.
-			rewardLeft = claimLeft - 14 -- the centred coin (wider than the column) must clear the bar end
-			local noBtn = state == "Progress"
-			local slot = if noBtn then 0 else 48 -- coin slot left of the name's right edge on a button row
-			local ic, t = reward(
-				HudSprites.Coin,
-				gold,
-				COIN_TEXT,
-				rewardLeft - slot,
-				if noBtn then cy + 14 else cy - 14,
-				13,
-				if noBtn then 14 else 12,
-				if noBtn then 40 else 33
-			)
-			if noBtn then
-				centreOn(regionCx, { { ic, t } })
-				nameR = cw - 8
-			else
-				nameR = rewardLeft - slot - 4
-			end
-		end
-
-		-- Left column: icon, name (+ desc), progress bar.
-		local iconBox = if full then 56 elseif tiny then 24 else 44
-		local icon = Draw.img(btn, { Name = "Icon", ZIndex = z + 1 })
-		local iw, ih = Draw.fitIn(Q[row.Icon] or Q.IconQuestScroll, iconBox, math.min(52, iconBox))
-		Draw.apply(
-			icon,
-			Q[row.Icon] or Q.IconQuestScroll,
-			(if full then 18 else if tiny then 6 else 8) + iconBox / 2,
-			cy,
-			iw,
-			ih
-		)
-		local textL = (if full then 18 else if tiny then 6 else 8)
-			+ iconBox
-			+ (if full then 19 elseif tiny then 5 else 8)
-		local pct = QuestLogic.percent(row.Progress, row.Goal)
-		local complete = row.Goal > 0 and row.Progress >= row.Goal
-		local nameY, barW2, barH
-		local colR
-		if full then
-			barW2, barH = if wide then 178 else 163, 27
-			colR = rewardLeft - barW2 - 4
-			local bar = Draw.bar(btn, "Progress", barW2, barH, z + 1, 19) -- ref value cap ~14
-			bar.Frame.AnchorPoint = Vector2.new(0.5, 0.5)
-			bar.Frame.Position = UDim2.fromOffset(rewardLeft - 4 - barW2 / 2, cy + 1)
-			bar:Set(pct, QuestLogic.progressText(row.Progress, row.Goal), complete)
-			nameY = 19
-		else
-			barH = 18
-			colR = rewardLeft
-			barW2 = math.max(if tiny then 40 else 60, colR - textL) -- phone: the coin is on the name line or in the button column, never beside the bar
-			local bar = Draw.bar(btn, "Progress", barW2, barH, z + 1)
-			bar.Frame.AnchorPoint = Vector2.new(0, 0.5)
-			bar.Frame.Position = UDim2.fromOffset(textL, cy + 14)
-			bar:Set(
-				pct,
-				(
-					if tiny
-						then string.gsub(QuestLogic.progressText(row.Progress, row.Goal), " ", "")
-						else QuestLogic.progressText(row.Progress, row.Goal)
-				),
-				complete
-			)
-			nameY = 17
-		end
-		local colW = math.max(40, (nameR or colR - 8) - textL)
-		local name = Parts.text(btn, {
-			Name = "Name",
-			Text = row.Name,
-			TextSize = if full then 24 else if tiny then 15 else 18,
-			TextXAlignment = Enum.TextXAlignment.Left,
-			AnchorPoint = Vector2.new(0, 0.5),
-			Position = UDim2.fromOffset(textL, nameY),
-			Size = UDim2.fromOffset(colW, 26),
-			ZIndex = z + 1,
-		}, 2)
-		Parts.fit(name, colW, name.TextSize, if tiny then 9 else 12)
-		if full then
-			local desc = Parts.text(btn, {
-				Name = "Desc",
-				Text = row.Desc,
-				TextSize = 19,
-				TextXAlignment = Enum.TextXAlignment.Left,
-				AnchorPoint = Vector2.new(0, 0.5),
-				Position = UDim2.fromOffset(textL + 2, 43),
-				Size = UDim2.fromOffset(colW, 22),
-				ZIndex = z + 1,
-			}, 2)
-			Parts.fit(desc, colW, 19, 12)
-		end
+			Size = UDim2.fromOffset(cw, rowH),
+		}, { Radius = 10 })
+		setOns[row.Id] = setOn
+		setOn(row.Id == selected)
 		btn.Activated:Connect(function()
 			if onSelect then
 				onSelect(row.Id, row)
 			end
 		end)
+		local z = btn.ZIndex + 1
+		local cy = rowH / 2
+		local complete = row.Goal > 0 and row.Progress >= row.Goal
+
+		-- Right to left: claim slot, gem, coin, bar; the left column keeps the rest.
+		local claimW = if narrow then 72 else 93
+		local claimH = if narrow then 32 else 34
+		local claimX = cw - 8 - claimW
+		if state == "Claim" then
+			claimButton(btn, row, claimX, cy, claimW, claimH, if narrow then 17 else 21)
+		elseif state == "Claimed" then
+			local pill = Parts.Pill(btn, "Equipped", "CLAIMED", {
+				Name = "Claimed",
+				InkW = claimW,
+				InkH = if narrow then 26 else 30,
+				TextSize = if narrow then 15 else 19,
+				CheckLeft = true,
+			})
+			pill.AnchorPoint = Vector2.new(0, 0.5)
+			pill.Position = UDim2.fromOffset(claimX, cy)
+		end
+		local noButton = state == "Progress"
+		local reserve = if narrow then not noButton else not (row.Section ~= "Daily" and noButton) -- weekly / story rows run to the edge
+		local right = if reserve then claimX - 14 else cw - 18
+		local gold = "+" .. QuestLogic.format(row.Gold or 0)
+		local gems = if row.Gems then "+" .. QuestLogic.format(row.Gems) else nil
+
+		local barLeft, barW
+		local textL = if narrow then 46 else 66
+		local nameR
+		if not narrow then
+			local function reward(ref, text: string, color: Color3, edge: number): number
+				local tw = math.ceil(Kit.measure(text, 22)) + 2
+				local left = edge - (26 + 4 + tw)
+				icon(btn, ref, {
+					Name = "RewardIcon",
+					AnchorPoint = Vector2.new(0, 0.5),
+					Position = UDim2.fromOffset(left, cy),
+					Size = UDim2.fromOffset(26, 26),
+					ZIndex = z,
+				})
+				Kit.text(btn, {
+					Name = "RewardText",
+					Text = text,
+					TextSize = 22,
+					TextColor3 = color,
+					TextXAlignment = Enum.TextXAlignment.Left,
+					TextTruncate = Enum.TextTruncate.None,
+					AnchorPoint = Vector2.new(0, 0.5),
+					Position = UDim2.fromOffset(left + 30, cy),
+					Size = UDim2.fromOffset(tw, 28),
+					ZIndex = z,
+				}, 2)
+				return left
+			end
+			local edge = right
+			if gems then
+				edge = reward(HudSprites.Gem, gems, WHITE, edge) - 14
+			end
+			edge = reward(HudSprites.Coin, gold, Kit.CoinText, edge) - 14
+			barW = 150
+			barLeft = edge - barW
+			nameR = barLeft - 12
+			local bar = Kit.bar(btn, {
+				Name = "Progress",
+				AnchorPoint = Vector2.new(0, 0.5),
+				Position = UDim2.fromOffset(barLeft, cy),
+				Size = UDim2.fromOffset(barW, 22),
+				ZIndex = z,
+			}, if complete then Kit.Green else Kit.Yellow, 17)
+			bar:Set(
+				QuestLogic.percent(row.Progress, row.Goal),
+				QuestLogic.progressText(row.Progress, row.Goal),
+				if complete then Kit.Green else Kit.Yellow
+			)
+		else
+			-- phone: reward stack (coin over gem) right of the bar; the bar sits under the name
+			local lines = { { HudSprites.Coin, gold, Kit.CoinText } }
+			if gems then
+				table.insert(lines, { HudSprites.Gem, gems, Color3.new(1, 1, 1) })
+			end
+			local widest = 0
+			for _, l in lines do
+				widest = math.max(widest, math.ceil(Kit.measure(l[2], 15)) + 2)
+			end
+			local left = right - (18 + 3 + widest)
+			for i, l in lines do
+				local y = cy + (if #lines == 1 then 0 else (i - 1.5) * 20)
+				icon(btn, l[1], {
+					Name = "RewardIcon",
+					AnchorPoint = Vector2.new(0, 0.5),
+					Position = UDim2.fromOffset(left, y),
+					Size = UDim2.fromOffset(18, 18),
+					ZIndex = z,
+				})
+				Kit.text(btn, {
+					Name = "RewardText",
+					Text = l[2],
+					TextSize = 15,
+					TextColor3 = l[3],
+					TextXAlignment = Enum.TextXAlignment.Left,
+					TextTruncate = Enum.TextTruncate.None,
+					AnchorPoint = Vector2.new(0, 0.5),
+					Position = UDim2.fromOffset(left + 21, y),
+					Size = UDim2.fromOffset(widest, 20),
+					ZIndex = z,
+				}, 2)
+			end
+			nameR = left - 8
+			barLeft, barW = textL, math.max(40, nameR - textL)
+			local bar = Kit.bar(btn, {
+				Name = "Progress",
+				AnchorPoint = Vector2.new(0, 0.5),
+				Position = UDim2.fromOffset(barLeft, cy + 13),
+				Size = UDim2.fromOffset(barW, 16),
+				ZIndex = z,
+			}, if complete then Kit.Green else Kit.Yellow, 13)
+			bar:Set(
+				QuestLogic.percent(row.Progress, row.Goal),
+				QuestLogic.progressText(row.Progress, row.Goal),
+				if complete then Kit.Green else Kit.Yellow
+			)
+		end
+
+		-- Left column: icon, name (+ desc).
+		local isz = if narrow then 34 else 44
+		icon(btn, row.Icon, {
+			Name = "Icon",
+			AnchorPoint = Vector2.new(0, 0.5),
+			Position = UDim2.fromOffset(if narrow then 8 else 14, cy),
+			Size = UDim2.fromOffset(isz, isz),
+			ZIndex = z,
+		})
+		local colW = math.max(40, nameR - textL)
+		local name = Kit.text(btn, {
+			Name = "Name",
+			Text = row.Name,
+			TextSize = 14,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			AnchorPoint = Vector2.new(0, 0.5),
+			Position = UDim2.fromOffset(textL, if narrow then cy - 11 else 15),
+			Size = UDim2.fromOffset(colW, 22),
+			ZIndex = z,
+		}, 2)
+		Kit.fit(name, colW, 14, 9)
+		if not narrow then
+			local desc = Kit.text(btn, {
+				Name = "Desc",
+				Text = row.Desc,
+				TextSize = 11,
+				TextColor3 = Kit.Soft,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				AnchorPoint = Vector2.new(0, 0.5),
+				Position = UDim2.fromOffset(textL + 1, 37),
+				Size = UDim2.fromOffset(colW, 16),
+				ZIndex = z,
+			}, 1)
+			Kit.fit(desc, colW, 11, 8)
+		end
 	end
 
-	-- Rebuilds every section and row (counts are tiny); scroll offset is the controller's to keep.
+	-- Rebuilds every section and row (counts are tiny); the scroll offset is the controller's to keep.
 	local function rebuild()
 		for _, c in scroll:GetChildren() do
 			if not c:IsA("UIListLayout") and not c:IsA("UIPadding") then
 				c:Destroy()
 			end
 		end
-		table.clear(recs)
+		table.clear(setOns)
 		table.clear(heads)
-		local W = parent.Size.X.Offset
+		local W, H = parent.Size.X.Offset, parent.Size.Y.Offset
 		if W <= 0 then
 			return
 		end
-		local phone = W - PAD_L - PAD_R < 360
-		local padR = if phone then 32 else PAD_R -- phone: the selected glow (~15 px past the row) must end before the list's clip edge
-		local padL = if phone then 20 else PAD_L -- and a wider left inset, so the glow and ribbon tail clear the rim
-		pad.PaddingRight = UDim.new(0, padR)
-		pad.PaddingLeft = UDim.new(0, padL)
-		local cw = W - padL - padR
-		mode = if cw >= 700 then "full" elseif cw >= 360 then "mid" else "tiny"
-		barW = if cw >= 360 then 21 else 12
-		track.Size = UDim2.fromOffset(barW, parent.Size.Y.Offset)
-		track.Position = UDim2.new(1, if cw >= 360 then -7 else -6, 0, 0)
-		scroll.Position = UDim2.fromOffset(0, if cw >= 360 then 0 else -10) -- phone: the list starts under the toolbar's free strip
-		scroll.Size = UDim2.new(1, 0, 1, if cw >= 360 then 0 else 10)
-		barSkin(track, "ScrollTrack", barW)
+		narrow = W - PAD_L - PAD_R < 560
+		pad.PaddingRight = UDim.new(0, if narrow then 20 else PAD_R)
+		local cw = W - PAD_L - (if narrow then 20 else PAD_R)
+		sbar.Layout(H - 14, if narrow then 12 else 16, if narrow then 3 else 5, 7)
 		local order, shown = 0, 0
 		for _, sec in SECTIONS do
 			local list = {}
@@ -433,7 +383,6 @@ function Quests.new(parent)
 			end
 		end
 		empty.Visible = #rows == 0
-		updateBar()
 	end
 	table.insert(conns, parent:GetPropertyChangedSignal("Size"):Connect(rebuild))
 
@@ -443,14 +392,19 @@ function Quests.new(parent)
 	end
 	function api:SetResetText(daily: string?, weekly: string?)
 		resetText.Daily, resetText.Weekly = daily, weekly
-		for id, head in heads do
-			setReset(head, resetText[id])
+		for id, timer in heads do
+			if resetText[id] and resetText[id] ~= "" then
+				timer.Frame.Visible = true
+				timer:Set("Resets in:", resetText[id])
+			else
+				timer.Frame.Visible = false
+			end
 		end
 	end
 	function api:SetSelected(id: string?)
 		selected = id
-		for rid, rec in recs do
-			skinRow(rec, rid == id)
+		for rid, setOn in setOns do
+			setOn(rid == id)
 		end
 	end
 	function api:OnSelect(cb)

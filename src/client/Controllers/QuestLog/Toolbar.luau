@@ -1,24 +1,19 @@
--- Quest Log toolbar, one geometry for all three tabs: search box, "Show:" label, dropdown (+ optional count text).
--- Toolbar.new(Slots.Toolbar) -> :SetPlaceholder :SetQuery :OnSearch(cb) :SetLabel :SetOptions(list, activeId) :OnOption(cb)
--- :SetCount(text|nil) :Destroy. Visual only. The slot is design px (the shell sets its size in offsets).
+-- Quest Log toolbar, one geometry for all three tabs: search field, "Show:" / "SORT:" label, dropdown (+ optional "24 / 48" count).
+-- Toolbar.new(Slots slot) -> :SetPlaceholder :SetQuery :OnSearch(cb) :SetLabel(text) :SetOptions(list, activeId) :OnOption(cb)
+-- :SetCount(text|nil) :Destroy. Visual only. The slot is design px (QuestLog sets its size in offsets). Code-drawn (plan D1).
+-- Name paths: QuestToolbar.Search (.Input), .Dropdown, .OptionMenu, .Count.
 
 local UserInputService = game:GetService("UserInputService")
 
 local UiKit = require(script.Parent.Parent.UiKit)
-local Parts = require(script.Parent.Parent.Bag.Parts)
-local Draw = require(script.Parent.Draw)
+local Chrome = require(script.Parent.Parent.Bag.Chrome)
+local Kit = require(script.Parent.Kit)
 
 local make = UiKit.make
-local Bag, Q = Draw.Bag, Draw.Q
 
-local CY = 34 -- control centre line in the 68 px slot (reference: search centre 33.5 below the panel top)
-local INK_H = 43 -- visible control height (reference)
-local PAD_L, PAD_R = 24, 20
-local HIT_H, ROW_H = 56, 56
+local FIELD_H = 40 -- visible field height (mockup 230..270)
+local PAD_L, PAD_R = 2, 9
 local WHITE = Color3.new(1, 1, 1)
--- Q.Dropdown with tight stretch caps (round end 50, chevron cap 90): the measured 114 / 189 caps squeezed the chevron into a tall V on narrow pills
-local DROPDOWN =
-	{ Image = Q.Dropdown.Image, Size = Q.Dropdown.Size, Ink = Q.Dropdown.Ink, Slice = Rect.new(50, 38, 280, 48) }
 
 local Toolbar = {}
 
@@ -26,10 +21,10 @@ function Toolbar.new(parent)
 	local api, conns = {}, {}
 	local onSearch, onOption
 	local options, active = {}, nil
-	local placeholder, labelText, countText, prefix = "Search...", "Show:", nil, ""
-	local compactNow = false -- the "Sort: " prefix needs the wide pill
+	local placeholder, labelText, countText = "Search...", "Show:", nil
+	local compactNow = false
 	local muted = false
-	local ddW = 203
+	local ddW, cy = 203, 26
 
 	local root = make("Frame", {
 		Name = "QuestToolbar",
@@ -37,64 +32,91 @@ function Toolbar.new(parent)
 		Size = UDim2.fromScale(1, 1),
 		ZIndex = parent.ZIndex,
 	}, parent)
+	local z = root.ZIndex + 1
 
-	local search = Draw.img(root, { Name = "Search" })
-	local mag = Draw.img(root, { Name = "Magnifier", ZIndex = search.ZIndex + 1 })
+	local search = Chrome.field(root, { Name = "Search", AnchorPoint = Vector2.new(0, 0.5), Radius = 20, ZIndex = z })
+	local mag = Kit.magnifier(
+		search,
+		{ Size = UDim2.fromOffset(26, 26), Position = UDim2.fromOffset(14, FIELD_H / 2), ZIndex = z + 1 }
+	)
 	local input = make("TextBox", {
 		Name = "Input",
 		BackgroundTransparency = 1,
 		ClearTextOnFocus = false,
 		Font = Enum.Font.FredokaOne,
-		TextSize = 20,
+		TextSize = 26,
 		TextColor3 = WHITE,
-		PlaceholderColor3 = Color3.fromRGB(196, 169, 180),
+		PlaceholderColor3 = Color3.fromRGB(160, 160, 168),
 		Text = "",
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextTruncate = Enum.TextTruncate.AtEnd,
 		AnchorPoint = Vector2.new(0, 0.5),
-		ZIndex = search.ZIndex + 2,
+		ZIndex = z + 2,
 	}, root)
-	local label = Parts.text(root, {
+	local label = Kit.text(root, {
 		Name = "ShowLabel",
-		TextSize = 26, -- ref "Show:" cap ~12
+		TextSize = 24,
 		AnchorPoint = Vector2.new(1, 0.5),
 		TextXAlignment = Enum.TextXAlignment.Right,
+		TextTruncate = Enum.TextTruncate.None,
+		ZIndex = z,
 	}, 2)
-	local countPill = Draw.img(root, { Name = "CountPill", Visible = false }) -- ref: the count sits in a dark rounded pill
-	local count = Parts.text(root, {
+	local count = Kit.text(root, {
 		Name = "Count",
 		TextSize = 22,
-		AnchorPoint = Vector2.new(0.5, 0.5),
+		AnchorPoint = Vector2.new(1, 0.5),
+		TextXAlignment = Enum.TextXAlignment.Right,
+		TextTruncate = Enum.TextTruncate.None,
 		Visible = false,
-		ZIndex = countPill.ZIndex + 1,
+		ZIndex = z,
 	}, 2)
 
-	-- Dropdown: a transparent touch-size button (hover/press scale applies to its children) over the sliced sprite.
-	local hit = Draw.img(root, { Name = "Dropdown", AnchorPoint = Vector2.new(1, 0.5) }, "ImageButton")
-	Parts.interact(hit)
-	local skin = Draw.img(hit, { Name = "Skin" })
-	local ddText = Parts.text(
-		hit,
-		{ Name = "Text", TextSize = 22, AnchorPoint = Vector2.new(0.5, 0.5), ZIndex = skin.ZIndex + 1 },
-		2
-	)
+	-- Dropdown: a transparent touch-size button over the code-drawn pill.
+	local hit = make("TextButton", {
+		Name = "Dropdown",
+		BackgroundTransparency = 1,
+		Text = "",
+		AnchorPoint = Vector2.new(1, 0.5),
+		ZIndex = z + 3,
+	}, root)
+	local pill = Chrome.field(hit, { Name = "Pill", AnchorPoint = Vector2.new(0.5, 0.5), Radius = 20, ZIndex = z + 3 })
+	pill.BackgroundColor3 = Color3.fromRGB(70, 69, 72)
+	UiKit.wire(hit, function(state)
+		pill.BackgroundColor3 = if state == "Pressed"
+			then Color3.fromRGB(52, 51, 55)
+			elseif state == "Hover" then Color3.fromRGB(84, 83, 88)
+			else Color3.fromRGB(70, 69, 72)
+	end)
+	local ddText = Kit.text(pill, {
+		Name = "Text",
+		TextSize = 22,
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.fromOffset(14, FIELD_H / 2),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		ZIndex = z + 4,
+	}, 2)
+	local chevron = Kit.chevron(pill, {
+		Size = UDim2.fromOffset(18, 18),
+		Position = UDim2.new(1, -22, 0.5, 0),
+		ZIndex = z + 4,
+	})
 
-	local menu = Draw.img(root, {
+	local menu = Chrome.panel(root, {
 		Name = "OptionMenu",
 		Visible = false,
 		AnchorPoint = Vector2.new(1, 0),
+		BackgroundColor3 = Kit.PanelFill,
+		Radius = 14,
 		ZIndex = 45,
 		Active = true,
-	}, "ImageButton")
-	menu.AutoButtonColor = false
-	Parts.skin(menu, "LeftPanel", 0.5)
+	})
 	make("UIPadding", {
-		PaddingLeft = UDim.new(0, 10),
-		PaddingRight = UDim.new(0, 10),
-		PaddingTop = UDim.new(0, 10),
-		PaddingBottom = UDim.new(0, 10),
+		PaddingLeft = UDim.new(0, 8),
+		PaddingRight = UDim.new(0, 8),
+		PaddingTop = UDim.new(0, 8),
+		PaddingBottom = UDim.new(0, 8),
 	}, menu)
-	make("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }, menu)
+	make("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, menu)
 
 	local function closeMenu()
 		menu.Visible = false
@@ -103,90 +125,94 @@ function Toolbar.new(parent)
 		ddText.Text = ""
 		for _, o in options do
 			if o.Id == active then
-				ddText.Text = if compactNow then string.match(o.Label, "^[^(]+"):gsub("%s+$", "") else prefix .. o.Label -- compact: "Progress", not "Progress (High → Low)"
+				-- compact: "Progress", not "Progress (High → Low)"
+				ddText.Text = if compactNow
+					then string.gsub(string.match(o.Label, "^[^(]+") or o.Label, "%s+$", "")
+					else o.Label
 			end
 		end
-		Parts.fit(ddText, ddText.Size.X.Offset, 22, if compactNow then 10 else 13)
+		Kit.fit(ddText, ddText.Size.X.Offset, 22, if compactNow then 10 else 12)
 	end
 
 	local function layout()
-		local W = parent.Size.X.Offset
-		if W <= 0 then
+		local W, H = parent.Size.X.Offset, parent.Size.Y.Offset
+		if W <= 0 or H <= 0 then
 			return
 		end
-		local inner = W - PAD_L - PAD_R
-		local compact = inner < 560
+		cy = H / 2
+		local compact = W < 560
 		compactNow = compact
-		local hasLabel = labelText ~= ""
-		ddW = if compact
-			then (if inner < 300 then 112 else 128) -- phone: short value ("All", "Progress", "Level")
-			elseif not hasLabel then 284 -- ref MASTERY: one wide "Sort: ..." pill
-			elseif countText then 245 -- ref ACHIEVEMENTS: SORT: + dropdown, then the count at the right end
-			else 203
-		label.Visible = hasLabel and not compact
-		label.Text = labelText
-		label.Size = UDim2.fromOffset(70, HIT_H)
+		local hasLabel = labelText ~= "" and not compact
+		ddW = if compact then (if W < 300 then 112 else 128) elseif labelText == "Show:" then 203 else 230
+		local hitH = math.max(FIELD_H, Kit.minHit)
+		hit.Size = UDim2.fromOffset(ddW + 8, hitH)
+		pill.Size = UDim2.fromOffset(ddW, FIELD_H)
+		pill.Position = UDim2.fromOffset((ddW + 8) / 2, hitH / 2)
 		local edge = W - PAD_R
-		local showCount = countText ~= nil and not compact -- phone: no room, the grid shows the cells themselves
-		local right = if showCount then edge - (if compact then 84 else 132) else edge -- ink right edge of the dropdown
-		hit.Size = UDim2.fromOffset(ddW + 8, HIT_H)
-		hit.Position = UDim2.fromOffset(right + 4, CY)
-		-- uniform scale only: when the pill is narrower than the art's caps the height shrinks with it (never stretches the chevron)
-		-- the sprite's own caps whenever the pill is wide enough for them at full height (a clean chevron); tight caps only on narrow pills
-		local function caps(rec)
-			return rec.Slice.Min.X + rec.Size.X - rec.Slice.Max.X - (rec.Size.X - rec.Ink.Width)
-		end
-		local rec = if ddW >= caps(Q.Dropdown) * INK_H / Q.Dropdown.Ink.Height then Q.Dropdown else DROPDOWN
-		local dk = math.min(INK_H / rec.Ink.Height, ddW / caps(rec))
-		Draw.apply(skin, rec, (ddW + 8) / 2, HIT_H / 2, ddW, rec.Ink.Height * dk, dk)
-		local textW = if compact then ddW - 58 else ddW - 62 -- compact: clear of the chevron
-		ddText.Position = UDim2.fromOffset(4 + (if compact then 10 else 12) + textW / 2, HIT_H / 2)
-		ddText.Size = UDim2.fromOffset(textW, INK_H)
-		setLabelText()
-		local left = right - ddW -- running left edge of the right cluster
-		if hasLabel and not compact then
-			label.Position = UDim2.fromOffset(left - 14, CY)
-			left -= 14 + 66
-		end
+		local showCount = countText ~= nil and not compact
 		count.Visible = showCount
-		countPill.Visible = showCount
+		local right = edge
 		if showCount then
 			count.Text = countText
-			local pw = if compact then 74 else 118
-			count.Size = UDim2.fromOffset(pw - 10, HIT_H)
-			count.Position = UDim2.fromOffset(edge - pw / 2, CY)
-			Draw.apply(countPill, Bag.Search, edge - pw / 2, CY, pw, 40)
+			count.Size = UDim2.fromOffset(74, H)
+			count.Position = UDim2.fromOffset(edge, cy)
+			right = edge - 74 - 10
 		end
-		local searchW = math.max(if compact then 70 else 120, left - (if compact then 8 else 24) - PAD_L)
-		Draw.apply(search, Bag.Search, PAD_L + searchW / 2, CY, searchW, INK_H)
-		local pad = if compact then 36 else 52 -- text start inside the box
-		Draw.apply(mag, Bag.Magnifier, PAD_L + (if compact then 8 else 16) + 13, CY, 26, 26)
-		input.Position = UDim2.fromOffset(PAD_L + pad, CY)
-		input.Size = UDim2.fromOffset(searchW - pad - (if compact then 8 else 14), HIT_H)
-		input.TextSize = if compact then 18 else 20
+		hit.Position = UDim2.fromOffset(right + 4, cy)
+		ddText.Size = UDim2.fromOffset(ddW - (if compact then 38 else 52), FIELD_H)
+		chevron.Position = UDim2.new(1, -(if compact then 16 else 22), 0.5, 0)
+		setLabelText()
+		local left = right - ddW
+		label.Visible = hasLabel
+		label.Text = labelText
+		if hasLabel then
+			label.Size = UDim2.fromOffset(80, H)
+			label.Position = UDim2.fromOffset(left - 12, cy)
+			left -= 12 + 70
+		end
+		local want = if labelText == "SORT:" then 338 elseif labelText == "Sort:" then 423 else 424 -- mockup widths per tab
+		local searchW = math.max(
+			if compact then 70 else 120,
+			if compact then left - 8 - PAD_L else math.min(want, left - 22 - PAD_L)
+		)
+		search.Position = UDim2.fromOffset(PAD_L, cy)
+		search.Size = UDim2.fromOffset(searchW, FIELD_H)
+		mag.Position = UDim2.fromOffset(if compact then 8 else 14, FIELD_H / 2)
+		local pad = if compact then 36 else 50 -- text start inside the field
+		input.Position = UDim2.fromOffset(PAD_L + pad, cy)
+		input.Size = UDim2.fromOffset(searchW - pad - 12, math.max(FIELD_H, Kit.minHit))
+		input.TextSize = if compact then 23 else 26
 		-- phone: "Search..." when it fits, else just the magnifier
 		input.PlaceholderText = if not compact then placeholder elseif searchW - pad - 8 >= 86 then "Search..." else ""
-		menu.Position = UDim2.fromOffset(right + 4, CY + HIT_H / 2 + 2)
+		menu.Position = UDim2.fromOffset(right + 4, cy + hitH / 2)
 	end
 	table.insert(conns, parent:GetPropertyChangedSignal("Size"):Connect(layout))
 	layout()
 
 	local function openMenu()
 		for _, c in menu:GetChildren() do
-			if c:IsA("ImageButton") then
+			if c:IsA("TextButton") then
 				c:Destroy()
 			end
 		end
-		local w = math.max(ddW + 8, 200)
+		local rowH = math.max(44, Kit.minHit)
+		local w = math.max(ddW + 8, 210)
 		for i, o in options do
-			local row = Parts.button(menu, {
+			local row, setOn = Kit.card(menu, {
 				Name = "Option_" .. o.Id,
-				Style = if o.Id == active then "Gold" else "Purple",
-				Label = o.Label,
+				Size = UDim2.fromOffset(w - 16, rowH),
+				LayoutOrder = i,
+			}, { Radius = 10 })
+			setOn(o.Id == active)
+			local text = Kit.text(row, {
+				Name = "Label",
+				Text = o.Label,
 				TextSize = 22,
-				Size = UDim2.fromOffset(w - 20, ROW_H),
-				Order = i,
-			})
+				Size = UDim2.fromScale(1, 1),
+				TextColor3 = if o.Id == active then Kit.Gold else WHITE,
+				ZIndex = row.ZIndex + 1,
+			}, 2)
+			Kit.fit(text, w - 40, 22, 12)
 			row.Activated:Connect(function()
 				closeMenu()
 				if o.Id ~= active then
@@ -198,7 +224,7 @@ function Toolbar.new(parent)
 				end
 			end)
 		end
-		menu.Size = UDim2.fromOffset(w, #options * ROW_H + (#options - 1) * 8 + 20)
+		menu.Size = UDim2.fromOffset(w, #options * rowH + (#options - 1) * 6 + 16)
 		menu.Visible = #options > 0
 	end
 	table.insert(
@@ -254,9 +280,8 @@ function Toolbar.new(parent)
 	function api:OnSearch(cb)
 		onSearch = cb
 	end
-	function api:SetLabel(s: string, dropdownPrefix: string?)
-		labelText, prefix = s, dropdownPrefix or ""
-		label.Text = s
+	function api:SetLabel(s: string)
+		labelText = s
 		layout()
 	end
 	function api:SetOptions(list, activeId: string?)
@@ -269,6 +294,9 @@ function Toolbar.new(parent)
 	end
 	function api:SetCount(text: string?)
 		countText = text
+		layout()
+	end
+	function api:Relayout()
 		layout()
 	end
 	function api:Destroy()

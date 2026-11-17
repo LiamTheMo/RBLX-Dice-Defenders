@@ -1,91 +1,96 @@
--- Quest Log, MASTERY tab: one row per dice (die, name, mastery pill + XP bar, four reward slots) in a ScrollingFrame with the
--- Bag's styled scrollbar. Mastery.new(Slots.Grid) -> :SetRows(rows) :SetSelected(id) :OnSelect(cb(id, row)) :SetEmptyText(s)
--- :SetVisible(b) :SetScroll(n) :Destroy(). Mastery.pill / Mastery.bar are shared with the Detail.
--- rows = QuestLogic.masteryRows (Id, Name, Level, Xp, XpGoal, Art, Tint?, Milestones), already sorted/filtered by the controller.
--- Design px. Layout keys on the content width: full (>= 700: pill + 4 slots), mid (360-700: no pill, small slots), tiny (< 360: no slots).
+-- Quest Log, MASTERY tab: one row per owned die (art, name, "Mastery Lv. n" pill, XP bar, four milestone reward slots) in a ScrollingFrame
+-- with a code-drawn scrollbar. Mastery.new(grid) -> :SetRows(rows) :SetSelected(id) :OnSelect(cb(id, row)) :SetEmptyText(s) :SetVisible(b)
+-- :SetScroll(n) :Destroy(). Mastery.pill(parent, w, h, level, textSize) builds the purple level pill (the Detail reuses it).
+-- rows = QuestLogic.masteryRows (Id, Name, Level, Xp, XpGoal, Art, Tint?, Milestones), already sorted / filtered by the controller.
+-- Slot states: Done = claimed (check badge), Claimable (gold rim, no badge), Locked (padlock badge).
+-- Design px. Layout keys on the width: full (>= 560: pill + 4 slots) or narrow (phones: no pill, small slots).
+-- Name paths: MasteryTab.MasteryScroll.Row_<DieId> (.Die .Name .Pill .XpBar .Slot<Lv>).
 
 local UiKit = require(script.Parent.Parent.Parent.UiKit)
 local Parts = require(script.Parent.Parent.Parent.Bag.Parts)
+local Chrome = require(script.Parent.Parent.Parent.Bag.Chrome)
+local Shared = require(script.Parent.Parent.Parent.SharedSprites)
 local QuestLogic = require(script.Parent.Parent.QuestLogic)
-local Draw = require(script.Parent.Parent.Draw)
-local WHITE = Color3.new(1, 1, 1)
+local Kit = require(script.Parent.Parent.Kit)
+local Q = require(script.Parent.Parent.QuestSprites)
 
 local make = UiKit.make
-local Bag, Q = Draw.Bag, Draw.Q
+local WHITE = Color3.new(1, 1, 1)
 
-local PAD_L, PAD_R, PAD_T, PAD_B = 14, 30, 10, 16 -- left/top >= the selected glow; right = scrollbar gutter
-local GAP, SEL = 5, 8 -- ref: rows 96 tall on a 101 pitch
-local BAR = { ScrollTrack = Rect.new(19, 65, 22, 227) }
-
-local function barSkin(inst, name: string, w: number)
-	local s = Bag[name]
-	inst.Image = s.Image
-	inst.ScaleType = Enum.ScaleType.Slice
-	inst.SliceCenter = BAR[name]
-	inst.SliceScale = w / s.Size.X
-end
+local PAD_L, PAD_R, PAD_T, PAD_B = 6, 30, 2, 0 -- right = scrollbar gutter
+local ROW_H, GAP = 76, 6
 
 local Mastery = {}
 
--- "Mastery Lv. N" pill of width w (height by the sprite aspect, crown baked into the art). pill.Frame; pill:Set(level).
-function Mastery.pill(parent, name: string, w: number, z: number)
-	local rec = Q.PillMasteryBlank
-	local h = w * rec.Ink.Height / rec.Ink.Width
-	local frame = Draw.img(parent, { Name = name, Size = UDim2.fromOffset(w, h), ZIndex = z }, "Frame")
-	local skin = Draw.img(frame, { Name = "Skin", ZIndex = z + 1 })
-	Draw.apply(skin, rec, w / 2, h / 2, w, h)
-	local size = math.max(11, math.floor(w * 0.112)) -- ref "Mastery Lv. 12" ink 114-126 wide
-	local avail = math.floor(w * 0.66)
-	local label = Parts.text(frame, {
-		Name = "Text",
-		TextSize = size,
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromOffset(math.floor(w * 0.6), math.floor(h / 2)),
-		Size = UDim2.fromOffset(avail, h),
-		ZIndex = z + 2,
-	}, 2)
-	local pill = { Frame = frame, Height = h }
-	function pill:Set(level: number)
-		label.Text = "Mastery Lv. " .. level
-		Parts.fit(label, avail, size, 10)
-	end
-	return pill
+-- Purple "Mastery Lv. n" pill with the crown at the left (live text).
+function Mastery.pill(parent, w: number, h: number, level: number, textSize: number)
+	return Parts.Pill(
+		parent,
+		"Purple",
+		"Mastery Lv. " .. level,
+		{ Name = "LevelPill", InkW = w, InkH = h, TextSize = math.floor(textSize * Kit.S), Icon = Q.Crown }
+	)
 end
 
--- XP bar w x h: MasteryTrack + MasteryFill (sized by width) with "6,540 / 8,000" centred. bar.Frame; bar:Set(xp, goal).
-function Mastery.bar(parent, name: string, w: number, h: number, z: number, textSize: number?)
-	local frame = Draw.img(parent, { Name = name, Size = UDim2.fromOffset(w, h), ZIndex = z }, "Frame")
-	local track = Draw.img(frame, { Name = "Track", ZIndex = z + 1 })
-	Draw.apply(track, Q.MasteryTrack, w / 2, h / 2, w, h)
-	local fill = Draw.img(frame, { Name = "Fill", ZIndex = z + 2 })
-	local size = textSize or math.max(12, math.floor(h * 0.55))
-	local label = Parts.text(frame, {
-		Name = "Text",
+-- One milestone slot of s x s centred at (cx, cy) in `parent`: reward icon over "Lv. n", state badge top right.
+function Mastery.slot(parent, m, s: number, cx: number, cy: number, z: number)
+	local ready = m.State == "Claimable"
+	local slot = Chrome.strip(parent, {
+		Name = "Slot" .. m.Lv,
 		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.new(1, -12, 1, 0),
-		TextSize = size,
-		ZIndex = z + 3,
-	}, 2)
-	local bar = { Frame = frame }
-	function bar:Set(xp: number, goal: number)
-		local inset = math.max(2, math.floor(h * 0.14))
-		local fw = math.floor((w - 2 * inset) * QuestLogic.percent(xp, goal) + 0.5)
-		fill.Visible = fw > 0
-		if fw > 0 then
-			Draw.apply(fill, Q.MasteryFill, inset + fw / 2, h / 2, fw, h - 2 * inset)
-		end
-		label.Text = QuestLogic.progressText(xp, goal)
-		Parts.fit(label, w - 12, size, 10)
+		Position = UDim2.fromOffset(cx, cy),
+		Size = UDim2.fromOffset(s, s),
+		BackgroundColor3 = Color3.fromRGB(35, 35, 37),
+		Radius = 10,
+		ZIndex = z,
+	})
+	if ready then
+		local stroke = slot:FindFirstChildOfClass("UIStroke")
+		stroke.Color, stroke.Thickness = Kit.Gold, 3
+		stroke:SetAttribute("Rim", 3)
 	end
-	return bar
+	local ic = make("ImageLabel", {
+		Name = "Icon",
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0, s * 0.08),
+		Size = UDim2.fromOffset(s * 0.62, s * 0.58),
+		ZIndex = z + 1,
+	}, slot)
+	Kit.setIcon(ic, m.Icon)
+	local size = math.max(11, math.floor(s * 0.23))
+	local label = Kit.text(slot, {
+		Name = "Lv",
+		Text = "Lv. " .. m.Lv,
+		TextSize = size,
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -s * 0.05),
+		Size = UDim2.fromOffset(s - 4, size + 4),
+		TextTruncate = Enum.TextTruncate.None,
+		ZIndex = z + 1,
+	}, 2)
+	Kit.fit(label, s - 6, size, 9)
+	if not ready then
+		local b = math.floor(s * 0.27)
+		make("ImageLabel", {
+			Name = "Badge",
+			BackgroundTransparency = 1,
+			AnchorPoint = Vector2.new(1, 0),
+			Position = UDim2.new(1, -2, 0, 2),
+			Size = UDim2.fromOffset(b, b),
+			Image = (if m.State == "Done" then Shared.Tick else Shared.Padlock).Image,
+			ScaleType = Enum.ScaleType.Fit,
+			ZIndex = z + 3,
+		}, slot)
+	end
+	return slot
 end
 
 function Mastery.new(parent)
 	local api, conns = {}, {}
 	local rows, selected, onSelect = {}, nil, nil
-	local recs = {} -- recs[id] = { skin, w, h }
-	local barW = 21
+	local setOns = {}
+	local narrow = false
 
 	local root = make("Frame", {
 		Name = "MasteryTab",
@@ -102,7 +107,7 @@ function Mastery.new(parent)
 		CanvasSize = UDim2.new(),
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		ScrollingDirection = Enum.ScrollingDirection.Y,
-		ScrollBarThickness = 0, -- the styled bar below replaces the native one; wheel, touch and drag still scroll
+		ScrollBarThickness = 0, -- the code-drawn bar below replaces the native one; wheel, touch and drag still scroll
 		ScrollBarImageTransparency = 1, -- a 0-thickness bar still draws a 1 px hairline
 		ZIndex = root.ZIndex + 1,
 	}, root)
@@ -113,170 +118,119 @@ function Mastery.new(parent)
 		PaddingBottom = UDim.new(0, PAD_B),
 	}, scroll)
 	make("UIListLayout", { Padding = UDim.new(0, GAP), SortOrder = Enum.SortOrder.LayoutOrder }, scroll)
-	local empty = Parts.text(root, {
+	local empty = Kit.text(root, {
 		Name = "EmptyLabel",
 		Text = "No dice yet",
 		TextSize = 24,
 		TextWrapped = true,
-		TextColor3 = Color3.fromRGB(205, 210, 235),
+		TextColor3 = Kit.Soft,
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
 		Size = UDim2.new(1, -60, 0, 80),
 		Visible = false,
 		ZIndex = scroll.ZIndex + 1,
 	})
-	local track = Draw.img(root, {
-		Name = "ScrollTrack",
-		AnchorPoint = Vector2.new(1, 0),
-		Visible = false,
-		ZIndex = scroll.ZIndex + 2,
-	})
-	local thumb = Draw.img(track, { Name = "Thumb", ZIndex = track.ZIndex + 1 })
+	local sbar = Kit.scrollbar(root, scroll, scroll.ZIndex + 2)
 
-	local function updateBar()
-		local h = parent.Size.Y.Offset
-		local y, maxY = scroll.CanvasPosition.Y, math.max(0, scroll.AbsoluteCanvasSize.Y - scroll.AbsoluteWindowSize.Y)
-		track.Visible = maxY > 1 and h > 0
-		local win, canvas = scroll.AbsoluteWindowSize.Y, math.max(1, scroll.AbsoluteCanvasSize.Y)
-		local thumbH = math.clamp(math.floor(h * win / canvas), 40, math.max(40, h))
-		Draw.thumb(thumb, barW, thumbH, math.floor((h - thumbH) * (if maxY > 0 then y / maxY else 0)))
-	end
-	table.insert(conns, scroll:GetPropertyChangedSignal("CanvasPosition"):Connect(updateBar))
-	table.insert(conns, scroll:GetPropertyChangedSignal("AbsoluteCanvasSize"):Connect(updateBar))
-
-	local function skinRow(rec, on: boolean)
-		local ex = if on then SEL else 0
-		Draw.apply(rec.skin, if on then Q.RowSelected else Q.MasteryRow, rec.w / 2, rec.h / 2, rec.w + ex, rec.h + ex)
-		rec.skin.ImageColor3 = if on then WHITE else Color3.fromRGB(205, 160, 200) -- mute the hot magenta rim
-	end
-
-	local function buildSlot(btn, m, s: number, cx: number, cy: number, z: number)
-		local skin = Draw.img(btn, { Name = "Slot" .. m.Lv, ZIndex = z })
-		local ready = m.State == "Claimable" -- the gold cell (the old Next look) and no badge
-		local grow = if ready then 8 else 0
-		Draw.apply(skin, if ready then Q.CellSelected else Q.SlotCopper, cx, cy, s + grow, s + grow)
-		local icon = Draw.img(btn, { Name = "Icon" .. m.Lv, ZIndex = z + 2 })
-		Draw.icon(icon, m.Icon, cx, cy - s * 0.13, s * 0.8, s * 0.78)
-		local size = math.max(11, math.floor(s * 0.25)) -- ref tile label ink 33 wide
-		local label = Parts.text(btn, {
-			Name = "Lv" .. m.Lv,
-			Text = "Lv. " .. m.Lv,
-			TextSize = size,
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.fromOffset(math.floor(cx), math.floor(cy + s * 0.32)),
-			Size = UDim2.fromOffset(s - 4, size + 4),
-			ZIndex = z + 2,
-		}, 2)
-		Parts.fit(label, s - 4, size, 9)
-		if ready then
-			return
-		end
-		local brec = if m.State == "Done" then Q.CheckCircle else Bag.Lock
-		local b = math.floor(s * 0.36)
-		local bw, bh = Draw.fitIn(brec, b, b)
-		local badge = Draw.img(btn, { Name = "Badge" .. m.Lv, ZIndex = z + 3 })
-		Draw.apply(badge, brec, cx + s / 2 - b / 2 + 2, cy - s / 2 + b / 2 - 2, bw, bh)
-	end
-
-	local function buildRow(row, order: number, cw: number, mode: string)
-		local full, tiny = mode == "full", mode == "tiny"
-		local rh = if full then 96 else 72
-		local btn = Draw.img(
-			scroll,
-			{ Name = "Row_" .. row.Id, LayoutOrder = order, Size = UDim2.fromOffset(cw, rh) },
-			"ImageButton"
-		)
-		Parts.interact(btn)
-		local skin = Draw.img(btn, { Name = "Skin" })
-		local rec = { skin = skin, w = cw, h = rh }
-		recs[row.Id] = rec
-		local z = skin.ZIndex + 1
-		local cy = rh / 2
-
-		local s = if full then 75 else 44 -- ref: slots ~80x82, 7 apart (a hair less: the panel is 20 px narrower)
-		local sGap = if full then 4 else 4
-		local slotsW = if tiny then 0 else 4 * s + 3 * sGap
-		local slotsL = cw - (if full then 14 else 8) - slotsW
-		local dieBox = if full then 82 else 46 -- ref: die ~80x83, 22 from the row edge
-		local dieL = if full then 20 else 8
-		local die = Draw.img(btn, { Name = "Die", ImageColor3 = row.Tint or WHITE, ZIndex = z })
-		Draw.icon(die, row.Art, dieL + dieBox / 2, cy, dieBox, dieBox)
-
-		local textL = dieL + dieBox + 8
-		local clusterR = if tiny then cw - 8 else slotsL - 8
-		local clusterW, clusterL
-		local nameW
-		if full then
-			clusterW = 186 -- ref XP bar 186 wide
-			clusterL = clusterR - clusterW
-			nameW = math.max(40, clusterL - 4 - textL)
-		else
-			clusterL, clusterW = textL, math.max(60, clusterR - textL)
-		end
-
-		local nameLabel
-		if full then
-			nameLabel = Parts.text(btn, {
-				Name = "Name",
-				Text = row.Name,
-				TextSize = 27,
-				TextWrapped = true,
-				TextXAlignment = Enum.TextXAlignment.Left,
-				AnchorPoint = Vector2.new(0, 0.5),
-				Position = UDim2.fromOffset(textL, cy),
-				Size = UDim2.fromOffset(nameW, 52),
-				ZIndex = z,
-			}, 3)
-			local longest = ""
-			for word in string.gmatch(row.Name, "%S+") do
-				if #word > #longest then
-					longest = word
-				end
-			end
-			local one = Parts.fitSize(row.Name, nameW, 27, 1)
-			nameLabel.TextSize = if one >= 19 then one else Parts.fitSize(longest, nameW, 27, 12) -- one line, else two (never mid-word)
-		else
-			nameLabel = Parts.text(btn, {
-				Name = "Name",
-				Text = row.Name,
-				TextSize = if tiny then 15 else 17,
-				TextXAlignment = Enum.TextXAlignment.Left,
-				AnchorPoint = Vector2.new(0, 0.5),
-				Position = UDim2.fromOffset(clusterL, cy - 16),
-				Size = UDim2.fromOffset(clusterW, 24),
-				ZIndex = z,
-			}, 2)
-			Parts.fit(nameLabel, clusterW, nameLabel.TextSize, 11)
-		end
-
-		if full then
-			local pill = Mastery.pill(btn, "Pill", clusterW, z)
-			pill.Frame.AnchorPoint = Vector2.new(0.5, 0.5)
-			pill.Frame.Position = UDim2.fromOffset(clusterL + clusterW / 2, cy - 18)
-			pill:Set(row.Level)
-			local bar = Mastery.bar(btn, "XpBar", clusterW, 25, z, 21)
-			bar.Frame.AnchorPoint = Vector2.new(0.5, 0.5)
-			bar.Frame.Position = UDim2.fromOffset(clusterL + clusterW / 2, cy + 21)
-			bar:Set(row.Xp, row.XpGoal)
-		else
-			local bar = Mastery.bar(btn, "XpBar", clusterW, 20, z)
-			bar.Frame.AnchorPoint = Vector2.new(0, 0.5)
-			bar.Frame.Position = UDim2.fromOffset(clusterL, cy + 16)
-			bar:Set(row.Xp, row.XpGoal)
-		end
-
-		if not tiny then
-			for i, m in row.Milestones do
-				local cx = slotsL + (i - 1) * (s + sGap) + s / 2
-				buildSlot(btn, m, s, cx, cy, z)
-			end
-		end
-		skinRow(rec, row.Id == selected)
+	local function buildRow(row, order: number, cw: number)
+		local rh = math.max(if narrow then 64 else ROW_H, Kit.minHit)
+		local btn, setOn = Kit.card(scroll, {
+			Name = "Row_" .. row.Id,
+			LayoutOrder = order,
+			Size = UDim2.fromOffset(cw, rh),
+		}, { Radius = 12 })
+		setOns[row.Id] = setOn
+		setOn(row.Id == selected)
 		btn.Activated:Connect(function()
 			if onSelect then
 				onSelect(row.Id, row)
 			end
 		end)
+		local z = btn.ZIndex + 1
+		local cy = rh / 2
+		local dieName = Kit.dieName(row.Name)
+
+		local s = if narrow then 44 else 68 -- slot size
+		local sGap = if narrow then 4 else 9
+		local slotsW = 4 * s + 3 * sGap
+		local slotsL = cw - 8 - slotsW
+		local dieBox = if narrow then 42 else 68
+		local dieL = if narrow then 6 else 14
+		local die = make("ImageLabel", {
+			Name = "Die",
+			BackgroundTransparency = 1,
+			AnchorPoint = Vector2.new(0, 0.5),
+			Position = UDim2.fromOffset(dieL, cy),
+			Size = UDim2.fromOffset(dieBox, dieBox),
+			ImageColor3 = row.Tint or WHITE,
+			ZIndex = z,
+		}, btn)
+		Kit.setIcon(die, row.Art)
+		local textL = dieL + dieBox + (if narrow then 6 else 14)
+
+		if not narrow then
+			local clusterW = 168
+			local clusterL = slotsL - 20 - clusterW
+			local nameW = math.max(40, clusterL - 8 - textL)
+			local name = Kit.text(btn, {
+				Name = "Name",
+				Text = dieName,
+				TextSize = 28,
+				TextWrapped = true,
+				TextTruncate = Enum.TextTruncate.None,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				AnchorPoint = Vector2.new(0, 0.5),
+				Position = UDim2.fromOffset(textL, cy),
+				Size = UDim2.fromOffset(nameW, 68),
+				ZIndex = z,
+			}, 2)
+			local longest = ""
+			for word in string.gmatch(dieName, "%S+") do
+				if #word > #longest then
+					longest = word
+				end
+			end
+			local one = Kit.fitSize(dieName, nameW, 28, 1)
+			name.TextSize = if one >= 22 then one else Kit.fitSize(longest, nameW, 28, 12) -- one line, else two (never mid-word)
+			local pill = Mastery.pill(btn, clusterW, 28, row.Level, 17)
+			pill.AnchorPoint = Vector2.new(0, 0.5)
+			pill.Position = UDim2.fromOffset(clusterL, cy - 17)
+			pill.ZIndex = z
+			local xp = Kit.bar(btn, {
+				Name = "XpBar",
+				AnchorPoint = Vector2.new(0, 0.5),
+				Position = UDim2.fromOffset(clusterL, cy + 19),
+				Size = UDim2.fromOffset(clusterW, 22),
+				ZIndex = z,
+			}, Kit.Yellow, 16)
+			xp:Set(QuestLogic.percent(row.Xp, row.XpGoal), QuestLogic.progressText(row.Xp, row.XpGoal))
+		else
+			local colW = math.max(60, slotsL - 8 - textL)
+			local name = Kit.text(btn, {
+				Name = "Name",
+				Text = `{dieName} <font color="#FFC833">Lv. {row.Level}</font>`,
+				RichText = true,
+				TextSize = 17,
+				TextTruncate = Enum.TextTruncate.None,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				AnchorPoint = Vector2.new(0, 0.5),
+				Position = UDim2.fromOffset(textL, cy - 13),
+				Size = UDim2.fromOffset(colW, 24),
+				ZIndex = z,
+			}, 2)
+			name.TextSize = Kit.fitSize(`{dieName} Lv. {row.Level}`, colW, 17, 10)
+			local xp = Kit.bar(btn, {
+				Name = "XpBar",
+				AnchorPoint = Vector2.new(0, 0.5),
+				Position = UDim2.fromOffset(textL, cy + 14),
+				Size = UDim2.fromOffset(colW, 18),
+				ZIndex = z,
+			}, Kit.Yellow, 13)
+			xp:Set(QuestLogic.percent(row.Xp, row.XpGoal), QuestLogic.progressText(row.Xp, row.XpGoal))
+		end
+		for i, m in row.Milestones do
+			Mastery.slot(btn, m, s, slotsL + (i - 1) * (s + sGap) + s / 2, cy, z)
+		end
 	end
 
 	local function rebuild()
@@ -285,28 +239,19 @@ function Mastery.new(parent)
 				c:Destroy()
 			end
 		end
-		table.clear(recs)
-		local W = parent.Size.X.Offset
+		table.clear(setOns)
+		local W, H = parent.Size.X.Offset, parent.Size.Y.Offset
 		if W <= 0 then
 			return
 		end
-		local cw = W - PAD_L - PAD_R
-		local mode = if cw >= 700 then "full" elseif cw >= 360 then "mid" else "tiny"
-		-- the scrollbar gutter is only reserved when the rows overflow (ref: the 5 rows fill the panel width)
-		local rh = if mode == "full" then 96 else 72
-		local overflow = #rows * rh + math.max(0, #rows - 1) * GAP + PAD_T + PAD_B > parent.Size.Y.Offset
-		local padR = if overflow then PAD_R else 16
+		narrow = W - PAD_L - PAD_R < 560
+		local padR = if narrow then 20 else PAD_R
 		pad.PaddingRight = UDim.new(0, padR)
-		cw = W - PAD_L - padR
-		barW = if cw >= 360 then 21 else 12
-		track.Size = UDim2.fromOffset(barW, parent.Size.Y.Offset)
-		track.Position = UDim2.new(1, if cw >= 360 then -7 else -6, 0, 0)
-		barSkin(track, "ScrollTrack", barW)
+		sbar.Layout(H - 14, if narrow then 12 else 16, if narrow then 3 else 5, 7)
 		for i, row in rows do
-			buildRow(row, i, cw, mode)
+			buildRow(row, i, W - PAD_L - padR)
 		end
 		empty.Visible = #rows == 0
-		updateBar()
 	end
 	table.insert(conns, parent:GetPropertyChangedSignal("Size"):Connect(rebuild))
 
@@ -316,8 +261,8 @@ function Mastery.new(parent)
 	end
 	function api:SetSelected(id: string?)
 		selected = id
-		for rid, rec in recs do
-			skinRow(rec, rid == id)
+		for rid, setOn in setOns do
+			setOn(rid == id)
 		end
 	end
 	function api:OnSelect(cb)

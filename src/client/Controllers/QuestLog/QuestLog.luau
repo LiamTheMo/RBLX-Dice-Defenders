@@ -1,4 +1,4 @@
--- Quest Log controller: one Shell (banner, close, three tabs), the shared Toolbar and Detail, and the Quests list.
+-- Quest Log controller: one Shell (title, close, three tabs QUESTS / MASTERY / ACHIEVEMENTS), the shared Toolbar and Detail, and the three lists.
 -- QuestLog.new(parent, { hud = LobbyHud, toast = (string) -> () (unused) }) -> :Open(tab?) :Close() :Toggle() :IsOpen() :SetTab(n) :Destroy()
 -- Rows come from NetClient.LastMeta (quests, achievement progress, mastery) joined with NetClient.LastCatalog (achievement and
 -- mastery names, goals and rewards); re-rendered on NetClient.Meta.
@@ -9,8 +9,10 @@ local ContextActionService = game:GetService("ContextActionService")
 local GuiService = game:GetService("GuiService")
 
 local NetClient = require(script.Parent.Parent.NetClient)
+local UiKit = require(script.Parent.Parent.UiKit)
 local Shell = require(script.Parent.Parent.Bag.Shell)
-local Q = require(script.Parent.QuestSprites)
+local Chrome = require(script.Parent.Parent.Bag.Chrome)
+local Kit = require(script.Parent.Kit)
 local QuestLogic = require(script.Parent.QuestLogic)
 local Toolbar = require(script.Parent.Toolbar)
 local Detail = require(script.Parent.Detail)
@@ -21,7 +23,7 @@ local Mastery = require(script.Parent.Tabs.Mastery)
 local ACTION = "QuestLogClose"
 local DAY = 86400
 
-local PLACEHOLDERS = { "Search quests...", "Search achievements...", "Search dice mastery..." }
+local PLACEHOLDERS = { "Search quests...", "Search dice mastery...", "Search achievements..." } -- tab order: QUESTS, MASTERY, ACHIEVEMENTS
 local OPTIONS = {
 	{ Id = "All", Label = "All Quests" },
 	{ Id = "Daily", Label = "Daily" },
@@ -71,7 +73,7 @@ local function masteryModel(row, pending)
 	local id, state = QuestLogic.masteryClaim(row)
 	return {
 		Kind = "Mastery",
-		Title = "DICE MASTERY",
+		Title = "MASTERY DETAILS",
 		Name = row.Name,
 		ClaimId = id,
 		Body = row,
@@ -91,22 +93,61 @@ function QuestLog.new(parent, deps)
 			return hud:GetBagInsets()
 		end,
 		name = "QuestLog",
-		banner = {
-			text = "QUEST LOG",
-			textW = 0.523,
-			emblems = {
-				{ sprite = Q.BannerSeal, box = { 0.1085, 0.1111, 0.1382, 0.8148 }, side = true },
-				{ sprite = Q.BannerQuill, box = { 0.1925, -0.3827, 0.5904, 0.4938 } },
-			},
-		},
-		detail = Q.DetailPanel,
-		tabIconScale = 1.3, -- ref tab icon ink ~63-70 px (the Bag's 54.5 box shows ~45-51)
+		banner = { text = "QUESTS" },
+		free = true, -- one content box: the toolbar, list panel and detail panel are laid out here (the mockup's split is not the Bag's)
 	})
-	local toolbar = Toolbar.new(shell.Slots.Toolbar)
-	local quests = Quests.new(shell.Slots.Grid)
-	local achievements = Achievements.new(shell.Slots.Grid)
-	local mastery = Mastery.new(shell.Slots.Grid)
-	local detail = Detail.new(shell.Slots.Detail)
+	local content = shell.Slots.Content
+	local function slotFrame(name: string, par: Instance, z: number)
+		return UiKit.make("Frame", { Name = name, BackgroundTransparency = 1, ZIndex = z }, par)
+	end
+	local toolbarSlot = slotFrame("Toolbar", content, content.ZIndex + 5)
+	local listPanel = Chrome.panel(
+		content,
+		{ Name = "ListPanel", BackgroundColor3 = Kit.PanelFill, Radius = 14, Rim = 3, ZIndex = content.ZIndex + 1 }
+	)
+	local grid = slotFrame("Grid", content, content.ZIndex + 3)
+	local detailPanel = Chrome.panel(
+		content,
+		{ Name = "Detail", BackgroundColor3 = Kit.DetailFill, Radius = 14, Rim = 3, ZIndex = content.ZIndex + 1 }
+	)
+	local detailSlot = slotFrame("Slot", detailPanel, content.ZIndex + 3)
+	local toolbar = Toolbar.new(toolbarSlot)
+	local quests = Quests.new(grid)
+	local achievements = Achievements.new(grid)
+	local mastery = Mastery.new(grid)
+	local detail = Detail.new(detailSlot)
+	local scaleObj = shell.Scaled:FindFirstChildOfClass("UIScale")
+
+	-- Mockup split (1068 x 507 content): toolbar 52, list panel from y 61, detail panel 302 wide. Achievements draw their cards bare.
+	local function layout()
+		local W, H = content.Size.X.Offset, content.Size.Y.Offset
+		if W <= 0 or H <= 0 then
+			return
+		end
+		Kit.minHit = math.ceil(44 / math.max(0.1, scaleObj and scaleObj.Scale or 1))
+		local compact = content:GetAttribute("Compact") == true
+		local gap = if compact then 8 else 11
+		local detailW = math.clamp(math.floor(W * 0.283), 240, 304)
+		local leftW = W - detailW - gap
+		local tbH = math.max(52, Kit.minHit + 6)
+		local top = tbH + (if compact then 2 else 9)
+		local bare = shell:GetTab() == 3
+		toolbarSlot.Size = UDim2.fromOffset(leftW, tbH)
+		listPanel.Visible = not bare
+		listPanel.Position = UDim2.fromOffset(0, top)
+		listPanel.Size = UDim2.fromOffset(leftW, H - top - 4)
+		grid.Position = UDim2.fromOffset(if bare then 0 else 3, top + (if bare then 0 else 3))
+		grid.Size = UDim2.fromOffset(if bare then leftW else leftW - 6, H - top - 4 - (if bare then 0 else 6))
+		detailPanel.Position = UDim2.fromOffset(leftW + gap, 4)
+		detailPanel.Size = UDim2.fromOffset(detailW, H - 8)
+		detailSlot.Size = UDim2.fromOffset(detailW, H - 8)
+	end
+	table.insert(conns, content:GetPropertyChangedSignal("Size"):Connect(layout))
+	table.insert(conns, content:GetAttributeChangedSignal("Compact"):Connect(layout))
+	if scaleObj then
+		table.insert(conns, scaleObj:GetPropertyChangedSignal("Scale"):Connect(layout))
+	end
+	layout()
 
 	local rows, selected = {}, nil
 	local achItems, achSelected = {}, nil
@@ -198,9 +239,9 @@ function QuestLog.new(parent, deps)
 		if tab == 1 then
 			render()
 		elseif tab == 2 then
-			renderAch()
-		elseif tab == 3 then
 			renderMastery()
+		elseif tab == 3 then
+			renderAch()
 		end
 	end
 
@@ -279,20 +320,17 @@ function QuestLog.new(parent, deps)
 	local function showTab()
 		local tab = shell:GetTab()
 		toolbar:SetPlaceholder(PLACEHOLDERS[tab] or "Search...")
-		local default = if tab == 2 then "ProgressDesc" elseif tab == 3 then "LevelDesc" else "All"
+		local default = if tab == 3 then "ProgressDesc" elseif tab == 2 then "LevelDesc" else "All"
 		query, mode = "", default
 		achSelected, masterySelected = nil, nil
 		toolbar:SetQuery("")
-		if tab == 3 then
-			toolbar:SetLabel("", "Sort: ")
-		else
-			toolbar:SetLabel(if tab == 2 then "SORT:" else "Show:")
-		end
-		toolbar:SetOptions(if tab == 1 then OPTIONS elseif tab == 2 then ACH_OPTIONS else MASTERY_OPTIONS, default)
+		toolbar:SetLabel(if tab == 3 then "SORT:" elseif tab == 2 then "Sort:" else "Show:")
+		toolbar:SetOptions(if tab == 1 then OPTIONS elseif tab == 3 then ACH_OPTIONS else MASTERY_OPTIONS, default)
 		toolbar:SetCount(nil)
+		layout() -- the Achievements tab draws no list panel
 		quests:SetVisible(tab == 1)
-		achievements:SetVisible(tab == 2)
-		mastery:SetVisible(tab == 3)
+		mastery:SetVisible(tab == 2)
+		achievements:SetVisible(tab == 3)
 		if tab == 1 then
 			selected = nil
 		end
@@ -300,9 +338,9 @@ function QuestLog.new(parent, deps)
 	end
 
 	shell:SetTabs({
-		{ Id = "Quests", Label = "QUESTS", Icon = Q.IconTabScroll },
-		{ Id = "Achievements", Label = "ACHIEVEMENTS", Icon = Q.IconTabTrophy },
-		{ Id = "Mastery", Label = "MASTERY", Icon = Q.Crown },
+		{ Id = "Quests", Label = "QUESTS" },
+		{ Id = "Mastery", Label = "MASTERY" },
+		{ Id = "Achievements", Label = "ACHIEVEMENTS" },
 	})
 	shell:OnTab(showTab)
 	shell:OnClose(function()

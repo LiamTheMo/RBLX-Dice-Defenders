@@ -144,7 +144,7 @@ function Bag.new(parent, deps)
 	local function render(keepScroll: boolean?)
 		local tab, st = TABS[cur], state[cur]
 		safe("render", function()
-			local items = tab.GetItems(meta, catalog)
+			local items = tab.GetItems(meta, catalog, Sprites)
 			view = BagLogic.sort(BagLogic.filter(items, st.query), st.sort)
 			local found = false
 			for _, it in view do
@@ -162,6 +162,9 @@ function Bag.new(parent, deps)
 			toolbar:SetPlaceholder(tab.Placeholder)
 			toolbar:SetQuery(st.query)
 			toolbar:SetSortOptions(tab.SortOptions, st.sort)
+			if toolbar.SetCount then -- Parts.Toolbar shows it once it has the slot (open request in notes)
+				toolbar:SetCount(if tab.Count then tab.Count(meta, catalog) else nil)
+			end
 			grid:SetEmptyText(if st.query ~= "" then "No results" else tab.EmptyText)
 			grid:SetItems(view)
 			grid:SetSelected(st.selected)
@@ -339,12 +342,13 @@ function Bag.new(parent, deps)
 	local function showTab()
 		cur = shell:GetTab()
 		pending = nil
+		shell:SetDetailWidth(TABS[cur].DetailW)
 		render(true)
 	end
 	shell:SetTabs((function()
 		local list = {}
 		for i, t in TABS do
-			list[i] = { Id = t.Id, Label = t.Label, Icon = t.Icon }
+			list[i] = { Id = t.Id, Label = t.Label }
 		end
 		return list
 	end)())

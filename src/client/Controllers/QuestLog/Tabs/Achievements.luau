@@ -1,96 +1,67 @@
--- Quest Log, ACHIEVEMENTS tab: a grid of badge cells in one ScrollingFrame with the Bag's styled scrollbar.
--- Achievements.new(Slots.Grid) -> :SetItems(items) :SetSelected(id) :OnSelect(cb(id, item))
--- :SetEmptyText(s) :SetVisible(b) :SetScroll(n) :Destroy(). Achievements.pill(...) is the status pill the Detail reuses.
--- Design px. Columns = clamp(floor((W - 12) / 112), 2, 5); cells are 146x160 in the reference (CARD_W/H), 9-sliced at a fixed rim scale; content scales with the cell.
-
-local TextService = game:GetService("TextService")
+-- Quest Log, ACHIEVEMENTS tab: a grid of laurel-badge cards in one ScrollingFrame with a code-drawn scrollbar.
+-- Achievements.new(grid) -> :SetItems(items) :SetSelected(id) :OnSelect(cb(id, item)) :SetEmptyText(s) :SetVisible(b) :SetScroll(n) :Destroy()
+-- Achievements.status(parent, props, textSize) -> { Frame, Set(item) }: COMPLETE pill or progress bar ("8 / 10"); the Detail reuses it.
+-- Card states: complete (green COMPLETE pill), in progress (gold bar), locked (nothing earned yet: grey badge, padlock, empty bar).
+-- Design px. Columns = clamp(floor((W - 12) / 112), 2, 5). Name paths: AchievementsTab.AchievementScroll.Cell_<Id> (.Badge .Name .Status).
 
 local UiKit = require(script.Parent.Parent.Parent.UiKit)
 local Parts = require(script.Parent.Parent.Parent.Bag.Parts)
+local Shared = require(script.Parent.Parent.Parent.SharedSprites)
 local QuestLogic = require(script.Parent.Parent.QuestLogic)
-local Draw = require(script.Parent.Parent.Draw)
+local Kit = require(script.Parent.Parent.Kit)
+local Q = require(script.Parent.Parent.QuestSprites)
 
 local make = UiKit.make
-local Bag, Q = Draw.Bag, Draw.Q
 
-local PAD_L, PAD_R, PAD_T, PAD_B = 10, 30, 11, 14 -- left/top >= the selected glow bleed; right = scrollbar gutter (only when the grid scrolls)
-local GAP, GAP_Y, GLOW = 8, 13, 10 -- ref: cells ~152x160 on a 160 / 171 pitch -- cell gap; selected cell ink grows by GLOW (5 per side) inside the sprite's own margin
-local CARD_W, CARD_H = 146, 160 -- reference card (visible rim); cell height = width * 160 / 146
-local BAR = { ScrollTrack = Rect.new(19, 65, 22, 227) }
-
-local function barSkin(inst, name: string, w: number)
-	local s = Bag[name]
-	inst.Image = s.Image
-	inst.ScaleType = Enum.ScaleType.Slice
-	inst.SliceCenter = BAR[name]
-	inst.SliceScale = w / s.Size.X
-end
+local PAD_L, PAD_T, PAD_B = 4, 4, 6
+local GAP, GAP_Y = 5, 5
+local RATIO = 0.95 -- card height / width (mockup 145 / 148; slightly shorter so three rows fit the list height)
 
 local function isComplete(b): boolean
 	return b.Goal > 0 and b.Progress >= b.Goal
 end
 
+local function isLocked(b): boolean
+	return b.Progress <= 0 and not isComplete(b)
+end
+
 local Achievements = {}
 
--- Status pill w x h: COMPLETE (sliced green + check) or progress (track + fill, "8 / 10").
--- pill.Frame; pill:Set(b) with b = { Progress, Goal }.
-function Achievements.pill(
-	parent,
-	name: string,
-	w: number,
-	h: number,
-	z: number,
-	sizes: { Done: number, Prog: number }?
-)
-	local frame = Draw.img(parent, { Name = name, Size = UDim2.fromOffset(w, h), ZIndex = z }, "Frame")
-	local skin = Draw.img(frame, { Name = "Skin", ZIndex = z + 1 })
-	local fill = Draw.img(frame, { Name = "Fill", ZIndex = z + 2 })
-	local check = Draw.img(frame, { Name = "Check", ZIndex = z + 3 })
-	local size = math.max(12, math.floor(h * 0.55))
-	local label = Parts.text(frame, {
-		Name = "Text",
-		TextSize = size,
-		AnchorPoint = Vector2.new(0, 0.5),
-		TextXAlignment = Enum.TextXAlignment.Left,
-		TextTruncate = Enum.TextTruncate.None,
-		ZIndex = z + 4,
-	}, 2)
-	local pill = { Frame = frame }
-	function pill:Set(b)
-		local done = isComplete(b)
-		Draw.apply(skin, if done then Q.PillComplete else Q.BarTrackAch, w / 2, h / 2, w, h)
-		local pct = QuestLogic.percent(b.Progress, b.Goal)
-		local inset = math.max(2, math.floor(h * 0.1))
-		local fw = if done then 0 else math.floor((w - 2 * inset) * pct + 0.5)
-		fill.Visible = fw > 0
-		if fw > 0 then
-			Draw.apply(fill, Q.BarFillAch, inset + fw / 2, h / 2, fw, h - 2 * inset)
+function Achievements.status(parent, props, textSize: number)
+	local w, h = props.Size.X.Offset, props.Size.Y.Offset
+	props.BackgroundTransparency = 1
+	props.ZIndex = props.ZIndex or parent.ZIndex + 1
+	local frame = make("Frame", props, parent)
+	local done =
+		Parts.button(frame, { -- the shared saturated green pill (as Codes / Play), not the muted rarity-tag green
+			Name = "Complete",
+			Style = "Green",
+			Label = "COMPLETE",
+			Icon = Parts.CheckKey,
+			TextSize = math.floor(textSize * Kit.S),
+			Size = UDim2.fromOffset(w, h),
+		})
+	done.Interactable, done.Selectable = false, false
+	local bar = Kit.bar(frame, {
+		Name = "Progress",
+		Size = UDim2.fromOffset(w, h),
+		ZIndex = frame.ZIndex + 1,
+	}, Kit.Yellow, textSize)
+	local status = { Frame = frame }
+	function status:Set(item)
+		local complete = isComplete(item)
+		done.Visible, bar.Frame.Visible = complete, not complete
+		if not complete then
+			bar:Set(QuestLogic.percent(item.Progress, item.Goal), QuestLogic.progressText(item.Progress, item.Goal))
 		end
-		local text = if done then "COMPLETE" else QuestLogic.progressText(b.Progress, b.Goal)
-		local cs = if done then math.floor(h * 0.8) else 0
-		local gap = if done then 4 else 0
-		local avail = w - 12 - cs - gap
-		label.Text = text
-		label.TextSize =
-			Parts.fitSize(text, avail, if sizes then (if done then sizes.Done else sizes.Prog) else size, 10)
-		local tw = TextService:GetTextSize(text, label.TextSize, label.Font, Vector2.new(1e5, 1e5)).X + 2
-		local x0 = (w - (cs + gap + tw)) / 2
-		check.Visible = done
-		if done then
-			local iw, ih = Draw.fitIn(Bag.Check, cs, cs)
-			Draw.apply(check, Bag.Check, x0 + cs / 2, h / 2, iw, ih)
-		end
-		label.Position = UDim2.fromOffset(math.floor(x0 + cs + gap), math.floor(h / 2))
-		label.Size = UDim2.fromOffset(math.ceil(tw), h)
 	end
-	return pill
+	return status
 end
 
 function Achievements.new(parent)
 	local api, conns = {}, {}
 	local items, selected, onSelect = {}, nil, nil
-	local recs = {} -- recs[id] = { skin, w, h, glow }
-	local barW = 21
+	local setOns = {}
 
 	local root = make("Frame", {
 		Name = "AchievementsTab",
@@ -107,13 +78,12 @@ function Achievements.new(parent)
 		CanvasSize = UDim2.new(),
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		ScrollingDirection = Enum.ScrollingDirection.Y,
-		ScrollBarThickness = 0, -- the styled bar below replaces the native one; wheel, touch and drag still scroll
+		ScrollBarThickness = 0, -- the code-drawn bar below replaces the native one; wheel, touch and drag still scroll
 		ScrollBarImageTransparency = 1, -- a 0-thickness bar still draws a 1 px hairline
 		ZIndex = root.ZIndex + 1,
 	}, root)
 	local pad = make("UIPadding", {
 		PaddingLeft = UDim.new(0, PAD_L),
-		PaddingRight = UDim.new(0, PAD_R),
 		PaddingTop = UDim.new(0, PAD_T),
 		PaddingBottom = UDim.new(0, PAD_B),
 	}, scroll)
@@ -122,92 +92,78 @@ function Achievements.new(parent)
 		SortOrder = Enum.SortOrder.LayoutOrder,
 		FillDirection = Enum.FillDirection.Horizontal,
 	}, scroll)
-	local empty = Parts.text(root, {
+	local empty = Kit.text(root, {
 		Name = "EmptyLabel",
 		Text = "No achievements yet",
 		TextSize = 24,
 		TextWrapped = true,
-		TextColor3 = Color3.fromRGB(205, 210, 235),
+		TextColor3 = Kit.Soft,
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
 		Size = UDim2.new(1, -60, 0, 80),
 		Visible = false,
 		ZIndex = scroll.ZIndex + 1,
 	})
-	local track = Draw.img(root, {
-		Name = "ScrollTrack",
-		AnchorPoint = Vector2.new(1, 0),
-		Visible = false,
-		ZIndex = scroll.ZIndex + 2,
-	})
-	local thumb = Draw.img(track, { Name = "Thumb", ZIndex = track.ZIndex + 1 })
+	local sbar = Kit.scrollbar(root, scroll, scroll.ZIndex + 2)
 
-	local function updateBar()
-		local h = parent.Size.Y.Offset
-		local y, maxY = scroll.CanvasPosition.Y, math.max(0, scroll.AbsoluteCanvasSize.Y - scroll.AbsoluteWindowSize.Y)
-		track.Visible = maxY > 1 and h > 0
-		local win, canvas = scroll.AbsoluteWindowSize.Y, math.max(1, scroll.AbsoluteCanvasSize.Y)
-		local thumbH = math.clamp(math.floor(h * win / canvas), 40, math.max(40, h))
-		Draw.thumb(thumb, barW, thumbH, math.floor((h - thumbH) * (if maxY > 0 then y / maxY else 0)))
-	end
-	table.insert(conns, scroll:GetPropertyChangedSignal("CanvasPosition"):Connect(updateBar))
-	table.insert(conns, scroll:GetPropertyChangedSignal("AbsoluteCanvasSize"):Connect(updateBar))
-
-	local function skinCell(rec, on: boolean)
-		local spr = if on then Q.CellSelected else Q.CellCopper
-		local ex = if on then GLOW else 0
-		-- rim keeps the thickness the whole-drawn 262 px ink had at this width (k = w / 262)
-		Draw.apply(rec.skin, spr, rec.w / 2, rec.h / 2, rec.w + ex, rec.h + ex, rec.w / Q.CellCopper.Ink.Width)
-		rec.glow.Visible = on
-	end
-
-	local function buildCell(item, order: number, cw: number, ch: number, nameSize: number)
-		local btn = Draw.img(scroll, { Name = "Cell_" .. item.Id, LayoutOrder = order }, "ImageButton")
-		Parts.interact(btn)
-		local skin = Draw.img(btn, { Name = "Skin" })
-		local rec = { skin = skin, w = cw, h = ch }
-		local z = skin.ZIndex + 1
-		-- ref: the warm radial glow exists on the SELECTED cell only (Bag legendary glow, clipped to the cell's rounded interior)
-		local box = Draw.img(
-			btn,
-			{ Name = "GlowBox", Size = UDim2.fromOffset(cw - 12, ch - 12), ClipsDescendants = true, ZIndex = z },
-			"Frame"
-		)
-		box.AnchorPoint = Vector2.new(0.5, 0.5)
-		box.Position = UDim2.fromOffset(cw / 2, ch / 2)
-		make("UICorner", { CornerRadius = UDim.new(0, math.floor(cw * 0.1)) }, box)
-		local g = Draw.img(
-			box,
-			{ Name = "Glow", ImageTransparency = 0.05, ImageColor3 = Color3.fromRGB(255, 120, 25), ZIndex = z }
-		)
-		Draw.apply(g, Q.GlowRadial, (cw - 12) / 2, ch * 0.31 - 6, cw * 1.3, cw * 1.3)
-		rec.glow = box
-		recs[item.Id] = rec
-		skinCell(rec, item.Id == selected)
-		local badge = Draw.img(btn, { Name = "Badge", ZIndex = z + 1 })
-		local brec = Q[item.Badge] or Q.BadgeKing
-		local bw, bh = Draw.fitIn(brec, cw * 0.92, ch * 0.52) -- ref crown + laurels ~122 wide in a 146 cell
-		Draw.apply(badge, brec, cw / 2, ch * 0.31, bw, bh)
-		Parts.text(btn, {
-			Name = "Name",
-			Text = string.upper(item.Name),
-			TextSize = nameSize,
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.fromOffset(cw / 2, math.floor(ch * 0.65)),
-			Size = UDim2.fromOffset(cw - 6, 26),
-			ZIndex = z,
-		}, 2)
-		local ph = math.floor((if isComplete(item) then 27 else 30) * ch / CARD_H + 0.5) -- ref pills: COMPLETE 27 tall, progress / locked 30
-		local pw = math.floor(cw * 0.8)
-		local pill = Achievements.pill(btn, "Status", pw, ph, z, { Done = 16, Prog = 19 }) -- ref ink widths 76 / 43
-		pill.Frame.AnchorPoint = Vector2.new(0.5, 0.5)
-		pill.Frame.Position = UDim2.fromOffset(cw / 2, math.floor(ch * 0.86))
-		pill:Set(item)
+	local function buildCell(item, order: number, cw: number, ch: number)
+		local btn, setOn = Kit.card(scroll, { Name = "Cell_" .. item.Id, LayoutOrder = order }, { Radius = 12 })
+		setOns[item.Id] = setOn
+		setOn(item.Id == selected)
 		btn.Activated:Connect(function()
 			if onSelect then
 				onSelect(item.Id, item)
 			end
 		end)
+		local z = btn.ZIndex + 1
+		local locked = isLocked(item)
+		local badge = make("ImageLabel", {
+			Name = "Badge",
+			BackgroundTransparency = 1,
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromOffset(cw / 2, ch * 0.3),
+			Size = UDim2.fromOffset(cw * 0.96, ch * 0.54),
+			ImageColor3 = if locked then Color3.fromRGB(105, 105, 112) else Color3.new(1, 1, 1),
+			ZIndex = z,
+		}, btn)
+		Kit.setIcon(badge, Q[item.Badge] or Q.BadgeKing)
+		if locked then
+			local lk = math.floor(cw * 0.17)
+			make("ImageLabel", {
+				Name = "Lock",
+				BackgroundTransparency = 1,
+				AnchorPoint = Vector2.new(1, 0),
+				Position = UDim2.fromOffset(cw - 6, 6),
+				Size = UDim2.fromOffset(lk, lk),
+				Image = Shared.Padlock.Image,
+				ScaleType = Enum.ScaleType.Fit,
+				ZIndex = z + 1,
+			}, btn)
+		end
+		local nameSize = math.max(9, math.floor(15 * cw / 146 + 0.5))
+		local nameLabel = Kit.text(btn, {
+			Name = "Name",
+			Text = string.upper(item.Name),
+			TextSize = nameSize,
+			TextWrapped = true,
+			TextTruncate = Enum.TextTruncate.None,
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromOffset(cw / 2, ch * 0.66),
+			Size = UDim2.fromOffset(cw - 8, math.floor(ch * 0.3)),
+			ZIndex = z,
+		}, 2)
+		while nameLabel.TextBounds.Y > nameLabel.AbsoluteSize.Y and nameLabel.TextSize > 10 do -- wrap to 2 lines, then shrink until it fits
+			nameLabel.TextSize -= 1
+		end
+		local ph = math.floor(ch * 0.17)
+		local status = Achievements.status(btn, {
+			Name = "Status",
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromOffset(cw / 2, ch * 0.88),
+			Size = UDim2.fromOffset(math.floor(cw * 0.8), ph),
+			ZIndex = z,
+		}, math.max(11, math.floor(ph * 0.62)))
+		status:Set(item)
 	end
 
 	local function rebuild()
@@ -216,43 +172,32 @@ function Achievements.new(parent)
 				c:Destroy()
 			end
 		end
-		table.clear(recs)
-		local W = parent.Size.X.Offset
+		table.clear(setOns)
+		local W, H = parent.Size.X.Offset, parent.Size.Y.Offset
 		if W <= 0 then
 			return
 		end
-		barW = if W >= 360 then 21 else 12
-		track.Size = UDim2.fromOffset(barW, parent.Size.Y.Offset)
-		track.Position = UDim2.new(1, if W >= 360 then -7 else -6, 0, 0)
-		barSkin(track, "ScrollTrack", barW)
 		local cols = math.clamp(math.floor((W - 12) / 112), 2, 5)
-		local padL = if W < 560 then 14 else PAD_L -- phone: selected glow clear of the list's left rim
-		pad.PaddingLeft = UDim.new(0, padL)
 		local function cell(padR: number): (number, number)
-			local w = math.floor((W - padL - padR - (cols - 1) * GAP) / cols)
-			return w, math.floor(w * CARD_H / CARD_W + 0.5)
+			local w = math.floor((W - PAD_L - padR - (cols - 1) * GAP) / cols)
+			return w, math.max(math.floor(w * RATIO + 0.5), Kit.minHit)
 		end
-		local padR = 10 -- the scrollbar gutter is only reserved when the grid overflows (ref: 3 rows fill the panel)
+		local padR = 4 -- the scrollbar gutter is only reserved when the grid overflows
 		local cw, ch = cell(padR)
 		local rowsN = math.ceil(#items / cols)
-		if rowsN * ch + math.max(0, rowsN - 1) * GAP_Y + PAD_T + PAD_B > parent.Size.Y.Offset then
-			padR = PAD_R
+		local overflow = rowsN * ch + math.max(0, rowsN - 1) * GAP_Y + PAD_T + PAD_B > H
+		if overflow then
+			padR = 24
 			cw, ch = cell(padR)
 		end
 		pad.PaddingRight = UDim.new(0, padR)
 		grid.CellSize = UDim2.fromOffset(cw, ch)
 		grid.FillDirectionMaxCells = cols
-		-- ONE name size for every cell (overseer decision, our font is ~20% wider than the ref's): the largest that fits
-		-- every name in cell width - 6, at most 21 (ref DICE KING = 21 pt)
-		local nameSize = math.max(12, math.floor(21 * cw / CARD_W + 0.5))
-		for _, item in items do
-			nameSize = math.min(nameSize, Parts.fitSize(string.upper(item.Name), cw - 6, nameSize, 8))
-		end
+		sbar.Layout(H - 8, 16, 2, 4)
 		for i, item in items do
-			buildCell(item, i, cw, ch, nameSize)
+			buildCell(item, i, cw, ch)
 		end
 		empty.Visible = #items == 0
-		updateBar()
 	end
 	table.insert(conns, parent:GetPropertyChangedSignal("Size"):Connect(rebuild))
 
@@ -262,8 +207,8 @@ function Achievements.new(parent)
 	end
 	function api:SetSelected(id: string?)
 		selected = id
-		for rid, rec in recs do
-			skinCell(rec, rid == id)
+		for rid, setOn in setOns do
+			setOn(rid == id)
 		end
 	end
 	function api:OnSelect(cb)

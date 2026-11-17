@@ -13,13 +13,14 @@ Items.Grid = "Items"
 Items.Placeholder = "Search items..."
 Items.SortOptions = {
 	{ Id = "Rarity", Label = "Rarity" },
-	{ Id = "Quantity", Label = "Quantity" },
+	{ Id = "Quantity", Label = "Quantity (High to Low)" },
 	{ Id = "Name", Label = "Name" },
 }
 Items.DefaultSort = "Quantity"
+Items.DetailW = 340 -- mockup detail panel width
 Items.EmptyText = "No items yet"
 
-function Items.GetItems(meta, catalog)
+function Items.GetItems(meta, catalog, sprites) -- sprites = BagSprites (nil in headless specs)
 	local items = {}
 	for i, it in BagLogic.inventory(meta, catalog, "Items") do
 		items[i] = {
@@ -28,7 +29,7 @@ function Items.GetItems(meta, catalog)
 			Rarity = it.Rarity,
 			Quantity = it.Quantity,
 			Description = it.Description,
-			Icon = it.Icon,
+			Icon = BagLogic.iconFor(it.Id, it.Icon, sprites),
 			Sell = it.Sell,
 			Use = it.Use,
 			UserLocked = it.UserLocked,
@@ -46,6 +47,7 @@ function Items.Detail(item, qty: number?)
 	local useHint = if locked then "Unlock it first" elseif item.Use == nil then "Can't be used" else nil
 	local sellHint = if locked then "Unlock it first" elseif item.Sell == nil then "Can't be sold" else nil
 	return {
+		BtnW = { 104, 101, 102 },
 		Name = item.Name,
 		Rarity = item.Rarity,
 		NameRibbon = true, -- the Title Case name sits on the gold-rim ribbon

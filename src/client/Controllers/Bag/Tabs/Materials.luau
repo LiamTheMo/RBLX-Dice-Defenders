@@ -13,13 +13,14 @@ Materials.Grid = "Materials"
 Materials.Placeholder = "Search materials..."
 Materials.SortOptions = {
 	{ Id = "Rarity", Label = "Rarity" },
-	{ Id = "Quantity", Label = "Quantity" },
+	{ Id = "Quantity", Label = "Quantity (High to Low)" },
 	{ Id = "Name", Label = "Name" },
 }
 Materials.DefaultSort = "Rarity"
+Materials.DetailW = 366 -- mockup detail panel width
 Materials.EmptyText = "No materials yet"
 
-function Materials.GetItems(meta, catalog)
+function Materials.GetItems(meta, catalog, sprites) -- sprites = BagSprites (nil in headless specs)
 	local items = {}
 	for i, m in BagLogic.inventory(meta, catalog, "Materials") do
 		items[i] = {
@@ -28,7 +29,7 @@ function Materials.GetItems(meta, catalog)
 			Rarity = m.Rarity,
 			Quantity = m.Quantity,
 			Description = m.Description,
-			Icon = m.Icon,
+			Icon = BagLogic.iconFor(m.Id, m.Icon, sprites),
 			Sell = m.Sell,
 			UserLocked = m.UserLocked,
 			CornerBadge = if m.UserLocked then "Lock" else nil, -- the padlock badge; not Locked (= unowned, sorted last)
@@ -44,6 +45,7 @@ function Materials.Detail(item, qty: number?)
 	local locked = item.UserLocked == true
 	local sellHint = if locked then "Unlock it first" elseif item.Sell == nil then "Can't be sold" else nil
 	return {
+		BtnW = { 159, 157 },
 		Name = item.Name,
 		Rarity = item.Rarity,
 		Header = string.upper(item.Rarity) .. " MATERIAL",
@@ -64,7 +66,7 @@ function Materials.Detail(item, qty: number?)
 			{
 				Id = "Sell",
 				Label = "SELL",
-				Style = "Gold",
+				Style = "Red",
 				Icon = "Coins",
 				Enabled = sellHint == nil,
 				Hint = sellHint,

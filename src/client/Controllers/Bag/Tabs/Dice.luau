@@ -21,8 +21,7 @@ Dice.SortOptions = {
 }
 Dice.DefaultSort = "Rarity"
 Dice.EmptyText = "No dice found"
-
-local ABILITY = "Ability: coming soon" -- non-Common dice are stat-only until their abilities are built
+Dice.DetailW = 368 -- mockup detail panel width
 
 -- Die art asset id, or nil (the grid then tints its fallback glyph).
 local function art(id: string): string?
@@ -42,7 +41,8 @@ local function lockedItem(id: string, name: string, rarity: string, footer: stri
 		Name = name,
 		Rarity = rarity,
 		Damage = s and s.Damage,
-		Rate = s and s.Rate,
+		AttackSpeed = s and s.AttackSpeed,
+		Aura = s and s.Aura,
 		Ability = s and s.Description,
 		Level = 0,
 		Locked = true,
@@ -87,7 +87,8 @@ function Dice.GetItems(meta, catalog)
 				Name = info.Name,
 				Rarity = info.Rarity,
 				Damage = s and s.Damage,
-				Rate = s and s.Rate,
+				AttackSpeed = s and s.AttackSpeed,
+				Aura = s and s.Aura,
 				Ability = s and s.Description,
 				Level = die.Level,
 				Equipped = equipped,
@@ -117,7 +118,7 @@ function Dice.GetItems(meta, catalog)
 		local note = if unavailable
 			then "Not available yet"
 			elseif info.Rarity == "Common" then "Not owned"
-			else "Not owned. " .. ABILITY
+			else "Not owned"
 		table.insert(
 			items,
 			lockedItem(id, info.Name, info.Rarity, if unavailable then "Locked" else "Not owned", note, stats[id])
@@ -129,16 +130,17 @@ function Dice.GetItems(meta, catalog)
 	return items
 end
 
--- Damage and Attack Speed (attacks/s) come from the Catalog; the other rows render a dash until the client gets them.
+-- Damage, Attack Speed (seconds per attack at 1 pip) and the extra effect (Aura: the attack-speed bonus an aura die
+-- gives adjacent dice, in percent) come from the Catalog; a dash when the Catalog lacks it or the die has none.
 local DASH = "\u{2013}"
-local function num(v): string
-	return if type(v) == "number" then string.format("%g", v) else DASH
+local function num(v, suffix: string?): string
+	return if type(v) == "number" then string.format("%g", v) .. (suffix or "") else DASH
 end
 local function stats(item)
 	return {
 		{ Icon = "IconSword", Label = "Damage", Value = num(item.Damage) },
-		{ Icon = "IconHourglass", Label = "Attack Speed", Value = num(item.Rate) },
-		{ Icon = "IconFlame", Label = "Burn Damage", Value = DASH },
+		{ Icon = "IconHourglass", Label = "Attack Speed", Value = num(item.AttackSpeed, "s") },
+		{ Icon = "IconFlame", Label = "Aura", Value = if item.Aura then "+" .. num(item.Aura, "%") else DASH },
 	}
 end
 
@@ -167,12 +169,22 @@ function Dice.Detail(item)
 		StatusTag = if equipped then "EQUIPPED" else nil,
 		Icon = item.Icon,
 		Tint = item.Tint,
-		Subline = if copies then { Kind = "Level", Value = item.Level, Max = max, Copies = copies } else nil,
-		Description = if item.Ability
-			then item.Ability
-			elseif locked then item.Note
-			elseif item.Rarity ~= "Common" then ABILITY
-			else "",
+		BtnW = { 117, 100, 101 },
+		TopY = 16,
+		ArtY = 28,
+		ArtH = 105,
+		NameY = 126,
+		Ys = { Sub = 166, Desc = 194, Extra = 244 }, -- mockup rows (detail panel y 224): level 390, text 418, stats 468
+		Subline = if copies
+			then {
+				Kind = "Level",
+				Value = item.Level,
+				Max = max,
+				Copies = copies,
+				Progress = if atMax then 1 else math.min(1, item.Copies / cost), -- the bar: spare copies toward the next level
+			}
+			else nil,
+		Description = if item.Ability then item.Ability elseif locked then item.Note else "",
 		Stats = stats(item),
 		Buttons = {
 			{
@@ -185,7 +197,7 @@ function Dice.Detail(item)
 			{
 				Id = "Upgrade",
 				Label = "UPGRADE",
-				Style = "Gold",
+				Style = "Grey",
 				Enabled = upOk,
 				Hint = upHint,
 			},

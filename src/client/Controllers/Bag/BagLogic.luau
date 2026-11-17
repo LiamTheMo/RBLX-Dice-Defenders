@@ -129,6 +129,21 @@ function BagLogic.inventory(meta, catalog, kind: string)
 	return rows
 end
 
+-- Closest new-art icon (a BagSprites key) per Config/Inventory id. Used only once that sprite has an uploaded
+-- image; until then (or for an id without art) `fallback` (the Catalog's own Icon, may be nil) stays.
+local ICON = {
+	Fragment = "MatSprout",
+	XpTome = "ItemXpTicket",
+	GoldPouch = "ItemCoinTicket",
+	ThornDice = "CosLeafyDie",
+	SproutCap = "CosCrown",
+	FireflyTrail = "CosOrbitRing",
+}
+function BagLogic.iconFor(id: string, fallback: string?, sprites): string?
+	local s = sprites and sprites[ICON[id]]
+	return if s and s.Image ~= "" then ICON[id] else fallback
+end
+
 -- Stepper: qty after a step (-1, 1 or "max") within 1..min(owned, MAX_QTY).
 function BagLogic.stepQty(qty: number?, delta, owned: number?): number
 	local top = math.max(1, math.min(owned or 1, BagLogic.MAX_QTY))
@@ -155,7 +170,7 @@ function BagLogic.lockButton(locked: boolean)
 	return {
 		Id = if locked then "Unlock" else "Lock",
 		Label = if locked then "UNLOCK" else "LOCK",
-		Style = "Purple",
+		Style = "Grey",
 		Icon = if locked then nil else "Lock",
 		Enabled = true,
 		Send = true,

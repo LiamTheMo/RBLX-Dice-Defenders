@@ -216,7 +216,7 @@ test("tabs: rows sort as the Bag shows them (each tab's default sort)", function
 	)
 	local cosRows = BagLogic.sort(cos.GetItems(META, CATALOG), cos.DefaultSort)
 	expectEq(ids(cosRows), "Firefly,Thorn,Sprout", "cosmetics: rarity")
-	expect(cosRows[2].Footer == "Dice Skin" and cosRows[2].TopTag == nil, "type footer, no EQUIPPED pill")
+	expect(cosRows[2].TopTag == "RARE" and cosRows[2].Equipped == false, "rarity pill on top, not equipped")
 end)
 
 test("inventory: every entry the server catalogue sends maps to a full row", function()
@@ -237,13 +237,14 @@ test("inventory: every entry the server catalogue sends maps to a full row", fun
 	end
 end)
 
-test("dice detail: Damage and Attack Speed from the Catalog, ability note on non-Common dice", function()
+test("dice detail: Damage, Attack Speed and Aura from the Catalog, ability note on non-Common dice", function()
 	local D = "\u{2013}"
 	local catalog = {
 		Dice = {
-			{ Id = "C02", Damage = 9, Rate = 1.75 },
-			{ Id = "R01", Damage = 19, Rate = 1.0 },
-			{ Id = "R02", Damage = 21, Rate = 0.55 },
+			{ Id = "C02", Damage = 9, Rate = 1.75, AttackSpeed = 0.57 },
+			{ Id = "R01", Damage = 19, Rate = 1.0, AttackSpeed = 1 },
+			{ Id = "R02", Damage = 21, Rate = 0.55, AttackSpeed = 1.82 },
+			{ Id = "R05", Damage = 5, Rate = 0.8, AttackSpeed = 1.25, Aura = 6 },
 		},
 	}
 	local meta = { Dice = { { Id = "C02", Level = 1 }, { Id = "R01", Level = 2 } }, Deck = {} }
@@ -263,18 +264,45 @@ test("dice detail: Damage and Attack Speed from the Catalog, ability note on non
 		return table.concat(out, ",")
 	end
 	local needle = detail(catalog, "C02")
-	expectEq(values(needle), `9,1.75,{D}`, "Damage, Attack Speed, Burn dash")
+	expectEq(values(needle), `9,0.57s,{D}`, "Damage, Attack Speed (s), no aura: dash")
 	expectEq(needle.Description, "", "owned Common: no ability note")
 	local frost = detail(catalog, "R01")
-	expectEq(values(frost), `19,1,{D}`, "1.0 shows as 1")
-	expectEq(frost.Description, "Ability: coming soon", "owned Rare")
+	expectEq(values(frost), `19,1s,{D}`, "1.0 shows as 1")
+	expectEq(frost.Description, "", "owned Rare: no placeholder note")
 	local arc = detail(catalog, "R02")
-	expectEq(values(arc), `21,0.55,{D}`, "unowned playable die shows its stats")
-	expectEq(arc.Description, "Not owned. Ability: coming soon", "unowned Rare")
+	expectEq(values(arc), `21,1.82s,{D}`, "unowned playable die shows its stats")
+	expectEq(arc.Description, "Not owned", "unowned Rare")
 	expectEq(detail(nil, "C02").Stats[1].Value, D, "no Catalog yet: dash")
+	expectEq(values(detail(catalog, "R05")), "5,1.25s,+6%", "aura die: Aura row")
 	local astral = detail(catalog, "M01")
 	expectEq(values(astral), `{D},{D},{D}`, "unreleased die: all dashes")
 	expectEq(astral.Description, "Not available yet", "unreleased die keeps its note")
+end)
+
+test("cosmetics counter: owned / total from the Catalog", function()
+	local cat = {
+		Cosmetics = {
+			{ Id = "ThornDice", Name = "T", Rarity = "Rare", Type = "x" },
+			{ Id = "SproutCap", Name = "S", Rarity = "Rare", Type = "x" },
+		},
+	}
+	expectEq(Tabs[3].Count({ Cosmetics = { { Id = "ThornDice", Quantity = 1 } } }, cat), "1 / 2", "one of two")
+	expectEq(Tabs[3].Count({}, nil), nil, "Catalog not loaded")
+end)
+
+test("iconFor: the new icon only once uploaded, else the Catalog's own", function()
+	expectEq(BagLogic.iconFor("Fragment", nil, nil), nil, "no sprites (headless)")
+	expectEq(
+		BagLogic.iconFor("Fragment", "IconCrystals", { MatSprout = { Image = "" } }),
+		"IconCrystals",
+		"not uploaded"
+	)
+	expectEq(
+		BagLogic.iconFor("Fragment", "IconCrystals", { MatSprout = { Image = "rbxassetid://1" } }),
+		"MatSprout",
+		"uploaded"
+	)
+	expectEq(BagLogic.iconFor("Nope", "Coins", { MatSprout = { Image = "rbxassetid://1" } }), "Coins", "unmapped id")
 end)
 
 local function button(model, id)
@@ -304,7 +332,7 @@ test("inventory: Meta.Locked marks rows locked; Meta cosmetics carry Equipped", 
 	expectEq(rows[1].CornerBadge, "Lock", "locked card shows the padlock")
 	expect(rows[1].Locked == nil, "a player lock never uses the unowned (sorted-last) flag")
 	local cosRows = cos.GetItems(meta, CATALOG)
-	expectEq(cosRows[1].TopTag, "EQUIPPED", "EQUIPPED pill from Meta")
+	expectEq(cosRows[1].Equipped, true, "Equipped from Meta")
 end)
 
 test("stepQty: 1..owned, MAX picks owned, never above the server's 1e6 cap", function()
@@ -447,7 +475,7 @@ test("dice upgrade: UPGRADE gates on copies, cap and Catalog; copies show on car
 			expect(lk.Subline == nil and it.Count == nil, "unowned: no level line or count")
 		end
 	end
-	expect(button(d, "Lock") == nil and button(d, "Upgrade").Style == "Gold", "UPGRADE replaces LOCK")
+	expect(button(d, "Lock") == nil and button(d, "Upgrade").Style == "Grey", "UPGRADE replaces LOCK")
 end)
 
 test("every Config die is listed, owned or not; removed ids are not", function()
