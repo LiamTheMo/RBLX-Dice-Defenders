@@ -54,12 +54,17 @@ Two players default. Solo campaign clear with a Rare/Epic-accessible deck must r
 
 ## 2. Dice damage, pips and merge
 ```text
-pipMultiplier(p) = p^.85                       # 1...7; 7 is ★
-persistentLevel(l) = 1+.03*(l-1)              # l=1...7; proposal, NOT implemented (Formulas ignore level)
-matchUpgrade(t) = 1+.12*t                     # t=0...4
-hitDamage = max(1, floor(baseDamage*pipMultiplier*persistentLevel*matchUpgrade*buffFactor*resistanceFactor))
+attacksPerSecond = rate * PipRate[pip]        # PipRate = {1,2,3,4,5,6,7} (*tune*); each pip is its own shooter; 7 is ★
+tierMult(t) = 1 + DamagePerTier*(t-1)         # t=1...5 (in-match Power Up); DamagePerTier = 0.10 (*tune*)
+hitDamage = max(1, floor(baseDamage*perk*tierMult)) + flat proc   # no pip term; the per-die-level bonus is NOT implemented
 ```
-Merge **two dice of the same identity AND same pip (1–6)** to produce a single pip+1 dice at target, with its type re-rolled from five equipped deck dice; pips cap at 7★. Build-around effects can override explicitly but must obey transaction caps. At 7★ multiplier ≈5.23, not 7. Projectile count, DoT and slow utility count toward balance, not merely hitDamage. All status stacking is capped (slow 45%; vulnerability 25%; armor shred 30%) and dangerous feedback loops have an internal cooldown and max proc depth.
+Merge **two dice of the same identity AND same pip (1–6)** to produce a single pip+1 dice at target, with its type re-rolled from five equipped deck dice; pips cap at 7★. Build-around effects can override explicitly but must obey transaction caps. Pips raise the attack rate only (7★ fires 7x as often as 1 pip); damage per hit does not depend on the pip. `Balance.MaxAttacksPerTick` (8) bounds attacks per die per simulation step and stays above the fastest possible die (rate x 7 x (1 + AuraCap) x 0.25 s, spec-checked). Projectile count, DoT and slow utility count toward balance, not merely hitDamage. All status stacking is capped (slow 45%; vulnerability 25%; armor shred 30%) and dangerous feedback loops have an internal cooldown and max proc depth.
+
+**In-match Power Up (implemented, *tune*):** per die type of the match deck, tier 1-5; the server pays MP through `Rules/Economy` (`Match.TryPowerUp`, remote `PowerUp`). Buying tier t+1 costs `Balance.PowerUp.Costs[t]` = 100 / 200 / 400 / 700 MP (the one sourced Random Dice table; 225 / 450 / 900 / 1800 also met every target in the simulator at DamagePerTier 0.15). Each tier adds 10% of base hit damage to every die of that type, on the board now and summoned or merged in later. It lives only in the match state, resets each match, is never saved and never costs Gems or Robux.
+
+**Aura dice (implemented, *tune*):** one effect, `aura = {base, perPip, perTier}` in the die config: an attack-speed bonus to the four orthogonal neighbours (5x3 board, no row wrap) of `base + perPip*(pip-1) + perTier*(tier-1)`. Beacon 0.06 / 0.01 / 0.01, Light 0.08 / 0.015 / 0.015. A die's total received bonus is capped at `Balance.AuraCap` = 30%; the bonus is recomputed from the board every step (no accumulation, no procs).
+
+**Enemy HP retune with this model (*tune*):** the pip rate and Power Up raise late DPS, so `Balance.EnemyHp` growth is 7% to wave 10, 26% for waves 11-15, then 7% a wave (was 22% and 4%). Simulator (`tools/balance_sim.py`, bots power up when the board is full): starter deck full 15/15/15, eager clears wave 10 in 40/40 runs, single Common decks end at waves 15-18, Rares 18-21, new Epics 19-21, Legendary 25-28.
 
 ## 3. In-match MP (separate from persistent Gold and Gems)
 Starting MP: 100 (exactly four summons). Summon cost after `s` successful summons:

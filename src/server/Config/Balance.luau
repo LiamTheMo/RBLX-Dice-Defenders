@@ -8,9 +8,19 @@ Balance.TrialWave = 10 -- clearing this wave counts as a Trial clear (the run it
 Balance.MaxAlive = 90
 Balance.FirstWaveDelay = 4 -- seconds after Start
 Balance.WaveGap = 4 -- seconds after a wave is cleared
-Balance.MaxAttacksPerTick = 2
+-- Attacks one die may fire per Match.Step. A Step covers at most MaxStep s, so this must be at least
+-- MaxStep x the fastest die (highest rate x 7 pips x (1 + AuraCap)); Needle 1.75 x 7 x 1.3 x 0.25 s = 4.0. Spec-checked.
+Balance.MaxAttacksPerTick = 8
 Balance.MaxStep = 0.25 -- largest dt Match.Step simulates at once
 Balance.TickHz = 10
+
+-- Attacks per second = Dice rate x PipRate[pip] (each pip is its own shooter); per-hit damage has no pip term (*tune*).
+Balance.PipRate = table.freeze({ 1, 2, 3, 4, 5, 6, 7 })
+-- In-match Power Up per die type (Rules/Match.TryPowerUp): tier 1..Max, Costs[tier] MP buys tier + 1, each tier adds
+-- DamagePerTier of the base hit damage to every die of that type. Match-only, never persisted (*tune*).
+Balance.PowerUp = table.freeze({ Max = 5, Costs = table.freeze({ 100, 200, 400, 700 }), DamagePerTier = 0.10 })
+-- Most attack-speed bonus (fraction) one die receives from adjacent aura dice combined (Dice `aura`) (*tune*).
+Balance.AuraCap = 0.30
 
 Balance.SummonCost = table.freeze({ base = 10, step = 10 }) -- MP: base + step * summons so far
 -- Run reward (*tune*): per wave cleared.
@@ -29,8 +39,8 @@ Balance.EnemyHp = table.freeze({
 	base = 275,
 	growth = table.freeze({
 		table.freeze({ toWave = 10, rate = 0.07 }),
-		table.freeze({ toWave = 15, rate = 0.22 }),
-		table.freeze({ toWave = math.huge, rate = 0.04 }),
+		table.freeze({ toWave = 15, rate = 0.26 }),
+		table.freeze({ toWave = math.huge, rate = 0.07 }),
 	}),
 	easeFrom = 0.4,
 	easeWaves = 3,
@@ -59,6 +69,7 @@ Balance.Remotes = table.freeze({
 	Roll = table.freeze({ rate = 1, burst = 2 }), -- *tune*
 	Buy = table.freeze({ rate = 1, burst = 3 }), -- *tune*
 	UpgradeDie = table.freeze({ rate = 2, burst = 4 }), -- *tune*
+	PowerUp = table.freeze({ rate = 2, burst = 4 }), -- *tune*
 })
 Balance.KickThreshold = 20
 Balance.LogInterval = 5 -- seconds between violation log lines per player

@@ -1,5 +1,6 @@
 -- Balance sim: which wave does a deck reach? Run: python tools/balance_sim.py [seeds]  (bots summon and merge; real Match/Formulas/Balance)
 -- Targets (docs/MVP.md "Waves"): "starter eager" clears wave 10 (the tutorial), "starter full" ends at 15, the "only C0x" ceilings by ~18.
+-- Both bots also buy in-match power-ups (Match.TryPowerUp) when the board is full and no merge is wanted.
 local Server = game:GetService("ServerScriptService").Server
 local Match = require(Server.Rules.Match)
 local Dice = require(Server.Config.Dice)
@@ -11,6 +12,25 @@ local P = { seeds = __SEEDS or 40, dt = 0.25, maxWave = 200 } -- dt = Balance.Ma
 -- Bots. "eager": summon, then merge any lowest-pip pair at once. "full": a careful player: summon until
 -- the board is full, then merge the pair that loses the least DPS, only when the next summon is affordable.
 local dieDps
+
+-- Power-up policy: the deck type with the most pips on the board that is not at max tier gets its next tier
+-- when affordable (so the cheapest tier of the type that matters most).
+local function powerUp(state)
+	local pips = {}
+	for _, die in state.board do
+		if die then
+			pips[die.type] = (pips[die.type] or 0) + die.pip
+		end
+	end
+	local best
+	for _, t in state.deck do
+		if pips[t] and Formulas.PowerUpCost(state.tiers[t]) and (not best or pips[t] > pips[best]) then
+			best = t
+		end
+	end
+	return best ~= nil and Match.TryPowerUp(state, best)
+end
+
 local function eager(state)
 	while Match.TrySummon(state) do
 	end
@@ -36,13 +56,19 @@ local function eager(state)
 			end
 		end
 	end
+	while not table.find(state.board, false) and powerUp(state) do
+	end
 end
 
 local function full(state)
 	while true do
 		while Match.TrySummon(state) do
 		end
-		if table.find(state.board, false) or state.mp < Match.SummonCost(state) then
+		if table.find(state.board, false) then
+			return
+		end
+		if state.mp < Match.SummonCost(state) then
+			powerUp(state) -- no merge affordable yet: spend on a power-up instead of waiting
 			return
 		end
 		local best, from, to
@@ -53,9 +79,9 @@ local function full(state)
 				if a.pip < 7 and b.type == a.type and b.pip == a.pip then
 					local gain = 0
 					for _, t in state.deck do
-						gain += dieDps(t, a.pip + 1) / #state.deck
+						gain += dieDps(t, a.pip + 1, state.tiers[t]) / #state.deck
 					end
-					local loss = dieDps(a.type, a.pip) * 2 - gain
+					local loss = dieDps(a.type, a.pip, state.tiers[a.type]) * 2 - gain
 					if not best or loss < best then
 						best, from, to = loss, i, j
 					end
@@ -63,6 +89,7 @@ local function full(state)
 			end
 		end
 		if not best or not Match.TryMerge(state, from, to) then
+			powerUp(state)
 			return
 		end
 	end
@@ -75,17 +102,17 @@ local function median(t)
 end
 
 -- Damage per second of one die on a Grunt (ignores First/overkill; Needle's proc averaged in).
-function dieDps(typeId, pip)
+function dieDps(typeId, pip, tier)
 	local cfg = Dice.Types[typeId]
 	local proc = if cfg.procEvery then cfg.procFlat / cfg.procEvery else 0
-	return (Formulas.HitDamage(typeId, pip, "Grunt") * (cfg.shots or 1) + proc) / Formulas.Period(typeId)
+	return (Formulas.HitDamage(typeId, "Grunt", nil, tier) * (cfg.shots or 1) + proc) / Formulas.Period(typeId, pip)
 end
 
 local function gruntDps(state)
 	local sum = 0
 	for _, die in state.board do
 		if die then
-			sum += dieDps(die.type, die.pip)
+			sum += dieDps(die.type, die.pip, state.tiers[die.type])
 		end
 	end
 	return sum
@@ -149,6 +176,11 @@ local function batch(name, deck, bot, quiet)
 	print("  all: " .. table.concat(waves, " "))
 	local m = waves[(#waves + 1) // 2]
 	print(`{name}: deck={table.concat(deck, ",")} lost wave min/median/max = {waves[1]}/{m}/{waves[#waves]}`)
+	local cleared = 0
+	for _, w in waves do
+		cleared += if w > 10 then 1 else 0
+	end
+	print(`  cleared wave 10 in {cleared}/{#waves} runs`)
 	if quiet then
 		return
 	end
@@ -194,19 +226,7 @@ test("sim", function()
 	for _, id in Dice.Deck do -- ceiling: every summon and merge result is the same Common
 		batch("only " .. id, { id }, full, id ~= "C02")
 	end
-	local ids = {}
-	for id, cfg in Dice.Types do
-		if cfg.rarity == "Rare" or cfg.rarity == "Epic" or cfg.rarity == "Legendary" then
-			table.insert(ids, id)
-		end
-	end
-	table.sort(ids, function(a, b)
-		local x, y = Dice.Types[a].base * Dice.Types[a].rate, Dice.Types[b].base * Dice.Types[b].rate
-		if x ~= y then
-			return x > y
-		end
-		return a < b
-	end)
-	batch("strong full", { ids[1], ids[2], ids[3], ids[4], ids[5] }, full, true)
+	batch("strong full", { "L01", "L02", "L04", "L05", "L06" }, full, true)
+	batch("new epics full", { "E06", "E07", "E08", "E09", "E10" }, full, true)
 	batch("rares full", { "R01", "R02", "R03", "R04", "R05" }, full, true)
 end)

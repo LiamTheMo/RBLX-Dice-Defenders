@@ -2,7 +2,8 @@
 -- player as the Catalog event. Pure. Arrays only (no sparse keys); the id lists
 -- below Cosmetics keep config order, the others are sorted by Id. Never reads the
 -- redeem code list.
---   { StarterDeck = { ids }, Dice = {{Id, Name, Rarity, Damage, Rate}},
+--   { StarterDeck = { ids }, Dice = {{Id, Name, Rarity, Damage, Rate, AttackSpeed, Aura?}},
+--     PowerUp = { Max, Costs, DamagePerTier },
 --     Materials = {{Id, Name, Rarity, Description, Sell?}},
 --     Items = {{Id, Name, Rarity, Description, Icon?, Sell?, Use?}},
 --     Cosmetics = {{Id, Name, Rarity, Type, Slot, Description}},
@@ -15,7 +16,8 @@
 --              Pity = {Rarity, Max}, Featured = { ids }}} },
 --     Shop = { Offers = {{Id, Tab = "Featured"|"Gems", Name, Currency = "Gold"|"Gems"|"Robux", Price, Rewards,
 --              Limit?, ProductId?, Available}} } }
--- Damage is a die's base damage, Rate its attacks per second; Use is display text
+-- Damage is a die's base damage, Rate its attacks per second per pip, AttackSpeed its seconds per attack at 1
+-- pip (2 dp, Formulas.Period); Aura (aura dice only) its base attack-speed bonus to adjacent dice in percent; Use is display text
 -- ("+100 XP"); Rewards are Rewards.Lines: {{Kind, Id?, Amount}}. Roll odds are basis points (sum 10000): the menu
 -- shows exactly these numbers.
 local Achievements = require(script.Parent.Parent.Config.Achievements)
@@ -27,6 +29,7 @@ local Milestones = require(script.Parent.Parent.Config.Milestones)
 local Progression = require(script.Parent.Parent.Config.Progression)
 local RollConfig = require(script.Parent.Parent.Config.Roll)
 local ShopConfig = require(script.Parent.Parent.Config.Shop)
+local Formulas = require(script.Parent.Formulas)
 local Rewards = require(script.Parent.Rewards)
 
 local Catalog = {}
@@ -78,8 +81,22 @@ function Catalog.Build()
 	end
 	return {
 		StarterDeck = table.clone(Dice.Deck),
+		PowerUp = {
+			Max = Balance.PowerUp.Max,
+			Costs = table.clone(Balance.PowerUp.Costs),
+			DamagePerTier = Balance.PowerUp.DamagePerTier,
+		},
 		Dice = rows(Dice.Types, function(id, t)
-			return { Id = id, Name = t.name, Rarity = t.rarity, Damage = t.base, Rate = t.rate, Retired = t.retired, Description = t.description }
+			return {
+				Id = id,
+				Name = t.name,
+				Rarity = t.rarity,
+				Damage = t.base,
+				Rate = t.rate,
+				AttackSpeed = math.floor(Formulas.Period(id, 1) * 100 + 0.5) / 100,
+				Aura = if t.aura then math.floor(Formulas.Aura(id, 1, 1) * 1000 + 0.5) / 10 else nil,
+				Description = t.description,
+			}
 		end),
 		Materials = rows(Inventory.Materials, function(id, m)
 			return { Id = id, Name = m.Name, Rarity = m.Rarity, Description = m.Description, Sell = m.Sell }

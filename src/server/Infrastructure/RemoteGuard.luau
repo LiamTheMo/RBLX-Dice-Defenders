@@ -43,6 +43,13 @@ RemoteGuard.Specs = table.freeze({
 	Roll = table.freeze({ argc = 3, check = Roll.Shape }),
 	Buy = table.freeze({ argc = 2, check = Shop.Shape }),
 	UpgradeDie = table.freeze({ argc = 2, check = Upgrade.Shape }),
+	-- A die type id, 1..8 bytes (whether it is in the match deck is the rule's job).
+	PowerUp = table.freeze({
+		argc = 2,
+		check = function(id)
+			return type(id) == "string" and #id >= 1 and #id <= 8
+		end,
+	}),
 	Merge = table.freeze({
 		argc = 3,
 		check = function(from, to)

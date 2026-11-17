@@ -4,6 +4,7 @@
 local Balance = require(script.Parent.Parent.Config.Balance)
 local Dice = require(script.Parent.Parent.Config.Dice)
 local Validate = require(script.Parent.Validate)
+local Layout = require(game:GetService("ReplicatedStorage").Shared.Layout)
 
 local Board = {}
 
@@ -25,6 +26,26 @@ function Board.EmptyCells(board: { any }): { number }
 		end
 	end
 	return cells
+end
+
+-- Cells orthogonally adjacent to `cell` on the Layout.COLS-wide row-major grid (no wrap across rows).
+function Board.Neighbours(cell: number): { number }
+	local cols = Layout.COLS
+	local col = (cell - 1) % cols
+	local out = {}
+	if col > 0 then
+		table.insert(out, cell - 1)
+	end
+	if col < cols - 1 then
+		table.insert(out, cell + 1)
+	end
+	if cell - cols >= 1 then
+		table.insert(out, cell - cols)
+	end
+	if cell + cols <= Balance.BoardCells then
+		table.insert(out, cell + cols)
+	end
+	return out
 end
 
 -- Places a pip-1 die. Codes: BadCell, CellTaken, BadType.

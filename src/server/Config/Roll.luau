@@ -29,7 +29,7 @@ local function pool(def)
 	table.sort(ids)
 	for _, id in ids do
 		local rarity = Dice.Types[id].rarity
-		if byRarity[rarity] and not Dice.Types[id].retired then
+		if byRarity[rarity] then
 			table.insert(byRarity[rarity], id)
 			table.insert(dice, { Id = id, Rarity = rarity })
 		end

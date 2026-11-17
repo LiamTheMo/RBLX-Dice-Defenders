@@ -80,6 +80,7 @@ local function snapshot(player: Player)
 	out.RewardGold = rewardGold
 	out.RewardXp = rewardXp
 	out.RewardGems = rewardGems
+	out.Tiers = Match.TiersView(match)
 	for i = 1, Balance.BoardCells do
 		local die = match.board[i]
 		if die then
@@ -307,6 +308,15 @@ local function handleMerge(_, from: number, to: number): (boolean, string?)
 	return ok, code
 end
 
+local function handlePowerUp(_, typeId: string): (boolean, string?)
+	if match == nil then
+		return false, "WrongPhase"
+	end
+	local ok, code = Match.TryPowerUp(match, typeId)
+	flush(true)
+	return ok, code
+end
+
 local function handleEquipDeck(player: Player, ids: any): (boolean, string?)
 	if match and match.phase == "Playing" then
 		return false, "WrongPhase"
@@ -439,6 +449,7 @@ function MatchService.Init()
 	Net.Handle("Start", handleStart)
 	Net.Handle("Summon", handleSummon)
 	Net.Handle("Merge", handleMerge)
+	Net.Handle("PowerUp", handlePowerUp)
 	Net.Handle("EquipDeck", handleEquipDeck)
 	Net.Handle("ClaimQuest", handleClaimQuest)
 	Net.Handle("SaveSettings", handleSaveSettings)

@@ -20,7 +20,7 @@ end
 local function combatDps(id: string, pip: number, kind: string): number
 	local cfg = Dice.Types[id]
 	local proc = if cfg.procEvery then cfg.procFlat / cfg.procEvery else 0
-	return (Formulas.HitDamage(id, pip, kind) * (cfg.shots or 1) + proc) * cfg.rate
+	return (Formulas.HitDamage(id, kind) * (cfg.shots or 1) + proc) / Formulas.Period(id, pip)
 end
 
 test("config and Display.Dice hold the same ids with the same Name, Rarity and a distinct Color", function()
