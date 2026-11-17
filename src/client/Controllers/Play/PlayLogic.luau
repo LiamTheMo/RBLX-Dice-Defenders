@@ -15,6 +15,13 @@ PlayLogic.LOCKED_WORLDS = table.freeze({
 	table.freeze({ Id = "ShadowRealm", Name = "SHADOW REALM", Art = "WorldShadow" }),
 })
 
+-- 1v1 rank ladder (names only: no PvP backend yet, so no trophy ranges or rewards); only Bronze is open.
+PlayLogic.RANKS = table.freeze({
+	table.freeze({ Id = "Bronze", Name = "BRONZE", Art = "RankBronze", Locked = false }),
+	table.freeze({ Id = "Silver", Name = "SILVER", Art = "RankSilver", Locked = true }),
+	table.freeze({ Id = "Gold", Name = "GOLD", Art = "RankGold", Locked = true }),
+})
+
 -- Repeat-reward tiles. Only materials drop from a run (Verdant Fragments); the rest are placeholders marked Soon.
 PlayLogic.TILES = table.freeze({
 	table.freeze({ Label = "MATERIALS", Icon = "IconCrystals" }),
@@ -200,6 +207,35 @@ function PlayLogic.repeatLines(catalog: any): { { string } }
 	add(rep.PerWave)
 	add(rep.BossWave, "BOSS WAVE:")
 	return lines
+end
+
+-- Repeat-reward tiles: one per reward kind the server pays every wave (Catalog.Repeat.PerWave, its order), plus the boss-wave
+-- payout as one line (nil if none). Tile = { Label, Icon (view key), Text = "+5" }; real kinds only.
+local TILE = {
+	Gold = { "GOLD", "Coin" },
+	Gems = { "GEMS", "Gem" },
+	Xp = { "XP", "BadgeXp" },
+	Material = { "MATERIALS", "IconCrystals" },
+}
+function PlayLogic.repeatTiles(catalog: any): ({ { Label: string, Icon: string, Text: string } }, string?)
+	local rep = catalog and catalog.Repeat
+	if type(rep) ~= "table" then
+		return {}, nil
+	end
+	local tiles = {}
+	for _, r in (if type(rep.PerWave) == "table" then rep.PerWave else {}) :: { any } do
+		local t = type(r) == "table" and TILE[r.Kind]
+		if t then
+			table.insert(tiles, { Label = t[1], Icon = t[2], Text = `+{tostring(r.Amount)}` })
+		end
+	end
+	local boss = {}
+	for _, r in (if type(rep.BossWave) == "table" then rep.BossWave else {}) :: { any } do
+		if type(r) == "table" then
+			table.insert(boss, PlayLogic.rewardText(r, catalog, "Short"))
+		end
+	end
+	return tiles, if #boss > 0 then "BOSS WAVE: " .. table.concat(boss, " ") else nil
 end
 
 function PlayLogic.worldClear(snap: any): boolean

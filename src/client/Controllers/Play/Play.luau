@@ -1,4 +1,4 @@
--- Play menu controller: one Shell (banner, close; no tabs) hosting the Play View.
+-- Play menu controller: one Shell (title, close, WORLDS / 1v1 tabs) hosting the Play View.
 -- Play.new(parent, { hud = LobbyHud, toast = (string) -> () }) -> :Open() :Close() :Toggle() :IsOpen() :Destroy()
 -- Renders from PlayLogic with NetClient.Last, LastCatalog and LastMeta on open, whenever the phase, best wave or clear state
 -- changes and on every Catalog / Meta push; START sends the guarded Start request, one at a time. CLAIM sends ClaimQuest for
@@ -9,13 +9,10 @@ local GuiService = game:GetService("GuiService")
 
 local NetClient = require(script.Parent.Parent.NetClient)
 local PlayLogic = require(script.Parent.PlayLogic)
-local PlaySprites = require(script.Parent.PlaySprites)
 local Shell = require(script.Parent.Parent.Bag.Shell)
-local Sprites = require(script.Parent.Parent.Sprites)
 local View = require(script.Parent.View)
 
 local ACTION = "PlayClose"
-local SWORDS = { Image = Sprites.Icon.Play, Size = Vector2.new(256, 239), Ink = Rect.new(6, 6, 250, 233) } -- Icon_Play.png
 
 local Play = {}
 Play.__index = Play
@@ -30,21 +27,14 @@ function Play.new(parent, deps)
 		end,
 		name = "Play",
 		free = true,
-		banner = {
-			text = "PLAY",
-			textW = 0.5,
-			emblems = {
-				{ sprite = PlaySprites.LaurelL, box = { 0.1379, 0.157, 0.1061, 0.645 } }, -- 0.83x the ref laurel (A-2 scale), drawn first: behind the swords; the pair is mirrored about the scroll centre
-				{ sprite = PlaySprites.LaurelR, box = { 0.7560, 0.157, 0.1061, 0.645 } }, -- >= 4 px clear of the title outline
-				{
-					sprite = SWORDS,
-					box = { full = { 0.221, -0.077, 0.172, 0.765 }, compact = { 0.221, -0.077, 0.139, 0.62 } },
-					side = true,
-				}, -- compact: 0.81x, the pommel clears the gem pin
-			},
-		},
+		banner = { text = "PLAY" },
 	})
 	local view = View.new(shell.Slots.Content)
+	shell:SetTabs({ { Id = "Worlds", Label = "WORLDS" }, { Id = "Ranks", Label = "1v1" } })
+	shell:OnTab(function(i)
+		view:SetPage(i)
+	end)
+	shell:SetTab(1)
 
 	local busy = false
 	local pending = {} -- milestone ids with a ClaimQuest in flight, held until the next Meta after a success
@@ -56,8 +46,8 @@ function Play.new(parent, deps)
 		local catalog = NetClient.LastCatalog
 		view:SetWorlds(PlayLogic.worlds(snap))
 		view:SetSelected(PlayLogic.WORLD.Id)
-		view:SetMilestones(PlayLogic.milestones(catalog, NetClient.LastMeta, pending), PlayLogic.worldClear(snap))
-		view:SetRepeat(PlayLogic.TILES, PlayLogic.repeatLines(catalog))
+		view:SetMilestones(PlayLogic.milestones(catalog, NetClient.LastMeta, pending))
+		view:SetRepeat(PlayLogic.repeatTiles(catalog))
 		view:SetStartState(PlayLogic.startState(snap, busy))
 	end
 
