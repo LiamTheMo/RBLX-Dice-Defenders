@@ -919,7 +919,7 @@ test(
 )
 
 test(
-	"PowerUp passes the die id through (1 and 8 bytes); bucket 2/s burst 4; soft codes not counted; seq is shared",
+	"PowerUp passes the die id through (1 and 8 bytes); bucket 2/s burst 4; soft codes not counted; seq is shared; NetClient never trips it",
 	function()
 		local limits = Balance.Remotes.PowerUp
 		expect(limits.rate == 2 and limits.burst == 4, "Balance")
@@ -961,6 +961,20 @@ test(
 		local older, olderCode = seqEnv.call(owner, "PowerUp", 9, "C01")
 		expect(not older and olderCode == "BadSeq", "PowerUp seq below an earlier Roll seq (out of order)")
 		expectEq(seqEnv.calls, 2, "handler not called for the duplicate or the older seq")
+
+		local source = __sources["StarterPlayer/StarterPlayerScripts/Client/Controllers/NetClient"]
+		local interval = tonumber(string.match(source or "", "\n%s*PowerUp = ([%d%.]+),"))
+		expect(
+			interval ~= nil and interval >= 1 / limits.rate,
+			"NetClient PowerUp interval >= 1/rate: " .. tostring(interval)
+		)
+		local honest, sent = make(), {}
+		for i = 1, 60 do
+			honest.t += interval or 0
+			local okI, codeI = honest.guard:Call(sent, "PowerUp", honest.handler, i, "C01")
+			expect(okI, ("honest send %d (%s)"):format(i, tostring(codeI)))
+		end
+		expectEq(honest.guard:Violations(sent), 0, "honest client never limited")
 
 		local kicker, bad = make(), {}
 		for i = 1, Balance.KickThreshold + 5 do

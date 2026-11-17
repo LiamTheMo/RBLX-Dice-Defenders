@@ -38,6 +38,7 @@ local MIN_INTERVAL = {
 	Roll = 1.0, -- server bucket 1/s, burst 2
 	Buy = 1.0, -- server bucket 1/s, burst 3
 	UpgradeDie = 0.5, -- server bucket 2/s, burst 4
+	PowerUp = 0.5, -- server bucket 2/s, burst 4
 }
 local pending = {}
 local seq = 0
@@ -89,6 +90,7 @@ function NetClient.Start()
 				"Roll",
 				"Buy",
 				"UpgradeDie",
+				"PowerUp",
 			}
 		do
 			functions[name] = folder:WaitForChild(name)

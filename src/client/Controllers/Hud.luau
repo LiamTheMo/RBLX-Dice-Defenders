@@ -11,6 +11,8 @@ local RunService = game:GetService("RunService")
 
 local NetClient = require(script.Parent.NetClient)
 local Preload = require(script.Parent.Preload)
+local Chrome = require(script.Parent.Bag.Chrome)
+local Sprites = require(script.Parent.Sprites)
 local UiKit = require(script.Parent.UiKit)
 local Display = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Display"))
 
@@ -21,6 +23,10 @@ local TOASTS = {
 	NoMP = "Not enough MP",
 	BoardFull = "Board is full",
 	IllegalMerge = "Those dice can't merge",
+	MaxTier = "Already at max level",
+	WrongPhase = "Not available now",
+	NotInDeck = "That die isn't in your deck",
+	Throttled = "Too fast, try again", -- client throttle is per remote, so a 2nd power-up tap within 0.5 s is dropped
 }
 local MESSAGES = {
 	Loading = "Loading profile\u{2026}",
@@ -36,6 +42,75 @@ local toastToken = 0
 
 local function request(name: string)
 	task.spawn(NetClient.Request, name)
+end
+
+-- Power-up strip: one button per deck die, rebuilt only when the deck ids change. Legality is the server's;
+-- the disabled look is a hint from the snapshot's Cost and MP.
+local SLOT_W, SLOT_H = 112, 52
+local function renderPowerUps(snap, playing)
+	local rows = snap.Tiers or {}
+	ui.PowerUps.Visible = playing and #rows > 0
+	local key = ""
+	for _, row in rows do
+		key ..= row.Id .. ","
+	end
+	if ui.PowerKey ~= key then
+		ui.PowerKey = key
+		for _, slot in ui.PowerSlots do
+			slot.Root:Destroy()
+		end
+		table.clear(ui.PowerSlots)
+		for i, row in rows do
+			local id = row.Id
+			local root = Chrome.strip(ui.PowerUps, {
+				Name = "PowerUp_" .. id,
+				LayoutOrder = i,
+				Size = UDim2.fromOffset(SLOT_W, SLOT_H),
+			})
+			local info = Display.Dice[id]
+			local art = Sprites.DieArt[id]
+			local mapped = art and Sprites.Dice[art]
+			local icon = make("ImageLabel", {
+				BackgroundTransparency = 1,
+				Position = UDim2.fromOffset(6, 8),
+				Size = UDim2.fromOffset(36, 36),
+				Image = if mapped and mapped ~= "" then mapped else Sprites.Icon.Roll,
+				ImageColor3 = if mapped and mapped ~= "" then UiKit.WHITE else (info and info.Color or UiKit.WHITE),
+			}, root)
+			local tier = label({
+				Position = UDim2.fromOffset(46, 4),
+				Size = UDim2.fromOffset(60, 22),
+			}, root, 20)
+			local cost = label({
+				Position = UDim2.fromOffset(46, 26),
+				Size = UDim2.fromOffset(60, 22),
+				TextColor3 = Color3.fromRGB(120, 220, 255),
+			}, root, 20)
+			local hit = make("TextButton", {
+				BackgroundTransparency = 1,
+				Size = UDim2.fromScale(1, 1),
+				Text = "",
+				AutoButtonColor = false,
+				ZIndex = 5,
+			}, root)
+			hit.Activated:Connect(function()
+				task.spawn(NetClient.Request, "PowerUp", id)
+			end)
+			ui.PowerSlots[id] = { Root = root, Icon = icon, Tier = tier, Cost = cost, Hit = hit }
+		end
+	end
+	for _, row in rows do
+		local slot = ui.PowerSlots[row.Id]
+		local maxed = row.Cost == nil
+		local afford = not maxed and (snap.MP or 0) >= row.Cost
+		slot.Tier.Text = "Lv " .. tostring(row.Tier)
+		slot.Cost.Text = if maxed then "MAX" else row.Cost .. " MP"
+		slot.Hit.Active = afford
+		local alpha = if afford or maxed then 0 else 0.55
+		slot.Icon.ImageTransparency = alpha
+		slot.Tier.TextTransparency = alpha
+		slot.Cost.TextTransparency = alpha
+	end
 end
 
 local function showToast(text: string)
@@ -91,6 +166,22 @@ local function build()
 		Visible = false,
 		TextColor3 = Color3.fromRGB(255, 150, 120),
 	}, top, 24)
+
+	-- Left edge column, bottom-anchored: clear of the centred board, top bar, toast and the Summon corner.
+	ui.PowerUps = make("Frame", {
+		Name = "PowerUps",
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 8, 1, -8),
+		Size = UDim2.fromOffset(SLOT_W, 5 * SLOT_H + 4 * 4),
+		Visible = false,
+	}, gui)
+	make("UIListLayout", {
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Padding = UDim.new(0, 4),
+		VerticalAlignment = Enum.VerticalAlignment.Bottom,
+	}, ui.PowerUps)
+	ui.PowerSlots = {}
 
 	-- Bottom-right thumb zone.
 	ui.Summon = button(
@@ -190,6 +281,7 @@ local function render(snap)
 	ui.Summon.TextTransparency = canSummon and 0 or 0.35
 	ui.Summon.BackgroundTransparency = canSummon and 0 or 0.3
 
+	renderPowerUps(snap, playing)
 	ui.Hint.Visible = playing and (snap.Wave or 0) <= 2
 
 	updateCountdowns()
