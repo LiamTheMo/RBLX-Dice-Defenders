@@ -921,9 +921,16 @@ function View:_buildRight()
 	local col = self._right
 	clear(col)
 	local compact, rw = L.compact, L.rightW
-	local P, ohFull, thFull = 203, 144, 101 -- short windows (small desktops) shrink the preview first, then odds, then tiles
+	-- full layout: the preview (P tall), ribbon, tiles, odds (ohFull) and START stack down the column; short windows give height back
+	local P, ohFull, thFull, thGrid = 203, 144, 101, 60
+	local gapS, startK = 23, 1 -- START's visible body sits gapS under the odds box; startK scales START (visible 86 tall at 1)
+	local m5 = mpx(5)
+	local top0 = math.ceil(m5 + 0.3) -- no preview: the ribbon ink top keeps >= 5 real px to the window rim
 	local floorD = math.ceil(mpx(12)) -- the 12 real px text floor, in design px
 	local grid2 = false -- narrow desktops: the four tiles go 2x2 (compact tile) when their labels cannot reach the floor in one row
+	local ow = if compact then rw - 4 else rw - 13 -- odds box width: skin draws ~5 px over the box; phones: >= 5 real px to the window rim
+	local dvx = if ow < 340 then 120 else 134 -- narrow desktops: the divider moves toward the die to widen the text block
+	local oddsSize, ohMin = 25, 0 -- full: one role size for every payout line (A-15), and the shortest box that still spaces them
 	if not compact then
 		local tw4 = math.min(88, (rw - 8 - 12) // 4)
 		local l4 = 24
@@ -931,14 +938,42 @@ function View:_buildRight()
 			l4 = math.min(l4, fitSize(tile.Label, tw4 - 15, 24, 1))
 		end
 		grid2 = l4 < floorD
-		local deficit = math.max(0, P + 441 - L.panelH + 8 + (if grid2 then 23 else 0)) -- 2x2 tiles: 2 x 60 + 4 = 124 tall instead of 101
-		local cut = math.min(deficit, 62)
-		P -= cut
-		deficit -= cut
-		cut = math.min(deficit, 30)
-		ohFull -= cut
-		deficit -= cut
-		thFull -= if grid2 then 0 else math.min(deficit, 15)
+		local left, right = dvx + 4 + m5 + 2, ow - 3 - m5 - 2
+		local free = 2 * math.min(math.min(247, (left + right) / 2) - left, right - math.min(247, (left + right) / 2))
+		for _, line in self._odds do
+			oddsSize = math.min(oddsSize, fitSize((oddsText(line)), free * 0.95, oddsSize, floorD))
+		end
+		ohMin = math.min(ohFull, math.ceil(27.5 + 2 * m5 + (#self._odds - 1) * (oddsSize + 1))) -- line pitch >= size + 1
+		-- Height the stack needs: ribbon 61 + 13, tiles + 9, odds, the gap, START's visible half (43) plus the half it keeps from
+		-- the rim (49), then 5 real px. Each step below gives back height only while the stack is still too tall.
+		local function need()
+			local tiles = if grid2 then 2 * thGrid + 4 else thFull
+			return (if P > 0 then P + 14 else top0) + 74 + tiles + 9 + ohFull + gapS + 92 * startK + m5
+		end
+		local function give(cur, floor)
+			return cur - math.min(cur - floor, math.max(0, need() - L.H))
+		end
+		gapS = give(gapS, math.ceil(m5) + 8) -- the slack under the odds first (START's dark rim keeps >= ~10 real px)
+		P = give(P, 141)
+		ohFull = give(ohFull, math.max(114, ohMin))
+		if grid2 then
+			thGrid = give(thGrid * 2, 112) / 2 -- the compact tile's 56
+		else
+			thFull = give(thFull, 86)
+		end
+		P = give(P, 100) -- below ~100 the art reads as a sliver
+		ohFull = give(ohFull, ohMin)
+		if need() > L.H then -- still too tall: drop the preview, then hand any spare back (gap, tiles, odds)
+			P = 0
+			gapS = math.min(23, gapS + math.max(0, L.H - need()))
+			if grid2 then
+				thGrid = math.min(60, thGrid + math.max(0, L.H - need()) // 2)
+			else
+				thFull = math.min(101, thFull + math.max(0, L.H - need()))
+			end
+			ohFull = math.min(144, ohFull + math.max(0, L.H - need()))
+		end
+		startK = math.max(0.6, 1 - math.max(0, need() - L.H) / 92) -- last resort: a shorter START (>= 52 visible, label 36)
 	end
 	col.Position = UDim2.fromOffset(L.rightX, 0)
 	col.Size = UDim2.fromOffset(rw, L.H)
@@ -952,7 +987,7 @@ function View:_buildRight()
 			end
 		end
 		wd = wd or self._worlds[1]
-		if wd then
+		if wd and P > 0 then
 			local art = PlaySprites[wd.Art]
 			local pv = Draw.img(col, {
 				Name = "Preview",
@@ -967,7 +1002,7 @@ function View:_buildRight()
 			make("UICorner", { CornerRadius = UDim.new(0, 22) }, pv)
 			make("UIStroke", { Color = RIM_ORANGE, Thickness = 3, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, pv)
 		end
-		y = P - 1 + 15 -- ribbon ink top >= 12 px under the preview's outer rim (3 px stroke)
+		y = if P > 0 then P - 1 + 15 else top0 -- ribbon ink top >= 12 px under the preview's outer rim (3 px stroke)
 	end
 	-- ribbon (own aspect; the body is its top 76%): full tier fixes the ink height at 61 so the tails end at ref y 434, clear of the tiles (441)
 	local rwR = if compact then rw - 8 else round(61 / ASP) -- phones: the ribbon ends >= 5 real px inside the window rim
@@ -1005,7 +1040,7 @@ function View:_buildRight()
 		tw, th = (rw - tgap - 3) // 2, if L.W < 700 then 56 else 60 -- the skins end >= 5 real px inside the window rim
 	elseif grid2 then
 		cols = 2
-		tw, th = (rw - 8 - tgap) // 2, 60
+		tw, th = (rw - 8 - tgap) // 2, thGrid
 	else
 		tw = math.min(88, (rw - 8 - 3 * tgap) // 4) -- the skins draw 3 px over the box: boxes span x 2 .. rw - 6
 	end
@@ -1090,7 +1125,6 @@ function View:_buildRight()
 	-- odds
 	local lines = self._odds
 	local oh = if compact then math.max(70, round(18.2 * #lines + 19)) else ohFull
-	local ow = if compact then rw - 4 else rw - 13 -- skin draws ~5 px over the box; phones: >= 5 real px to the window rim
 	local odds = Draw.img(col, {
 		Name = "Odds",
 		Position = UDim2.fromOffset(if compact then 0 else 5, y),
@@ -1107,27 +1141,22 @@ function View:_buildRight()
 			sizes[i] = 18
 		end
 	else
-		local dvx = if ow < 340 then 120 else 134 -- narrow desktops: the divider moves toward the die to widen the text block
 		local dcy = oh * 68.5 / 144
+		local dk = math.min(1, oh / 120) -- short boxes: the die (and its blooms) shrink with the box
 		for i, d in { 190, 140 } do -- two stacked pink blooms behind the die (the sprite is faint; tint set after apply: skin resets it)
 			local glow = Draw.img(odds, { Name = "DieGlow" .. i, ZIndex = z - 1 })
-			Draw.apply(glow, Q.GlowRadial, 68, dcy, d, d)
+			Draw.apply(glow, Q.GlowRadial, 68, dcy, d * dk, d * dk)
 			glow.ImageColor3 = Color3.fromRGB(255, 80, 235)
 			glow.ImageTransparency = 0
 		end
-		icon(odds, Q.IconGalaxyDie, 68, dcy, 85, 95, z)
+		icon(odds, Q.IconGalaxyDie, 68, dcy, 85 * dk, 95 * dk, z)
 		icon(odds, Q.Sparkle2, 29, oh * 0.38, 22, 22, z + 1).ImageColor3 = WARM
 		divider(odds, dvx, oh * 13 / 144, 4, oh * 112 / 144, z)
 		-- the text block sits between the divider and the right rim, >= 5 real px from each (rim 3 px + 2 px text outline per side)
-		local m5 = mpx(5)
 		local left, right = dvx + 4 + m5 + 2, ow - 3 - m5 - 2
 		textCx = math.min(247, (left + right) / 2) -- ref line centre x 1325 (6 px left of the old 253)
-		local free = 2 * math.min(textCx - left, right - textCx)
-		textW = free + 4
-		local size = 25 -- one role size (A-15): the largest that fits every line
-		for _, line in lines do
-			size = math.min(size, fitSize((oddsText(line)), free * 0.95, size, math.ceil(mpx(12))))
-		end
+		textW = 2 * math.min(textCx - left, right - textCx) + 4
+		local size = oddsSize -- fitted with the height budget above
 		local y1, yn = 13.3 + m5, oh - 14.2 - m5 -- cap centres: the first and last lines keep >= 5 real px to the rim, even spacing between
 		for i = 1, #lines do
 			ys[i] = if #lines == 1 then oh / 2 else y1 + (i - 1) * (yn - y1) / (#lines - 1)
@@ -1155,15 +1184,18 @@ function View:_buildRight()
 
 	-- START
 	-- full: the visible green body must be 330x86 (BtnGreen draws ~11.6 x 18 sprite-px-at-k less than its Ink box), centred on the ref centre
-	local sw, sh = if compact then rw - 52 else math.min(339, rw - 8), if compact then 55 else 102 -- phones: 26 px bands each side hold the sparkles
+	-- startK < 1 (very short windows): a shorter button, label and arrow scaled with it
+	local sw, sh = if compact then rw - 52 else math.min(339, rw - 8), if compact then 55 else 102 * startK -- phones: 26 px bands each side hold the sparkles
 	local bw, bh = Parts.inkBox("BtnGreen", sw, sh)
-	local scy = if compact then math.min(L.H - sh / 2 - mpx(5) + 2, y + sh / 2) else math.min(y + 49, L.H - 49 - mpx(5)) -- the ink (102 tall) ends >= 5 real px above the window rim
+	local scy = if compact -- full: the visible body (86 tall at startK 1) sits gapS under the odds box; the ink ends >= 5 real px above the window rim
+		then math.min(L.H - sh / 2 - mpx(5) + 2, y + sh / 2)
+		else math.min(y - 17 + gapS + 43 * startK, L.H - 49 * startK - mpx(5))
 	local scx = round((rw - 3) / 2) -- the centre of the column's visible span (-1 .. rw - 3.5): the sparkle pairs mirror about it
 	local btn = Parts.button(col, {
 		Name = "Start",
 		Style = "Green",
 		Label = "START",
-		TextSize = if compact then 28 else 60, -- ref ink 161 wide = size 60 (cap 36 would be 63)
+		TextSize = if compact then 28 else round(60 * startK), -- ref ink 161 wide = size 60 (cap 36 would be 63)
 		Icon = if compact then PlaySprites.PlayArrow else nil,
 		Size = UDim2.fromOffset(round(bw), round(bh)),
 		Enabled = self._startState == "Ready",
@@ -1177,14 +1209,14 @@ function View:_buildRight()
 	if not compact then -- the button helper sizes its icon 45 px square: draw the 41x45 arrow and place the label by hand (ref: arrow -88, label +33 from centre)
 		local bcx, bcy = round(bw) / 2, round(bh) / 2
 		local arrow = Draw.img(btn, { Name = "Arrow", ZIndex = btn.Label.ZIndex })
-		Draw.apply(arrow, PlaySprites.PlayArrow, bcx - 86, bcy, 40, 44) -- ref arrow reads ~45 wide; 34x37 looked far smaller
+		Draw.apply(arrow, PlaySprites.PlayArrow, bcx - 86 * startK, bcy, 40 * startK, 44 * startK) -- ref arrow reads ~45 wide; 34x37 looked far smaller
 		self._startArrow = arrow
 		local l = btn.Label
 		l.TextXAlignment = Enum.TextXAlignment.Center
 		l.AnchorPoint = Vector2.new(0.5, 0.5)
-		l.Position = UDim2.fromOffset(bcx + 32, bcy - 4) -- ref label centre sits 4.5 px higher than the button helper's
-		l.Size = UDim2.fromOffset(190, 88)
-		l.TextSize = 60
+		l.Position = UDim2.fromOffset(round(bcx + 32 * startK), round(bcy - 4 * startK)) -- ref label centre sits 4.5 px higher than the button helper's
+		l.Size = UDim2.fromOffset(round(190 * startK), round(88 * startK))
+		l.TextSize = round(60 * startK)
 		self:SetStartState(self._startState)
 	end
 	btn.Activated:Connect(function()
@@ -1203,7 +1235,7 @@ function View:_buildRight()
 	-- Up to three sparkles a side like the reference, each >= 5 real px from the button's PIXELS (its dark rim included) and from the
 	-- window rim / odds box. BtnGreen's alpha edge is its ink box with 32 px round corners (measured from Bag_BtnGreen.png at k = 1;
 	-- conservative for both corners). A corner sparkle slides outward into the corner pocket, then shrinks; any that cannot fit is dropped.
-	local bhw, bhh, rad, m5 = sw / 2, sh / 2, 32, mpx(5)
+	local bhw, bhh, rad = sw / 2, sh / 2, 32 * startK
 	local function gap(x, dy) -- distance from (x, dy) (relative to the button centre) to the button's pixels
 		local qx, qy = math.abs(x) - (bhw - rad), math.abs(dy) - (bhh - rad)
 		return math.sqrt(math.max(qx, 0) ^ 2 + math.max(qy, 0) ^ 2) + math.min(math.max(qx, qy), 0) - rad
