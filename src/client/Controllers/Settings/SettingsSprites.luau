@@ -1,6 +1,6 @@
--- Settings menu sprite asset ids, cut by tools/slice_settings.py from Assets/UI/settings menu/export/Settings_<Name>.png (Size and Ink are export pixels; group 33284082).
--- Slice = 9-slice SliceCenter on the export (RowFrame/ValuePill/Rule are compacted: ends + short uniform middle; never use them unsliced).
--- TabGraphics reuses ScreenShake's image: ImageRect is the monitor only (export px), Size/Ink are relative to that rect.
+-- Settings menu sprite asset ids (group 33284082): whole sprites only, drawn by their Ink rect (Size and Ink are export pixels).
+-- Source PNGs: Assets/UI/new/settings menu/export/Settings_<Name>.png, cut by tools/slice_settings.py (bytes identical to the old
+-- uploads, so the ids carry over; manifest.json keeps each id). The row bars, panel, value pill, slider track and dividers are code-drawn.
 
 return {
 	ToggleOn = {
@@ -17,21 +17,6 @@ return {
 		Image = "rbxassetid://83654154845582",
 		Size = Vector2.new(156, 157),
 		Ink = Rect.new(11, 11, 144, 144),
-	},
-	Diamond = {
-		Image = "rbxassetid://127939935478195",
-		Size = Vector2.new(178, 99),
-		Ink = Rect.new(10, 11, 168, 88),
-	},
-	GearPair = {
-		Image = "rbxassetid://90531697561953",
-		Size = Vector2.new(412, 286),
-		Ink = Rect.new(11, 11, 401, 275),
-	},
-	Die = {
-		Image = "rbxassetid://130936588373010",
-		Size = Vector2.new(194, 194),
-		Ink = Rect.new(11, 11, 183, 183),
 	},
 	Knob = {
 		Image = "rbxassetid://119455212058071",
@@ -113,30 +98,15 @@ return {
 		Size = Vector2.new(363, 317),
 		Ink = Rect.new(11, 11, 352, 305),
 	},
-	RangeRings = {
-		Image = "rbxassetid://84296726125548",
-		Size = Vector2.new(361, 357),
-		Ink = Rect.new(12, 11, 350, 345),
-	},
 	Announce = {
 		Image = "rbxassetid://84063156144190",
 		Size = Vector2.new(363, 297),
 		Ink = Rect.new(11, 11, 352, 286),
 	},
-	PlacementGrid = {
-		Image = "rbxassetid://122852845847650",
-		Size = Vector2.new(315, 315),
-		Ink = Rect.new(11, 11, 302, 304),
-	},
 	AutoClose = {
 		Image = "rbxassetid://127910368849284",
 		Size = Vector2.new(384, 321),
 		Ink = Rect.new(13, 11, 373, 310),
-	},
-	TabGameplay = {
-		Image = "rbxassetid://138961112938327",
-		Size = Vector2.new(416, 287),
-		Ink = Rect.new(13, 11, 403, 276),
 	},
 	ReducedMotion = {
 		Image = "rbxassetid://70755898547390",
@@ -162,33 +132,5 @@ return {
 		Image = "rbxassetid://104101163763290",
 		Size = Vector2.new(330, 262),
 		Ink = Rect.new(11, 11, 319, 252),
-	},
-	Language = {
-		Image = "rbxassetid://106449611304124",
-		Size = Vector2.new(277, 276),
-		Ink = Rect.new(11, 11, 266, 263),
-	},
-	TabMisc = {
-		Image = "rbxassetid://94006882425595",
-		Size = Vector2.new(319, 243),
-		Ink = Rect.new(11, 11, 308, 230),
-	},
-	RowFrame = {
-		Image = "rbxassetid://121966566357132",
-		Size = Vector2.new(500, 133),
-		Ink = Rect.new(11, 12, 487, 119),
-		Slice = Rect.new(230, 65, 270, 67),
-	},
-	ValuePill = {
-		Image = "rbxassetid://133832486825849",
-		Size = Vector2.new(447, 193),
-		Ink = Rect.new(13, 11, 434, 182),
-		Slice = Rect.new(213, 95, 234, 97),
-	},
-	TabGraphics = {
-		Image = "rbxassetid://139910373503070",
-		Size = Vector2.new(225, 209),
-		Ink = Rect.new(0, 1, 225, 208),
-		ImageRect = Rect.new(75, 10, 300, 219),
 	},
 }

@@ -1,4 +1,4 @@
--- Settings menu controller: one Shell (banner with two dice, close, GAMEPLAY / GRAPHICS / AUDIO / MISC tabs, a gear pair behind the banner)
+-- Settings menu controller: one Shell (title, close, AUDIO / GAMEPLAY / GRAPHICS / MISC tabs as in the mockups)
 -- hosting the Settings View, wired to the SettingsLogic store: control input, the coming-soon toast, close at match start, and the
 -- consumers (Shadows, Show FPS here; Reduced Motion and UI Scale in the Shell). Saved in the profile: the first Meta loads the
 -- values, and later changes go to the server as one SaveSettings patch 2 s after the last change or at once on close.
@@ -12,9 +12,7 @@ local UserInputService = game:GetService("UserInputService")
 
 local Fps = require(script.Parent.Fps)
 local NetClient = require(script.Parent.Parent.NetClient)
-local PlaySprites = require(script.Parent.Parent.Play.PlaySprites)
 local SettingsLogic = require(script.Parent.SettingsLogic)
-local SettingsSprites = require(script.Parent.SettingsSprites)
 local Shell = require(script.Parent.Parent.Bag.Shell)
 local UiKit = require(script.Parent.Parent.UiKit)
 local View = require(script.Parent.View)
@@ -23,31 +21,7 @@ local ACTION = "SettingsClose"
 local STEP = "SettingsSliderStep"
 local SLOP = 10 -- real px a touch must move before it is a drag (sideways) or a list scroll (up / down)
 local SAVE_DELAY = 2 -- seconds after the last change before the SaveSettings patch goes (also the retry delay)
-local SB = PlaySprites.ScrollBase
-local TABS = {
-	GAMEPLAY = { label = "GAMEPLAY", icon = SettingsSprites.TabGameplay, scale = 1.08 },
-	GRAPHICS = { label = "GRAPHICS", icon = SettingsSprites.TabGraphics, scale = 0.87 }, -- scale: the sprite inside the Shell's icon box (reference 46 x 42)
-	AUDIO = { label = "AUDIO", icon = SettingsSprites.Music },
-	MISC = { label = "MISC", icon = SettingsSprites.TabMisc, scale = 1.15 },
-}
--- Banner dice (scroll-ink fractions x, y, w, h; the sprite is drawn by its ink): the right one mirrors the left about the scroll centre,
--- so the pair stays symmetric about the centred title. Compact sits closer because the title shrinks there.
-local DIE = {
-	full = { 0.1206, 0.284, 0.091, 0.4345 },
-	compact = { 0.182, 0.252, 0.109, 0.52 },
-}
-local function mirrored(b)
-	return { 1 - b[1] - b[3], b[2], b[3], b[4] }
-end
--- Gear pair behind the banner, as fractions of the scroll's ink width Wr (measured on the reference): ink height, ink centre x offset from the
--- banner centre, ink bottom below the scroll's ink top, parchment top below the scroll's ink top. Shrinks (g >= 0.70) to keep its top on screen.
-local GEAR = { h = 0.1828, dx = 0.0127, below = 0.0684, parchment = 0.0463, minG = 0.70, minVisible = 0.40 }
-local GEAR_Z = 26 -- Window child: above the chrome, content and tabs (21-23), behind the banner (30)
-
-local function round(n: number): number
-	return math.floor(n + 0.5)
-end
-
+local TAB_ORDER = { "AUDIO", "GAMEPLAY", "GRAPHICS", "MISC" } -- shell tab order (the mockups'); SettingsLogic.TABS keeps the registry order
 local Settings = {}
 Settings.__index = Settings
 
@@ -55,42 +29,19 @@ function Settings.new(parent, deps)
 	local self = setmetatable({}, Settings)
 	local hud = deps.hud
 	local conns = {}
-	local die = SettingsSprites.Die
 	local shell = Shell.new(parent, {
 		fit = function()
 			return hud:GetBagInsets()
 		end,
 		name = "Settings",
 		free = true,
-		banner = {
-			text = "SETTINGS",
-			noGem = true,
-			emblems = {
-				{ sprite = die, box = { full = DIE.full, compact = DIE.compact } },
-				{ sprite = die, box = { full = mirrored(DIE.full), compact = mirrored(DIE.compact) } },
-			},
-		},
+		banner = { text = "SETTINGS" },
 	})
 	local tabs = {}
-	for i, id in SettingsLogic.TABS do
-		tabs[i] = { Id = id, Label = TABS[id].label, Icon = TABS[id].icon }
+	for i, id in TAB_ORDER do
+		tabs[i] = { Id = id, Label = id }
 	end
 	shell:SetTabs(tabs)
-	for i, id in SettingsLogic.TABS do -- Parts.image has no crop: the Graphics icon is a crop of the ScreenShake image
-		local rect = TABS[id].icon.ImageRect
-		local icon = shell.TabBar["Tab" .. i].Row.Icon
-		if rect then
-			icon.ImageRectOffset, icon.ImageRectSize = rect.Min, Vector2.new(rect.Width, rect.Height)
-		end
-		local k = TABS[id].scale
-		if k then -- move the picture into a centred child so the Shell's own icon sizing still applies
-			local art = icon:Clone()
-			art.Name, art.AnchorPoint, art.Position, art.Size =
-				"Art", Vector2.new(0.5, 0.5), UDim2.fromScale(0.5, 0.5), UDim2.fromScale(k, k)
-			art.Parent = icon
-			icon.Image = ""
-		end
-	end
 	local view = View.new(shell.Slots.Content, {})
 
 	-- Consumers: applied now and on every change.
@@ -407,7 +358,7 @@ function Settings.new(parent, deps)
 			end
 		end
 		on(view.ResetButton.Activated, function()
-			local tab = SettingsLogic.TABS[shell:GetTab()]
+			local tab = TAB_ORDER[shell:GetTab()]
 			if tab then
 				cancel()
 				SettingsLogic.resetTab(tab)
@@ -420,7 +371,7 @@ function Settings.new(parent, deps)
 	end)
 	shell:OnTab(function(i)
 		cancel()
-		view:SetTab(SettingsLogic.TABS[i])
+		view:SetTab(TAB_ORDER[i])
 	end)
 	table.insert(
 		conns,
@@ -430,54 +381,6 @@ function Settings.new(parent, deps)
 			end
 		end)
 	)
-
-	-- Gear pair: a Window child behind the banner, placed from the banner's real-px rect (recomputed whenever that moves or resizes).
-	local window, banner = shell.Window, shell.Banner
-	local gears = Instance.new("ImageLabel")
-	gears.Name, gears.BackgroundTransparency, gears.ZIndex = "Gears", 1, GEAR_Z
-	gears.Image, gears.ScaleType = SettingsSprites.GearPair.Image, Enum.ScaleType.Stretch
-	gears.Visible = false
-	gears.Parent = window
-	local function placeGears()
-		local rec = SettingsSprites.GearPair
-		local ink, winW = rec.Ink, window.Size.X.Offset
-		local bs = banner.AbsoluteSize
-		local wr = bs.X * SB.Ink.Width / SB.Size.X -- the scroll's ink width, real px
-		if winW <= 0 or wr <= 0 then
-			return
-		end
-		local ps = window.AbsoluteSize.X / winW -- real px per Window design px (shell scale x pop)
-		local inkTop = banner.AbsolutePosition.Y + bs.Y * SB.Ink.Min.Y / SB.Size.Y
-		local cx = banner.AbsolutePosition.X + bs.X * (SB.Ink.Min.X + SB.Ink.Max.X) / 2 / SB.Size.X + GEAR.dx * wr
-		local g = math.clamp((inkTop + GEAR.below * wr) / (GEAR.h * wr), GEAR.minG, 1)
-		local h = GEAR.h * wr * g
-		local top = math.max(0, inkTop + GEAR.below * wr - h) -- real px, ink top
-		gears.Visible = (inkTop + GEAR.parchment * wr - top) / h >= GEAR.minVisible
-		local s = h / ink.Height -- real px per sprite px
-		local o = window.AbsolutePosition
-		gears.Position = UDim2.fromOffset(
-			round((cx - (ink.Min.X + ink.Max.X) / 2 * s - o.X) / ps),
-			round((top - ink.Min.Y * s - o.Y) / ps)
-		)
-		gears.Size = UDim2.fromOffset(round(rec.Size.X * s / ps), round(rec.Size.Y * s / ps))
-	end
-	local pending = false
-	local function schedule()
-		if pending then
-			return
-		end
-		pending = true
-		task.defer(function()
-			pending = false
-			if gears.Parent then
-				placeGears()
-			end
-		end)
-	end
-	table.insert(conns, banner:GetPropertyChangedSignal("AbsolutePosition"):Connect(schedule))
-	table.insert(conns, banner:GetPropertyChangedSignal("AbsoluteSize"):Connect(schedule))
-	table.insert(conns, window:GetPropertyChangedSignal("AbsoluteSize"):Connect(schedule))
-	schedule()
 
 	table.insert(
 		conns,
@@ -494,7 +397,7 @@ function Settings.new(parent, deps)
 	end)
 
 	local opened = false
-	self.Shell, self.View, self._conns, self._gears = shell, view, conns, gears
+	self.Shell, self.View, self._conns = shell, view, conns
 	self._teardown = function()
 		destroyed = true
 		saveNow() -- last chance for unsent changes; no retry after this
@@ -509,10 +412,10 @@ function Settings.new(parent, deps)
 		end
 	end
 	self._open = function(tab)
-		local index = if type(tab) == "string" then table.find(SettingsLogic.TABS, tab) else tab
+		local index = if type(tab) == "string" then table.find(TAB_ORDER, tab) else tab
 		if not opened then
 			opened = true
-			shell:SetTab(index or 1) -- GAMEPLAY on first open
+			shell:SetTab(index or 1) -- AUDIO on first open (the first tab)
 		elseif index then
 			shell:SetTab(index)
 		end
@@ -561,7 +464,6 @@ function Settings:Destroy()
 	end
 	self._teardown()
 	self.View:Destroy()
-	self._gears:Destroy()
 	self.Shell:Destroy()
 end
 
