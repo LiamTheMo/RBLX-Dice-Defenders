@@ -1,69 +1,60 @@
--- Daily Rewards menu view: the claim strip, six day cards, the Day 7 chest card and the progress / CLAIM / timer bar, in the shared shell's slot.
--- Visual only: no NetClient. Design px under the shell's UIScale; the slot's Size offset and "Compact" attribute pick the layout.
+-- Daily menu view (daily-revised.png): claim strip, six day cards + the Day 7 chest card, and the PROGRESS | CLAIM | timer bar, in the shell's slot.
+-- Visual only: no NetClient. Design px under the shell's UIScale; the slot's Size offset and "Compact" attribute pick the numbers
+-- (one code path: Full = the mockup's 1068 x 582 content box, Compact = fixed-height strip and bar, the cards take the rest of the height).
 -- View.new(slot) -> :SetDays(DailyLogic.days(Catalog.Daily.Days)) :SetLogin(Meta.Login) :SetTimer(prefix?, value?)
 --   :SetClaimState("Ready" | "Claimed" | "Soon") :SetSoon(on) (the loading card) :OnAction(cb()) (a CLAIM press while "Ready") :Destroy()
--- Setters only store state; one deferred rebuild draws it (also on every slot size / Compact change).
--- Full = the reference in 1197 x 688 content units (x scaled by W / 1197, y by H / 688). Compact = fixed strip and bar, the cards on a
--- vertical Parts.scrollBar scroll (3 columns, Day 7 below). Card art is drawn WHOLE at one scale per card, placed by its rim centre / bottom.
--- Layers: cards 24, card content 25-26, text 27, strip and bar 24-27, scroll bar 31-32, Soon card 30-32.
+-- Setters only store state; one deferred rebuild draws it (also on every slot size / Compact / scale change).
+-- GUI paths under the slot: DailyRoot.Main.{Strip, Cards.Day1..Day7, Bar}, DailyRoot.Soon. Layers: cards 24, content 25-27.
 
-local TextService = game:GetService("TextService")
-
+local Bag = require(script.Parent.Parent.Bag.BagSprites)
+local Chrome = require(script.Parent.Parent.Bag.Chrome)
 local DailyLogic = require(script.Parent.DailyLogic)
 local DailySprites = require(script.Parent.DailySprites)
-local Draw = require(script.Parent.Parent.QuestLog.Draw)
 local Parts = require(script.Parent.Parent.Bag.Parts)
-local PlaySprites = require(script.Parent.Parent.Play.PlaySprites)
-local RollSprites = require(script.Parent.Parent.Roll.RollSprites)
+local Shared = require(script.Parent.Parent.SharedSprites)
 local Sprites = require(script.Parent.Parent.Sprites)
 local UiKit = require(script.Parent.Parent.UiKit)
 
 local Display = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Display"))
 
-local Q = Draw.Q
 local make = UiKit.make
 
-local GOLD_HEX = "#FCD51A"
-local GOLD = Color3.fromRGB(252, 213, 26)
 local WHITE = Color3.fromRGB(250, 248, 245)
-local LINE = Color3.fromRGB(45, 3, 8)
-local PANEL_INS = { 4, 2, 4, 10 } -- visible insets (source px: left, top, right, bottom) of the LeftPanel sprite inside its Ink rect
-local PANEL_K = 0.5 -- slice scale of every card (as the Shop)
-local REF_W, REF_H = 1197, 688 -- the reference content box
-local S_CARD, S_DAY7 = 0.828, 0.953 -- sprite px -> design px of the small cards / Day 7 at the reference size (text sizes scale with it)
+local GOLD = Color3.fromRGB(252, 213, 26)
+local LINE = Color3.fromRGB(18, 18, 22) -- text outline
+local ORANGE = Color3.fromRGB(255, 152, 32) -- today's glow, plate and rim
+local MAX_SCALE = 1.5 -- the Shell's largest UIScale: art is never drawn past native / MAX_SCALE design px (no upscale at 2560x1440)
+local MIN_PX = 12 -- smallest text, real px
 
--- The raw HUD Coin, Gem, Roll and Dice have transparent margins: Size / Ink (alpha >= 160) measured from their PNGs in Assets\UI\lobby HUD\export.
-local COIN = { Image = Sprites.Coin, Size = Vector2.new(125, 128), Ink = Rect.new(3, 3, 122, 125) }
-local GEM = { Image = Sprites.Gem, Size = Vector2.new(128, 124), Ink = Rect.new(4, 4, 124, 120) }
-local ROLL = { Image = Sprites.Icon.Roll, Size = Vector2.new(256, 185), Ink = Rect.new(4, 7, 252, 181) } -- dice without art, tinted
-local function hud(id: string, w: number, h: number, r: number, b: number)
-	return { Image = id, Size = Vector2.new(w, h), Ink = Rect.new(6, 6, r, b) }
-end
-local DICE = {
-	Sun = hud(Sprites.Dice.Sun, 236, 254, 231, 248),
-	Ice = hud(Sprites.Dice.Ice, 244, 253, 239, 248),
-	Fire = hud(Sprites.Dice.Fire, 237, 254, 231, 248),
-	Leaf = hud(Sprites.Dice.Leaf, 246, 253, 240, 248),
-	Lightning = hud(Sprites.Dice.Lightning, 249, 252, 243, 246),
+-- Per state: card fill, rim, plate fill, plate rim, pill fill and rim (CLAIM uses the shared green pill art), sampled from the mockup.
+local STATE = {
+	Upcoming = {
+		fill = Color3.fromRGB(37, 36, 38),
+		rim = Color3.fromRGB(143, 141, 146),
+		plate = Color3.fromRGB(58, 57, 59),
+		plateRim = Color3.fromRGB(126, 123, 124),
+		pill = Color3.fromRGB(70, 69, 72),
+		pillRim = Color3.fromRGB(150, 149, 152),
+	},
+	Claimed = {
+		fill = Color3.fromRGB(38, 59, 33),
+		rim = Color3.fromRGB(130, 143, 130),
+		plate = Color3.fromRGB(44, 105, 16),
+		plateRim = Color3.fromRGB(112, 191, 87),
+		pill = Color3.fromRGB(42, 92, 31),
+		pillRim = Color3.fromRGB(112, 191, 87),
+	},
+	Today = {
+		fill = Color3.fromRGB(34, 34, 35),
+		rim = Color3.fromRGB(255, 190, 90),
+		plate = Color3.fromRGB(53, 51, 50),
+		plateRim = ORANGE,
+	},
 }
--- card art: the rim centre x and bottom (sprite px) every state is aligned by (the glow frames carry a bigger box)
--- the 4th value is the sprite's measured rim width: every state is scaled to the same VISIBLE rim (the glow frames' boxes are bigger)
-local CARD = {
-	Upcoming = { DailySprites.CardUpcoming, 168, 286, 308 },
-	Today = { DailySprites.CardToday, 175, 286, 312.5 },
-	Claimed = { DailySprites.CardClaimed, 171.5, 286, 312 },
-}
-local DAY7 = {
-	Upcoming = { DailySprites.Day7, 203, 519, 380 },
-	Today = { DailySprites.Day7Glow, 211.5, 521, 379 },
-}
--- small card content: the cell x (sprite px from the rim centre); the icon / amount rows are laid out in _card
-local CELL_X = 74
-local TAB_Y = -243 -- DAY n on the red tab
--- reference columns / row bottoms / Day 7 (content units)
-local COLS, ROWS = { 144.5, 413.5, 679 }, { 306.4, 541.3 } -- row bottoms put the tab tops at the reference y 245 / 480 (C 78 / 313)
-local DAY7_REF = { cx = 1001, bottom = 537, w = 355 } -- rim width: the sprite is taller than the reference (aspect), so the width gives
-local CARD_W = 252 -- a little (card 252 vs 262, Day 7 355 vs 365) to keep the crown and the rows' gap as in the reference
+
+local COIN, GEM = Shared.Coin, Shared.Gem -- the HUD currency icons (owner rule)
+local ROLL = { Image = Sprites.Icon.Roll, Size = Vector2.new(256, 185) } -- dice without art, tinted
+local DIE = Vector2.new(202, 213) -- the 10 elemental die icons are 200-205 x 211-215 (lobby hud/export/manifest.json); drawn with Fit
 
 local function round(n: number): number
 	return math.floor(n + 0.5)
@@ -71,130 +62,79 @@ end
 
 local K = 1 -- real px per design px under the shell's UIScales (set per build)
 
-local function measure(str: string, size: number): number
-	return TextService:GetTextSize(str, size * K, Enum.Font.FredokaOne, Vector2.new(1e5, 1e5)).X / K
+local function minText(): number
+	return math.ceil(MIN_PX / K)
 end
 
--- The largest size <= size at which str fits w (never under min).
-local function fitText(str: string, w: number, size: number, min: number): number
-	while size > min and measure(str, size) > w * 0.97 do
-		size -= 1
-	end
-	return size
-end
-
--- Live text centred at (x, y); fill / outline colour and outline px as the other menus' roles.
-local function label(parent, name: string, text: string, size: number, x: number, y: number, z: number, o)
+-- Live text centred at (cx, cy) in a w-wide box, shrunk (>= the 12 real px floor) to fit.
+local function txt(parent, name: string, text: string, size: number, cx: number, cy: number, w: number, z: number, o)
 	o = o or {}
+	local floor = minText()
+	size = Parts.fitSize(o.plain or text, w, math.max(size, floor), floor)
 	local l = Parts.text(parent, {
 		Name = name,
 		Text = text,
 		RichText = o.rich == true,
 		TextSize = size,
 		TextColor3 = o.fill or WHITE,
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromOffset(round(x), round(y)),
-		Size = UDim2.fromOffset(math.ceil(measure(text, size)) + 12, round(size * 1.2)),
 		TextTruncate = Enum.TextTruncate.None,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromOffset(round(cx), round(cy)),
+		Size = UDim2.fromOffset(
+			math.min(round(w), math.ceil(Parts.measure(o.plain or text, size)) + 6),
+			math.ceil(size * 1.05)
+		),
 		ZIndex = z,
-	}, o.px or 3)
-	local stroke = l:FindFirstChildOfClass("UIStroke")
-	if o.px == 0 then
-		stroke:Destroy()
-	else
-		stroke.Color = o.line or LINE
-	end
+	}, o.px or 2)
+	l.UIStroke.Color = LINE
 	return l
 end
 
--- A record sprite, drawn by its ink fitted by aspect into w x h, centred at (cx, cy); raw ids as a Fit image.
-local function sprite(parent, ref, cx: number, cy: number, w: number, h: number, z: number, name: string?)
-	local i = Draw.img(parent, { Name = name or "Art", ZIndex = z })
-	if type(ref) == "table" then
-		local iw, ih = Draw.fitIn(ref, w, h)
-		Draw.apply(i, ref, cx, cy, iw, ih)
-	else
-		i.Image, i.ScaleType = ref, Enum.ScaleType.Fit
-		i.AnchorPoint, i.Position, i.Size =
-			Vector2.new(0.5, 0.5), UDim2.fromOffset(round(cx), round(cy)), UDim2.fromOffset(round(w), round(h))
-	end
-	return i
-end
-
--- A sprite drawn by its ink at exactly w x h centred at (cx, cy) (9-slice records keep their rim at the default scale).
-local function skin(parent, rec, cx: number, cy: number, w: number, h: number, z: number, name: string, k: number?)
-	return Draw.apply(Draw.img(parent, { Name = name, ZIndex = z }), rec, cx, cy, w, h, k)
-end
-
--- The whole sprite at scale s with its rim point (rx, ry) (sprite px) at (px, py) in the parent.
-local function whole(parent, rec, rx: number, ry: number, px: number, py: number, s: number, z: number, name: string)
-	return Draw.img(parent, {
+-- A whole icon, aspect kept (Fit), at most maxW x maxH and never past native / MAX_SCALE, centred at (cx, cy).
+local function icon(parent, rec, cx: number, cy: number, maxW: number, maxH: number, z: number, name: string)
+	local size = rec.Size
+	local s = math.min(maxW / size.X, maxH / size.Y, 1 / MAX_SCALE)
+	return make("ImageLabel", {
 		Name = name,
+		BackgroundTransparency = 1,
 		Image = rec.Image,
-		ScaleType = Enum.ScaleType.Stretch,
-		Position = UDim2.fromOffset(round(px - rx * s), round(py - ry * s)),
-		Size = UDim2.fromOffset(round(rec.Size.X * s), round(rec.Size.Y * s)),
+		ScaleType = Enum.ScaleType.Fit,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromOffset(round(cx), round(cy)),
+		Size = UDim2.fromOffset(round(size.X * s), round(size.Y * s)),
 		ZIndex = z,
-	})
+	}, parent)
 end
 
--- LeftPanel skin by its VISIBLE box (x, y, w, h), slice scale PANEL_K as the Shop's cards.
-local function panel(parent, x: number, y: number, w: number, h: number, z: number, name: string)
-	local l, t, r, b = PANEL_INS[1], PANEL_INS[2], PANEL_INS[3], PANEL_INS[4]
-	local k = PANEL_K
-	Draw.apply(
-		Draw.img(parent, { Name = name, ZIndex = z }),
-		Draw.Bag.LeftPanel,
-		x + w / 2 + (r - l) / 2 * k,
-		y + h / 2 + (b - t) / 2 * k,
-		w + (l + r) * k,
-		h + (t + b) * k,
-		k
-	)
-end
-
--- The icon record and its tint (nil = untinted). Dice: their elemental art (Sprites.DieArt), else the Roll glyph tinted by
--- Display colour, as the Bag DICE tab and the HUD deck bar.
-local function rewardRec(reward): (any, Color3?)
-	local kind = reward.Kind
+-- Reward Kind -> its icon record and tint. Dice: elemental art, else the Roll glyph tinted by Display colour.
+local function rewardRec(r): (any, Color3?)
+	local kind = r.Kind
 	if kind == "Coins" then
 		return COIN
 	elseif kind == "Gems" then
 		return GEM
 	elseif kind == "Potion" then
-		return Q.Potion
+		return DailySprites.Potion
 	elseif kind == "Crystals" then
-		return Draw.Bag.IconCrystals
+		return Bag.IconCrystals
 	end
-	local art = DICE[Sprites.DieArt[reward.Id]]
+	local art = Sprites.Dice[Sprites.DieArt[r.Id]]
 	if art then
-		return art
+		return { Image = art, Size = DIE }
 	end
-	local info = Display.Dice[reward.Id]
+	local info = Display.Dice[r.Id]
 	return ROLL, info and info.Color
 end
 
--- One reward: the icon (fitted into bw x bh, coins by tier) standing on iconBottom (never over the amount) and its amount centred at (x, ay).
-local function reward(
-	parent,
-	r,
-	x: number,
-	iconBottom: number,
-	ay: number,
-	bw: number,
-	bh: number,
-	size: number,
-	z: number,
-	px: number?
-)
-	local k = 1
-	if r.Kind == "Coins" then
-		k = ({ 0.86, 0.93, 1 })[DailyLogic.coinTier(r.Amount)]
-	end
+local function rewardIcon(parent, r, cx: number, cy: number, maxW: number, maxH: number, z: number)
 	local rec, tint = rewardRec(r)
-	local _, ih = Draw.fitIn(rec, bw * k, bh * k)
-	sprite(parent, rec, x, iconBottom - ih / 2, bw * k, bh * k, z, "Icon").ImageColor3 = tint or Color3.new(1, 1, 1)
-	label(parent, "Amount", DailyLogic.amountText(r), size, x, ay, z + 2, { px = px })
+	icon(parent, rec, cx, cy, maxW, maxH, z, "Icon").ImageColor3 = tint or Color3.new(1, 1, 1)
+end
+
+-- Bare tick / padlock badges: SharedSprites.Tick / Padlock (ids filled later; blank until uploaded), s design px square, centred at (cx, cy).
+local function glyph(parent, kind: string, cx: number, cy: number, s: number, z: number)
+	local rec = if kind == "Tick" then Shared.Tick else Shared.Padlock
+	icon(parent, rec or { Image = "", Size = Vector2.new(100, 100) }, cx, cy, s, s, z, kind)
 end
 
 local View = {}
@@ -206,355 +146,307 @@ local function compute(W: number, H: number, compact: boolean)
 	local L = { W = W, H = H, compact = compact }
 	L.touch = math.ceil(44 / K) -- smallest button height that is >= 44 real px
 	if compact then
-		L.stripH, L.barH, L.gap, L.inset = 40, 76, 10, 10
-		L.gutter = 16 -- the scroll bar (8 px + 4 + 4) is counted on both sides so the columns stay centred
-		L.scrollTop = L.stripH + 4
-		L.scrollH = H - L.scrollTop - L.barH - 6 - 4 -- down to 4 px above the bar
-		L.pad = 6 -- the first row starts 10 px under the strip
-		local sW = math.min(240, (W - 2 * L.gutter - 2 * L.gap) / 3) / 308 -- the widest the 3 columns allow
-		-- Row 2 shows WHOLE tab plates (tab rim bottom at 62 px x scale) and no icon pixels, or nothing with <= 12 px left blank.
-		-- Whichever the width allows: a card tall enough to fill the window (A: row 2 hidden), else row 2 peeks (B) at the gap, then the scale, that fit it.
-		local sA = math.min(sW, (L.scrollH - L.pad - 8) / 273)
-		local rowGap = L.gap
-		if L.scrollH - L.pad - 273 * sA <= 12 then
-			L.s = sA
-			rowGap = math.max(L.gap, L.scrollH + 6 - L.pad - 273 * sA)
-		else
-			-- B: row 2's visible part ends exactly under its tab plates and above its icons (the icon tops sit 1.5 px above the tab plate's 62 px).
-			L.s = sW
-			rowGap = L.scrollH - L.pad - 335 * sW + 1.5
-			if rowGap < 6 then
-				rowGap = 6
-				L.s = (L.scrollH - L.pad - 6 + 1.5) / 335
-			end
-		end
-		L.colW, L.cardH = L.s * 308, L.s * 273
-		L.rows = L.cardH + rowGap
-		L.s7 = math.min(W - 2 * L.gutter, 340) / 380
-		L.canvasH = math.ceil(L.pad + 2 * L.rows + L.s7 * 519 + 8 + 4) -- Day 7's rim bottom + 4: ~12 px blank above the bar with the 4 px window gap
-		L.barBtn = math.max(52, L.touch)
+		L.top, L.stripH, L.g1, L.barH, L.g2, L.bottom = 0, 38, 8, 72, 8, 0
+		L.gap, L.inset = 4, 4
 	else
-		L.sx, L.sy = W / REF_W, H / REF_H
-		L.s, L.s7 = CARD_W * L.sx / 308, DAY7_REF.w * L.sx / 380 -- rim widths 308 / 380 sprite px
-		L.barBtn = math.max(69 * L.sy, L.touch)
+		local k = math.min(1, H / 582)
+		L.top, L.stripH, L.g1, L.barH, L.g2, L.bottom = 25 * k, 54 * k, 35 * k, 101 * k, 48 * k, 15 * k
+		L.gap, L.inset = 9, 3
 	end
-	L.tsc, L.f7 = L.s / S_CARD, L.s7 / S_DAY7
+	L.top, L.stripH, L.barH = round(L.top), round(L.stripH), round(L.barH)
+	L.cardsY = round(L.top + L.stripH + L.g1)
+	L.cardH = round(H - L.cardsY - L.g2 - L.barH - L.bottom)
+	L.barY = L.cardsY + L.cardH + round(L.g2)
+	L.cw = (W - 2 * L.inset - 6 * L.gap) / (6 + 160 / 140) -- six cards and Day 7 (160 / 140 as wide)
+	L.f = math.min(1, L.cardH / 304, L.cw / 140) -- text and icon scale of the card contents
 	return L
 end
 
 -- Build -----------------------------------------------------------------------------------------------------
 
-function View:_card(L, parent, day, state: string, cx: number, bottom: number)
-	local s = L.s
-	local rec, rx, ry, rimW = table.unpack(CARD[state])
-	whole(parent, rec, rx, ry, cx, bottom, s * 308 / rimW, 24, "Card" .. day.Day)
-	local tsz = fitText("DAY 6", 140 * s, round(38 * L.tsc), if L.compact then 18 else math.ceil(12 / K))
-	label(parent, "DayLabel", "DAY " .. day.Day, tsz, cx, bottom + TAB_Y * s + 1, 27, {})
-	if state == "Claimed" then
-		return -- the baked tick sits over the cells
+function View:_card(L, parent, day, state: string, x: number, w: number)
+	local c = STATE[state]
+	local h, f = L.cardH, L.f
+	local today = state == "Today"
+	local card = make(if today then "TextButton" else "Frame", {
+		Name = "Day" .. day.Day,
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromOffset(round(x + w / 2), L.cardsY + round(h / 2)),
+		Size = UDim2.fromOffset(round(w), h),
+		ZIndex = 24,
+	}, parent)
+	if today then
+		card.Text = ""
+		card.AutoButtonColor = false
+		Parts.interact(card) -- hover / press scale, gold focus rim for gamepad
+		table.insert(
+			self._connsBuild,
+			card.Activated:Connect(function()
+				if self._claim == "Ready" and self._onAction then
+					self._onAction()
+				end
+			end)
+		)
+		local glow = make("Frame", {
+			Name = "Glow",
+			BackgroundTransparency = 1,
+			Position = UDim2.fromOffset(-4, -4),
+			Size = UDim2.new(1, 8, 1, 8),
+			ZIndex = 23,
+		}, card)
+		make("UICorner", { CornerRadius = UDim.new(0, 24) }, glow)
+		Chrome.stroke(glow, ORANGE, 5).Transparency = 0.55
 	end
-	local asz = fitText("+1,500", 100 * s * 1.2, round(35 * L.tsc), math.ceil(12 / K))
-	-- Every tier: each cell is laid out bottom-up in design px from outline-aware budgets (measured, Fredoka One: the white ink of "+1,500"
-	-- reaches 0.302 x size above and 0.438 x size (the comma) below the label centre, and the UIStroke adds its thickness all round):
-	--   amount outline bottom = the cell's bottom limit (rim dark edge, or the cross rule's top edge) - 3.5 (5.5 on the bottom row: Today glow)
-	--   icon ink bottom       = the amount's white-fill top - 2 (the amount draws above the icon, so the icon may run under its outline);
-	--   the icon gets what is left up to the cell top (tab bottom / rule bottom) + 1.5.
-	-- If that leaves < 60% of the cell on phones, the amount text shrinks (<= 2 px, never under the floor) before the icon does.
-	local OUT = if L.compact then 2 else 3 -- the amount's outline px
-	local function cellRow(row: number, size: number)
-		local m1, m2 = if L.compact then 4.5 else 5.5, if L.compact then 6 else 8 -- design px of margin below the amount outline
-		local lim = (if row == 1 then -122 - m1 / s else -10.8 - m2 / s) * s -- the Today glow ramps up from the rim early
-		local ay = lim - 0.438 * size - OUT
-		local ib = ay - 0.302 * size - 4 -- the icon may run under the amount's outline, never over its white fill
-		local top = (if row == 1 then -214 else -119) * s + 1
-		local cellH = (if row == 1 then 214 - 122 else 119 - 10.8) * s
-		return ay, ib, ib - top, cellH
-	end
-	local size = asz
-	if L.compact then
-		for _ = 1, 2 do
-			local _, _, h1, c1 = cellRow(1, size)
-			local _, _, h2, c2 = cellRow(2, size)
-			if math.min(h1 / c1, h2 / c2) >= 0.6 or size <= math.ceil(12 / K) then
-				break
-			end
-			size -= 1
+	local panel = Chrome.panel(card, {
+		Name = "Panel",
+		Size = UDim2.fromScale(1, 1),
+		Radius = 20,
+		BackgroundColor3 = c.fill,
+		ZIndex = 24,
+	})
+	panel.UIStroke.Color = c.rim
+
+	-- DAY n plate
+	local inset = round(w * 0.11)
+	local plateTop = math.max(5, round(h * 0.026))
+	local ph = math.clamp(round(h * 0.122), 26, 37)
+	local plate = Chrome.strip(card, {
+		Name = "Plate",
+		Position = UDim2.fromOffset(inset, plateTop),
+		Size = UDim2.fromOffset(w - 2 * inset, ph),
+		Radius = 999,
+		BackgroundColor3 = c.plate,
+		ZIndex = 25,
+	})
+	plate.UIStroke.Color = c.plateRim
+	txt(plate, "DayLabel", "DAY " .. day.Day, round(32 * f), (w - 2 * inset) / 2, ph / 2 + 1, w - 2 * inset - 12, 27)
+
+	-- status pill: CLAIMED / CLAIM / UPCOMING
+	local pillInset = round(w * (if L.compact then 0.03 else 0.06))
+	local pillH = math.clamp(round(h * 0.14), 28, 43)
+	local pillBottom = math.max(6, round(h * 0.043))
+	local pillW = round(w - 2 * pillInset)
+	if today then
+		local pill = make("ImageLabel", {
+			Name = "Pill",
+			BackgroundTransparency = 1,
+			Position = UDim2.fromOffset(pillInset, h - pillBottom - pillH),
+			Size = UDim2.fromOffset(pillW, pillH),
+			ZIndex = 25,
+		}, card)
+		Parts.skinH(pill, Shared.PillGreen, pillH)
+		txt(pill, "Label", "CLAIM", round(34 * f), pillW / 2, pillH / 2 - 1, pillW - 10, 27, { px = 3 })
+	else
+		local pill = Chrome.strip(card, {
+			Name = "Pill",
+			Position = UDim2.fromOffset(pillInset, h - pillBottom - pillH),
+			Size = UDim2.fromOffset(pillW, pillH),
+			Radius = 999,
+			BackgroundColor3 = c.pill,
+			ZIndex = 25,
+		})
+		pill.UIStroke.Color = c.pillRim
+		local text = if state == "Claimed" then "CLAIMED" else "UPCOMING"
+		local gs = round(pillH * 0.5)
+		local size = Parts.fitSize(
+			text,
+			pillW - gs - (if L.compact then 9 else 22),
+			math.max(round(26 * f), minText()),
+			minText()
+		)
+		local tw = Parts.measure(text, size)
+		local badge = tw + gs + 10 <= pillW -- Compact: no room for the lock / tick beside the word: the word alone
+		local x0 = (pillW - (if badge then gs + 6 + tw else tw)) / 2
+		if badge then
+			glyph(pill, if state == "Claimed" then "Tick" else "Lock", x0 + gs / 2, pillH / 2, gs, 27)
 		end
+		txt(pill, "Label", text, size, x0 + (if badge then gs + 6 else 0) + tw / 2, pillH / 2 + 1, tw + 8, 27)
 	end
-	for i, r in day.Rewards do
-		local col, row = (i - 1) % 2, math.floor((i - 1) / 2) + 1
-		local x = cx + (if col == 0 then -CELL_X else CELL_X) * s
-		local ay, ib, h = cellRow(row, size)
-		reward(parent, r, x, bottom + ib, bottom + ay, 140 * s, h, size, 25, OUT)
+
+	-- rewards between the plate and the pill
+	local areaTop = plateTop + ph + 6
+	local areaBot = h - pillBottom - pillH - 6
+	local rewards = day.Rewards
+	local n = #rewards
+	if day.Chest then
+		local zoneH = round(h * 0.22)
+		local chestBot = areaBot - zoneH
+		icon(
+			card,
+			DailySprites.Chest,
+			w / 2,
+			(areaTop - 2 + chestBot) / 2,
+			w * 0.8,
+			chestBot - areaTop + 2,
+			26,
+			"Chest"
+		)
+		local colW = (w - 8) / math.max(n, 1)
+		for i, r in rewards do
+			local cx = 4 + (i - 0.5) * colW
+			rewardIcon(card, r, cx, areaBot - zoneH * 0.68, colW * 0.7, zoneH * 0.58, 26)
+			local text = DailyLogic.amountText(r)
+			local size = math.max(round(24 * f), minText())
+			if Parts.measure(text, size) > colW and r.Amount >= 1000 then
+				text = "+" .. math.floor(r.Amount / 100) / 10 .. "K" -- phones: 1,000 -> +1K when the column is too narrow
+			end
+			txt(card, "Amount", text, size, cx, areaBot - zoneH * 0.18, colW + 6, 27)
+		end
+	else -- stacked, centred: icon over amount, one row per reward (3 rows get smaller text)
+		local rh = (areaBot - areaTop) / math.max(n, 2)
+		local top0 = areaTop + (math.max(n, 2) - n) * rh / 2
+		local size = if n <= 2 then round(34 * f) else round(math.min(34 * f, rh * 0.4))
+		for i, r in rewards do
+			local rowTop = top0 + (i - 1) * rh
+			rewardIcon(card, r, w / 2, rowTop + rh * 0.4, w * 0.62, rh * (if n <= 2 then 0.58 else 0.55), 26)
+			txt(card, "Amount", DailyLogic.amountText(r), size, w / 2, rowTop + rh * 0.81, w - 8, 27, { px = 3 })
+		end
 	end
 end
 
-function View:_day7(L, parent, day, state: string, cx: number, bottom: number)
-	local s, f = L.s7, L.f7
-	local rec, rx, ry, rimW = table.unpack(DAY7[if state == "Today" then "Today" else "Upcoming"])
-	local sd = s * 380 / rimW
-	whole(parent, rec, rx, ry, cx, bottom, sd, 24, "Day7")
-	local ax = cx - 0.7 * f -- the content axis: the visible rim's centre (the frame's own padding is lopsided)
-	local min = if L.compact then 18 else math.ceil(12 / K)
-	local dayText = "DAY " .. day.Day
-	label(parent, "DayLabel", dayText, fitText(dayText, 150 * s, round(52 * f), min), ax, bottom - 410 * sd, 27, {})
-	-- the name ribbon, then the chest from just under the DAY 7 tab (rim bottom at sprite y 151) down to behind the ribbon's top edge
-	local rw = 327 * f
-	local rh = rw * Draw.Bag.ItemsNameRibbon.Ink.Height / Draw.Bag.ItemsNameRibbon.Ink.Width
-	local ribbonY = bottom - 159 * f
-	local top, bot = bottom - (ry - 151) * sd + 3, ribbonY - rh / 2 + 18
-	local cy, chH = (top + bot) / 2, bot - top
-	for _, side in { -1, 1 } do -- laurels hug the chest's sides, partly behind it
-		sprite(
-			parent,
-			if side < 0 then PlaySprites.LaurelL else PlaySprites.LaurelR,
-			ax + side * (chH * 0.475), -- about half of each laurel shows beside the chest's lower half
-			cy + 30 * f,
-			56 * f,
-			80 * f,
-			25,
-			if side < 0 then "LaurelL" else "LaurelR"
+-- The strip: calendar icon + the sentence ("7 days!" in gold) on a Chrome strip centred on the window axis.
+function View:_strip(L, parent)
+	local c = L.compact
+	local w = math.min(700, L.W - 24)
+	local h = L.stripH
+	local strip = Chrome.strip(parent, {
+		Name = "Strip",
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.fromOffset(round(L.W / 2), L.top),
+		Size = UDim2.fromOffset(w, h),
+		Radius = 20,
+		BackgroundColor3 = Color3.fromRGB(56, 56, 58),
+		ZIndex = 24,
+	})
+	local ih = if c then h - 6 else 56 -- mockup calendar 55 x 56, left edge 37 px in
+	icon(strip, DailySprites.Calendar, if c then ih * 0.5 + 14 else 64, h / 2, ih, ih, 26, "Calendar")
+	local left = ih + 22
+	local avail = w - left - 20
+	local mid = if c then left + avail / 2 else 390 -- mockup text centre
+	txt(
+		strip,
+		"Text",
+		`Claim rewards every day for <font color="#FCD51A">7 days!</font>`,
+		if c then 24 else 38,
+		mid,
+		h / 2 + 1,
+		avail,
+		27,
+		{ rich = true, px = 3, plain = "Claim rewards every day for 7 days!" }
+	)
+end
+
+-- The bottom bar: calendar + PROGRESS + track | CLAIM | stopwatch + timer. Full segments sit at the mockup's offsets scaled with the bar width.
+function View:_bar(L, parent)
+	local c = L.compact
+	local bw, bh = L.W - 2 * L.inset, L.barH
+	local bar = Chrome.strip(parent, {
+		Name = "Bar",
+		Position = UDim2.fromOffset(L.inset, L.barY),
+		Size = UDim2.fromOffset(bw, bh),
+		Radius = 20,
+		BackgroundColor3 = Color3.fromRGB(43, 43, 47),
+		ZIndex = 24,
+	})
+	local u = if c then 1 else bw / 1062 -- Full positions are measured on the mockup's 1062 wide bar
+	local v = math.min(1, bh / 101)
+	local mid = bh / 2
+	-- left segment: calendar, PROGRESS title, track with "n / 7 DAYS"
+	icon(bar, DailySprites.Calendar, (if c then 40 else 66) * u, mid, 60 * v, 66 * v, 26, "Calendar")
+	local streak = if self._login then self._login.Streak else 0
+	local px = (if c then 70 else 113) * u
+	local pw = if c then math.clamp(bw * 0.2, 110, 150) else 202 * u
+	local pcx = px + pw / 2
+	txt(bar, "ProgressTitle", "PROGRESS", round(31 * v), pcx - 8, bh * 0.25 - 3, pw, 27)
+	local th = math.max(round(35 * v), 22)
+	local track, fill = Chrome.track(bar, {
+		Name = "Track",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromOffset(round(pcx), round(bh * 0.63)),
+		Size = UDim2.fromOffset(round(pw), th),
+		ZIndex = 25,
+	}, Color3.fromRGB(254, 172, 28))
+	fill.Size = UDim2.fromScale(math.clamp(streak / DailyLogic.DAYS, 0, 1), 1)
+	txt(track, "ProgressText", DailyLogic.progressText(streak), round(28 * v), pw / 2, th / 2, pw - 8, 28)
+	local div1 = px + pw + (if c then 10 else 33 * u)
+	local div2 = bw - (if c then math.clamp(bw * 0.27, 170, 270) else 340 * u)
+	for i, x in { div1, div2 } do
+		Chrome.divider(bar, {
+			Name = "Divider" .. i,
+			BackgroundColor3 = GOLD,
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromOffset(round(x), round(mid)),
+			Size = UDim2.fromOffset(3, round(bh * 0.64)),
+			ZIndex = 25,
+		})
+	end
+	-- the CLAIM button fills the middle segment (>= 44 real px tall)
+	if self._claim ~= "Soon" then
+		local ready = self._claim == "Ready"
+		local cw = math.min(div2 - div1 - 2 * (if c then 14 else 40 * u), if c then 220 else 258)
+		local btn = Parts.button(bar, {
+			Name = "Claim",
+			Style = if ready then "Green" else "Grey",
+			Label = if ready then "CLAIM" else "CLAIMED",
+			TextSize = round(52 * v),
+			Enabled = ready,
+			Size = UDim2.fromOffset(round(cw), math.min(math.max(round(63 * v), L.touch), bh - 8)),
+		})
+		btn.AnchorPoint = Vector2.new(0.5, 0.5)
+		btn.Position = UDim2.fromOffset(round((div1 + div2) / 2), round(mid))
+		btn.ZIndex = 26
+		btn.Label.ZIndex = 27
+		table.insert(
+			self._connsBuild,
+			btn.Activated:Connect(function()
+				if self._claim == "Ready" and self._onAction then
+					self._onAction()
+				end
+			end)
 		)
 	end
-	sprite(parent, DailySprites.Chest, ax, cy, 1e4, chH, 25, "Chest")
-	skin(parent, Draw.Bag.ItemsNameRibbon, ax, ribbonY, rw, rh, 26, "Ribbon")
-	local name = "ROYAL CHEST" -- no "DICE": Day 7 pays no dice (Config/Daily); Catalog Chest is only a flag
-	-- one size on the purple plate (centre = the ribbon's, 7 px above its ink centre), >= 8 px clear of both plate ends
-	label(parent, "RibbonText", name, fitText(name, 244 * f, round(34 * f), min), ax, ribbonY - 7 * f, 27, {})
-	local bw, bh = 332 * f, 111 * f
-	local by = bottom - 64.5 * f
-	skin(parent, Draw.Bag.QtyField, ax, by, bw, bh, 25, "RewardBox")
-	local asz = fitText("+5,000", bw / 3 * 0.9, round(35 * f), min)
-	-- the same outline-aware stack: amount outline 3+ px above the box's inner rim dark edge (N = 15.5 above the card bottom; measured), icon 2.2 above
-	-- the outline, icon top 6 px under the inner top rim
-	local ayN = 24.5 * f + 0.438 * asz + 3
-	local ibN = ayN + 0.302 * asz + 2
-	local boxTop = 107.5 * f
-	for i, r in day.Rewards do
-		local x = ax + (i - 2) * bw / 3
-		reward(parent, r, x, bottom - ibN, bottom - ayN, 100 * f, boxTop - ibN, asz, 26)
-		if i < 3 then
-			local d = make("Frame", {
-				Name = "Divider",
-				BackgroundColor3 = Color3.fromRGB(140, 88, 75),
-				BorderSizePixel = 0,
-				AnchorPoint = Vector2.new(0, 0.5),
-				Position = UDim2.fromOffset(round(x + bw / 6) - 2, round(by)), -- whole px: 1 soft + a 2 px core + 1 soft
-				Size = UDim2.fromOffset(4, round(60 * f)),
-				ZIndex = 26,
-			}, parent)
-			make("Frame", { -- the pale-gold core between two soft sides
-				Name = "Core",
-				BackgroundColor3 = Color3.fromRGB(255, 226, 183),
-				BorderSizePixel = 0,
-				Position = UDim2.fromOffset(1, 0),
-				Size = UDim2.new(0, 2, 1, 0),
-				ZIndex = 27,
-			}, d)
-		end
-	end
-	if state == "Claimed" then
-		sprite(parent, Draw.Bag.Check, ax, cy, chH * 1.05, chH * 1.05, 28, "Tick")
-	end
-end
-
--- The strip: Track + laurels + the live sentence ("7 days!" in gold), centred on the window axis; the laurels sit just outside the pill ends.
-function View:_strip(L, parent)
-	local W = L.W
-	local text = "Claim rewards every day for 7 days!"
-	local cx, cy, w, h, size, lw, lh, ly
-	if L.compact then
-		cx, cy, w, h, lw, lh, ly = W / 2, L.stripH / 2, W - 2 * 36, L.stripH - 4, 24, 32, L.stripH / 2
-		size = fitText(text, w - 24, 26, math.ceil(14 / K))
-	else
-		cx, cy, w, h, lw, lh, ly = W / 2 + 1, 16 * L.sy, 814 * L.sx, 70 * L.sy, 63 * L.sx, 72 * L.sy, 14 * L.sy
-		size = fitText(text, 661 * L.sx * 1.1, round(46.5 * L.sx), math.ceil(12 / K))
-	end
-	skin(parent, Q.Track, cx, cy, w, h, 24, "Strip")
-	local iw = Draw.fitIn(PlaySprites.LaurelL, lw, lh) -- the laurel's ink width
-	sprite(parent, PlaySprites.LaurelL, cx - w / 2 - iw / 2 - 2, ly, lw, lh, 25, "LaurelL")
-	sprite(parent, PlaySprites.LaurelR, cx + w / 2 + iw / 2 + 2, ly, lw, lh, 25, "LaurelR")
-	local rich = `Claim rewards every day for <font color="{GOLD_HEX}">7 days!</font>`
-	label(parent, "StripText", rich, size, cx, cy + (if L.compact then 0 else 3 * L.sy), 27, { rich = true })
-end
-
-local function divider(parent, x: number, y: number, h: number)
-	local d = make("Frame", {
-		Name = "Divider",
-		BackgroundColor3 = GOLD,
-		BorderSizePixel = 0,
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromOffset(round(x), round(y)),
-		Size = UDim2.fromOffset(3, round(h)),
-		ZIndex = 26,
-	}, parent)
-	d.BackgroundTransparency = 0
-end
-
--- The bottom bar: calendar + PROGRESS + pill | CLAIM | stopwatch + timer. Full = the reference boxes; Compact = a proportioned row.
-function View:_drawBar(L, parent)
-	local c = L.compact
-	local W, sx, sy = L.W, L.sx, L.sy
-	local top = if c then L.H - L.barH - 6 else 556 * sy
-	local bh = if c then L.barH else 120 * sy
-	local mid = top + bh / 2
-	local function by(refy: number)
-		return refy * sy
-	end
-	-- the Row's visible rim sits ~1 sprite px left of its ink centre, and the reference bar is 3 units left of the content axis: centre it on W / 2
-	local bcx = W / 2 + 1.4 * bh / 120
-	skin(parent, Q.Row, bcx, mid, if c then W - 2 * L.inset else 1170 * sx, bh, 24, "Bar")
-	local k = if c then 1 else sx
-	local min = math.ceil(12 / K)
-	-- Compact segment positions (design px): calendar | PROGRESS pill | divider | CLAIM | divider | stopwatch + timer
-	local pw, px, div1, div2, cw, ccx, tl, tr
-	if c then
-		pw = math.clamp(0.2 * W, 88, 134)
-		cw = math.clamp(0.24 * W, 110, 190)
-		px = 70 + pw / 2
-		div1 = 70 + pw + 12
-		ccx = div1 + 10 + cw / 2
-		div2 = ccx + cw / 2 + 10
-		tl, tr = div2 + 6, W - L.inset - 8
-	else
-		pw, px, div1, div2 = 225 * sx, 242.5 * sx, 380.5 * sx, 798.5 * sx
-		cw, ccx = 302 * sx, 588.5 * sx
-	end
-	sprite(
-		parent,
-		DailySprites.Calendar,
-		if c then 46 else 88 * sx,
-		if c then mid else by(613),
-		(if c then 40 else 83 * sx),
-		(if c then 44 else 74 * sy),
-		25,
-		"Calendar"
-	)
-	local ptext = DailyLogic.progressText(if self._login then self._login.Streak else 0)
-	local ph = if c then 26 else 41 * sy
-	local ty, pyc = if c then mid - 17 else by(588), if c then mid + 14 else by(631.5)
-	label(
-		parent,
-		"ProgressTitle",
-		"PROGRESS",
-		fitText("PROGRESS", pw * 0.8, if c then 18 else round(36 * k), min),
-		px,
-		ty,
-		27,
-		{}
-	)
-	skin(parent, Draw.Bag.PillGold, px, pyc, pw, ph, 25, "Pill")
-	label(
-		parent,
-		"ProgressText",
-		ptext,
-		fitText(ptext, pw * 0.8, if c then 18 else round(35 * k), min),
-		px,
-		pyc + (if c then 0 else 0.5 * sy),
-		27,
-		{}
-	)
-	divider(parent, div1, if c then mid else by(615), if c then bh - 24 else 65 * sy)
-	divider(parent, div2, if c then mid else by(615), if c then bh - 24 else 65 * sy)
-	-- CLAIM / CLAIMED
-	local state = self._claim
-	if state ~= "Soon" then
-		local ready = state == "Ready"
-		local cy = if c then mid else by(613.5)
-		local btn = Draw.img(parent, { Name = "Claim", ZIndex = 26 }, if ready then "ImageButton" else "ImageLabel")
-		Draw.apply(btn, if ready then Draw.Bag.BtnGreen else RollSprites.BtnGrey, ccx, cy, cw, L.barBtn)
-		local text = if ready then "CLAIM" else "CLAIMED"
-		local tsz = fitText(text, cw * 0.84, if c then 28 else round(59 * k), min)
-		local t = label(btn, "Label", text, tsz, btn.AbsoluteSize.X / 2, 0, 27, { px = if c then 3 else 4 })
-		t.Position = UDim2.new(0.5, 0, 0.5, if c then -1 else -2)
-		t.Size = UDim2.fromScale(1, 1)
-		if ready then
-			Parts.interact(btn)
-			table.insert(
-				self._connsBuild,
-				btn.Activated:Connect(function()
-					if self._claim == "Ready" and self._onAction then
-						self._onAction()
-					end
-				end)
-			)
-		end
-	end
-	-- timer: the untinted stopwatch on a gold halo (the Quest Log timer pill's look) and the two lines, as one group when Compact
+	-- timer: stopwatch + two lines, hidden while a day can be claimed
+	self._timerLive = nil
 	if self._timer then
 		local prefix, value = self._timer[1], self._timer[2]
-		local sw, sh = if c then 38 else 66 * sx, if c then 40 else 69 * sy -- by ink: the visible gold is ~85% of it
-		local fw, fh = Draw.fitIn(Q.Stopwatch, sw, sh)
-		local psz = fitText(
-			prefix,
-			if c then math.max(60, tr - tl - fw - 10) else 186 * sx,
-			if c then 18 else round(32 * k),
-			min
-		)
-		local vw, vmax = if c then math.max(50, tr - tl - fw - 10) else 172 * sx, if c then 24 else round(50 * k)
-		local vsz = fitText(value, vw, vmax, min)
-		-- lay the group out for the widest timer text so SetTimer's in-place updates never need re-centring
-		local textW = math.max(measure(prefix, psz), measure("00h 00m", fitText("00h 00m", vw, vmax, min)))
-		local wx, tx
-		if c then
-			local gl = (tl + tr) / 2 - (fw + 10 + textW) / 2 -- the group is centred in its slot
-			wx, tx = gl + fw / 2, gl + fw + 10 + textW / 2
-		else
-			wx, tx = 887 * sx, 1021 * sx
-		end
-		local wy = if c then mid else by(613)
-		local halo -- a wide soft glow under a tighter, brighter one: reads clearly just outside the ink
-		for _, g in { { 1.9, 0.05 }, { 1.35, 0.2 } } do
-			halo = Draw.img(parent, {
-				Name = "StopwatchGlow",
-				Image = Q.GlowRadial.Image,
-				ImageColor3 = Color3.fromRGB(255, 190, 40),
-				ImageTransparency = g[2],
-				Size = UDim2.fromOffset(round(fh * g[1]), round(fh * g[1])),
-				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.fromOffset(round(wx), round(wy)),
-				ZIndex = 25,
-			})
-		end
-		local watch = Draw.img(parent, { Name = "Stopwatch", ZIndex = halo.ZIndex + 1 })
-		Draw.apply(watch, Q.Stopwatch, wx, wy, fw, fh)
-		label(parent, "TimerPrefix", prefix, psz, tx, if c then wy - 15 else by(588.5), 27, {})
-		local vl = label(parent, "TimerValue", value, vsz, tx, if c then wy + 15 else by(627.5), 27, { fill = GOLD })
+		local tl, tr = div2 + (if c then 8 else 60 * u), bw - 14
+		local sw = (if c then 36 else 50) * v
+		icon(bar, DailySprites.Stopwatch, tl + sw / 2, mid, sw, sw * 1.05, 26, "Stopwatch")
+		local textW = tr - (tl + sw + 8)
+		local tx = tl + sw + 8 + textW / 2
+		txt(bar, "TimerPrefix", prefix, round(28 * v), tx, mid - bh * 0.17, textW, 27)
+		local vsize = round(40 * v)
 		self._timerLive = {
-			Label = vl,
-			Fit = function(v: string): number -- SetTimer's in-place text update
-				return fitText(v, vw, vmax, min)
+			Label = txt(bar, "TimerValue", value, vsize, tx, mid + bh * 0.17, textW, 27, { fill = GOLD }),
+			Fit = function(s: string): number
+				return Parts.fitSize(s, textW, math.max(vsize, minText()), minText())
 			end,
 		}
 	end
 end
 
 function View:_drawSoon(L)
-	local c = L.compact
 	local W, H = L.W, L.H
-	local w, h = if c then 340 else 520, if c then 150 else 240
-	local x, y = (W - w) / 2, (H - h) / 2
-	panel(self._soon, x, y, w, h, 30, "SoonCard")
-	local ih = if c then 60 else 100
-	sprite(self._soon, Sprites.Icon.Daily, W / 2, y + (if c then 15 else 20) + ih / 2, ih * 2, ih, 31, "Icon")
-	local min = if c then 18 else math.ceil(12 / K)
-	label(
-		self._soon,
-		"Title",
-		"DAILY REWARDS",
-		fitText("DAILY REWARDS", w - 40, if c then 24 else 36, min),
-		W / 2,
-		y + (if c then 95 else 150),
-		32,
-		{}
-	)
-	label(
-		self._soon,
+	local w, h = math.min(if L.compact then 340 else 520, W - 20), math.min(if L.compact then 150 else 240, H - 10)
+	local panel = Chrome.panel(self._soon, {
+		Name = "SoonCard",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromOffset(round(W / 2), round(H / 2)),
+		Size = UDim2.fromOffset(w, h),
+		ZIndex = 30,
+	})
+	local ih = round(h * 0.4)
+	icon(panel, DailySprites.Calendar, w / 2, h * 0.28, ih, ih, 31, "Icon")
+	txt(panel, "Title", "DAILY REWARDS", if L.compact then 24 else 36, w / 2, h * 0.64, w - 30, 32)
+	txt(
+		panel,
 		"Sub",
 		"Loading...",
-		fitText("Loading...", w - 40, if c then 18 else 26, min),
-		W / 2,
-		y + (if c then 122 else 190),
+		if L.compact then 18 else 26,
+		w / 2,
+		h * 0.84,
+		w - 30,
 		32,
 		{ fill = Color3.fromRGB(205, 210, 235) }
 	)
@@ -569,65 +461,33 @@ function View:_build()
 		conn:Disconnect()
 	end
 	table.clear(self._connsBuild)
-	for _, parent in { self._fixed, self._plain, self._canvas, self._soon } do
+	for _, parent in { self._main, self._soon } do
 		for _, ch in parent:GetChildren() do
 			ch:Destroy()
 		end
 	end
-	local soon = self._soonOn
-	self._fixed.Visible, self._soon.Visible = not soon, soon
-	self._host.Visible = not soon
-	self._bar.Layout(0, 8, 4)
-	self._bar.Track.Visible = false
-	if soon then
+	self._main.Visible, self._soon.Visible = not self._soonOn, self._soonOn
+	if self._soonOn then
 		self:_drawSoon(L)
-		return
-	end
-	local c = L.compact
-	self:_strip(L, self._fixed)
-	self:_drawBar(L, self._fixed)
-	local days = self._days
-	local target = self._plain
-	if c then
-		self._host.Position = UDim2.fromOffset(0, L.scrollTop)
-		self._host.Size = UDim2.fromOffset(L.W, L.scrollH)
-		self._canvas.Size = UDim2.fromOffset(L.W, L.canvasH)
-		self._scroll.CanvasSize = UDim2.fromOffset(0, L.canvasH)
-		self._scroll.ClipsDescendants = true
-		target = self._canvas
 	else
-		self._host.Position = UDim2.fromOffset(0, 0)
-		self._host.Size = UDim2.fromScale(1, 1)
-		self._scroll.ClipsDescendants = false
-	end
-	self._plain.Visible, self._scroll.Visible = not c, c
-	for i = 1, 6 do
-		local day = days[i]
-		if day then
-			local state = DailyLogic.cardState(day.Day, self._login) -- the label's own day, not the grid slot
-			local cx, bottom
-			if c then
-				local x0 = (L.W - (3 * L.colW + 2 * L.gap)) / 2
-				cx = x0 + L.colW / 2 + ((i - 1) % 3) * (L.colW + L.gap)
-				bottom = L.pad + math.floor((i - 1) / 3) * L.rows + L.cardH
-			else
-				cx, bottom = COLS[(i - 1) % 3 + 1] * L.sx, ROWS[math.floor((i - 1) / 3) + 1] * L.sy
+		self:_strip(L, self._main)
+		local cards = make(
+			"Frame",
+			{ Name = "Cards", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 24 },
+			self._main
+		)
+		local x = L.inset
+		for i = 1, 7 do
+			local day = self._days[i]
+			local w = if i == 7 then L.cw * 160 / 140 else L.cw
+			if day then
+				self:_card(L, cards, day, DailyLogic.cardState(day.Day, self._login), x, w)
 			end
-			self:_card(L, target, day, state, cx, bottom)
+			x += w + L.gap
 		end
+		self:_bar(L, self._main)
 	end
-	if days[7] then
-		local state = DailyLogic.cardState(days[7].Day, self._login)
-		local cx, bottom
-		if c then
-			cx, bottom = L.W / 2, L.pad + 2 * L.rows + L.s7 * 519 + 8
-		else
-			cx, bottom = DAY7_REF.cx * L.sx, DAY7_REF.bottom * L.sy
-		end
-		self:_day7(L, target, days[7], state, cx, bottom)
-	end
-	self._bar.Layout(if c then L.scrollH else 0, 8, 4)
-	self._bar.Track.Visible = c and L.canvasH > L.scrollH
+	Chrome.restroke(self._root, K)
 end
 
 -- Public ----------------------------------------------------------------------------------------------------
@@ -642,38 +502,14 @@ function View.new(slot)
 		{ Name = "DailyRoot", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = z },
 		slot
 	)
-	local fixed =
-		make("Frame", { Name = "Fixed", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = z }, root)
-	local host = make(
+	self._main =
+		make("Frame", { Name = "Main", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = z }, root)
+	self._soon = make(
 		"Frame",
-		{ Name = "CardsHost", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = z },
+		{ Name = "Soon", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Visible = false, ZIndex = z },
 		root
 	)
-	local plain =
-		make("Frame", { Name = "Cards", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = z }, host)
-	local scroll = make("ScrollingFrame", {
-		Name = "CardsScroll",
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		ScrollBarThickness = 0, -- the styled bar replaces the native one; wheel, touch and drag still scroll
-		ScrollBarImageTransparency = 1,
-		ScrollingDirection = Enum.ScrollingDirection.Y,
-		CanvasSize = UDim2.new(),
-		Size = UDim2.fromScale(1, 1),
-		Visible = false,
-		ZIndex = z,
-	}, host)
-	local canvas = make("Frame", { Name = "Canvas", BackgroundTransparency = 1, ZIndex = z }, scroll)
-	local soon = make("Frame", {
-		Name = "Soon",
-		BackgroundTransparency = 1,
-		Size = UDim2.fromScale(1, 1),
-		Visible = false,
-		ZIndex = z,
-	}, root)
-	self._root, self._fixed, self._host, self._plain, self._scroll, self._canvas, self._soon =
-		root, fixed, host, plain, scroll, canvas, soon
-	self._bar = Parts.scrollBar(host, scroll, z + 8)
+	self._root = root
 	local pending = false
 	local scaleSeen = {}
 	local function rebuild()
@@ -721,7 +557,7 @@ function View:SetDays(days)
 	self._rebuild()
 end
 
--- Meta.Login {Streak, NextDay?, ...}: card states and the progress pill.
+-- Meta.Login {Streak, NextDay?, ...}: card states and the progress bar.
 function View:SetLogin(login)
 	self._login = login
 	self._rebuild()
@@ -737,7 +573,10 @@ function View:SetTimer(prefix: string?, value: string?)
 		local l = live.Label
 		local size = live.Fit(value :: string)
 		l.Text, l.TextSize = value :: string, size
-		l.Size = UDim2.fromOffset(math.ceil(measure(value :: string, size)) + 12, round(size * 1.2))
+		l.Size = UDim2.fromOffset(
+			math.min(l.Size.X.Offset, math.ceil(Parts.measure(value :: string, size)) + 6),
+			math.ceil(size * 1.05)
+		)
 		return
 	end
 	self._rebuild()
@@ -766,7 +605,6 @@ function View:Destroy()
 	end
 	table.clear(self._conns)
 	table.clear(self._connsBuild)
-	self._bar.Track:Destroy()
 	self._root:Destroy()
 end
 
