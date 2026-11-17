@@ -10,12 +10,8 @@ local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
 
 local NetClient = require(script.Parent.Parent.NetClient)
-local PlaySprites = require(script.Parent.Parent.Play.PlaySprites)
-local QuestSprites = require(script.Parent.Parent.QuestLog.QuestSprites)
 local Shell = require(script.Parent.Parent.Bag.Shell)
 local ShopLogic = require(script.Parent.ShopLogic)
-local ShopSprites = require(script.Parent.ShopSprites)
-local Sprites = require(script.Parent.Parent.Sprites)
 local View = require(script.Parent.View)
 
 local ACTION = "ShopClose"
@@ -33,15 +29,6 @@ local REPLIES = {
 	Network = "Connection problem",
 	Error = "Something went wrong",
 }
-local TAB_ICONS = {
-	FEATURED = ShopSprites.IconStar,
-	GAMEPASSES = QuestSprites.Crown,
-	GEMS = Sprites.Gem,
-	SHARDS = ShopSprites.IconShards,
-}
--- Banner side emblem (scroll-ink fractions; y is overridden by the title centring): the chest at 0.89x the first cut so its ink stays >= 4 px off
--- the Play laurel, 0.81x on Compact (as the Play swords) so it clears the gem pin. Width from the ink aspect (278 x 246): 0.782 * 162 * 1.13 / 774.
-local CHEST = { full = { 0, -0.07, 0.181, 0.766 }, compact = { 0, 0.01, 0.15, 0.633 } }
 
 local Shop = {}
 Shop.__index = Shop
@@ -56,18 +43,11 @@ function Shop.new(parent, deps)
 		end,
 		name = "Shop",
 		free = true,
-		banner = {
-			text = "SHOP",
-			emblems = {
-				{ sprite = PlaySprites.LaurelL, box = { 0.1379, 0.157, 0.1061, 0.645 } },
-				{ sprite = PlaySprites.LaurelR, box = { 0.7560, 0.157, 0.1061, 0.645 } },
-				{ sprite = ShopSprites.Emblem, box = CHEST, side = true },
-			},
-		},
+		banner = { text = "SHOP" },
 	})
 	local tabs = {}
 	for i, tab in ShopLogic.TABS do
-		tabs[i] = { Id = tab.Id, Label = tab.Label, Icon = TAB_ICONS[tab.Id] }
+		tabs[i] = { Id = tab.Id, Label = tab.Label } -- the mockup's tabs carry no icon
 	end
 	shell:SetTabs(tabs)
 	local view = View.new(shell.Slots.Content)
@@ -80,14 +60,16 @@ function Shop.new(parent, deps)
 	local function render(keepScroll: boolean)
 		local d = data()
 		shown = ShopLogic.key(d)
-		local everyTab = {}
-		for _, t in ShopLogic.TABS do
-			for _, sec in ShopLogic.sectionsFor(t.Id, d) do
-				table.insert(everyTab, sec)
+		local id = ShopLogic.TABS[tab].Id
+		local sections = ShopLogic.sectionsFor(id, d)
+		if id == "FEATURED" and sections[1].Kind ~= "Soon" then -- the mockup's Featured page ends with the gem pack row
+			for _, sec in ShopLogic.sectionsFor("GEMS", d) do
+				if sec.Kind ~= "Soon" then
+					table.insert(sections, sec)
+				end
 			end
 		end
-		view:SetRoleSample(everyTab)
-		view:SetSections(ShopLogic.sectionsFor(ShopLogic.TABS[tab].Id, d), keepScroll)
+		view:SetSections(sections, keepScroll)
 	end
 	local function refresh()
 		if shell:IsOpen() and ShopLogic.key(data()) ~= shown then -- redraw only on a visible change

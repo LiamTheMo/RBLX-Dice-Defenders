@@ -1,59 +1,13 @@
--- Shop menu sprite asset ids, cut by tools/slice_shop.py from Assets/UI/shop menu/export/Shop_<Name>.png (Size and Ink are export pixels; group 33284082).
+-- Shop menu sprite asset ids: whole product art, cut by tools/slice_shop.py from Assets/UI/new/shop menu/sheets/ into
+-- Assets/UI/new/shop menu/export/Shop_<Name>.png (Size = export px, Ink = the whole image: every cut is a tight crop, never sliced).
+-- Window, tabs, close X, pills, Coin and Gem are the shared ones (SharedSprites, Sprites). Images must be owned by group 33284082.
+-- An empty id renders blank; never guess an id (the overseer's uploader fills them).
 
 return {
-	Emblem = {
-		Image = "rbxassetid://98272340500122",
-		Size = Vector2.new(305, 270),
-		Ink = Rect.new(12, 13, 290, 259),
-	},
-	StarterCap = {
-		Image = "rbxassetid://117514186297792",
-		Size = Vector2.new(766, 172),
-		Ink = Rect.new(11, 11, 755, 161),
-	},
-	GPHeading = {
-		Image = "rbxassetid://87245962236871",
-		Size = Vector2.new(783, 166),
-		Ink = Rect.new(11, 20, 772, 152),
-	},
-	GemsHeading = {
-		Image = "rbxassetid://98509277237571",
-		Size = Vector2.new(757, 120),
-		Ink = Rect.new(11, 12, 745, 108),
-	},
-	IconStar = {
-		Image = "rbxassetid://108558646458511",
-		Size = Vector2.new(167, 158),
-		Ink = Rect.new(11, 11, 156, 147),
-	},
-	IconShards = {
-		Image = "rbxassetid://72453168865170",
-		Size = Vector2.new(201, 163),
-		Ink = Rect.new(11, 12, 190, 152),
-	},
-	Robux = {
-		Image = "rbxassetid://104403387490615",
-		Size = Vector2.new(166, 187),
-		Ink = Rect.new(11, 12, 155, 176),
-	},
-	HeroArt = {
-		Image = "rbxassetid://106925526475292",
-		Size = Vector2.new(710, 392),
-		Ink = Rect.new(17, 59, 692, 381),
-	},
-	Clover = {
-		Image = "rbxassetid://117642121655602",
-		Size = Vector2.new(240, 256),
-		Ink = Rect.new(12, 11, 228, 244),
-	},
-	GemBag = {
-		Image = "rbxassetid://123430473746869",
-		Size = Vector2.new(320, 316),
-		Ink = Rect.new(10, 12, 308, 305),
-	},
-	ChestOpenGems = {
-		Image = "rbxassetid://87088387513233",
-		Size = Vector2.new(366, 342),
-		Ink = Rect.new(11, 11, 355, 330),
-	},
+	HeroArt = { Image = "rbxassetid://88622657607968", Size = Vector2.new(317, 182), Ink = Rect.new(0, 0, 317, 182) }, -- Shop_HeroArt.png
+	GemBag = { Image = "rbxassetid://74905164109034", Size = Vector2.new(178, 189), Ink = Rect.new(0, 0, 178, 189) }, -- Shop_GemBag.png
+	ChestOpenGems = { Image = "rbxassetid://135207190790007", Size = Vector2.new(201, 188), Ink = Rect.new(0, 0, 201, 188) }, -- Shop_ChestOpenGems.png
+	Clover = { Image = "rbxassetid://111437107375643", Size = Vector2.new(179, 191), Ink = Rect.new(0, 0, 179, 191) }, -- Shop_Clover.png
+	Crown = { Image = "rbxassetid://96910090967843", Size = Vector2.new(230, 188), Ink = Rect.new(0, 0, 230, 188) }, -- Shop_Crown.png
+	Robux = { Image = "rbxassetid://74672180062997", Size = Vector2.new(94, 104), Ink = Rect.new(0, 0, 94, 104) }, -- Shop_Robux.png
 }

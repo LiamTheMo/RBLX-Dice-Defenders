@@ -137,7 +137,14 @@ local function bullets(catalog: any, offer: any): { any }
 		else
 			text = `{amount} {nameOf(catalog, line)}`
 		end
-		table.insert(out, { Icon = BULLET_ICON[line.Kind] or "Chest", Text = text })
+		table.insert(
+			out,
+			{
+				Icon = BULLET_ICON[line.Kind] or "Chest",
+				Text = text,
+				DieId = if line.Kind == "Die" then line.Id else nil,
+			}
+		)
 	end
 	return out
 end
