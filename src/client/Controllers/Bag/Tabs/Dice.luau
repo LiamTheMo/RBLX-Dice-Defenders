@@ -43,6 +43,7 @@ local function lockedItem(id: string, name: string, rarity: string, footer: stri
 		Rarity = rarity,
 		Damage = s and s.Damage,
 		Rate = s and s.Rate,
+		Ability = s and s.Description,
 		Level = 0,
 		Locked = true,
 		Equipped = false,
@@ -87,6 +88,7 @@ function Dice.GetItems(meta, catalog)
 				Rarity = info.Rarity,
 				Damage = s and s.Damage,
 				Rate = s and s.Rate,
+				Ability = s and s.Description,
 				Level = die.Level,
 				Equipped = equipped,
 				Icon = art(die.Id),
@@ -104,15 +106,16 @@ function Dice.GetItems(meta, catalog)
 	end
 	local unowned = {}
 	for id in Display.Dice do
-		if not owned[id] then
+		if not owned[id] and (not stats[id] or not stats[id].Retired) then
 			table.insert(unowned, id)
 		end
 	end
 	table.sort(unowned)
 	for _, id in unowned do
 		local info = Display.Dice[id]
-		local note = if info.Rarity == "Common" then "Not owned" else "Not owned. " .. ABILITY
-		table.insert(items, lockedItem(id, info.Name, info.Rarity, "Not owned", note, stats[id]))
+		local unavailable = info.Rarity == "Mythic"
+		local note = if unavailable then "Not available yet" elseif info.Rarity == "Common" then "Not owned" else "Not owned. " .. ABILITY
+		table.insert(items, lockedItem(id, info.Name, info.Rarity, if unavailable then "Locked" else "Not owned", note, stats[id]))
 	end
 	for _, die in Display.Locked do
 		table.insert(items, lockedItem(die.Id, die.Name, die.Rarity, "Locked", "Not available yet"))
@@ -159,7 +162,7 @@ function Dice.Detail(item)
 		Icon = item.Icon,
 		Tint = item.Tint,
 		Subline = if copies then { Kind = "Level", Value = item.Level, Max = max, Copies = copies } else nil,
-		Description = if locked then item.Note elseif item.Rarity ~= "Common" then ABILITY else "",
+		Description = if item.Ability then item.Ability elseif locked then item.Note elseif item.Rarity ~= "Common" then ABILITY else "",
 		Stats = stats(item),
 		Buttons = {
 			{

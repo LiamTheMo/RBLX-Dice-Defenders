@@ -10,7 +10,7 @@ local Catalog = require(Server.Rules.Catalog)
 local Progression = require(Server.Config.Progression)
 local Display = require(game:GetService("ReplicatedStorage").Shared.Display)
 
-local RARITIES = { Common = true, Rare = true, Epic = true, Legendary = true }
+local RARITIES = { Common = true, Rare = true, Epic = true, Legendary = true, Mythic = true }
 
 local function dps(cfg): number
 	return cfg.base * cfg.rate * (cfg.shots or 1) * (cfg.shotMul or 1)
@@ -55,7 +55,7 @@ test("Locked dice are not playable and no id appears twice", function()
 		expect(not seen[die.Id], "unique " .. die.Id)
 		seen[die.Id] = true
 	end
-	expect(seen.M01 and Dice.Types.M01 == nil, "Mythic Astral stays locked")
+	expect(seen.M01 and Dice.Types.M01 ~= nil, "Mythic Astral has a definition")
 end)
 
 test("every config die has a launch rarity", function()

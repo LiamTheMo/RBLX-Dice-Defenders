@@ -8,6 +8,8 @@ Display.Dice = table.freeze({
 	C03 = table.freeze({ Name = "Hammer", Rarity = "Common", Color = Color3.fromHex("#FB8C00") }),
 	C04 = table.freeze({ Name = "Twinshot", Rarity = "Common", Color = Color3.fromHex("#8E24AA") }),
 	C05 = table.freeze({ Name = "Longshot", Rarity = "Common", Color = Color3.fromHex("#00A86B") }),
+	C06 = table.freeze({ Name = "Chill", Rarity = "Common", Color = Color3.fromHex("#A4D5E9") }),
+	C07 = table.freeze({ Name = "Spark", Rarity = "Common", Color = Color3.fromHex("#E8BB27") }),
 	R01 = table.freeze({ Name = "Frost", Rarity = "Rare", Color = Color3.fromHex("#42AFD7") }),
 	R02 = table.freeze({ Name = "Arc", Rarity = "Rare", Color = Color3.fromHex("#8866CC") }),
 	R03 = table.freeze({ Name = "Volley", Rarity = "Rare", Color = Color3.fromHex("#DB7157") }),
@@ -21,11 +23,11 @@ Display.Dice = table.freeze({
 	L01 = table.freeze({ Name = "Chrono", Rarity = "Legendary", Color = Color3.fromHex("#266E73") }),
 	L02 = table.freeze({ Name = "Forge", Rarity = "Legendary", Color = Color3.fromHex("#AE5F04") }),
 	L03 = table.freeze({ Name = "Prism", Rarity = "Legendary", Color = Color3.fromHex("#ED38FA") }),
+	M01 = table.freeze({ Name = "Astral", Rarity = "Mythic", Color = Color3.fromHex("#46459B") }),
 })
 
 -- Catalogue dice with no server config yet: shown as "Not available yet".
 Display.Locked = table.freeze({
-	table.freeze({ Id = "M01", Name = "Astral", Rarity = "Mythic" }),
 })
 
 Display.Enemies = table.freeze({

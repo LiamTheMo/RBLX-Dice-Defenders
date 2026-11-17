@@ -79,7 +79,7 @@ function Catalog.Build()
 	return {
 		StarterDeck = table.clone(Dice.Deck),
 		Dice = rows(Dice.Types, function(id, t)
-			return { Id = id, Name = t.name, Rarity = t.rarity, Damage = t.base, Rate = t.rate }
+			return { Id = id, Name = t.name, Rarity = t.rarity, Damage = t.base, Rate = t.rate, Retired = t.retired, Description = t.description }
 		end),
 		Materials = rows(Inventory.Materials, function(id, m)
 			return { Id = id, Name = m.Name, Rarity = m.Rarity, Description = m.Description, Sell = m.Sell }

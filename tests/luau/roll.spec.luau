@@ -78,7 +78,7 @@ end)
 
 test("featured: the Catalog's ids with their rarity and Display name", function()
 	local f = RollLogic.featured(POOL)
-	expectEq(#f, 3, "three")
+	expectEq(#f, 2, "two")
 	for i, id in POOL.Featured do
 		expect(f[i].Id == id and f[i].Rarity == "Legendary" and f[i].Name == Display.Dice[id].Name, id)
 	end

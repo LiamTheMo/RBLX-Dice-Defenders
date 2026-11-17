@@ -1,4 +1,8 @@
 # Dice Catalog — launch roster and mechanics
+
+**Current roster:** 7 Common (Pebble, Needle, Hammer, Twinshot, Longshot, Chill, Spark), 5 Rare, 3 Epic (Emberstorm, Mirror, Gravity), 2 Legendary (Chrono, Forge), and 1 Mythic (Astral). No Secret dice. Reactor, Catalyst and Prism are retired from rolls; existing ownership is preserved. Chill slows hit enemies by 15% for 1.5 seconds, refreshing without stacking; Spark adds 5 damage every fourth hit. Higher-rarity abilities below are proposals, not implemented. The starter deck remains the first five Commons. Mythic is not currently obtainable.
+
+The tables below describe the earlier proposed roster and ability design; current combat values are in the server configuration.
 **Status:** 19 proposed launch dice; 18 Common–Legendary available first, single Mythic gated by v1.0 readiness. Secret rarity declared, **zero Secret dice at launch**. All statistics are **level-1, 1-pip tuning seeds**, not confirmed balance. Base DPS = hit damage × attacks/s before armor. Every die hits the enemy closest to the exit (global targeting), so there is no range stat.
 
 ## Universal dice rules

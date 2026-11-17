@@ -449,3 +449,17 @@ test("dice upgrade: UPGRADE gates on copies, cap and Catalog; copies show on car
 	end
 	expect(button(d, "Lock") == nil and button(d, "Upgrade").Style == "Gold", "UPGRADE replaces LOCK")
 end)
+
+
+test("retired dice stay visible to owners while new players see active dice", function()
+	local catalog = Catalog.Build()
+	local function find(meta, id)
+		for _, item in DiceTab.GetItems(meta, catalog) do
+			if item.Id == id then return item end
+		end
+	end
+	expect(find({ Dice = {} }, "E02") == nil, "retired die hidden when unowned")
+	expect(find({ Dice = { { Id = "E02", Level = 3 } } }, "E02") ~= nil, "owned retired die visible")
+	local chill = find({ Dice = {} }, "C06")
+	expect(chill ~= nil and DiceTab.Detail(chill).Description == "Hits slow enemies by 15% for 1.5 seconds.", "Chill ability visible")
+end)

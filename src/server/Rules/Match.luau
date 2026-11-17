@@ -182,10 +182,9 @@ local function spawn(state, now: number)
 	end
 end
 
-local function damage(state, enemy, amount: number)
-	enemy.hp -= amount
+local function updateEnemy(state, enemy)
 	local out = state.out
-	local record = { Id = enemy.id, Hp = math.max(0, enemy.hp) }
+	local record = { Id = enemy.id, Hp = math.max(0, enemy.hp), Speed = enemy.speed, SpawnAt = enemy.spawnAt }
 	local index = out.Hidx[enemy.id]
 	if index then
 		out.H[index] = record
@@ -193,6 +192,18 @@ local function damage(state, enemy, amount: number)
 		table.insert(out.H, record)
 		out.Hidx[enemy.id] = #out.H
 	end
+end
+
+local function damage(state, enemy, amount: number)
+	enemy.hp -= amount
+	updateEnemy(state, enemy)
+end
+
+local function setSpeed(state, enemy, speed, now)
+	enemy.dist = math.max(0, enemy.speed * (now - enemy.spawnAt))
+	enemy.speed = speed
+	enemy.spawnAt = now - enemy.dist / speed
+	updateEnemy(state, enemy)
 end
 
 local function attack(state, now: number)
@@ -228,6 +239,13 @@ local function attack(state, now: number)
 						target,
 						Formulas.HitDamage(die.type, die.pip, target.kind, if shot == 1 then flat else 0)
 					)
+					if cfg.slow and target.hp > 0 then
+						if not target.slowUntil then
+							target.baseSpeed = target.speed
+							setSpeed(state, target, target.speed * (1 - cfg.slow), now)
+						end
+						target.slowUntil = now + cfg.slowDuration
+					end
 					table.insert(state.out.F, { Cell = cell, Id = target.id })
 				end
 				attacks += 1
@@ -258,6 +276,10 @@ function Match.Step(state, now: number)
 	-- Move + breach. dist is a pure function of time so clients can reproduce it.
 	local survivors = {}
 	for _, enemy in state.enemies do
+		if enemy.slowUntil and now >= enemy.slowUntil then
+			setSpeed(state, enemy, enemy.baseSpeed, enemy.slowUntil)
+			enemy.slowUntil = nil
+		end
 		enemy.dist = math.max(0, enemy.speed * (now - enemy.spawnAt))
 		if enemy.dist >= Layout.PathLength then
 			state.lives -= Enemies.Kinds[enemy.kind].lives

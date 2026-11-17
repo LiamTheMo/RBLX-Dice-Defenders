@@ -29,7 +29,7 @@ local function pool(def)
 	table.sort(ids)
 	for _, id in ids do
 		local rarity = Dice.Types[id].rarity
-		if byRarity[rarity] then
+		if byRarity[rarity] and not Dice.Types[id].retired then
 			table.insert(byRarity[rarity], id)
 			table.insert(dice, { Id = id, Rarity = rarity })
 		end
@@ -52,7 +52,7 @@ Roll.Pools = freeze({
 			{ Rarity = "Secret", Bp = 0 },
 		},
 		Pity = { Rarity = "Legendary", Max = 80 },
-		Featured = { "L01", "L02", "L03" },
+		Featured = { "L01", "L02" },
 	}),
 })
 

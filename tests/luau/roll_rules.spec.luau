@@ -71,12 +71,16 @@ test("Standard: 1 roll 100 Gems, 10 rolls 900; weights sum 10000, Mythic and Sec
 		expectEq(bp[rarity], want, rarity .. " weight")
 	end
 	expect(STANDARD.Pity.Rarity == "Legendary" and STANDARD.Pity.Max == 80, "pity: Legendary on the 80th roll")
-	expectEq(snap(STANDARD.Featured), snap({ "L01", "L02", "L03" }), "Featured = the three Legendaries")
+	expectEq(snap(STANDARD.Featured), snap({ "L01", "L02" }), "Featured = the two active Legendaries")
 	-- the pool's dice are exactly the Config/Dice entries of a weighted rarity, each listed under its own rarity
 	local n = 0
 	for id, t in Dice.Types do
-		n += 1
-		expect(table.find(STANDARD.ByRarity[t.rarity], id) ~= nil, id .. " drawable under " .. t.rarity)
+		if not t.retired and STANDARD.ByRarity[t.rarity] then
+			n += 1
+			expect(table.find(STANDARD.ByRarity[t.rarity], id) ~= nil, id .. " drawable under " .. t.rarity)
+		elseif STANDARD.ByRarity[t.rarity] then
+			expect(table.find(STANDARD.ByRarity[t.rarity], id) == nil, id .. " retired")
+		end
 	end
 	expectEq(#STANDARD.Dice, n, "every die once")
 	for i, d in STANDARD.Dice do
@@ -284,4 +288,27 @@ test("Shape: pool a string of 1..16 bytes, count an integer in 1..10", function(
 	do
 		expect(Roll.Shape(bad[1], bad[2]) == false, "malformed " .. i)
 	end
+end)
+
+
+test("active roster has the requested counts and retired dice never roll", function()
+	local counts = { Common = 0, Rare = 0, Epic = 0, Legendary = 0, Mythic = 0 }
+	for _, die in Dice.Types do
+		if not die.retired then
+			counts[die.rarity] += 1
+		end
+	end
+	for rarity, count in { Common = 7, Rare = 5, Epic = 3, Legendary = 2, Mythic = 1 } do
+		expectEq(counts[rarity], count, rarity .. " roster")
+	end
+	for _, id in { "E02", "E04", "L03" } do
+		expect(Dice.Types[id].retired, id .. " retained for existing owners")
+		for _, die in STANDARD.Dice do
+			expect(die.Id ~= id, id .. " excluded from rolls")
+		end
+	end
+	local stored = ProfileSchema.Default()
+	stored.Dice.E02 = { Level = 3, Copies = 2 }
+	local migrated = ProfileSchema.Migrate(stored)
+	expect(migrated.Dice.E02.Level == 3 and migrated.Dice.E02.Copies == 2, "retired ownership preserved")
 end)
