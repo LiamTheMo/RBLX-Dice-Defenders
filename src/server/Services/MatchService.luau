@@ -31,6 +31,7 @@ local order: { Player } = {} -- loaded players, oldest first
 local match = nil -- nil = Lobby
 local rewardGold: number? = nil
 local rewardXp: number? = nil
+local rewardGems: number? = nil
 local catalog = Catalog.Build() -- the same display catalogue for every player
 local lastTick = 0
 local runRng = Random.new()
@@ -78,6 +79,7 @@ local function snapshot(player: Player)
 	out.Result = match.result
 	out.RewardGold = rewardGold
 	out.RewardXp = rewardXp
+	out.RewardGems = rewardGems
 	for i = 1, Balance.BoardCells do
 		local die = match.board[i]
 		if die then
@@ -212,6 +214,7 @@ local function settle()
 	end
 	rewardGold = bundle.Gold or 0 -- a wave-0 loss pays nothing
 	rewardXp = bundle.Xp or 0
+	rewardGems = bundle.Gems or 0
 	ProfileService.MarkChanged(owner)
 	task.spawn(ProfileService.SaveNow, owner)
 end
@@ -221,7 +224,7 @@ local function abortMatch()
 		Match.Finish(match, "Aborted")
 		settle() -- the owner's profile is still loaded: pay as a loss at this moment
 		match = nil
-		rewardGold, rewardXp = nil, nil
+		rewardGold, rewardXp, rewardGems = nil, nil, nil
 	end
 end
 
@@ -280,7 +283,7 @@ local function handleStart(player: Player): (boolean, string?)
 	if not Deck.Check(profile.Dice, profile.Deck) then
 		return false, "BadDeck" -- never swap in a different deck silently
 	end
-	rewardGold, rewardXp = nil, nil
+	rewardGold, rewardXp, rewardGems = nil, nil, nil
 	match = Match.New(newRunId(profile), Random.new(), workspace:GetServerTimeNow(), profile.Deck)
 	flush(true)
 	return true, nil

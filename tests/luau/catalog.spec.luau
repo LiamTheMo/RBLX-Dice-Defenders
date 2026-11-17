@@ -177,8 +177,14 @@ test("Daily, Milestones, Achievements, Mastery and Repeat equal config", functio
 		expectEq(dump(m.Rewards), dump(Rewards.Lines(curve.Rewards[m.Lv])), "Lv" .. m.Lv .. " rewards")
 	end
 	local r = Balance.Reward
-	local perWave = { Gold = r.goldPerWave, Xp = r.xpPerWave, Materials = { Fragment = r.fragmentsPerWave } }
+	local perWave = {
+		Gold = r.goldPerWave,
+		Gems = Balance.WaveGems[1].wave,
+		Xp = r.xpPerWave,
+		Materials = { Fragment = r.fragmentsPerWave },
+	}
 	expectEq(dump(c.Repeat.PerWave), dump(Rewards.Lines(perWave)), "repeat per wave")
+	expectEq(dump(c.Repeat.BossWave), dump(Rewards.Lines({ Gems = Balance.WaveGems[1].boss })), "repeat boss wave")
 	expectEq(c.Repeat.Win, nil, "no win bonus")
 end)
 

@@ -10,7 +10,7 @@
 --     Achievements = {{Id, Name, Desc, Goal, Badge, Rewards}},
 --     Mastery = { Max, Need = { per level 1..Max-1 }, Milestones = {{Lv, Rewards}} },
 --     DieLevel = { Max, Copies = { per level 1..Max-1 } },
---     Repeat = { PerWave = Rewards },
+--     Repeat = { PerWave = Rewards, BossWave = Rewards },  -- a boss wave pays BossWave gems instead of PerWave's
 --     Roll = { Pools = {{Id, Name, Prices = {{Count, Gems}}, Odds = {{Rarity, Bp}}, Dice = {{Id, Rarity}},
 --              Pity = {Rarity, Max}, Featured = { ids }}} },
 --     Shop = { Offers = {{Id, Tab = "Featured"|"Gems", Name, Currency = "Gold"|"Gems"|"Robux", Price, Rewards,
@@ -134,9 +134,11 @@ function Catalog.Build()
 		Repeat = {
 			PerWave = Rewards.Lines({
 				Gold = reward.goldPerWave,
+				Gems = Balance.WaveGems[1].wave,
 				Xp = reward.xpPerWave,
 				Materials = { Fragment = reward.fragmentsPerWave },
 			}),
+			BossWave = Rewards.Lines({ Gems = Balance.WaveGems[1].boss }),
 		},
 		Roll = {
 			Pools = map(RollConfig.Pools, function(pool)

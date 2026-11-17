@@ -25,11 +25,16 @@ end
 
 function Formulas.EnemyHp(kind: string, w: number): number
 	local c = Balance.EnemyHp
-	if kind == "Boss" then
-		return math.floor(c.bossPerWave * (w - c.bossOffset) + 0.5)
+	local growth, from = 1, 1
+	for _, band in c.growth do
+		local to = math.min(w, band.toWave)
+		if to > from then
+			growth *= (1 + band.rate) ^ (to - from)
+			from = to
+		end
 	end
 	local ease = math.min(1, c.easeFrom + (1 - c.easeFrom) * (w - 1) / c.easeWaves) -- the first waves face the 4 starting dice
-	return math.floor(c.base * (1 + c.growth) ^ (w - 1) * ease * Enemies.Kinds[kind].hpMul + 0.5)
+	return math.floor(c.base * growth * ease * Enemies.Kinds[kind].hpMul + 0.5)
 end
 
 -- Enemy kind of the 1-based spawn index `i` in wave `w` (the Brute and Boss are queued separately).
@@ -76,6 +81,24 @@ end
 
 function Formulas.RewardFragments(waves: number): number
 	return Balance.Reward.fragmentsPerWave * waves
+end
+
+-- Gems for clearing wave `w` (Balance.WaveGems).
+function Formulas.WaveGems(w: number): number
+	for _, b in Balance.WaveGems do
+		if w <= b.maxWave then
+			return if Formulas.IsBoss(w) then b.boss elseif Formulas.HasBrute(w) then b.brute else b.wave
+		end
+	end
+	return 0
+end
+
+function Formulas.RewardGems(waves: number): number
+	local sum = 0
+	for w = 1, waves do
+		sum += Formulas.WaveGems(w)
+	end
+	return sum
 end
 
 function Formulas.Period(typeId: string): number

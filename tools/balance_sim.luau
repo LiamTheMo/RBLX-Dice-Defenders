@@ -1,4 +1,5 @@
--- Balance sim: which wave does a deck reach? Run: python tools/balance_sim.py [seeds]  (bot summons and merges; real Match/Formulas/Balance)
+-- Balance sim: which wave does a deck reach? Run: python tools/balance_sim.py [seeds]  (bots summon and merge; real Match/Formulas/Balance)
+-- Targets (docs/MVP.md "Waves"): "starter eager" clears wave 10 (the tutorial), "starter full" ends at 15, the "only C0x" ceilings by ~18.
 local Server = game:GetService("ServerScriptService").Server
 local Match = require(Server.Rules.Match)
 local Dice = require(Server.Config.Dice)
@@ -7,7 +8,10 @@ local Layout = require(game:GetService("ReplicatedStorage").Shared.Layout)
 
 local P = { seeds = __SEEDS or 40, dt = 0.25, maxWave = 200 } -- dt = Balance.MaxStep; the live tick is 0.1
 
-local function bot(state)
+-- Bots. "eager": summon, then merge any lowest-pip pair at once. "full": a careful player: summon until
+-- the board is full, then merge the pair that loses the least DPS, only when the next summon is affordable.
+local dieDps
+local function eager(state)
 	while Match.TrySummon(state) do
 	end
 	local merged = true
@@ -34,19 +38,54 @@ local function bot(state)
 	end
 end
 
+local function full(state)
+	while true do
+		while Match.TrySummon(state) do
+		end
+		if table.find(state.board, false) or state.mp < Match.SummonCost(state) then
+			return
+		end
+		local best, from, to
+		for i = 1, 15 do
+			local a = state.board[i]
+			for j = i + 1, 15 do
+				local b = state.board[j]
+				if a.pip < 7 and b.type == a.type and b.pip == a.pip then
+					local gain = 0
+					for _, t in state.deck do
+						gain += dieDps(t, a.pip + 1) / #state.deck
+					end
+					local loss = dieDps(a.type, a.pip) * 2 - gain
+					if not best or loss < best then
+						best, from, to = loss, i, j
+					end
+				end
+			end
+		end
+		if not best or not Match.TryMerge(state, from, to) then
+			return
+		end
+	end
+end
+
 local function median(t)
 	local c = table.clone(t)
 	table.sort(c)
 	return c[(#c + 1) // 2]
 end
 
--- Board damage per second on a Grunt (ignores First/overkill).
+-- Damage per second of one die on a Grunt (ignores First/overkill; Needle's proc averaged in).
+function dieDps(typeId, pip)
+	local cfg = Dice.Types[typeId]
+	local proc = if cfg.procEvery then cfg.procFlat / cfg.procEvery else 0
+	return (Formulas.HitDamage(typeId, pip, "Grunt") * (cfg.shots or 1) + proc) / Formulas.Period(typeId)
+end
+
 local function gruntDps(state)
 	local sum = 0
 	for _, die in state.board do
 		if die then
-			local cfg = Dice.Types[die.type]
-			sum += Formulas.HitDamage(die.type, die.pip, "Grunt") * (cfg.shots or 1) / Formulas.Period(die.type)
+			sum += dieDps(die.type, die.pip)
 		end
 	end
 	return sum
@@ -54,7 +93,7 @@ end
 
 -- Returns the lost wave and per-wave stats: progress of each regular mob at death (0 spawn .. 1 exit),
 -- in death order, regular leaks, lives and Grunt DPS at the last step of the wave.
-local function run(deck, seed)
+local function run(deck, seed, bot)
 	local state = Match.New(1, Random.new(seed), 0, deck)
 	local now = 0
 	local info, stats = {}, {}
@@ -89,10 +128,10 @@ local function run(deck, seed)
 	return state.wave, stats
 end
 
-local function batch(name, deck)
+local function batch(name, deck, bot, quiet)
 	local waves, all = {}, {}
 	for s = 1, P.seeds do
-		local lost, stats = run(deck, s * 7919)
+		local lost, stats = run(deck, s * 7919, bot)
 		if lost < 5 then
 			print(
 				"LOST",
@@ -110,6 +149,9 @@ local function batch(name, deck)
 	print("  all: " .. table.concat(waves, " "))
 	local m = waves[(#waves + 1) // 2]
 	print(`{name}: deck={table.concat(deck, ",")} lost wave min/median/max = {waves[1]}/{m}/{waves[#waves]}`)
+	if quiet then
+		return
+	end
 	print(
 		"  wave gruntHp | median-over-seeds: regular-mob median death progress, end-of-wave (last 3 deaths mean), leaks, lives, gruntDPS"
 	)
@@ -147,7 +189,11 @@ local function batch(name, deck)
 end
 
 test("sim", function()
-	batch("starter", Dice.Deck)
+	batch("starter eager", Dice.Deck, eager)
+	batch("starter full", Dice.Deck, full)
+	for _, id in Dice.Deck do -- ceiling: every summon and merge result is the same Common
+		batch("only " .. id, { id }, full, id ~= "C02")
+	end
 	local ids = {}
 	for id, cfg in Dice.Types do
 		if cfg.rarity == "Rare" or cfg.rarity == "Epic" or cfg.rarity == "Legendary" then
@@ -161,5 +207,6 @@ test("sim", function()
 		end
 		return a < b
 	end)
-	batch("strong", { ids[1], ids[2], ids[3], ids[4], ids[5] })
+	batch("strong full", { ids[1], ids[2], ids[3], ids[4], ids[5] }, full, true)
+	batch("rares full", { "R01", "R02", "R03", "R04", "R05" }, full, true)
 end)

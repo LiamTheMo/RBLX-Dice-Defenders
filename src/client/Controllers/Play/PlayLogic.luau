@@ -90,7 +90,9 @@ end
 -- desktop text column is narrow); form "Short" keeps only the name's last word ("+5 FRAGMENTS" for Verdant Fragments).
 function PlayLogic.rewardText(line: any, catalog: any, form: ("Icon" | "Short")?): string
 	local label = COUNTER[line.Kind]
-	if not label then
+	if label and line.Amount == 1 then
+		label = (string.gsub(label, "S$", "")) -- +1 GEM
+	elseif not label then
 		local name = line.Id
 		local list = catalog and catalog[CATALOG_LIST[line.Kind]]
 		for _, e in (if type(list) == "table" then list else {}) :: { any } do
@@ -169,7 +171,7 @@ function PlayLogic.claimTarget(row: any, pending: { [string]: boolean }): string
 end
 
 -- The real per-run payout (Catalog.Repeat) as payout-box lines of tokens; a token ending in ":" is a heading.
---   { {"PER WAVE:"}, {"+5 GOLD", "+10 XP"}, {"+1 FRAGMENT"} }
+--   { {"PER WAVE:"}, {"+5 GOLD", "+1 GEM", "+10 XP"}, {"+1 FRAGMENT"}, {"BOSS WAVE:", "+3 GEMS"} }
 function PlayLogic.repeatLines(catalog: any): { { string } }
 	local rep = catalog and catalog.Repeat
 	if type(rep) ~= "table" then
@@ -190,12 +192,13 @@ function PlayLogic.repeatLines(catalog: any): { { string } }
 				table.insert(named, { text })
 			end
 		end
-		if #counters > 0 then
+		if #counters > (if head then 1 else 0) then -- a heading alone is no line
 			table.insert(lines, counters)
 		end
 		table.move(named, 1, #named, #lines + 1, lines)
 	end
 	add(rep.PerWave)
+	add(rep.BossWave, "BOSS WAVE:")
 	return lines
 end
 

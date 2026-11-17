@@ -242,7 +242,11 @@ local function renderResult(snap)
 	if show then
 		ui.ResultTitle.Text = RESULT_TITLES[snap.Result] or "Run Ended"
 		ui.ResultWave.Text = "Wave " .. tostring(snap.Wave or 0)
-		ui.ResultReward.Text = ("+%d Gold   +%d XP"):format(snap.RewardGold or 0, snap.RewardXp or 0)
+		ui.ResultReward.Text = ("+%d Gold   +%d XP   +%d Gems"):format(
+			snap.RewardGold or 0,
+			snap.RewardXp or 0,
+			snap.RewardGems or 0
+		)
 		ui.ResultReward.Visible = snap.RewardGold ~= nil
 	end
 end

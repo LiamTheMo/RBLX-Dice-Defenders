@@ -139,8 +139,10 @@ function Quests.SettleRun(profile: any, runId: any, waves: any, kills: any, now:
 		return false, "AlreadyGranted"
 	end
 	local gold, xp, fragments = Formulas.RewardGold(waves), Formulas.RewardXp(waves), Formulas.RewardFragments(waves)
+	local gems = Formulas.RewardGems(waves)
 	local bundle = {
 		Gold = if gold > 0 then gold else nil,
+		Gems = if gems > 0 then gems else nil,
 		Xp = if xp > 0 then xp else nil,
 		Materials = if fragments > 0 then { Fragment = fragments } else nil,
 	}

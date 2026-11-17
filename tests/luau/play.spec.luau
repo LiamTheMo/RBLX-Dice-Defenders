@@ -93,10 +93,10 @@ test("milestones: one row per Catalog milestone, states from Meta", function()
 		expectEq(#row.Full, #row.Lines, "full " .. row.Id)
 		expectEq(row.Busy, false, "busy " .. row.Id)
 	end
-	expectEq(rows[1].Icon, "Potion", "P10 icon: the item beats Gems")
+	expectEq(rows[1].Icon, "IconGalaxyDie", "P10 icon: the die beats Gems")
 	expectEq(rows[2].Icon, "IconGalaxyDie", "P20 icon: the die")
 	expectEq(rows[4].Icon, "Gem", "P40 icon: the HUD gem")
-	expectEq(table.concat(rows[1].Full, "|"), "+50 GEMS|+1 XP TOME", "P10 rewards")
+	expectEq(table.concat(rows[1].Full, "|"), "+50 GEMS|+1 FROST DIE", "P10 rewards: the tutorial's gems and Rare die")
 	expectEq(table.concat(rows[2].Lines, "|"), "+100 GOLD|+1 FROST", "P20 beside the icon")
 	expectEq(table.concat(rows[2].Full, "|"), "+100 GOLD|+1 FROST DIE", "P20 phones")
 
@@ -154,7 +154,11 @@ test("repeatLines: the real per-run payout, no drop odds", function()
 	for i, line in lines do
 		text[i] = table.concat(line, " ")
 	end
-	expectEq(table.concat(text, "|"), "PER WAVE:|+5 GOLD +10 XP|+1 FRAGMENT", "payout from Balance.Reward")
+	expectEq(
+		table.concat(text, "|"),
+		"PER WAVE:|+5 GOLD +1 GEM +10 XP|+1 FRAGMENT|BOSS WAVE: +3 GEMS",
+		"payout from Balance.Reward and WaveGems"
+	)
 	for _, t in text do
 		expectEq(t:find("%", 1, true), nil, "no odds in " .. t)
 	end

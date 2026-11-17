@@ -44,7 +44,7 @@ killPressure = 1 + .30 * surplus          # 1.00–1.06
 Evaluate at **wave boundaries**, not for each hit; enemies spawned within a wave keep fixed HP. This responds to unusual extra kills without punishing efficient teams with uncontrolled runaway HP. Infinite pressure is predominantly wave-based. For a future kills-first variant, use a virtual wave derived from kills **instead** of stacking independent exponentials. Never count boss-generated farmable minions toward `K`.
 
 ### Boss events
-- Implemented (MVP Trial, endless, no win): a boss every 5th wave (5, 10, 15, ...) with HP `1200*(w-3)`, plus a big Brute mini-boss on waves 3, 8, 13, ... 33 then every even wave from 36; see MVP.md. Later staged-World targets: wave 10,20,30,...100; final boss must die for stage completion.
+- Implemented (MVP Trial, endless, no win): a boss every 5th wave (5, 10, 15, ...) with 8.5x a Grunt's HP, plus a big Brute mini-boss on waves 3, 8, 13, ... 33 then every even wave from 36; see MVP.md. Later staged-World targets: wave 10,20,30,...100; final boss must die for stage completion.
 - Infinite: wave 110,120,130... OR +400 eligible kills since the previous boss, whichever occurs first. **Exactly one** boss event if thresholds coincide, then reset the kill target. Transition after World 1 wave 100 does not double-spawn.
 - Every 5th non-boss wave can carry an Elite modifier. Telegraph bosses ≥3 seconds ahead.
 - Implemented: 3 lives; Grunt/Runner breach -1, Brute/Boss -2; zero lives ends the run. Proposed for the full game: 20 team lives; ordinary breach -1, Elite -2, Boss -5.
@@ -79,7 +79,7 @@ Base kill MP: Grunt 15, Runner 15, Brute 25, Swarm 5, Elite 40, Boss 150, adjust
 | MP | Kills during a match only | Summons and temporary match upgrades |
 
 **Proposed starter grant:** 500 Gold, 50 Gems, five Common dice, one tutorial chest.  
-**Stage reward seed (proposal; the MVP run pays 5 Gold, 10 XP and 1 Fragment per wave cleared, no win bonus):** 50+3×waves completed Gold; 40+4×waves completed XP, reduced on repeated clears. First-clear wave 20 guarantees a Rare selection; wave 60 an Epic selection; wave 100 a Legendary blueprint selection + 200 Gems + 800 Gold. Future worlds may unlock via first-clear achievements. Rewards must be idempotent: clear flags prevent reclaims.
+**Stage reward seed (proposal; the MVP run pays 5 Gold, 10 XP, 1 Fragment and 1-3 Gems (Random Dice co-op's card schedule) per wave cleared, no win bonus):** 50+3×waves completed Gold; 40+4×waves completed XP, reduced on repeated clears. First-clear wave 20 guarantees a Rare selection; wave 60 an Epic selection; wave 100 a Legendary blueprint selection + 200 Gems + 800 Gold. Future worlds may unlock via first-clear achievements. Rewards must be idempotent: clear flags prevent reclaims.
 
 **Craft seed:** Rare 80 Verdant Fragments + 300 Gold; Epic 250 fragments + 100 Dust + 1,200 Gold; Legendary 900 fragments + 500 Dust + 5,000 Gold + blueprint; Mythic 2,000 fragments + 1,500 Dust + mastery schematic + 12,000 Gold. Every rarity up to Mythic has an achievable non-Robux unlock route. Secret remains unobtainable at launch.
 
