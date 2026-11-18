@@ -316,7 +316,8 @@ local function attack(state, now: number)
 						Cell = cell,
 						Id = target.id,
 						Type = die.type,
-						Distance = if die.type == "C01" then target.dist else nil,
+						Distance = if die.type == "C01" or die.type == "C02" then target.dist else nil,
+						Boosted = if die.type == "C02" and flat > 0 then true else nil,
 					})
 				end
 				attacks += 1

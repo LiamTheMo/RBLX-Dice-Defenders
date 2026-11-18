@@ -283,9 +283,17 @@ test("Needle: every 6th hit of that die adds 8 flat damage", function()
 	for _ = 1, 80 do
 		t += DT
 		Match.Step(state, t)
+		local batch = Match.TakeOut(state)
 		if target.hp ~= last then
 			table.insert(deltas, last - target.hp)
+			expectEq(#batch.F, 1, "one visual event for the hit")
+			local shot = batch.F[1]
+			expectEq(shot.Type, "C02", "Needle attack record")
+			expectEq(shot.Distance, target.dist, "confirmed impact distance")
+			expectEq(shot.Boosted, if #deltas % 6 == 0 then true else nil, "only the sixth hit brightens")
 			last = target.hp
+		else
+			expectEq(#batch.F, 0, "no attack effect without a hit")
 		end
 	end
 	expect(#deltas >= 12, "enough hits: " .. #deltas)

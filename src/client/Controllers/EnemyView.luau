@@ -7,7 +7,7 @@ local RunService = game:GetService("RunService")
 local Display = require(ReplicatedStorage.Shared.Display)
 local Layout = require(ReplicatedStorage.Shared.Layout)
 local NetClient = require(script.Parent.NetClient)
-local Pebble = require(script.Parent.Effects.Pebble)
+local Projectiles = require(script.Parent.Effects.Projectiles)
 local SettingsLogic = require(script.Parent.Settings.SettingsLogic)
 
 local EnemyView = {}
@@ -106,9 +106,9 @@ local function fire(record)
 		return
 	end
 	local from = Layout.CellPosition(record.Cell) + Vector3.new(0, 3, 0)
-	if record.Type == "C01" then
+	if record.Distance ~= nil then
 		local hit = Layout.PositionAt(record.Distance) + Vector3.new(0, e.lift, 0)
-		Pebble.Fire(tracerFolder, from, hit, e.part, SettingsLogic.get("reducedMotion"))
+		Projectiles.Fire(tracerFolder, from, hit, e.part, record, SettingsLogic.get("reducedMotion"))
 		return
 	end
 	local t = tracer()
@@ -156,11 +156,11 @@ local function onFrame(dt: number)
 			t.part.Parent = nil
 		end
 	end
-	Pebble.Step(dt)
+	Projectiles.Step(dt)
 end
 
 local function clearEffects()
-	Pebble.Clear()
+	Projectiles.Clear()
 	for _, t in tracers do
 		t.part.Parent = nil
 		t.untilTime = 0
@@ -192,7 +192,7 @@ function EnemyView.Start()
 		if id == "projectileEffects" and not value then
 			clearEffects()
 		elseif id == "reducedMotion" and value then
-			Pebble.Clear()
+			Projectiles.Clear()
 		end
 	end)
 	RunService.RenderStepped:Connect(onFrame)
