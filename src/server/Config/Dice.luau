@@ -2,7 +2,7 @@
 -- the profile's own Deck. Data-driven perks:
 --   vsKind[kind]        damage multiplier against one enemy kind
 --   vsArmored           damage multiplier against armored enemies
---   shots/shotMul       projectiles per attack and per-shot damage multiplier
+--   shots              projectiles per attack, each using the die's base damage
 --   procEvery/procFlat  every Nth hit of a die instance adds flat damage
 --   aura                {base, perPip, perTier}: attack-speed bonus (fraction) to the 4 orthogonal neighbours,
 --                       base + perPip x (pip - 1) + perTier x (tier - 1); a die's total is capped by Balance.AuraCap
@@ -22,7 +22,14 @@ Dice.Types = table.freeze({
 	}),
 	C02 = table.freeze({ name = "Needle", rarity = "Common", base = 9, rate = 1.75, procEvery = 6, procFlat = 8 }),
 	C03 = table.freeze({ name = "Hammer", rarity = "Common", base = 30, rate = 0.55, vsArmored = 1.12 }),
-	C04 = table.freeze({ name = "Twinshot", rarity = "Common", base = 10, rate = 0.95, shots = 2, shotMul = 0.7 }),
+	C04 = table.freeze({
+		name = "Twinshot",
+		rarity = "Common",
+		base = 6,
+		rate = 0.95,
+		shots = 2,
+		description = "Fires one shot at the front enemy and one at a random living enemy.",
+	}),
 	-- shortcut: Longshot's +25% range perk is moot under global targeting; replacement perk TBD.
 	C05 = table.freeze({
 		name = "Longshot",

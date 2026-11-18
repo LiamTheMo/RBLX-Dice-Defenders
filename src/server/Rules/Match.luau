@@ -279,16 +279,17 @@ local function attack(state, now: number)
 			local cfg = Dice.Types[die.type]
 			local tier = state.tiers[die.type] or 1 -- a die off the deck (only a spec places one) is tier 1
 			local period = Formulas.Period(die.type, die.pip, auras[cell])
+			local twinshot = die.type == "C04"
+			local showProjectile = die.type == "C01" or die.type == "C02" or twinshot
 			local attacks = 0
 			while die.cd <= now and attacks < Balance.MaxAttacksPerTick do
-				-- Global First: the alive enemies closest to the exit, anywhere on the path.
-				local first, second
+				local first
+				local alive = 0
 				for _, enemy in enemies do
 					if enemy.hp > 0 then
+						alive += 1
 						if first == nil or enemy.dist > first.dist then
-							first, second = enemy, first
-						elseif second == nil or enemy.dist > second.dist then
-							second = enemy
+							first = enemy
 						end
 					end
 				end
@@ -296,10 +297,24 @@ local function attack(state, now: number)
 					die.cd = now -- idle cooldown does not bank
 					break
 				end
+				-- Both targets are chosen before either shot deals damage.
+				local second = first
+				if twinshot and alive > 1 then
+					local index = state.rng:NextInteger(1, alive)
+					for _, enemy in enemies do
+						if enemy.hp > 0 then
+							index -= 1
+							if index == 0 then
+								second = enemy
+								break
+							end
+						end
+					end
+				end
 				die.hits += 1
 				local flat = if cfg.procEvery and die.hits % cfg.procEvery == 0 then cfg.procFlat else 0
 				for shot = 1, cfg.shots or 1 do
-					local target = if shot == 1 then first else second or first
+					local target = if shot == 1 then first else second
 					damage(
 						state,
 						target,
@@ -316,8 +331,10 @@ local function attack(state, now: number)
 						Cell = cell,
 						Id = target.id,
 						Type = die.type,
-						Distance = if die.type == "C01" or die.type == "C02" then target.dist else nil,
+						Distance = if showProjectile then target.dist else nil,
 						Boosted = if die.type == "C02" and flat > 0 then true else nil,
+						Lane = if twinshot then (if shot == 1 then 1 else -1) else nil,
+						SharedTarget = if twinshot and first == second then true else nil,
 					})
 				end
 				attacks += 1

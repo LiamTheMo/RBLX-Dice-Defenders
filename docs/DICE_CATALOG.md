@@ -37,7 +37,7 @@ The tables below describe the earlier proposed roster and ability design; curren
 | C01 **Pebble** | 16 | 1.00 | Always: stable first-target single shot; +5% damage vs Grunts | Consistent baseline |
 | C02 **Needle** | 9 | 1.75 | On-hit: every 6th hit adds 8 true damage (one stack per dice instance) | Fast single-target |
 | C03 **Hammer** | 30 | 0.55 | Always: +12% against armored targets; slower turn speed | Heavy / armor soft-counter |
-| C04 **Twinshot** | 10 | 0.95 | Every attack: 2 projectiles to same/adjacent targets at 70% damage each; no extra proc rolls | Weak swarm coverage |
+| C04 **Twinshot** | 6 per projectile | 0.95 | One shot hits the front enemy and one hits a random living enemy, including the front enemy | Random secondary coverage |
 | C05 **Longshot** | 22 | 0.72 | Always: -10% vs bosses (the +25% range perk is moot under global targeting; replacement TBD) | Replacement perk TBD |
 
 ## Rare — 5
@@ -105,4 +105,4 @@ DiceDefinition = {
 Trigger events: OnHit, OnKill, OnMergeConsumed, OnMergeProduced, OnSummon, OnTimer, OnWaveStart, OnBossSpawn, OnAdjacentChanged, OnPipChanged, OnBoardFull, OnMapTagActive, OnEnemyThreshold. **Immutable run seed** + server RNG produce outcomes; apply ordering: validate event → compute conditions → cap & cooldown → activate → enqueue effects → publish FX. Max **3 nested proc generations** and **24 effect events per dice per server tick** initially; throttled FX must not throttle damage truth.
 
 ## Dice asset deliverables (mandatory for each new die)
-One original ChatGPT-generated icon/portrait and rarity treatment; orthographic top/front/side/back views and 3/4 isometric beauty view; **one large clean modeling-breakdown sheet** with separated/exploded base cube, bevels, pip/star inlays, face details, projectiles, glow meshes, moving parts, labeled material/colors, proportions and approximate Roblox studs; silhouette verification at tiny size. See ART_PIPELINE.md for export contract and no-splicing rule.
+One original AI-generated icon/portrait and rarity treatment; orthographic top/front/side/back views and 3/4 isometric beauty view; **one large clean modeling-breakdown sheet** with separated/exploded base cube, bevels, pip/star inlays, face details, projectiles, glow meshes, moving parts, labeled material/colors, proportions and approximate Roblox studs; silhouette verification at tiny size. See ART_PIPELINE.md for export contract and no-splicing rule.

@@ -131,7 +131,7 @@ end
 function Formulas.HitDamage(typeId: string, kind: string, procFlat: number?, tier: number?): number
 	local cfg = Dice.Types[typeId]
 	local enemy = Enemies.Kinds[kind]
-	local perk = cfg.shotMul or 1
+	local perk = 1
 	if cfg.vsKind and cfg.vsKind[kind] then
 		perk *= cfg.vsKind[kind]
 	end

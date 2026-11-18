@@ -6,7 +6,29 @@ local DOT_COLOR = Color3.fromRGB(190, 190, 190)
 local FLASH_COLOR = Color3.fromRGB(222, 222, 222)
 local RING_ROTATION = CFrame.Angles(0, math.pi / 2, 0)
 local FADE_SECONDS = 0.30
-local pools = { C01 = {}, C02 = {} }
+local SILVER = Color3.fromRGB(217, 217, 230)
+local IVORY = Color3.fromRGB(255, 248, 232)
+local styles = {
+	C01 = { name = "Pebble", effect = script.Parent.PebbleRing, color = DOT_COLOR, speed = 140, size = 0.22, pool = {} },
+	C02 = {
+		name = "Needle",
+		effect = script.Parent.NeedleFlash,
+		color = SILVER,
+		speed = 170,
+		size = 0.18,
+		pool = {},
+		streak = Color3.fromRGB(191, 191, 191),
+	},
+	C04 = {
+		name = "Twinshot",
+		effect = script.Parent.TwinshotFlash,
+		color = IVORY,
+		speed = 155,
+		size = 0.20,
+		pool = {},
+		streak = IVORY,
+	},
+}
 
 -- Elapsed seconds, diameter in studs, and opacity from the Blender impact keys.
 local RING = {
@@ -32,8 +54,8 @@ local function release(shot)
 	shot.parent = nil
 end
 
-local function borrow(dieType: string)
-	local shots = pools[dieType]
+local function borrow(style)
+	local shots = style.pool
 	for _, shot in shots do
 		if shot.parent == nil then
 			return shot
@@ -42,21 +64,23 @@ local function borrow(dieType: string)
 	if #shots >= MAX_SHOTS then
 		return nil
 	end
-	local needle = dieType == "C02"
 	local dot = Instance.new("Part")
-	dot.Name = if needle then "NeedleProjectile" else "PebbleProjectile"
+	dot.Name = style.name .. "Projectile"
 	dot.Shape = Enum.PartType.Ball
-	dot.Material = if needle then Enum.Material.Neon else Enum.Material.SmoothPlastic
+	dot.Material = if style.streak then Enum.Material.Neon else Enum.Material.SmoothPlastic
 	dot.Anchored = true
 	dot.CastShadow = false
 	dot.CanCollide = false
 	dot.CanQuery = false
 	dot.CanTouch = false
-	local template = if needle then script.Parent.NeedleFlash else script.Parent.PebbleRing
-	local shot = { dot = dot, effect = template:Clone(), needle = needle }
+	local template = style.effect
+	local shot = { dot = dot, effect = template:Clone() }
 	shot.effect.Size *= SIZE_SCALE
-	shot.impactRadius = math.max(template.Size.X, template.Size.Y, template.Size.Z) * SIZE_SCALE / 2
-	if needle then
+	local pivot = template.PivotOffset
+	shot.effect.PivotOffset = pivot.Rotation + pivot.Position * SIZE_SCALE
+	shot.impactRadius = (math.max(template.Size.X, template.Size.Y, template.Size.Z) / 2 + pivot.Position.Magnitude)
+		* SIZE_SCALE
+	if style.streak then
 		local top, bottom = Instance.new("Attachment"), Instance.new("Attachment")
 		local halfWidth = Vector3.yAxis * (0.057 * SIZE_SCALE)
 		top.Position, bottom.Position = halfWidth, -halfWidth
@@ -67,7 +91,7 @@ local function borrow(dieType: string)
 		trail.Lifetime = 0.075
 		trail.MaxLength = 1.5 * SIZE_SCALE
 		trail.LightEmission = 0.25
-		trail.Color = ColorSequence.new(Color3.fromRGB(191, 191, 191))
+		trail.Color = ColorSequence.new(style.streak)
 		trail.Transparency = NumberSequence.new(0.38, 1)
 		trail.WidthScale = NumberSequence.new(1, 0)
 		trail.Enabled = false
@@ -88,7 +112,8 @@ function Projectiles.Fire(
 	attack,
 	reducedMotion: boolean
 )
-	local shot = borrow(attack.Type)
+	local style = styles[attack.Type]
+	local shot = borrow(style)
 	if shot == nil then
 		return
 	end
@@ -96,20 +121,24 @@ function Projectiles.Fire(
 	shot.from, shot.center = from, center
 	shot.halfSize = target.Size.X / 2
 	shot.reducedMotion = reducedMotion
-	shot.flight = if reducedMotion then 0 else (center - from).Magnitude / (if shot.needle then 170 else 140)
+	shot.flight = if reducedMotion then 0 else (center - from).Magnitude / style.speed
 	shot.elapsed = 0
 	shot.impact = nil
+	local camera = workspace.CurrentCamera
+	local up = if camera then camera.CFrame.UpVector else Vector3.yAxis
+	local lane = up * ((attack.Lane or 0) * 0.22 * SIZE_SCALE)
+	shot.from += lane
+	shot.hitOffset = if attack.SharedTarget then lane else Vector3.zero
+	shot.twinshot = attack.Type == "C04"
 	shot.dot.Transparency = 0
-	if shot.needle then
-		shot.effect.Color = if attack.Boosted and not reducedMotion
-			then Color3.new(1, 1, 1)
-			else Color3.fromRGB(217, 217, 230)
-		shot.strength = if reducedMotion then 0.42 elseif attack.Boosted then 1 else 0.80
+	if attack.Type == "C02" then
+		shot.effect.Color = if attack.Boosted and not reducedMotion then Color3.new(1, 1, 1) else SILVER
 	end
+	shot.strength = if reducedMotion then 0.42 elseif attack.Boosted then 1 else 0.80
 	if not reducedMotion then
-		shot.dot.Color = if shot.needle then Color3.fromRGB(217, 217, 230) else DOT_COLOR
-		shot.dot.Size = Vector3.one * SIZE_SCALE * (if shot.needle then 0.18 else 0.22)
-		shot.dot.Position = from
+		shot.dot.Color = style.color
+		shot.dot.Size = Vector3.one * SIZE_SCALE * style.size
+		shot.dot.Position = shot.from
 		shot.dot.Parent = parent
 		if shot.trail then
 			shot.trail.Enabled = true
@@ -152,14 +181,15 @@ local function advance(shot, dt: number, cameraPosition: Vector3)
 		local view = (cameraPosition - shot.center).Unit
 		local axis = math.max(math.abs(view.X), math.abs(view.Y), math.abs(view.Z))
 		-- Keep the full camera-facing impact above the struck face, including on oblique hits.
-		local offset = 0.10 + shot.impactRadius * math.sqrt(math.max(0, 1 - axis * axis)) / axis
-		local surface = shot.center + view * (shot.halfSize / axis + offset)
+		local radius = shot.impactRadius + shot.hitOffset.Magnitude
+		local offset = 0.10 + radius * math.sqrt(math.max(0, 1 - axis * axis)) / axis
+		local surface = shot.center + view * (shot.halfSize / axis + offset) + shot.hitOffset
 		if shot.elapsed < shot.flight then
 			shot.dot.Position = shot.from:Lerp(surface, shot.elapsed / shot.flight)
 			return
 		end
 		shot.impact = surface
-		if shot.needle then
+		if shot.trail then
 			stopTrail(shot)
 			shot.dot.Parent = nil
 		end
@@ -171,9 +201,13 @@ local function advance(shot, dt: number, cameraPosition: Vector3)
 		return
 	end
 	local facing = CFrame.lookAt(shot.impact, cameraPosition)
-	if shot.needle then
+	if shot.trail then
 		local t = 1 - age / FADE_SECONDS
 		shot.effect.Transparency = 1 - shot.strength * t * (0.5 + 0.5 * t)
+		if shot.twinshot then
+			local direction = facing:VectorToObjectSpace(shot.impact - shot.from)
+			facing *= CFrame.Angles(0, 0, math.atan2(direction.Y, direction.X))
+		end
 		shot.effect:PivotTo(facing)
 	else
 		pebbleImpact(shot, age, facing)
@@ -184,8 +218,8 @@ end
 function Projectiles.Step(dt: number)
 	local camera = workspace.CurrentCamera
 	if camera then
-		for _, shots in pools do
-			for _, shot in shots do
+		for _, style in styles do
+			for _, shot in style.pool do
 				if shot.parent then
 					advance(shot, dt, camera.CFrame.Position)
 				end
@@ -195,8 +229,8 @@ function Projectiles.Step(dt: number)
 end
 
 function Projectiles.Clear()
-	for _, shots in pools do
-		for _, shot in shots do
+	for _, style in styles do
+		for _, shot in style.pool do
 			release(shot)
 		end
 	end

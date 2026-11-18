@@ -121,7 +121,7 @@ test("perk damage: hitDamage = max(1, floor(base * perk * tierMul)) plus flat, n
 	expectEq(Formulas.HitDamage("C03", "Boss"), 30, "boss is not armored")
 	expectEq(Formulas.HitDamage("C05", "Boss"), 19, "longshot x0.9 vs boss")
 	expectEq(Formulas.HitDamage("C05", "Grunt"), 22, "longshot vs grunt")
-	expectEq(Formulas.HitDamage("C04", "Grunt"), 7, "twinshot shot x0.7")
+	expectEq(Formulas.HitDamage("C04", "Grunt"), 6, "Twinshot base damage per projectile")
 	expectEq(Formulas.HitDamage("C02", "Grunt"), 9, "needle plain")
 	expectEq(Formulas.HitDamage("C02", "Grunt", 8), 17, "needle with proc")
 	expectEq(Formulas.HitDamage("C04", "Grunt") >= 1, true, "never below 1")
@@ -305,22 +305,49 @@ test("Needle: every 6th hit of that die adds 8 flat damage", function()
 	end
 end)
 
-test("Twinshot: two shots at x0.7; second goes to the next in First order, else the same target", function()
+test("Twinshot targets the front and uniformly samples the living enemies", function()
 	local solo = newState()
 	openWave(solo)
 	place(solo, 5, "C04", 1)
-	local only = addEnemy(solo, "Brute", 5000, 56)
-	runFor(solo, 0.2)
-	expectEq(only.maxHp - only.hp, 14, "both shots on the only target")
+	local only = addEnemy(solo, "Brute", 6, 56)
+	Match.Step(solo, solo.lastNow + DT)
+	local batch = Match.TakeOut(solo)
+	expectEq(#batch.F, 2, "both shots emitted when the first one is lethal")
+	expectEq(#batch.R, 1, "kill counted once")
+	for i, shot in batch.F do
+		expectEq(shot.Id, only.id, "same target")
+		expectEq(shot.Distance, only.dist, "confirmed impact distance")
+		expectEq(shot.Lane, if i == 1 then 1 else -1, "separate visual lanes")
+		expectEq(shot.SharedTarget, true, "shared target uses two impact offsets")
+	end
 
-	local pair = newState()
-	openWave(pair)
-	place(pair, 5, "C04", 1)
-	local front = addEnemy(pair, "Brute", 5000, 56)
-	local back = addEnemy(pair, "Brute", 5000, 50)
-	runFor(pair, 0.2)
-	expectEq(front.maxHp - front.hp, 7, "first target takes one shot")
-	expectEq(back.maxHp - back.hp, 7, "second shot goes to the next in order")
+	for roll = 1, 3 do
+		local state = newState()
+		openWave(state)
+		place(state, 5, "C04", 1)
+		local rear = addEnemy(state, "Brute", 5000, 40)
+		addEnemy(state, "Brute", 0, 62)
+		local front = addEnemy(state, "Brute", 5000, 56)
+		local middle = addEnemy(state, "Brute", 5000, 50)
+		local candidates = { rear, front, middle }
+		state.rng = {
+			NextInteger = function(_, min, max)
+				expectEq(min, 1, "first living index")
+				expectEq(max, #candidates, "includes every living enemy, skips the dead")
+				return roll
+			end,
+		}
+		Match.Step(state, state.lastNow + DT)
+		local fired = Match.TakeOut(state).F
+		expectEq(#fired, 2, "two actual attack records")
+		expectEq(fired[1].Id, front.id, "first shot always targets the front")
+		expectEq(fired[2].Id, candidates[roll].id, "second shot can select any living enemy")
+		expectEq(fired[2].Distance, candidates[roll].dist, "random target impact distance")
+		expectEq(fired[2].SharedTarget, if roll == 2 then true else nil, "only shared targets offset their impacts")
+		for i, enemy in candidates do
+			expectEq(enemy.maxHp - enemy.hp, (if enemy == front then 6 else 0) + (if i == roll then 6 else 0), "damage")
+		end
+	end
 end)
 
 test("cooldown does not bank while idle, and a die fires at most twice per tick", function()
