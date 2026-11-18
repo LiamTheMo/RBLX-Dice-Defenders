@@ -1,5 +1,6 @@
--- Geometry only (docs/MVP.md "Layout"): a flat map with a 5x3 board at the origin and
--- a winding enemy path that wraps its top, right and bottom sides. Server and
+-- Geometry only (docs/MVP.md "Layout"): a flat map with a 5x3 board and a winding enemy path that
+-- wraps its top, right and bottom sides, centred on ORIGIN: the match arena, far from the lobby map
+-- (workspace.Lobby, built around the world origin, where players walk between runs). Server and
 -- client share this, so an enemy's position is a pure function of its path distance.
 -- Y is constant everywhere.
 
@@ -9,26 +10,29 @@ Layout.COLS = 5
 Layout.ROWS = 3
 Layout.CELL_SIZE = 6 -- studs between cell centres
 Layout.Y = 1
+Layout.ORIGIN = Vector3.new(1000, 0, 0) -- X/Z only: BoardView's ground and pad heights assume Y 0
 
 local Y = Layout.Y
+local O = Layout.ORIGIN
 
 -- Cell i in 1..15, row-major (row 1 is the top/back row, z negative).
 function Layout.CellPosition(i: number): Vector3
 	local col = (i - 1) % Layout.COLS
 	local row = (i - 1) // Layout.COLS
-	return Vector3.new(
-		(col - (Layout.COLS - 1) / 2) * Layout.CELL_SIZE,
-		Y,
-		(row - (Layout.ROWS - 1) / 2) * Layout.CELL_SIZE
-	)
+	return O
+		+ Vector3.new(
+			(col - (Layout.COLS - 1) / 2) * Layout.CELL_SIZE,
+			Y,
+			(row - (Layout.ROWS - 1) / 2) * Layout.CELL_SIZE
+		)
 end
 
 Layout.Waypoints = table.freeze({
 	-- Hugs the board (1.8-stud gap to the 7-stud strip) so phones can frame it larger.
-	Vector3.new(-28, Y, -14),
-	Vector3.new(20, Y, -14),
-	Vector3.new(20, Y, 14),
-	Vector3.new(-28, Y, 14),
+	O + Vector3.new(-28, Y, -14),
+	O + Vector3.new(20, Y, -14),
+	O + Vector3.new(20, Y, 14),
+	O + Vector3.new(-28, Y, 14),
 })
 
 -- cumulative[i] = path distance of waypoint i.
@@ -59,8 +63,8 @@ end
 -- Fixed top-down-ish view framing the path and the board.
 Layout.Camera = table.freeze({
 	-- Fitted so path, board and boss clear the HUD at 1235x739, 844x390 and 667x375.
-	Position = Vector3.new(2, 50.5, 11.6),
-	LookAt = Vector3.new(2, 0, -1),
+	Position = O + Vector3.new(2, 50.5, 11.6),
+	LookAt = O + Vector3.new(2, 0, -1),
 	FieldOfView = 55,
 })
 

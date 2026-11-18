@@ -144,8 +144,11 @@ test("layout: path length, clamped PositionAt, constant Y, camera, cell grid", f
 	expectEq(Balance.BoardCells, Layout.COLS * Layout.ROWS, "board size matches layout")
 	expect(Layout.CellPosition(1).X < Layout.CellPosition(5).X, "row-major columns")
 	expect(Layout.CellPosition(1).Z < Layout.CellPosition(11).Z, "row-major rows")
-	expectEq(Layout.CellPosition(8).X, 0, "centre cell on the origin")
-	expectEq(Layout.CellPosition(8).Z, 0, "centre cell on the origin")
+	expectEq(Layout.CellPosition(8).X, Layout.ORIGIN.X, "centre cell on the arena origin")
+	expectEq(Layout.CellPosition(8).Z, Layout.ORIGIN.Z, "centre cell on the arena origin")
+	for _, point in Layout.Waypoints do
+		expect(point.X >= 500, "arena clear of the lobby map")
+	end
 end)
 
 test("display data covers every die and enemy; pip 7 shows as 7 star", function()
