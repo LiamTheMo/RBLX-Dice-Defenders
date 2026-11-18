@@ -312,7 +312,12 @@ local function attack(state, now: number)
 						end
 						target.slowUntil = now + cfg.slowDuration
 					end
-					table.insert(state.out.F, { Cell = cell, Id = target.id })
+					table.insert(state.out.F, {
+						Cell = cell,
+						Id = target.id,
+						Type = die.type,
+						Distance = if die.type == "C01" then target.dist else nil,
+					})
 				end
 				attacks += 1
 				die.cd += period

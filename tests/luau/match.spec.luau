@@ -251,6 +251,8 @@ test("kill MP bands and kind multipliers", function()
 			end
 		end
 		expectEq(why, "Kill", kind .. " removal reason")
+		expectEq(batch.F[1].Type, "C03", "attack identifies the firing die")
+		expectEq(batch.F[1].Distance, nil, "tracers need no hit distance")
 	end
 end)
 
@@ -261,12 +263,14 @@ test("Global First: the alive enemy closest to the exit is hit, wherever it is",
 	local back = addEnemy(state, "Brute", 5000, 50)
 	local front = addEnemy(state, "Brute", 5000, 100) -- (22, 19): ~40 studs from the die
 	local mid = addEnemy(state, "Brute", 5000, 56)
-	runFor(state, 0.2)
+	Match.Step(state, state.lastNow + DT)
 	expect(front.hp < front.maxHp, "closest to the exit was hit despite distance")
 	expectEq(back.hp, back.maxHp, "back untouched")
 	expectEq(mid.hp, mid.maxHp, "middle untouched")
 	local batch = Match.TakeOut(state)
-	expect(#batch.F >= 1 and batch.F[1].Cell == 1 and batch.F[1].Id == front.id, "tracer record")
+	local shot = batch.F[1]
+	expect(shot and shot.Cell == 1 and shot.Id == front.id and shot.Type == "C01", "Pebble attack record")
+	expectEq(shot.Distance, front.dist, "confirmed impact distance")
 	expect(#batch.H >= 1 and batch.H[1].Id == front.id, "hp record")
 end)
 

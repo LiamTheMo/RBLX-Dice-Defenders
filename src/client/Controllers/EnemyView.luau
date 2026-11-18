@@ -7,6 +7,8 @@ local RunService = game:GetService("RunService")
 local Display = require(ReplicatedStorage.Shared.Display)
 local Layout = require(ReplicatedStorage.Shared.Layout)
 local NetClient = require(script.Parent.NetClient)
+local Pebble = require(script.Parent.Effects.Pebble)
+local SettingsLogic = require(script.Parent.Settings.SettingsLogic)
 
 local EnemyView = {}
 
@@ -98,13 +100,21 @@ local function tracer()
 	return t
 end
 
-local function fire(cell: number, id: number)
-	local e = enemies[id]
-	local t = e and tracer()
+local function fire(record)
+	local e = enemies[record.Id]
+	if e == nil or not SettingsLogic.get("projectileEffects") then
+		return
+	end
+	local from = Layout.CellPosition(record.Cell) + Vector3.new(0, 3, 0)
+	if record.Type == "C01" then
+		local hit = Layout.PositionAt(record.Distance) + Vector3.new(0, e.lift, 0)
+		Pebble.Fire(tracerFolder, from, hit, e.part, SettingsLogic.get("reducedMotion"))
+		return
+	end
+	local t = tracer()
 	if t == nil then
 		return
 	end
-	local from = Layout.CellPosition(cell) + Vector3.new(0, 3, 0)
 	-- From the path, not e.part: an enemy spawned in this batch isn't positioned until RenderStepped.
 	local to = Layout.PositionAt(e.speed * (workspace:GetServerTimeNow() - e.spawnAt)) + Vector3.new(0, e.lift, 0)
 	t.part.Size = Vector3.new(0.35, 0.35, (to - from).Magnitude)
@@ -127,14 +137,14 @@ local function onBatch(batch)
 		end
 	end
 	for _, record in batch.F or {} do
-		fire(record.Cell, record.Id)
+		fire(record)
 	end
 	for _, record in batch.R or {} do
 		remove(record.Id)
 	end
 end
 
-local function onFrame()
+local function onFrame(dt: number)
 	local now = workspace:GetServerTimeNow()
 	for _, e in enemies do
 		local p = Layout.PositionAt(e.speed * (now - e.spawnAt))
@@ -145,6 +155,15 @@ local function onFrame()
 		if t.part.Parent and t.untilTime <= clock then
 			t.part.Parent = nil
 		end
+	end
+	Pebble.Step(dt)
+end
+
+local function clearEffects()
+	Pebble.Clear()
+	for _, t in tracers do
+		t.part.Parent = nil
+		t.untilTime = 0
 	end
 end
 
@@ -166,6 +185,14 @@ function EnemyView.Start()
 	NetClient.State:Connect(function(snapshot)
 		if snapshot.Phase ~= "Playing" then
 			clear()
+			clearEffects()
+		end
+	end)
+	SettingsLogic.onChanged(function(id, value)
+		if id == "projectileEffects" and not value then
+			clearEffects()
+		elseif id == "reducedMotion" and value then
+			Pebble.Clear()
 		end
 	end)
 	RunService.RenderStepped:Connect(onFrame)

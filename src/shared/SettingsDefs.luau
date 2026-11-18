@@ -74,7 +74,7 @@ SettingsDefs.DEFS = table.freeze({
 		name = "Projectile Effects",
 		desc = "Show visual effects for projectiles (e.g., trails, impacts).",
 		default = true,
-		noEffectYet = true,
+		noEffectYet = false,
 	},
 	{
 		id = "shadows",
