@@ -6,18 +6,6 @@
 -- Ink = the opaque (alpha >= 160) box inside the export: the art is drawn smaller than its Size by this transparent margin.
 
 return {
-	DetailPanel = {
-		Image = "rbxassetid://89162432841451",
-		Size = Vector2.new(291, 387),
-		Ink = Rect.new(12, 13, 279, 375),
-		Slice = Rect.new(91, 56, 233, 300),
-	},
-	Dropdown = {
-		Image = "rbxassetid://84630616489895",
-		Size = Vector2.new(370, 86),
-		Ink = Rect.new(13, 11, 358, 74),
-		Slice = Rect.new(114, 38, 181, 48),
-	},
 	IconTabScroll = {
 		Image = "rbxassetid://112573496917543",
 		Size = Vector2.new(125, 111),
@@ -32,30 +20,6 @@ return {
 		Image = "rbxassetid://88855241981971",
 		Size = Vector2.new(414, 103),
 		Ink = Rect.new(12, 12, 403, 91),
-	},
-	Row = {
-		Image = "rbxassetid://93683064652330",
-		Size = Vector2.new(988, 110),
-		Ink = Rect.new(11, 11, 977, 99),
-		Slice = Rect.new(137, 43, 912, 61),
-	},
-	RowSelected = {
-		Image = "rbxassetid://84052240015870",
-		Size = Vector2.new(998, 115),
-		Ink = Rect.new(14, 13, 986, 102),
-		Slice = Rect.new(119, 44, 879, 67),
-	},
-	Track = {
-		Image = "rbxassetid://121572012250540",
-		Size = Vector2.new(591, 74),
-		Ink = Rect.new(11, 11, 579, 62),
-		Slice = Rect.new(153, 33, 539, 41),
-	},
-	FillGold = {
-		Image = "rbxassetid://102108857061344",
-		Size = Vector2.new(351, 59),
-		Ink = Rect.new(10, 10, 341, 49),
-		Slice = Rect.new(97, 26, 260, 33),
 	},
 	Stopwatch = { Image = "rbxassetid://125124093222791", Size = Vector2.new(101, 106), Ink = Rect.new(11, 11, 89, 94) },
 	IconQuestScroll = {
@@ -98,42 +62,6 @@ return {
 		Image = "rbxassetid://72694908360907",
 		Size = Vector2.new(362, 239),
 		Ink = Rect.new(12, 14, 350, 227),
-	},
-	CellSelected = {
-		Image = "rbxassetid://71820568478320",
-		Size = Vector2.new(303, 299),
-		Ink = Rect.new(15, 14, 289, 285),
-		Slice = Rect.new(66, 66, 237, 233),
-	},
-	CellCopper = {
-		Image = "rbxassetid://104721560846861",
-		Size = Vector2.new(285, 288),
-		Ink = Rect.new(12, 11, 274, 275),
-		Slice = Rect.new(60, 60, 225, 228),
-	},
-	CellLocked = {
-		Image = "rbxassetid://139833135488976",
-		Size = Vector2.new(283, 288),
-		Ink = Rect.new(11, 11, 271, 275),
-		Slice = Rect.new(60, 100, 185, 228),
-	},
-	PillComplete = {
-		Image = "rbxassetid://71991667855494",
-		Size = Vector2.new(379, 109),
-		Ink = Rect.new(12, 12, 368, 96),
-		Slice = Rect.new(80, 49, 312, 60),
-	},
-	BarTrackAch = {
-		Image = "rbxassetid://79396213434911",
-		Size = Vector2.new(491, 99),
-		Ink = Rect.new(12, 12, 479, 88),
-		Slice = Rect.new(88, 44, 396, 55),
-	},
-	BarFillAch = {
-		Image = "rbxassetid://133614881277477",
-		Size = Vector2.new(340, 54),
-		Ink = Rect.new(10, 10, 330, 44),
-		Slice = Rect.new(92, 24, 238, 30),
 	},
 	BadgeKingBig = {
 		Image = "rbxassetid://89750291695389",
@@ -239,18 +167,6 @@ return {
 	SkinSun = { Image = "rbxassetid://79163363436536", Size = Vector2.new(196, 264), Ink = Rect.new(11, 11, 183, 253) },
 	Crown = { Image = "rbxassetid://133130676205241", Size = Vector2.new(373, 298), Ink = Rect.new(10, 11, 361, 287) },
 	Potion = { Image = "rbxassetid://96180639806384", Size = Vector2.new(243, 299), Ink = Rect.new(11, 11, 232, 288) },
-	MasteryTrack = {
-		Image = "rbxassetid://109885300661597",
-		Size = Vector2.new(755, 92),
-		Ink = Rect.new(12, 11, 743, 81),
-		Slice = Rect.new(83, 41, 549, 51),
-	},
-	MasteryFill = {
-		Image = "rbxassetid://108643065315653",
-		Size = Vector2.new(494, 54),
-		Ink = Rect.new(10, 10, 484, 44),
-		Slice = Rect.new(103, 24, 337, 30),
-	},
 	CheckCircle = {
 		Image = "rbxassetid://114783065862052",
 		Size = Vector2.new(134, 135),
@@ -298,12 +214,6 @@ return {
 	Sparkle4 = { Image = "rbxassetid://74537580277951", Size = Vector2.new(75, 72), Ink = Rect.new(26, 26, 49, 45) },
 	Halo = { Image = "rbxassetid://114426866213056", Size = Vector2.new(429, 197), Ink = Rect.new(30, 37, 399, 171) },
 	Rays = { Image = "rbxassetid://85552709706701", Size = Vector2.new(403, 278), Ink = Rect.new(38, 51, 348, 250) },
-	ScrollThumbPurple = {
-		Image = "rbxassetid://109667627221184",
-		Size = Vector2.new(44, 148),
-		Ink = Rect.new(10, 10, 34, 138),
-		Slice = Rect.new(21, 26, 23, 122),
-	},
 	GlowRadial = {
 		Image = "rbxassetid://128110272700921",
 		Size = Vector2.new(256, 256),
@@ -315,12 +225,6 @@ return {
 		Ink = Rect.new(11, 11, 152, 93),
 	},
 	RaysBurst = { Image = "rbxassetid://125622434000742", Size = Vector2.new(256, 256), Ink = Rect.new(0, 0, 256, 256) },
-	MasteryRow = {
-		Image = "rbxassetid://76729133400497",
-		Size = Vector2.new(988, 110),
-		Ink = Rect.new(11, 11, 977, 99),
-		Slice = Rect.new(137, 43, 912, 61),
-	},
 	BannerSeal = {
 		Image = "rbxassetid://88217102630797",
 		Size = Vector2.new(157, 168),
@@ -331,4 +235,20 @@ return {
 		Size = Vector2.new(510, 127),
 		Ink = Rect.new(8, 10, 465, 90),
 	},
+	-- New QUESTS sheet icons (Assets/UI/new/quests menu/export/Quests_<Name>.png, cut by tools/slice_quests.py). Ids "" until uploaded.
+	QuestCalendar = {
+		Image = "rbxassetid://95383506552165",
+		Size = Vector2.new(173, 170),
+		Ink = Rect.new(0, 0, 173, 170),
+	}, -- Quests_Calendar.png
+	QuestCalendarWeek = {
+		Image = "rbxassetid://88618454954916",
+		Size = Vector2.new(156, 172),
+		Ink = Rect.new(0, 0, 156, 172),
+	}, -- Quests_CalendarWeek.png
+	QuestStopwatch = {
+		Image = "rbxassetid://112981991478099",
+		Size = Vector2.new(146, 172),
+		Ink = Rect.new(0, 0, 146, 172),
+	}, -- Quests_Stopwatch.png
 }

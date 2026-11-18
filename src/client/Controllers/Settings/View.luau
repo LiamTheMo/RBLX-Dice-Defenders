@@ -1,34 +1,28 @@
--- Settings menu view: gold rule, a panel of setting rows (toggle / slider / selector) and the Reset block, drawn inside the shared shell's content slot.
--- Visual only: no input handling, no store writes. Design px under the shell's UIScale; the slot's Size offset and "Compact" attribute pick the layout.
+-- Settings menu view: a code-drawn panel of setting rows (icon, name, description, toggle / slider / selector) and the RESET DEFAULTS
+-- block, drawn inside the shared shell's content slot. Visual only: no input handling, no store writes.
+-- Design px under the shell's UIScale; the slot's Size offset and "Compact" attribute pick the tier (Full = the 1672x941 mockups,
+-- measured numbers are from mockup.png / gameplay.png / graphics.png / misc.png; Compact = phones, rows scroll).
 -- View.new(slot, deps) -> :SetTab(tabId) :SetValue(id, value) :OnBuilt(cb(rows)) :Destroy()
--- view.Rows[id] = { Row, Hit?, Track?, Knob?, Fraction?, Left?, Right? } for the active tab (same table, refilled on every build) and view.ResetButton
--- (the pill, an ImageButton) are the coder's handles. Instances are rebuilt on tab, slot size, scale and Compact changes (one deferred build), so
--- connect input inside an OnBuilt callback. Shown values and ON / OFF / NN% text come live from SettingsLogic.get / format.
--- Layers (slot z 22): panel 23-24, list 25, rows 26-35 (skin 27, icon 28, text 29, art 29-32, hit 35), bar 33-34, rule and Reset block 23-27.
+-- view.Rows[id] = { Row, Hit?, Track?, Knob?, Fraction?, Left?, Right? } for the active tab (same table, refilled on every build) and
+-- view.ResetButton (an ImageButton) are the coder's handles. Instances are rebuilt on tab, slot size, scale and Compact changes (one
+-- deferred build), so connect input inside an OnBuilt callback. Values and ON / OFF / NN% text come live from SettingsLogic.
+-- GUI paths: SettingsRoot.Panel.List.Row_<id>.{Icon,Name,Desc,Toggle|Track,Knob,Pill|Capsule,Hit}, SettingsRoot.Panel.Reset.
 
-local TextService = game:GetService("TextService")
-
-local Draw = require(script.Parent.Parent.QuestLog.Draw)
+local Chrome = require(script.Parent.Parent.Bag.Chrome)
 local Parts = require(script.Parent.Parent.Bag.Parts)
-local QuestSprites = require(script.Parent.Parent.QuestLog.QuestSprites)
-local RollSprites = require(script.Parent.Parent.Roll.RollSprites)
 local SettingsLogic = require(script.Parent.SettingsLogic)
 local SettingsSprites = require(script.Parent.SettingsSprites)
+local Shared = require(script.Parent.Parent.SharedSprites)
 local UiKit = require(script.Parent.Parent.UiKit)
 
-local Bag = Draw.Bag
 local S = SettingsSprites
 local make = UiKit.make
 
 local GOLD = Color3.fromRGB(255, 200, 60)
-local DIAMOND_INK_W, BALL = 158, 62 -- Diamond ink width and the inner rule ball's distance from the ink centre (source px)
-local FLANK = { left = 335, right = 378, bead = 328, bead2 = 385 } -- DividerGold source x: the left half (tapered tip to its bead, centre 328) ends at 335; the right half (bead centre 385, to tip) starts at 378
 local ICON = {
 	autoSkipWaves = "AutoSkip",
 	damageNumbers = "DamageNumbers",
-	rangeRings = "RangeRings",
 	waveAnnouncements = "Announce",
-	placementGrid = "PlacementGrid",
 	autoCloseMenus = "AutoClose",
 	effectsQuality = "EffectsQuality",
 	projectileEffects = "Projectile",
@@ -46,156 +40,52 @@ local ICON = {
 	showFps = "ShowFps",
 	hideOthersEffects = "HideOthers",
 	notifications = "Notifications",
-	language = "Language",
 }
-
--- Full-tier icon ink size (w, h) in reference px per setting (measured on the four references); fitted by aspect, centre unchanged.
-local ICON_PX = {
-	autoSkipWaves = { 58, 41 },
-	damageNumbers = { 80, 62 },
-	rangeRings = { 65, 58 },
-	waveAnnouncements = { 72, 57 },
-	placementGrid = { 59, 56 },
-	autoCloseMenus = { 69, 55 },
-	effectsQuality = { 60, 48 },
-	projectileEffects = { 58, 47 },
-	shadows = { 53, 49 },
-	screenShake = { 84, 44 },
-	uiScale = { 54, 53 },
-	effectScale = { 54, 52 },
-	masterVolume = { 68, 54 },
-	musicVolume = { 53, 51 },
-	sfxVolume = { 63, 52 },
-	interfaceVolume = { 56, 54 },
-	ambienceVolume = { 69, 55 },
-	reducedMotion = { 61, 37 },
-	highContrast = { 48, 48 },
-	showFps = { 56, 48 },
-	hideOthersEffects = { 67, 54 },
-	notifications = { 66, 50 },
-	language = { 56, 56 },
-}
-local PX_TO_DU = 1.09 / 0.9693 -- reference px -> design px at the 1620 window, x1.09: the sprite ink box includes a soft glow beyond the measured bright part
-
--- Text roles (calibrated to the reference widths): size / fit minimum, c = the Compact tier, fill, outline colour, outline px.
-local ROLE = {
-	name = {
-		size = 34,
-		min = 22,
-		cs = 20,
-		cmin = 18,
-		fill = Color3.fromRGB(249, 248, 248),
-		line = Color3.fromRGB(3, 0, 2),
-		px = 2.8,
-		cpx = 2,
-	},
-	desc = {
-		size = 24, -- matches the reference widths (25 ran 3-8% wide)
-		min = 17,
-		cs = 18,
-		cmin = 15,
-		fill = Color3.fromRGB(251, 251, 251),
-		line = Color3.fromRGB(40, 4, 24),
-		px = 1,
-		cpx = 2,
-	},
-	toggle = {
-		size = 30,
-		min = 14,
-		cs = 18,
-		cmin = 14,
-		fill = Color3.new(1, 1, 1),
-		line = Color3.fromRGB(20, 20, 20),
-		px = 3,
-		cpx = 2,
-	},
-	pill = {
-		size = 34,
-		min = 14,
-		cs = 18,
-		cmin = 14,
-		fill = Color3.new(1, 1, 1),
-		line = Color3.fromRGB(25, 5, 15),
-		px = 3,
-		cpx = 2,
-	},
-	reset = {
-		size = 31,
-		min = 16,
-		cs = 20,
-		cmin = 16,
-		fill = Color3.new(1, 1, 1),
-		line = Color3.fromRGB(12, 4, 2),
-		px = 3,
-		cpx = 2,
-	},
-}
--- Descriptions use Nunito ExtraBold: taller and lighter than Fredoka One at the same width (the reference's face). Its text is DESC_K x as wide as Fredoka's at equal size.
+-- Descriptions use Nunito ExtraBold (the mockups' face): DESC_K x as wide as Fredoka One at equal size.
 local DESC_FONT = Font.new("rbxasset://fonts/families/Nunito.json", Enum.FontWeight.ExtraBold)
-local DESC_K = 0.870
-local TOGGLE_X = { [true] = 0.385, [false] = 0.636 } -- ON / OFF text centre as a fraction of the toggle ink width (the knob is baked in)
+local DESC_K = 0.87
+local TOGGLE_X = { [true] = 0.385, [false] = 0.636 } -- ON / OFF text centre as a fraction of the toggle art's ink width (the knob is baked in)
+local WHITE = Color3.new(1, 1, 1)
+
+-- Colours sampled from the mockups.
+local PANEL_FILL, PANEL_RIM = Color3.fromRGB(36, 37, 42), Color3.fromRGB(190, 190, 196)
+local ROW_FILL, ROW_RIM = Color3.fromRGB(39, 39, 44), Color3.fromRGB(150, 149, 155)
+local PILL_FILL, PILL_RIM = Color3.fromRGB(10, 11, 13), Color3.fromRGB(94, 94, 99)
+local TRACK_RIM = Color3.fromRGB(225, 190, 10)
+local FLANK = Color3.fromRGB(175, 174, 178)
+local PURPLE_TOP, PURPLE_BOT = Color3.fromRGB(170, 60, 240), Color3.fromRGB(115, 15, 205)
+-- Full tier: slider track left edge per row (row px = mockup x - 318) where the mockups differ from the Audio 535.
+local TRACK_LEFT = { uiScale = 515, effectScale = 587 }
 
 local function round(n: number): number
 	return math.floor(n + 0.5)
 end
 
 local K = 1 -- real px per design px under the shell's UIScales (set per build)
-local COMPACT = false -- the tier being built
 
-local function measure(str: string, size: number): number
-	return TextService:GetTextSize(str, size * K, Enum.Font.FredokaOne, Vector2.new(1e5, 1e5)).X / K
+-- Text size <= size at which `text` (Fredoka width x k) fits w; never under 12 real px (unless size itself is smaller).
+local function fitted(text: string, size: number, w: number, k: number?): number
+	return Parts.fitSize(text, w / (k or 1), size, math.min(size, math.ceil(12 / K)))
 end
 
-local function measureDesc(str: string, size: number): number
-	return measure(str, size) * DESC_K
-end
-
-local function role(name: string, compact: boolean): (number, number, number)
-	local r = ROLE[name]
-	if compact then
-		return r.cs, r.cmin, r.cpx
-	end
-	return r.size, math.max(r.min, math.ceil(12 / K)), r.px -- Full tiers: never under 12 real px
-end
-
--- Text size <= size at which `text` fits w (never under 12 real px unless size itself is smaller).
-local function fitted(text: string, size: number, w: number): number
-	local tw = measure(text, size)
-	if tw > w * 0.97 then
-		return math.max(math.min(size, math.ceil(12 / K)), math.floor(size * w * 0.97 / tw))
-	end
-	return size
-end
-
--- Live text centred (ax 0.5) or left (ax 0) on y in a box w wide; the size is fitted to w.
-local function label(
-	parent,
-	name: string,
-	text: string,
-	rname: string,
-	size: number,
-	x: number,
-	y: number,
-	w: number,
-	z: number,
-	ax: number?
-)
-	local r = ROLE[rname]
-	local px = if COMPACT then r.cpx else r.px
-	ax = ax or 0.5
+-- Live text on y centred (ax 0.5) or left (ax 0) in a box w wide, outlined; strokeless when stroke is 0.
+local function label(parent, name: string, text: string, o)
+	local ax = o.ax or 0.5
 	local l = Parts.text(parent, {
 		Name = name,
 		Text = text,
-		TextSize = fitted(text, size, w),
-		TextColor3 = r.fill,
+		TextSize = o.size,
+		TextColor3 = o.color or WHITE,
 		AnchorPoint = Vector2.new(ax, 0.5),
-		Position = UDim2.fromOffset(round(x), round(y)),
-		Size = UDim2.fromOffset(round(w), round(size * 1.2)),
+		Position = UDim2.fromOffset(round(o.x), round(o.y)),
+		Size = UDim2.fromOffset(round(o.w), round(o.h or o.size * 1.25)),
 		TextXAlignment = if ax == 0 then Enum.TextXAlignment.Left else Enum.TextXAlignment.Center,
 		TextTruncate = Enum.TextTruncate.None,
-		ZIndex = z,
-	}, px)
-	l:FindFirstChildOfClass("UIStroke").Color = r.line
+		ZIndex = o.z,
+	}, o.stroke or 2)
+	if o.stroke == 0 then
+		l.UIStroke.Enabled = false
+	end
 	return l
 end
 
@@ -230,11 +120,28 @@ local function hitButton(parent, cx: number, cy: number, w: number, h: number, z
 	}, parent)
 end
 
--- A sprite record drawn by its ink, fitted by aspect into w x h, centred at (cx, cy).
-local function fitIn(parent, rec, cx: number, cy: number, w: number, h: number, z: number, name: string)
-	local i = Draw.img(parent, { Name = name, ZIndex = z })
-	local iw, ih = Draw.fitIn(rec, w, h)
-	return Draw.apply(i, rec, cx, cy, iw, ih)
+-- Ink size (w, h) of a sprite record fitted by aspect into maxW x maxH.
+local function fitIn(rec, maxW: number, maxH: number): (number, number)
+	local s = math.min(maxW / rec.Ink.Width, maxH / rec.Ink.Height)
+	return rec.Ink.Width * s, rec.Ink.Height * s
+end
+
+-- Sets image `i` to a whole sprite drawn so its visible ink is inkW x inkH, centred at (cx, cy); never sliced (callers keep the aspect, fitIn).
+local function place(i, rec, cx: number, cy: number, inkW: number, inkH: number)
+	local ink, size = rec.Ink, rec.Size
+	local sx, sy = inkW / ink.Width, inkH / ink.Height
+	i.Image, i.ScaleType, i.AnchorPoint = rec.Image, Enum.ScaleType.Stretch, Vector2.new(0.5, 0.5)
+	i.Size = UDim2.fromOffset(round(size.X * sx), round(size.Y * sy))
+	i.Position = UDim2.fromOffset(
+		round(cx + (size.X / 2 - (ink.Min.X + ink.Max.X) / 2) * sx),
+		round(cy + (size.Y / 2 - (ink.Min.Y + ink.Max.Y) / 2) * sy)
+	)
+	return i
+end
+
+local function art(parent, rec, cx: number, cy: number, inkW: number, inkH: number, name: string, z: number)
+	local i = make("ImageLabel", { Name = name, BackgroundTransparency = 1, ZIndex = z }, parent)
+	return place(i, rec, cx, cy, inkW, inkH)
 end
 
 local View = {}
@@ -242,453 +149,400 @@ View.__index = View
 
 -- Layout ----------------------------------------------------------------------------------------------------
 
--- Every number is design px; slot W x H = the shell's content box (Full 1206 x 618.5 at the reference).
+-- Every number is design px. Full (slot 1068 x 507): panel 1065 x 500 at (2, 2); rows 70 tall at pitch 80.25 (Audio, 5 rows), x 14..1051;
+-- RESET DEFAULTS pill 340 x 52 centred 45 px above the panel bottom, flank lines either side.
 local function compute(W: number, H: number, compact: boolean)
-	local L = { W = W, H = H, compact = compact, touch = math.ceil(44 / K), fit = if compact then 0.97 else 0.995 } -- fit: share of a column a text may fill
+	local L = { W = W, H = H, compact = compact, touch = math.ceil(44 / K) }
 	if compact then
-		L.ruleY, L.ruleMargin, L.diamondW = 3.3, 8, 18
-		L.panelK, L.ins, L.gutterR = 0.5, 5, 8 -- panel (RowFrame art) slice scale, the list's inset from the panel (the tube's inner edge), gutter corner radius
-		L.rowH, L.pitch, L.top, L.padL, L.padR, L.bottom = 63, 67, 8, 10, 6, 8
-		L.barW = 8
-		L.iconBox, L.iconCx, L.textLeft, L.gap = { 34, 34 }, 30, 58, 12
-		L.tgl = { w = 102, h = 36, right = 12 }
-		L.sel = { w = 220, right = 12, bodyH = 32, armH = 36, tuck = 4 }
-		local narrow = W <= 700
-		L.sld = {
-			maxW = if narrow then 130 else 150,
-			trackH = 18,
-			knob = 36,
-			pillW = if narrow then 60 else 64,
-			pillH = 30,
-			pillRight = 12,
-			pillGap = 14,
-		}
-		L.resetH = math.max(46, math.ceil(44 / 1.2 / K)) -- the Reset box (1.2x the pill's ink height) stays >= 44 real px tall
-		L.resetBottom = H - 0.38 * L.resetH -- the footer's clearance below the pill, as on desktop
-		L.panelX, L.panelY, L.panelW, L.panelH = 4, 12, W - 8, math.max(60, H - 16 - 1.38 * L.resetH)
+		L.panelW, L.panelH = W - 4, H - 4
+		L.nameSize, L.descSize, L.pillSize, L.toggleSize, L.resetSize = 22, 16, 22, 20, 18
+		L.rowH, L.gap, L.top, L.padX, L.bottomPad = 60, 8, 8, 8, 8
+		L.iconCx, L.iconBox, L.textLeft, L.tgap = 34, { 50, 40 }, 68, 10
+		L.pillW, L.pillH, L.pillRight = 66, 32, 8
+		L.tglH, L.tglFromRight = 38, 68
+		L.selW, L.selH, L.selRight = 190, 34, 10
+		L.trackH, L.knob, L.trackMax, L.trackMin, L.trackGap = 18, 27, 300, 90, 14
+		L.resetH, L.resetW = math.max(44, L.touch), 250
+		L.iconD = 26
 	else
-		L.ruleY, L.ruleMargin, L.diamondW = 9.3, 3, 70
-		L.panelK, L.ins, L.gutterR = 0.9, 10, 16 -- the reference tube is ~9 px thick, corner radius ~29
-		L.panelX, L.panelY, L.panelW, L.panelH = 13.3, 24.1, W - 23.6, math.max(60, H - 114.7)
-		L.rowH, L.pitch, L.top, L.padL, L.padR, L.bottom = 76, 77.5, 4.5, 12.4, 13.4, 5 -- the rows keep their positions: pads are the old ones less (ins - 3, ins - 5)
-		L.nameDy, L.descDy = 0.6, -6.1 -- the reference sets its name / description block high in the row
-		L.barW = 12
-		L.iconBox, L.iconCx, L.textLeft, L.gap = { 78, 70 }, 77, 149.9, 6
-		L.tgl = { w = 152.5, h = 49.2, right = 88 }
-		L.sel = { w = 287.4, right = 26.6, bodyH = 44.5, armH = 41, tuck = 6.5 }
-		L.sld =
-			{ maxW = 361.2, trackH = 26.9, knob = 42.3, pillW = 105.8, pillH = 47.8, pillRight = 16.4, pillGap = 16.1 }
-		L.resetH, L.resetBottom = 61.6, H - 15.8
+		L.panelW, L.panelH = W - 3, H - 7
+		L.nameSize, L.descSize, L.pillSize, L.toggleSize, L.resetSize = 31, 21, 30, 28, 25
+		L.rowH, L.gap, L.top, L.padX, L.bottomPad = 70, 10.25, 19, 14, 19
+		L.iconCx, L.iconBox, L.textLeft, L.tgap = 63, { 72, 58 }, 130, 12
+		L.pillW, L.pillH, L.pillRight = 85, 40, 13
+		L.tglH, L.tglFromRight = 52, 114
+		L.selW, L.selH, L.selRight = 262, 38, 22
+		L.trackH, L.knob, L.trackMax, L.trackMin, L.trackGap = 24, 36, 373, 200, 28
+		L.resetH, L.resetW = 52, 340
+		L.iconD = 30
 	end
-	L.listW, L.listH = L.panelW - 2 * L.ins, L.panelH - 2 * L.ins
-	L.rowW = L.listW - L.padL - L.padR
+	L.listH = L.panelH - L.resetH - L.bottomPad - (if compact then L.bottomPad else 0)
+	L.resetCy = L.panelH - L.bottomPad - L.resetH / 2
+	L.rowW = L.panelW - 2 * L.padX
 	return L
 end
 
--- Left edge (row px) of the control column for a def; set after the slider track width is known.
-local function controlLeft(L, def): number
+-- Left edge (row px) of the control column for a def; the slider track's is the tab's trackLeft.
+local function controlLeft(L, def, trackLeft: number): number
 	if def.kind == "toggle" then
-		return L.rowW - L.tgl.right - L.tgl.w
+		return L.rowW - L.tglFromRight - L.tglH * 335 / 116 / 2
 	elseif def.kind == "select" then
-		return L.rowW - L.sel.right - L.sel.w
+		return L.rowW - L.selRight - L.selW
 	end
-	return L.sld.trackLeft - L.sld.boxMargin
+	return trackLeft
 end
 
--- The slider track: right edge fixed by the pill; Full shortens it (down to 180) so the longest slider description stays on one line.
-local function layoutSlider(L, descSize: number)
-	local s = L.sld
-	s.boxMargin = 4 -- the track sprite's box is wider than its ink (11 source px at the slider scale)
-	s.trackRight = L.rowW - s.pillRight - s.pillW - s.pillGap
-	s.trackW = s.maxW
-	if not L.compact then
-		local widest = 0
-		for _, def in SettingsLogic.DEFS do
-			if def.kind == "slider" then
-				widest = math.max(widest, measureDesc(def.desc, descSize) * 1.02) -- DESC_K is an estimate: keep slack
-			end
-		end
-		s.trackW = math.clamp(s.trackRight - (L.textLeft + widest + L.gap + s.boxMargin), 180, s.maxW)
-	end
-	s.trackLeft = s.trackRight - s.trackW
-end
+-- Rows -------------------------------------------------------------------------------------------------------
 
--- One text size per role across every tab (so tabs never jump): the largest at which every string fits its column;
--- descriptions that cannot fit one line even at the minimum wrap to two lines instead.
-local function roleSizes(L)
-	local nameSize, nameMin = role("name", L.compact)
-	local descSize, descMin = role("desc", L.compact)
-	layoutSlider(L, descSize)
-	for _, def in SettingsLogic.DEFS do
-		local colW = controlLeft(L, def) - L.gap - L.textLeft
-		while nameSize > nameMin and measure(def.name, nameSize) > colW * 0.97 do
-			nameSize -= 1
-		end
-		if measureDesc(def.desc, descMin) <= colW * L.fit then
-			while descSize > descMin and measureDesc(def.desc, descSize) > colW * L.fit do
-				descSize -= 1
-			end
-		end
-	end
-	layoutSlider(L, descSize) -- the track may now be longer at the final description size
-	L.nameSize, L.descSize = nameSize, descSize
-end
-
--- Rows ------------------------------------------------------------------------------------------------------
-
-local function drawToggle(L, row, def, z: number, updaters)
-	local tg, rowH = L.tgl, L.rowH
-	local hit = hitButton(row, L.rowW - tg.right - tg.w / 2, rowH / 2, math.max(tg.w, L.touch), rowH, z + 9)
+local function drawToggle(L, row, def, rowH: number, z: number, updaters)
+	local h = L.tglH
+	local wOn, wOff = h * 326 / 116, h * 335 / 116
+	local cx = L.rowW - L.tglFromRight
+	local hit = hitButton(row, cx, rowH / 2, math.max(wOff, L.touch), math.max(rowH, L.touch), z + 9)
 	local holder = make("Frame", {
 		Name = "Holder",
 		BackgroundTransparency = 1,
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromOffset(round(tg.w), round(tg.h)),
+		Size = UDim2.fromOffset(round(wOff), round(h)),
 		ZIndex = hit.ZIndex + 1,
 	}, hit)
-	local sprite = Draw.img(holder, { Name = "Toggle" })
-	local size = role("toggle", L.compact)
-	local text = label(holder, "Label", "", "toggle", size, 0, tg.h / 2, tg.w * 0.4, holder.ZIndex + 2)
+	local sprite =
+		make("ImageLabel", { Name = "Toggle", BackgroundTransparency = 1, ZIndex = holder.ZIndex + 1 }, holder)
+	local text = label(holder, "Label", "", {
+		size = L.toggleSize,
+		x = 0,
+		y = h / 2,
+		w = wOff * 0.4,
+		z = holder.ZIndex + 3,
+		stroke = if L.compact then 2 else 2.5,
+	})
 	bind(hit, holder, 1.03, 0.96)
 	updaters[def.id] = function(value)
 		local on = value == true
-		local rec = if on then S.ToggleOn else S.ToggleOff
-		Draw.apply(sprite, rec, tg.w / 2, tg.h / 2, tg.w, tg.h)
+		local w = if on then wOn else wOff
+		place(sprite, if on then S.ToggleOn else S.ToggleOff, wOff / 2, h / 2, w, h)
 		text.Text = SettingsLogic.format(def.id, on)
-		text.Position = UDim2.fromOffset(round(tg.w / 2 + (TOGGLE_X[on] - 0.5) * tg.w), round(tg.h / 2))
+		text.Position = UDim2.fromOffset(round(wOff / 2 + (TOGGLE_X[on] - 0.5) * w), round(h / 2))
 	end
 	return { Hit = hit }
 end
 
-local function drawSlider(L, row, def, z: number, updaters)
-	local s, rowH = L.sld, L.rowH
+local function drawSlider(L, row, def, rowH: number, z: number, updaters, trackLeft: number)
 	local cy = rowH / 2
-	local tx0, tx1, r = s.trackLeft, s.trackRight, s.knob / 2
-	local trackRec, fillRec = RollSprites.BarTrack, RollSprites.BarFill
-	local k = s.trackH / trackRec.Ink.Height -- the fill uses the same scale: its caps never distort
-	local track = Draw.img(row, { Name = "Track", ZIndex = z + 3 })
-	Draw.apply(track, trackRec, (tx0 + tx1) / 2, cy, tx1 - tx0, s.trackH)
-	local fill = Draw.img(row, { Name = "Fill", ZIndex = z + 4 })
-	Parts.skin(fill, fillRec, k)
-	fill.AnchorPoint = Vector2.new(0, 0.5)
-	local fillH = fillRec.Size.Y * k
-	local fillCy = cy + (fillRec.Size.Y / 2 - (fillRec.Ink.Min.Y + fillRec.Ink.Max.Y) / 2) * k
-	local capSum = (fillRec.Slice.Min.X + fillRec.Size.X - fillRec.Slice.Max.X) * k
-	local marginSum = (fillRec.Ink.Min.X + fillRec.Size.X - fillRec.Ink.Max.X) * k
-	local boxLeft = tx0 - fillRec.Ink.Min.X * k
-	local knob = Draw.img(row, { Name = "Knob", ZIndex = z + 6 })
-	local kw, kh = Draw.fitIn(S.Knob, s.knob, s.knob)
-	Draw.apply(knob, S.Knob, tx0 + r, cy, kw, kh)
-	local pill = Draw.img(row, { Name = "Pill", ZIndex = z + 3 })
-	local pillCx = L.rowW - s.pillRight - s.pillW / 2
-	Draw.apply(pill, S.ValuePill, pillCx, cy, s.pillW, s.pillH)
-	local size = role("pill", L.compact)
-	local text = label(
-		pill,
-		"Text",
-		"",
-		"pill",
-		size,
-		pill.Size.X.Offset / 2,
-		pill.Size.Y.Offset / 2,
-		s.pillW - 16,
-		pill.ZIndex + 1
-	)
-	local hitL = tx0 - s.boxMargin
-	local hit = hitButton(row, 0, cy, tx1 - tx0 + 2 * s.boxMargin, rowH, z + 9)
-	hit.AnchorPoint, hit.Position = Vector2.new(0, 0.5), UDim2.fromOffset(round(hitL), round(cy))
+	local trackRight = L.rowW - L.pillRight - L.pillW - L.trackGap
+	local trackW, r = trackRight - trackLeft, L.knob / 2
+	local track, fill = Chrome.track(row, {
+		Name = "Track",
+		Position = UDim2.fromOffset(round(trackLeft), round(cy - L.trackH / 2)),
+		Size = UDim2.fromOffset(round(trackW), L.trackH),
+		ZIndex = z + 3,
+	})
+	track.UIStroke.Color = TRACK_RIM
+	local knob = make("ImageLabel", { Name = "Knob", BackgroundTransparency = 1, ZIndex = z + 6 }, row)
+	local kw, kh = fitIn(S.Knob, L.knob, L.knob)
+	local pill = Chrome.field(row, {
+		Name = "Pill",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromOffset(round(L.rowW - L.pillRight - L.pillW / 2), round(cy)),
+		Size = UDim2.fromOffset(L.pillW, L.pillH),
+		Radius = L.pillH / 2,
+		ZIndex = z + 3,
+	})
+	pill.BackgroundColor3 = PILL_FILL
+	pill.UIStroke.Color = PILL_RIM
+	local text = label(pill, "Text", "", {
+		size = L.pillSize,
+		x = L.pillW / 2,
+		y = L.pillH / 2,
+		w = L.pillW - 12,
+		z = z + 4,
+		stroke = if L.compact then 2 else 2.5,
+	})
+	local hit = hitButton(row, 0, cy, trackW + 2 * 4, math.max(rowH, L.touch), z + 9)
+	hit.AnchorPoint, hit.Position = Vector2.new(0, 0.5), UDim2.fromOffset(round(trackLeft - 4), round(cy))
 	bind(hit, knob, 1.08, 1.08)
 	updaters[def.id] = function(value)
-		local min, max = def.min :: number, def.max :: number
-		local v = math.clamp((value - min) / (max - min), 0, 1)
-		local cx = tx0 + r + v * (tx1 - tx0 - 2 * r)
-		Draw.apply(knob, S.Knob, cx, cy, kw, kh)
-		fill.Position = UDim2.fromOffset(round(boxLeft), round(fillCy))
-		fill.Size = UDim2.fromOffset(round(math.max(capSum, cx - tx0 + marginSum)), round(fillH))
+		local v = math.clamp((value - def.min) / (def.max - def.min), 0, 1)
+		local travel = r + v * (trackW - 2 * r) -- knob centre along the track
+		place(knob, S.Knob, trackLeft + travel, cy, kw, kh)
+		fill.Size = UDim2.fromScale(travel / trackW, 1)
 		text.Text = SettingsLogic.format(def.id, value)
-		text.TextSize = fitted(text.Text, size, s.pillW - 16)
+		text.TextSize = fitted(text.Text, L.pillSize, L.pillW - 12)
 	end
-	-- Fraction(screenX) -> 0..1 along the knob travel (the track ink inset by the knob radius), from the hit's live real-px rect.
+	-- Fraction(screenX) -> 0..1 along the knob travel (the track inset by the knob radius), from the hit's live real-px rect.
 	local function fraction(screenX: number): number
 		local scale = hit.AbsoluteSize.X / hit.Size.X.Offset
-		local w = (hit.Size.X.Offset - 2 * s.boxMargin - 2 * r) * scale
-		return if w > 0 then math.clamp((screenX - hit.AbsolutePosition.X - (s.boxMargin + r) * scale) / w, 0, 1) else 0
+		local w = (hit.Size.X.Offset - 2 * 4 - 2 * r) * scale
+		return if w > 0 then math.clamp((screenX - hit.AbsolutePosition.X - (4 + r) * scale) / w, 0, 1) else 0
 	end
 	return { Hit = hit, Track = track, Knob = knob, Fraction = fraction }
 end
 
-local function drawSelect(L, row, def, z: number, updaters)
-	local sel, rowH = L.sel, L.rowH
+local function drawSelect(L, row, def, rowH: number, z: number, updaters)
 	local cy = rowH / 2
-	local right = L.rowW - sel.right
-	local left = right - sel.w
-	local armL, armR = S.ArrowLeft, S.ArrowRight
-	local aL, aR = sel.armH * armL.Ink.Width / armL.Ink.Height, sel.armH * armR.Ink.Width / armR.Ink.Height
-	local bodyW = sel.w - aL - aR + 2 * sel.tuck
-	local bodyCx = left + aL - sel.tuck + bodyW / 2
-	local cap = Draw.img(row, { Name = "Capsule", ZIndex = z + 2 }) -- one continuous purple capsule behind the arrow pills and the gold body
-	Draw.apply(cap, Bag.PillPurple, left + sel.w / 2, cy, sel.w, sel.armH, sel.armH / Bag.PillPurple.Ink.Height)
-	local artL = Draw.img(row, { Name = "ArrowL", ZIndex = z + 3 }) -- the arrow pills tuck under the gold body
-	Draw.apply(artL, armL, left + aL / 2, cy, aL, sel.armH)
-	local artR = Draw.img(row, { Name = "ArrowR", ZIndex = z + 3 })
-	Draw.apply(artR, armR, right - aR / 2, cy, aR, sel.armH)
-	local body = Draw.img(row, { Name = "Body", ZIndex = z + 4 })
-	Draw.apply(body, Bag.PillGold, bodyCx, cy, bodyW, sel.bodyH)
-	local size = role("pill", L.compact)
-	local text = label(row, "Value", "", "pill", size, bodyCx, cy, bodyW - 16, z + 6)
-	local function arrow(art, cx: number, w: number, name: string)
-		local hit = hitButton(row, cx, cy, math.max(w, L.touch), rowH, z + 9)
+	local right = L.rowW - L.selRight
+	local left = right - L.selW
+	local arm, tuck = round(L.selH * 1.45), 6
+	local bodyW = L.selW - 2 * arm + 2 * tuck
+	local bodyCx = left + L.selW / 2
+	local cap = make("Frame", {
+		Name = "Capsule",
+		BackgroundColor3 = WHITE,
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromOffset(round(bodyCx), round(cy)),
+		Size = UDim2.fromOffset(L.selW, L.selH),
+		ZIndex = z + 2,
+	}, row)
+	make("UICorner", { CornerRadius = UDim.new(0, 999) }, cap)
+	make("UIGradient", { Color = ColorSequence.new(PURPLE_TOP, PURPLE_BOT), Rotation = 90 }, cap)
+	Chrome.stroke(cap, Color3.fromRGB(20, 0, 40), 2)
+	local body = make("Frame", {
+		Name = "Body",
+		BackgroundColor3 = WHITE,
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromOffset(round(bodyCx), round(cy)),
+		Size = UDim2.fromOffset(round(bodyW), round(L.selH - 4)),
+		ZIndex = z + 3,
+	}, row)
+	make("UICorner", { CornerRadius = UDim.new(0, 999) }, body)
+	make("UIGradient", {
+		Color = ColorSequence.new(Color3.fromRGB(255, 218, 60), Color3.fromRGB(240, 160, 0)),
+		Rotation = 90,
+	}, body)
+	Chrome.stroke(body, Color3.fromRGB(60, 30, 0), 2)
+	local function chevron(text: string, cx: number, name: string)
+		return label(row, name, text, { size = L.pillSize, x = cx, y = cy, w = arm - 4, z = z + 5, stroke = 2.5 })
+	end
+	local artL, artR = chevron("<", left + (arm - tuck) / 2, "ArrowL"), chevron(">", right - (arm - tuck) / 2, "ArrowR")
+	local text = label(row, "Value", "", {
+		size = L.pillSize,
+		x = bodyCx,
+		y = cy,
+		w = bodyW - 2 * tuck - 8,
+		z = z + 5,
+		color = Color3.fromRGB(30, 15, 0),
+		stroke = 0,
+	})
+	local function arrow(target, cx: number, w: number, name: string)
+		local hit = hitButton(row, cx, cy, math.max(w, L.touch), math.max(rowH, L.touch), z + 9)
 		hit.Name = name
-		bind(hit, art, 1.03, 0.96)
+		bind(hit, target, 1.03, 0.96)
 		return hit
 	end
-	local leftHit, rightHit = arrow(artL, left + aL / 2, aL, "Left"), arrow(artR, right - aR / 2, aR, "Right")
-	-- a single option (Language) looks and presses like any selector; Settings toasts "coming soon" instead of cycling
+	local leftHit = arrow(artL, left + (arm - tuck) / 2, arm - tuck, "Left")
+	local rightHit = arrow(artR, right - (arm - tuck) / 2, arm - tuck, "Right")
+	-- a single option looks and presses like any selector; Settings toasts "coming soon" instead of cycling
 	updaters[def.id] = function(value)
 		text.Text = SettingsLogic.format(def.id, value)
-		text.TextSize = fitted(text.Text, size, math.min(bodyW - 16, 117))
+		text.TextSize = fitted(text.Text, L.pillSize, bodyW - 2 * tuck - 8)
 	end
 	return { Left = leftHit, Right = rightHit }
 end
 
 local DRAW = { toggle = drawToggle, slider = drawSlider, select = drawSelect }
 
--- 1 or 2: a description that cannot fit one line at the minimum size wraps (as the engine lays it out, in design px).
-local function descLines(L, def): number
-	local colW = controlLeft(L, def) - L.gap - L.textLeft
-	local one = TextService:GetTextSize(def.desc, L.descSize * DESC_K, Enum.Font.FredokaOne, Vector2.new(1e5, 1e5)).Y
-	local wrapped =
-		TextService:GetTextSize(def.desc, L.descSize * DESC_K, Enum.Font.FredokaOne, Vector2.new(round(colW), 1e5)).Y
-	return if wrapped > one * 1.5 then 2 else 1
-end
-
-function View:_drawRow(L, list, def, y: number, lines: number)
-	local baseH, z = L.rowH, list.ZIndex
-	local rowH = baseH + (lines - 1) * round(L.descSize * 1.2) -- a wrapped description grows its row by one line
-	L.rowH = rowH -- shortcut: the control drawers read L.rowH; restored at the end of this row
-	local row = Draw.img(list, {
+function View:_drawRow(L, list, def, y: number, rowH: number, lines: number, trackLeft: number)
+	local z = list.ZIndex + 1
+	local row = Chrome.panel(list, {
 		Name = "Row_" .. def.id,
-		Position = UDim2.fromOffset(round(L.padL), round(y)),
+		BackgroundColor3 = ROW_FILL,
+		NoGradient = true,
+		Radius = 12,
+		Rim = 2,
+		Position = UDim2.fromOffset(round(L.padX), round(y)),
 		Size = UDim2.fromOffset(round(L.rowW), round(rowH)),
-		ZIndex = z + 1,
-	}, "Frame")
-	local skin = Draw.img(row, { Name = "RowFrame", ZIndex = row.ZIndex + 1 })
-	Draw.apply(
-		skin,
-		S.RowFrame,
-		L.rowW / 2,
-		rowH / 2,
-		L.rowW,
-		rowH,
-		rowH / S.RowFrame.Ink.Height * (if L.compact then 1 else 0.85)
-	) -- Full: thinner rim, smaller corners
-	local px = ICON_PX[def.id]
-	local k = if L.compact then L.iconBox[2] / 70 else 1 -- Compact keeps the desktop icon proportions in its smaller box
-	local bw, bh = px[1] * PX_TO_DU * k, px[2] * PX_TO_DU * k
-	fitIn(row, S[ICON[def.id]], L.iconCx, rowH / 2, bw, bh, row.ZIndex + 2, "Icon")
-	-- name + description block, centred in the row
-	local colW = controlLeft(L, def) - L.gap - L.textLeft
-	local nameH, lineH = round(L.nameSize * 1.2), round(L.descSize * 1.2)
-	local top = (rowH - nameH - lines * lineH) / 2 + (L.nameDy or 0)
-	local tz = row.ZIndex + 3
-	label(row, "Name", def.name, "name", L.nameSize, L.textLeft, top + nameH / 2, colW, tz, 0)
-	local desc = label(
-		row,
-		"Desc",
-		def.desc,
-		"desc",
-		L.descSize,
-		L.textLeft,
-		top + nameH + lines * lineH / 2 + (L.descDy or 0) - (L.nameDy or 0),
-		colW,
-		tz,
-		0
-	)
-	desc.Size = UDim2.fromOffset(round(colW), lines * lineH)
-	desc.TextWrapped, desc.TextYAlignment, desc.TextTruncate = true, Enum.TextYAlignment.Center, Enum.TextTruncate.AtEnd
-	desc.FontFace, desc.TextSize = DESC_FONT, L.descSize
-	local handles = DRAW[def.kind](L, row, def, row.ZIndex, self._update)
+		ZIndex = z,
+	})
+	row.UIStroke.Color = ROW_RIM
+	local rec = S[ICON[def.id]]
+	local iw, ih = fitIn(rec, L.iconBox[1], L.iconBox[2])
+	art(row, rec, L.iconCx, rowH / 2, iw, ih, "Icon", z + 1)
+	local colW = controlLeft(L, def, trackLeft) - L.tgap - L.textLeft
+	local nameSize = fitted(def.name, L.nameSize, colW)
+	local descSize = fitted(def.desc, L.descSize, colW, DESC_K)
+	local nameH, lineH = round(nameSize * 1.2), round(descSize * 1.2)
+	local nameCy, descCy
+	if lines == 1 then -- the mockups set the block high in the row: name 18 above the centre, description 12.5 below (70 tall)
+		nameCy, descCy = rowH / 2 - rowH * 18 / 70, rowH / 2 + rowH * 12.5 / 70
+	else
+		local top = (rowH - nameH - lines * lineH) / 2
+		nameCy, descCy = top + nameH / 2, top + nameH + lines * lineH / 2
+	end
+	label(row, "Name", def.name, {
+		size = nameSize,
+		x = L.textLeft,
+		y = nameCy,
+		w = math.min(colW, Parts.measure(def.name, nameSize) + 6),
+		h = nameH,
+		ax = 0,
+		z = z + 2,
+		stroke = if L.compact then 2 else 2.8,
+	})
+	local desc = label(row, "Desc", def.desc, {
+		size = descSize,
+		x = L.textLeft,
+		y = descCy,
+		w = if lines == 1 then math.min(colW, Parts.measure(def.desc, descSize) * DESC_K + 6) else colW,
+		h = lines * lineH,
+		ax = 0,
+		z = z + 2,
+		stroke = 0.75,
+	})
+	desc.FontFace, desc.TextWrapped, desc.TextYAlignment = DESC_FONT, true, Enum.TextYAlignment.Center
+	local handles = DRAW[def.kind](L, row, def, rowH, z, self._update, trackLeft)
 	handles.Row = row
 	self.Rows[def.id] = handles
 	self._update[def.id](SettingsLogic.get(def.id))
-	L.rowH = baseH
 end
 
--- Rule, panel, list, Reset block ----------------------------------------------------------------------------
+-- Reset block -----------------------------------------------------------------------------------------------
 
--- One half of Bag.DividerGold (tapered tip -> line -> bead), stretched along x only: src x range [srcX, srcX + srcW), thickness = source height * fk.
-local function divider(
-	root,
-	name: string,
-	x0: number,
-	w: number,
-	srcX: number,
-	srcW: number,
-	cy: number,
-	fk: number,
-	z: number
-)
-	local div = Bag.DividerGold
-	local p = Draw.img(root, { Name = name, ZIndex = z })
-	p.Image, p.ScaleType = div.Image, Enum.ScaleType.Stretch
-	p.ImageRectOffset, p.ImageRectSize = Vector2.new(srcX, 0), Vector2.new(srcW, div.Size.Y)
-	p.AnchorPoint = Vector2.new(0, 0.5)
-	p.Position = UDim2.fromOffset(round(x0), round(cy))
-	p.Size = UDim2.fromOffset(math.ceil(w), round(div.Size.Y * fk))
+-- A tapered flank line (transparent at its outer end), thickness 2.
+local function flank(panel, name: string, x: number, w: number, cy: number, leftEnd: boolean)
+	local f = make("Frame", {
+		Name = name,
+		BackgroundColor3 = FLANK,
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.fromOffset(round(x), round(cy)),
+		Size = UDim2.fromOffset(round(w), 3),
+		ZIndex = panel.ZIndex + 2,
+	}, panel)
+	local fade = if leftEnd
+		then { NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.35, 0), NumberSequenceKeypoint.new(1, 0) }
+		else {
+			NumberSequenceKeypoint.new(0, 0),
+			NumberSequenceKeypoint.new(0.65, 0),
+			NumberSequenceKeypoint.new(1, 1),
+		}
+	make("UIGradient", { Transparency = NumberSequence.new(fade) }, f)
 end
 
-local function drawRule(L, root, z: number)
-	local k = L.diamondW / DIAMOND_INK_W
-	local cx, cy = L.W / 2, L.ruleY
-	local diamond = Draw.img(root, { Name = "Diamond", ZIndex = z + 1 })
-	Draw.apply(diamond, S.Diamond, cx, cy, L.diamondW, S.Diamond.Ink.Height * k)
-	local fk = if L.compact then 0.3 else 0.8 -- the line thickens from a point at the window edge to its bead beside the Diamond
-	local bead = BALL * k -- the line's bead sits under the Diamond's own ball
-	local x0 = L.ruleMargin
-	local lEnd = cx - bead + (FLANK.left - FLANK.bead) * fk
-	divider(root, "RuleL", x0, lEnd - x0, 0, FLANK.left, cy, fk, z)
-	local rStart = cx + bead - (FLANK.bead2 - FLANK.right) * fk
-	divider(root, "RuleR", rStart, L.W - x0 - rStart, FLANK.right, Bag.DividerGold.Size.X - FLANK.right, cy, fk, z)
-end
-
-local function drawPanel(L, root, z: number)
-	local panel = Draw.img(root, {
-		Name = "Panel",
-		Position = UDim2.fromOffset(round(L.panelX), round(L.panelY)),
-		Size = UDim2.fromOffset(round(L.panelW), round(L.panelH)),
-		ZIndex = z,
-	}, "Frame")
-	local skin = Draw.img(panel, { Name = "Skin" })
-	Draw.apply(skin, S.RowFrame, L.panelW / 2, L.panelH / 2, L.panelW, L.panelH, L.panelK)
-	return panel
-end
-
-local function drawReset(L, root, z: number): any
-	local rec = Bag.PillGold
-	local u = L.resetH / 61.6
+local function drawReset(L, panel)
 	local text = "RESET DEFAULTS"
-	local size = role("reset", L.compact)
-	local labelW = measure(text, size)
-	if not L.compact then
-		labelW = math.max(labelW, 211)
-	end
-	local pillW = math.min(139 * u + labelW, L.W - 16)
-	local cx, cy = L.W / 2, L.resetBottom - L.resetH / 2
-	local k = L.resetH / rec.Ink.Height
-	local btn = Draw.img(root, { Name = "Reset", ZIndex = z + 3 }, "ImageButton")
-	Draw.apply(btn, rec, cx, cy, pillW, L.resetH, k)
+	local w, h = math.min(L.resetW, L.panelW - 16), L.resetH
+	local btn = make("ImageButton", {
+		Name = "Reset",
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromOffset(round(L.panelW / 2), round(L.resetCy)),
+		Size = UDim2.fromOffset(round(w), round(h)),
+		ZIndex = panel.ZIndex + 3,
+	}, panel)
+	Parts.skinH(btn, Shared.PillGrey, h) -- 3-slice pill (approved X2): height maps to the sprite height, caps never stretch
 	Parts.interact(btn)
-	local ox, oy = rec.Ink.Min.X * k, rec.Ink.Min.Y * k -- the ink's origin inside the pill's box (the box is >= 44 real px tall at every scale)
-	local iconD = if L.compact then 27 else 41 * u -- Compact: ~1.9x the label's cap height
-	local icon = Draw.img(btn, { Name = "Icon", ZIndex = btn.ZIndex + 1 })
-	local ir = S.RefreshWhite
-	local iw, ih = Draw.fitIn(ir, iconD, iconD)
-	Draw.apply(icon, ir, ox + 59.9 * u, oy + L.resetH / 2, iw, ih)
-	label(
-		btn,
-		"Label",
-		text,
-		"reset",
-		size,
-		ox + 103.4 * u + (pillW - 139 * u) / 2,
-		oy + L.resetH / 2,
-		(pillW - 139 * u) / 0.9, -- a roomy box: the label keeps its size and stays centred
-		btn.ZIndex + 1
-	)
-	-- gold sparkles and tapered flank lines (DividerGold halves), only where there is room
-	local sparkOff = pillW / 2 + 34.5 * u
-	-- No sheet has the Reset star: reuse Quest.Sparkle2 tinted gold; the rect starts below a stray speck above the star.
-	local spark = { Image = QuestSprites.Sparkle2.Image, Size = Vector2.new(112, 91), Ink = Rect.new(29, 8, 77, 63) }
-	local sk = if L.compact then 0.9 else 1 -- Compact sparkles are a smaller share of the pill
-	local sw, sh = 30 * u * sk, 62 * u * sk -- the sprite's ink includes its glow: the bright core is about 24 x 41
-	if L.W / 2 - sparkOff - sw / 2 >= 6 then
-		for _, sx in { cx - sparkOff, cx + sparkOff } do
-			local s = Draw.img(root, { Name = "Spark", ZIndex = z + 2 })
-			Draw.apply(s, spark, sx, cy - 3.6 * u, sw, sh)
-			s.ImageRectOffset, s.ImageRectSize = Vector2.new(0, 40), spark.Size
-			s.ImageColor3 = Color3.fromRGB(255, 214, 64)
-		end
-	end
-	local fk = 0.6 * u
-	local len = math.min((if L.compact then 302.6 else 296) * u, L.W / 2 - sparkOff - 19 * u - 20)
-	if len >= 40 then
-		local lx = cx - sparkOff - 19 * u - len -- left flank outer end
-		local rx = cx + sparkOff + 19 * u -- right flank inner end
-		divider(root, "FlankL", lx, len, 0, FLANK.left, cy, fk, z + 1)
-		divider(root, "FlankR", rx, len, FLANK.right, Bag.DividerGold.Size.X - FLANK.right, cy, fk, z + 1)
+	local iconD = L.iconD
+	local iw, ih = fitIn(S.RefreshWhite, iconD, iconD)
+	local textW = math.min(Parts.measure(text, L.resetSize), w - iconD - 40)
+	local gap = if L.compact then 8 else 16
+	local x0 = (w - (iw + gap + textW)) / 2 -- icon and label centred as one group
+	art(btn, S.RefreshWhite, x0 + iw / 2, h / 2, iw, ih, "Icon", btn.ZIndex + 1)
+	label(btn, "Label", text, {
+		size = fitted(text, L.resetSize, w - iconD - 40),
+		x = x0 + iw + gap,
+		y = h / 2,
+		w = textW + 24,
+		ax = 0,
+		z = btn.ZIndex + 1,
+		stroke = if L.compact then 2 else 2.5,
+	})
+	local room = L.panelW / 2 - w / 2 - 21 - 36
+	if room >= 40 then
+		flank(panel, "FlankL", 36, room, L.resetCy, true)
+		flank(panel, "FlankR", L.panelW - 36 - room, room, L.resetCy, false)
 	end
 	return btn
 end
 
 function View:_build()
 	local L = self._L
-	K, COMPACT = L.K, L.compact
+	K = L.K
 	local root = self._root
 	local keepY = if self._resetScroll then 0 else self._list and self._list.CanvasPosition.Y or 0
 	self._resetScroll = false
 	root:ClearAllChildren()
 	table.clear(self.Rows)
 	table.clear(self._update)
+	if not L.compact and self._tab == "GRAPHICS" then
+		L.tglFromRight = 140 -- the Graphics mockup sets its toggles 26 px left of the Gameplay ones
+	end
 	local defs = {}
 	for _, def in SettingsLogic.DEFS do
 		if def.tab == self._tab then
 			table.insert(defs, def)
 		end
 	end
-	local pitch = if not L.compact and self._tab == "AUDIO" then 87.5 else L.pitch -- Audio keeps the wider pitch
-	local canvasH = math.ceil(L.top + math.max(0, #defs - 1) * pitch + L.rowH + L.bottom)
-	L.rowW = L.listW - L.padL - L.padR
-	if canvasH > L.listH then
-		L.rowW -= if L.compact then L.barW - 2 else L.barW / 2 + 2 -- the scroll bar gets its own strip: it never touches a row
-	end
-	roleSizes(L)
 	local z = root.ZIndex
-	drawRule(L, root, z)
-	local panel = drawPanel(L, root, z)
-	local gutter = make("Frame", { -- the reference's gutter between the rows, kept inside the tube's rounded corners
-		Name = "Gutter",
-		BackgroundColor3 = Color3.fromRGB(66, 8, 15),
-		BorderSizePixel = 0,
-		Position = UDim2.fromOffset(L.ins, L.ins),
-		Size = UDim2.fromOffset(round(L.listW), round(L.listH)),
-		ZIndex = panel.ZIndex + 1,
-	}, panel)
-	make("UICorner", { CornerRadius = UDim.new(0, L.gutterR) }, gutter)
+	local panel = Chrome.panel(root, {
+		Name = "Panel",
+		BackgroundColor3 = PANEL_FILL,
+		Radius = 20,
+		Rim = 2,
+		Position = UDim2.fromOffset(2, 2),
+		Size = UDim2.fromOffset(round(L.panelW), round(L.panelH)),
+		ZIndex = z,
+	})
+	panel.UIStroke.Color = PANEL_RIM
 	local list = make("ScrollingFrame", {
 		Name = "List",
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		ScrollBarThickness = 0, -- the styled bar replaces the native one; wheel, touch and drag still scroll
-		ScrollBarImageTransparency = 1,
+		ScrollBarThickness = 6,
+		ScrollBarImageColor3 = Color3.fromRGB(150, 150, 156),
 		ScrollingDirection = Enum.ScrollingDirection.Y,
 		AutomaticCanvasSize = Enum.AutomaticSize.None,
 		Active = true,
 		ClipsDescendants = true,
-		Position = UDim2.fromOffset(L.ins, L.ins),
-		Size = UDim2.fromOffset(round(L.listW), round(L.listH)),
-		ZIndex = panel.ZIndex + 2,
+		Size = UDim2.fromOffset(round(L.panelW), round(L.listH)),
+		ZIndex = z + 1,
 	}, panel)
 	self._list = list
-	local y = L.top
-	for _, def in defs do
-		local lines = descLines(L, def)
-		self:_drawRow(L, list, def, y, lines)
-		y += pitch + (lines - 1) * round(L.descSize * 1.2)
+
+	-- Row heights: a description that cannot fit one line at the minimum size wraps to a second line (the row grows to hold it).
+	local n = #defs
+	local rowH, gap = L.rowH, L.gap
+	local avail = L.listH - 2 * L.top
+	if not L.compact and n * rowH + (n - 1) * gap > avail then
+		rowH, gap = 60, 9 -- Graphics: the mockup's 70 px pitch; the list ends exactly at the last row
 	end
-	canvasH = math.max(canvasH, math.ceil(y - pitch + L.rowH + L.bottom))
+	local minSize = math.ceil(12 / K)
+	local sliderEnd = 0
+	for _, def in defs do
+		if def.kind == "slider" then
+			sliderEnd = math.max(sliderEnd, L.textLeft + Parts.measure(def.desc, L.descSize) * DESC_K)
+		end
+	end
+	-- One track per tab: as long as the longest slider description leaves room for (max trackMax, min trackMin).
+	local trackRight = L.rowW - L.pillRight - L.pillW - L.trackGap
+	local trackLeft = math.clamp(sliderEnd + L.tgap + 12, trackRight - L.trackMax, trackRight - L.trackMin)
+	local heights, lines, total = {}, {}, 0
+	local function trackOf(def)
+		return if L.compact then trackLeft else TRACK_LEFT[def.id] or trackLeft
+	end
+	for i, def in defs do
+		local colW = controlLeft(L, def, trackOf(def)) - L.tgap - L.textLeft
+		lines[i] = if Parts.measure(def.desc, math.max(minSize, L.descSize)) * DESC_K > colW * 0.98
+				and fitted(def.desc, L.descSize, colW, DESC_K) <= minSize
+			then 2
+			else 1
+		heights[i] = math.max(rowH, if lines[i] == 2 then round(L.nameSize * 1.2 + 2 * L.descSize * 1.2 + 8) else 0)
+		total += heights[i] + (if i > 1 then gap else 0)
+	end
+	local canvasH = math.max(L.listH, L.top + total + (if L.compact then L.top else 0))
+	local y = L.top + math.max(0, math.floor((L.listH - 2 * L.top - total) / 2)) -- centred while it fits
+	if canvasH > L.listH then
+		L.rowW -= 8 -- the scroll bar gets its own strip: it never touches a row
+	end
+	for i, def in defs do
+		self:_drawRow(L, list, def, y, heights[i], lines[i], trackOf(def))
+		y += heights[i] + gap
+	end
 	list.CanvasSize = UDim2.fromOffset(0, canvasH)
 	list.CanvasPosition = Vector2.new(0, keepY)
-	local host = Draw.img(panel, {
-		Name = "BarHost",
-		Position = UDim2.fromOffset(0, L.ins + L.gutterR),
-		Size = UDim2.fromOffset(round(L.panelW), round(L.listH - 2 * L.gutterR)),
-		ZIndex = list.ZIndex,
-	}, "Frame")
-	local bar = Parts.scrollBar(host, list, list.ZIndex + 8)
-	bar.Layout(L.listH - 2 * L.gutterR, L.barW, L.ins + 1) -- right edge just inside the tube, ends clear of the corner curves
-	bar.Track.Visible = canvasH > L.listH
-	self.ResetButton = drawReset(L, root, z)
+	self.ResetButton = drawReset(L, panel)
 	for _, cb in self._onBuilt do
 		cb(self.Rows)
 	end

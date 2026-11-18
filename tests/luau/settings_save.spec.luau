@@ -36,7 +36,7 @@ test("one registry: the client store reads the shared defs; frozen", function()
 	expectEq(SettingsLogic.DEFS, SettingsDefs.DEFS, "same DEFS table")
 	expectEq(SettingsLogic.byId, SettingsDefs.ById, "same lookup")
 	expectEq(SettingsLogic.clean, SettingsDefs.clean, "same cleaner")
-	expectEq(#SettingsDefs.DEFS, 23, "23 settings")
+	expectEq(#SettingsDefs.DEFS, 20, "20 settings")
 	expect(table.isfrozen(SettingsDefs.DEFS) and table.isfrozen(SettingsDefs.ById), "registry frozen")
 	for _, def in SettingsDefs.DEFS do
 		expect(table.isfrozen(def), def.id .. " frozen")
@@ -92,11 +92,11 @@ test("Merge drops unknown keys, wrong types, non-finite numbers and oversized st
 		{ uiScale = -INF },
 		{ effectsQuality = true },
 		{ effectsQuality = ("H"):rep(33) },
-		{ language = ("x"):rep(4096) },
+		{ effectsQuality = ("x"):rep(4096) },
 		{ effectsQuality = "Ultra" },
 		{ effectsQuality = "high" },
-		{ language = "French" },
-		{ language = "" },
+		{ effectsQuality = "French" },
+		{ effectsQuality = "" },
 	}
 	for i, patch in bad do
 		expectEq(Settings.Merge(p, patch), true, "soft: still ok " .. i)
@@ -131,6 +131,30 @@ end)
 
 test("Merge reads only registry keys: a mixed patch keeps the good entries", function()
 	local p = fresh()
-	Settings.Merge(p, { shadows = false, nope = 5, uiScale = NAN, effectsQuality = "Medium", language = "Klingon" })
-	expectEq(snap(p.Settings), snap({ shadows = false, effectsQuality = "Medium" }), "good entries only")
+	Settings.Merge(p, { shadows = false, nope = 5, uiScale = NAN, effectsQuality = "Klingon" })
+	expectEq(snap(p.Settings), snap({ shadows = false }), "good entries only")
+end)
+
+test("removed settings: stored values are dropped on load, patches ignore them", function()
+	local gone = { rangeRings = false, placementGrid = false, language = "English" }
+	local stored = ProfileSchema.Default()
+	stored.Settings = { shadows = false, rangeRings = false, placementGrid = true, language = "English" }
+	local loaded = ProfileSchema.Migrate(stored)
+	expectEq(snap(loaded.Settings.shadows), "false", "known key kept")
+	for id in gone do
+		expectEq(loaded.Settings[id], nil, "load drops " .. id)
+	end
+
+	local p = fresh()
+	local dice = snap(p.Dice)
+	local patch = { shadows = false, rangeRings = true, placementGrid = true, language = "English" }
+	expect(SettingsDefs.Shape(patch), "stale string/boolean keys are still shaped ok")
+	expectEq(Settings.Merge(p, patch), true, "ok")
+	expectEq(snap(p.Settings), snap({ shadows = false }), "only the live key stored")
+	local forged = { Level = 7, Copies = 99 }
+	expect(SettingsDefs.Shape(forged), "scalar forged keys pass the shape guard")
+	expectEq(Settings.Merge(p, forged), true, "forged patch ignored")
+	expectEq(snap(p.Settings), snap({ shadows = false }), "nothing stored")
+	expectEq(snap(p.Dice), dice, "profile.Dice untouched")
+	expect(not SettingsDefs.Shape({ Dice = { Level = 7 } }), "a table value is rejected")
 end)

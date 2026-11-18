@@ -5,6 +5,8 @@
 -- Outbox: state.out = { S, H, R, F, dirty }. Match.TakeOut drains it for the
 -- Enemies push; `dirty` flags that the State snapshot changed.
 --
+-- Power Up: state.tiers[typeId] = 1..Balance.PowerUp.Max for each type of the deck; it lives only in the match.
+--
 -- Time: Step simulates at most Balance.MaxStep seconds per call, so state.lastNow is
 -- a virtual clock that trails `now` after a hitch (never jumps).
 local Balance = require(script.Parent.Parent.Config.Balance)
@@ -17,15 +19,24 @@ local Layout = require(game:GetService("ReplicatedStorage").Shared.Layout)
 
 local Match = {}
 
-local RESULTS = { Won = true, Lost = true, Aborted = true, Error = true }
+local RESULTS = { Lost = true, Aborted = true, Error = true }
 
 local function newOut()
 	return { S = {}, H = {}, R = {}, F = {}, Hidx = {}, dirty = false }
 end
 
+local function tiersFor(deck: { string })
+	local tiers = {}
+	for _, id in deck do
+		tiers[id] = 1
+	end
+	return tiers
+end
+
 function Match.New(runId: number, rng: any, now: number, deck: { string })
 	return {
 		deck = table.clone(deck),
+		tiers = tiersFor(deck),
 		kills = 0,
 		runId = runId,
 		rng = rng,
@@ -56,7 +67,7 @@ function Match.SummonCost(state): number
 	return Formulas.SummonCost(state.summons)
 end
 
--- Ends the match once. `result` is Won, Lost, Aborted or Error.
+-- Ends the match once. `result` is Lost, Aborted or Error (a run is endless).
 function Match.Finish(state, result: string): boolean
 	if state.phase ~= "Playing" or not RESULTS[result] then
 		return false
@@ -104,6 +115,59 @@ function Match.TrySummon(state): (boolean, string?)
 	return true, nil
 end
 
+-- Buys the next Power Up tier of one deck die type for MP. Codes: WrongPhase, NotInDeck, MaxTier, NoMP.
+function Match.TryPowerUp(state, typeId: any): (boolean, string?)
+	if state.phase ~= "Playing" then
+		return false, "WrongPhase"
+	end
+	local tier = if type(typeId) == "string" then state.tiers[typeId] else nil
+	if tier == nil then
+		return false, "NotInDeck"
+	end
+	local cost = Formulas.PowerUpCost(tier)
+	if cost == nil then
+		return false, "MaxTier"
+	end
+	local ok, code = Economy.TryChange(state, "mp", -cost)
+	if not ok then
+		return false, if code == "Insufficient" then "NoMP" else code
+	end
+	state.tiers[typeId] = tier + 1
+	state.out.dirty = true
+	return true, nil
+end
+
+-- State snapshot rows {Id, Tier, Cost} in deck order; Cost is nil at the maximum tier.
+function Match.TiersView(state): { any }
+	local rows, seen = {}, {}
+	for _, id in state.deck do
+		if not seen[id] then
+			seen[id] = true
+			local tier = state.tiers[id]
+			table.insert(rows, { Id = id, Tier = tier, Cost = Formulas.PowerUpCost(tier) })
+		end
+	end
+	return rows
+end
+
+-- Aura attack-speed bonus (fraction) per occupied cell, recomputed from the board: every aura die adds its
+-- bonus to each orthogonal neighbour; a die's total is capped at Balance.AuraCap.
+function Match.Auras(state): { [number]: number }
+	local bonus = {}
+	for cell = 1, Balance.BoardCells do
+		local die = state.board[cell]
+		if die then
+			local give = Formulas.Aura(die.type, die.pip, state.tiers[die.type] or 1)
+			if give > 0 then
+				for _, n in Board.Neighbours(cell) do
+					bonus[n] = math.min(Balance.AuraCap, (bonus[n] or 0) + give)
+				end
+			end
+		end
+	end
+	return bonus
+end
+
 -- Codes: WrongPhase, IllegalMerge.
 function Match.TryMerge(state, from: any, to: any): (boolean, string?)
 	if state.phase ~= "Playing" then
@@ -128,17 +192,23 @@ local function startWave(state)
 	local wave = state.wave + 1
 	state.wave = wave
 	local queue = {}
-	if wave == Balance.BossWave then
-		table.insert(queue, "Boss")
-	end
 	for i = 1, Formulas.WaveCount(wave) do
 		table.insert(queue, Formulas.KindAt(wave, i))
+	end
+	if Formulas.HasBrute(wave) then
+		table.insert(queue, "Brute")
+	end
+	if Formulas.IsBoss(wave) then
+		table.insert(queue, "Boss")
 	end
 	state.queue = queue
 	state.qi = 1
 	state.nextSpawnAt = state.nextWaveAt
 	state.waveState = "Active"
-	state.bossAt = nil
+	-- The warning runs on until the Boss, queued last, actually walks in.
+	state.bossAt = if Formulas.IsBoss(wave)
+		then state.nextSpawnAt + (#queue - 1) * Formulas.SpawnInterval(wave)
+		else nil
 	state.out.dirty = true
 end
 
@@ -176,10 +246,9 @@ local function spawn(state, now: number)
 	end
 end
 
-local function damage(state, enemy, amount: number)
-	enemy.hp -= amount
+local function updateEnemy(state, enemy)
 	local out = state.out
-	local record = { Id = enemy.id, Hp = math.max(0, enemy.hp) }
+	local record = { Id = enemy.id, Hp = math.max(0, enemy.hp), Speed = enemy.speed, SpawnAt = enemy.spawnAt }
 	local index = out.Hidx[enemy.id]
 	if index then
 		out.H[index] = record
@@ -189,13 +258,27 @@ local function damage(state, enemy, amount: number)
 	end
 end
 
+local function damage(state, enemy, amount: number)
+	enemy.hp -= amount
+	updateEnemy(state, enemy)
+end
+
+local function setSpeed(state, enemy, speed, now)
+	enemy.dist = math.max(0, enemy.speed * (now - enemy.spawnAt))
+	enemy.speed = speed
+	enemy.spawnAt = now - enemy.dist / speed
+	updateEnemy(state, enemy)
+end
+
 local function attack(state, now: number)
 	local enemies = state.enemies
+	local auras = Match.Auras(state)
 	for cell = 1, Balance.BoardCells do
 		local die = state.board[cell]
 		if die then
 			local cfg = Dice.Types[die.type]
-			local period = Formulas.Period(die.type)
+			local tier = state.tiers[die.type] or 1 -- a die off the deck (only a spec places one) is tier 1
+			local period = Formulas.Period(die.type, die.pip, auras[cell])
 			local attacks = 0
 			while die.cd <= now and attacks < Balance.MaxAttacksPerTick do
 				-- Global First: the alive enemies closest to the exit, anywhere on the path.
@@ -220,8 +303,15 @@ local function attack(state, now: number)
 					damage(
 						state,
 						target,
-						Formulas.HitDamage(die.type, die.pip, target.kind, if shot == 1 then flat else 0)
+						Formulas.HitDamage(die.type, target.kind, if shot == 1 then flat else 0, tier)
 					)
+					if cfg.slow and target.hp > 0 then
+						if not target.slowUntil then
+							target.baseSpeed = target.speed
+							setSpeed(state, target, target.speed * (1 - cfg.slow), now)
+						end
+						target.slowUntil = now + cfg.slowDuration
+					end
 					table.insert(state.out.F, { Cell = cell, Id = target.id })
 				end
 				attacks += 1
@@ -233,7 +323,7 @@ local function attack(state, now: number)
 end
 
 -- Advances the match to `now`. Order: wave advance, spawn, move + breach, dice
--- attacks, deaths + kill MP, wave clear / win.
+-- attacks, deaths + kill MP, wave clear.
 function Match.Step(state, now: number)
 	if state.phase ~= "Playing" then
 		return
@@ -252,6 +342,10 @@ function Match.Step(state, now: number)
 	-- Move + breach. dist is a pure function of time so clients can reproduce it.
 	local survivors = {}
 	for _, enemy in state.enemies do
+		if enemy.slowUntil and now >= enemy.slowUntil then
+			setSpeed(state, enemy, enemy.baseSpeed, enemy.slowUntil)
+			enemy.slowUntil = nil
+		end
 		enemy.dist = math.max(0, enemy.speed * (now - enemy.spawnAt))
 		if enemy.dist >= Layout.PathLength then
 			state.lives -= Enemies.Kinds[enemy.kind].lives
@@ -275,7 +369,7 @@ function Match.Step(state, now: number)
 	local alive = {}
 	for _, enemy in survivors do
 		if enemy.hp <= 0 then
-			Economy.TryChange(state, "mp", Enemies.Kinds[enemy.kind].mp)
+			Economy.TryChange(state, "mp", Formulas.KillMp(enemy.kind, state.wave))
 			state.kills += 1
 			table.insert(state.out.R, { Id = enemy.id, Why = "Kill" })
 			state.out.dirty = true
@@ -285,20 +379,13 @@ function Match.Step(state, now: number)
 	end
 	state.enemies = alive
 
-	-- Wave clear / win.
+	-- Wave clear.
 	if state.waveState == "Active" and state.qi > #state.queue and #alive == 0 then
 		state.wavesCompleted = state.wave
 		state.out.dirty = true
-		if state.wave >= Balance.Waves then
-			Match.Finish(state, "Won")
-			return
-		end
-		Economy.TryChange(state, "mp", Formulas.Stipend(state.wave))
 		state.waveState = "Prep"
 		state.nextWaveAt = now + Balance.WaveGap
-		if state.wave + 1 == Balance.BossWave then
-			state.bossAt = state.nextWaveAt
-		end
+		state.bossAt = if Formulas.IsBoss(state.wave + 1) then state.nextWaveAt else nil
 	end
 end
 

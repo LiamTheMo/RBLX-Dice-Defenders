@@ -37,6 +37,8 @@ local MIN_INTERVAL = {
 	BagAction = 0.4, -- server bucket 3/s
 	Roll = 1.0, -- server bucket 1/s, burst 2
 	Buy = 1.0, -- server bucket 1/s, burst 3
+	UpgradeDie = 0.5, -- server bucket 2/s, burst 4
+	PowerUp = 0.5, -- server bucket 2/s, burst 4
 }
 local pending = {}
 local seq = 0
@@ -87,6 +89,8 @@ function NetClient.Start()
 				"BagAction",
 				"Roll",
 				"Buy",
+				"UpgradeDie",
+				"PowerUp",
 			}
 		do
 			functions[name] = folder:WaitForChild(name)

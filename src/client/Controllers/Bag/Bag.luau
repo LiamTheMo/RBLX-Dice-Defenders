@@ -34,6 +34,18 @@ local REPLIES = {
 	Throttled = "Slow down",
 	Network = "Connection problem",
 }
+local UPGRADE_REPLIES = { -- UpgradeDie refusals; anything unlisted reads "Something went wrong", never a raw code
+	MaxLevel = "Already max level",
+	UnknownDie = "Unknown die",
+	NotOwned = "You don't own that",
+	WrongPhase = "Not during a match",
+	RateLimited = "Slow down",
+	Insufficient = "Not enough copies",
+	NotLoaded = "Still loading",
+	NotOwner = "This server is in use",
+	Throttled = "Slow down",
+	Network = "Connection problem",
+}
 local DONE =
 	{ Sell = "Sold", Use = "Used", Lock = "Locked", Unlock = "Unlocked", Equip = "Equipped", Unequip = "Unequipped" }
 
@@ -132,7 +144,7 @@ function Bag.new(parent, deps)
 	local function render(keepScroll: boolean?)
 		local tab, st = TABS[cur], state[cur]
 		safe("render", function()
-			local items = tab.GetItems(meta, catalog)
+			local items = tab.GetItems(meta, catalog, Sprites)
 			view = BagLogic.sort(BagLogic.filter(items, st.query), st.sort)
 			local found = false
 			for _, it in view do
@@ -150,6 +162,9 @@ function Bag.new(parent, deps)
 			toolbar:SetPlaceholder(tab.Placeholder)
 			toolbar:SetQuery(st.query)
 			toolbar:SetSortOptions(tab.SortOptions, st.sort)
+			if toolbar.SetCount then -- Parts.Toolbar shows it once it has the slot (open request in notes)
+				toolbar:SetCount(if tab.Count then tab.Count(meta, catalog) else nil)
+			end
 			grid:SetEmptyText(if st.query ~= "" then "No results" else tab.EmptyText)
 			grid:SetItems(view)
 			grid:SetSelected(st.selected)
@@ -186,6 +201,34 @@ function Bag.new(parent, deps)
 		task.spawn(function()
 			local ok, code = NetClient.Request("BagAction", action, id, qty)
 			toast(if ok then DONE[action] else REPLIES[code] or tostring(code))
+		end)
+	end
+
+	-- One UpgradeDie intent (the server decides level, copies and cost); the new level comes back through Meta.
+	local upgrading = false
+	local function sendUpgrade(id: string)
+		if upgrading then
+			return
+		end
+		upgrading = true
+		local function levelOf()
+			for _, d in if meta then meta.Dice else {} do
+				if d.Id == id and type(d.Level) == "number" then
+					return d.Level
+				end
+			end
+			return nil
+		end
+		local before = levelOf()
+		task.spawn(function()
+			local ok, code = NetClient.Request("UpgradeDie", id)
+			upgrading = false
+			if not ok then
+				toast(UPGRADE_REPLIES[code] or "Something went wrong")
+				return
+			end
+			local level = levelOf() -- the refreshed Meta may land after the reply: only a risen level is trusted
+			toast(if level and before and level > before then ("Upgraded to Lv. %d"):format(level) else "Upgraded")
 		end)
 	end
 
@@ -261,6 +304,8 @@ function Bag.new(parent, deps)
 			local st = state[cur]
 			if btn.Send then -- a BagAction: the stepper's qty for Sell and Use, else 1
 				sendBag(id, st.selected, if id == "Sell" or id == "Use" then st.qty else 1)
+			elseif id == "Upgrade" then
+				sendUpgrade(st.selected)
 			elseif id == "Equip" then
 				pending = st.selected
 				renderFooter()
@@ -297,12 +342,13 @@ function Bag.new(parent, deps)
 	local function showTab()
 		cur = shell:GetTab()
 		pending = nil
+		shell:SetDetailWidth(TABS[cur].DetailW)
 		render(true)
 	end
 	shell:SetTabs((function()
 		local list = {}
 		for i, t in TABS do
-			list[i] = { Id = t.Id, Label = t.Label, Icon = t.Icon }
+			list[i] = { Id = t.Id, Label = t.Label }
 		end
 		return list
 	end)())

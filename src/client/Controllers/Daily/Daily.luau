@@ -9,19 +9,11 @@ local GuiService = game:GetService("GuiService")
 local DailyLogic = require(script.Parent.DailyLogic)
 local NetClient = require(script.Parent.Parent.NetClient)
 local ShopLogic = require(script.Parent.Parent.Shop.ShopLogic)
-local QuestSprites = require(script.Parent.Parent.QuestLog.QuestSprites)
 local Shell = require(script.Parent.Parent.Bag.Shell)
-local Sprites = require(script.Parent.Parent.Sprites)
 local View = require(script.Parent.View)
 
 local ACTION = "DailyClose"
 local PRESS_COOLDOWN = 0.5 -- UX throttle only
-
--- Banner emblems on the rolled ends (scroll-ink fractions). Their inner edges stay at 0.105 / 0.895, outside the parchment's flat band
--- (0.114-0.890; the title keeps 8 design px off it, so >= 4 real px clear); they grow outward over the rolled ends and upward over the
--- scroll's top edge: 0.215 wide (105 design px, the reference's ~102 / 88 visible ink), 1.014 tall (the calendar's aspect), centred a little above the title's height (0.512).
-local BOX_L = { -0.11, -0.087, 0.215, 1.014 }
-local BOX_R = { 0.895, -0.087, 0.215, 1.014 }
 
 local Daily = {}
 Daily.__index = Daily
@@ -35,14 +27,7 @@ function Daily.new(parent, deps)
 		end,
 		name = "Daily",
 		free = true,
-		banner = {
-			text = "DAILY REWARDS",
-			noGem = true,
-			emblems = {
-				{ sprite = QuestSprites.IconCalendar, box = { full = BOX_L, compact = BOX_L } },
-				{ sprite = Sprites.Icon.Daily, box = { full = BOX_R, compact = BOX_R } },
-			},
-		},
+		banner = { text = "DAILY" }, -- mockup title
 	})
 	local view = View.new(shell.Slots.Content)
 	local conns = {}
@@ -69,7 +54,7 @@ function Daily.new(parent, deps)
 		if deadline then
 			refreshTimer()
 		else
-			view:SetTimer(nil)
+			view:SetTimer("Daily reward:", "Ready!") -- claimable: no countdown
 		end
 	end
 

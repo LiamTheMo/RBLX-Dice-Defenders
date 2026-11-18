@@ -121,6 +121,9 @@ local function onBatch(batch)
 		local e = enemies[record.Id]
 		if e then
 			e.fill.Size = UDim2.fromScale(math.clamp(record.Hp / e.maxHp, 0, 1), 1)
+			if record.Speed and record.SpawnAt then
+				e.speed, e.spawnAt = record.Speed, record.SpawnAt
+			end
 		end
 	end
 	for _, record in batch.F or {} do

@@ -15,6 +15,13 @@ PlayLogic.LOCKED_WORLDS = table.freeze({
 	table.freeze({ Id = "ShadowRealm", Name = "SHADOW REALM", Art = "WorldShadow" }),
 })
 
+-- 1v1 rank ladder (names only: no PvP backend yet, so no trophy ranges or rewards); only Bronze is open.
+PlayLogic.RANKS = table.freeze({
+	table.freeze({ Id = "Bronze", Name = "BRONZE", Art = "RankBronze", Locked = false }),
+	table.freeze({ Id = "Silver", Name = "SILVER", Art = "RankSilver", Locked = true }),
+	table.freeze({ Id = "Gold", Name = "GOLD", Art = "RankGold", Locked = true }),
+})
+
 -- Repeat-reward tiles. Only materials drop from a run (Verdant Fragments); the rest are placeholders marked Soon.
 PlayLogic.TILES = table.freeze({
 	table.freeze({ Label = "MATERIALS", Icon = "IconCrystals" }),
@@ -90,7 +97,9 @@ end
 -- desktop text column is narrow); form "Short" keeps only the name's last word ("+5 FRAGMENTS" for Verdant Fragments).
 function PlayLogic.rewardText(line: any, catalog: any, form: ("Icon" | "Short")?): string
 	local label = COUNTER[line.Kind]
-	if not label then
+	if label and line.Amount == 1 then
+		label = (string.gsub(label, "S$", "")) -- +1 GEM
+	elseif not label then
 		local name = line.Id
 		local list = catalog and catalog[CATALOG_LIST[line.Kind]]
 		for _, e in (if type(list) == "table" then list else {}) :: { any } do
@@ -169,7 +178,7 @@ function PlayLogic.claimTarget(row: any, pending: { [string]: boolean }): string
 end
 
 -- The real per-run payout (Catalog.Repeat) as payout-box lines of tokens; a token ending in ":" is a heading.
---   { {"PER WAVE:"}, {"+5 GOLD", "+10 XP"}, {"+1 FRAGMENT"}, {"WIN:", "+30 GOLD", "+40 XP"}, {"+5 FRAGMENTS"} }
+--   { {"PER WAVE:"}, {"+5 GOLD", "+1 GEM", "+10 XP"}, {"+1 FRAGMENT"}, {"BOSS WAVE:", "+3 GEMS"} }
 function PlayLogic.repeatLines(catalog: any): { { string } }
 	local rep = catalog and catalog.Repeat
 	if type(rep) ~= "table" then
@@ -190,14 +199,43 @@ function PlayLogic.repeatLines(catalog: any): { { string } }
 				table.insert(named, { text })
 			end
 		end
-		if #counters > 0 then
+		if #counters > (if head then 1 else 0) then -- a heading alone is no line
 			table.insert(lines, counters)
 		end
 		table.move(named, 1, #named, #lines + 1, lines)
 	end
 	add(rep.PerWave)
-	add(rep.Win, "WIN:")
+	add(rep.BossWave, "BOSS WAVE:")
 	return lines
+end
+
+-- Repeat-reward tiles: one per reward kind the server pays every wave (Catalog.Repeat.PerWave, its order), plus the boss-wave
+-- payout as one line (nil if none). Tile = { Label, Icon (view key), Text = "+5" }; real kinds only.
+local TILE = {
+	Gold = { "GOLD", "Coin" },
+	Gems = { "GEMS", "Gem" },
+	Xp = { "XP", "BadgeXp" },
+	Material = { "MATERIALS", "IconCrystals" },
+}
+function PlayLogic.repeatTiles(catalog: any): ({ { Label: string, Icon: string, Text: string } }, string?)
+	local rep = catalog and catalog.Repeat
+	if type(rep) ~= "table" then
+		return {}, nil
+	end
+	local tiles = {}
+	for _, r in (if type(rep.PerWave) == "table" then rep.PerWave else {}) :: { any } do
+		local t = type(r) == "table" and TILE[r.Kind]
+		if t then
+			table.insert(tiles, { Label = t[1], Icon = t[2], Text = `+{tostring(r.Amount)}` })
+		end
+	end
+	local boss = {}
+	for _, r in (if type(rep.BossWave) == "table" then rep.BossWave else {}) :: { any } do
+		if type(r) == "table" then
+			table.insert(boss, PlayLogic.rewardText(r, catalog, "Short"))
+		end
+	end
+	return tiles, if #boss > 0 then "BOSS WAVE: " .. table.concat(boss, " ") else nil
 end
 
 function PlayLogic.worldClear(snap: any): boolean

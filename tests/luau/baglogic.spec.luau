@@ -216,7 +216,7 @@ test("tabs: rows sort as the Bag shows them (each tab's default sort)", function
 	)
 	local cosRows = BagLogic.sort(cos.GetItems(META, CATALOG), cos.DefaultSort)
 	expectEq(ids(cosRows), "Firefly,Thorn,Sprout", "cosmetics: rarity")
-	expect(cosRows[2].Footer == "Dice Skin" and cosRows[2].TopTag == nil, "type footer, no EQUIPPED pill")
+	expect(cosRows[2].TopTag == "RARE" and cosRows[2].Equipped == false, "rarity pill on top, not equipped")
 end)
 
 test("inventory: every entry the server catalogue sends maps to a full row", function()
@@ -237,13 +237,14 @@ test("inventory: every entry the server catalogue sends maps to a full row", fun
 	end
 end)
 
-test("dice detail: Damage and Attack Speed from the Catalog, ability note on non-Common dice", function()
+test("dice detail: Damage, Attack Speed and Aura from the Catalog, ability note on non-Common dice", function()
 	local D = "\u{2013}"
 	local catalog = {
 		Dice = {
-			{ Id = "C02", Damage = 9, Rate = 1.75 },
-			{ Id = "R01", Damage = 19, Rate = 1.0 },
-			{ Id = "R02", Damage = 21, Rate = 0.55 },
+			{ Id = "C02", Damage = 9, Rate = 1.75, AttackSpeed = 0.57 },
+			{ Id = "R01", Damage = 19, Rate = 1.0, AttackSpeed = 1 },
+			{ Id = "R02", Damage = 21, Rate = 0.55, AttackSpeed = 1.82 },
+			{ Id = "R05", Damage = 5, Rate = 0.8, AttackSpeed = 1.25, Aura = 6 },
 		},
 	}
 	local meta = { Dice = { { Id = "C02", Level = 1 }, { Id = "R01", Level = 2 } }, Deck = {} }
@@ -263,18 +264,45 @@ test("dice detail: Damage and Attack Speed from the Catalog, ability note on non
 		return table.concat(out, ",")
 	end
 	local needle = detail(catalog, "C02")
-	expectEq(values(needle), `9,{D},1.75,{D}`, "Damage, Range dash, Attack Speed, Burn dash")
+	expectEq(values(needle), `9,0.57s,{D}`, "Damage, Attack Speed (s), no aura: dash")
 	expectEq(needle.Description, "", "owned Common: no ability note")
 	local frost = detail(catalog, "R01")
-	expectEq(values(frost), `19,{D},1,{D}`, "1.0 shows as 1")
-	expectEq(frost.Description, "Ability: coming soon", "owned Rare")
+	expectEq(values(frost), `19,1s,{D}`, "1.0 shows as 1")
+	expectEq(frost.Description, "", "owned Rare: no placeholder note")
 	local arc = detail(catalog, "R02")
-	expectEq(values(arc), `21,{D},0.55,{D}`, "unowned playable die shows its stats")
-	expectEq(arc.Description, "Not owned. Ability: coming soon", "unowned Rare")
+	expectEq(values(arc), `21,1.82s,{D}`, "unowned playable die shows its stats")
+	expectEq(arc.Description, "Not owned", "unowned Rare")
 	expectEq(detail(nil, "C02").Stats[1].Value, D, "no Catalog yet: dash")
+	expectEq(values(detail(catalog, "R05")), "5,1.25s,+6%", "aura die: Aura row")
 	local astral = detail(catalog, "M01")
-	expectEq(values(astral), `{D},{D},{D},{D}`, "unreleased die: all dashes")
+	expectEq(values(astral), `{D},{D},{D}`, "unreleased die: all dashes")
 	expectEq(astral.Description, "Not available yet", "unreleased die keeps its note")
+end)
+
+test("cosmetics counter: owned / total from the Catalog", function()
+	local cat = {
+		Cosmetics = {
+			{ Id = "ThornDice", Name = "T", Rarity = "Rare", Type = "x" },
+			{ Id = "SproutCap", Name = "S", Rarity = "Rare", Type = "x" },
+		},
+	}
+	expectEq(Tabs[3].Count({ Cosmetics = { { Id = "ThornDice", Quantity = 1 } } }, cat), "1 / 2", "one of two")
+	expectEq(Tabs[3].Count({}, nil), nil, "Catalog not loaded")
+end)
+
+test("iconFor: the new icon only once uploaded, else the Catalog's own", function()
+	expectEq(BagLogic.iconFor("Fragment", nil, nil), nil, "no sprites (headless)")
+	expectEq(
+		BagLogic.iconFor("Fragment", "IconCrystals", { MatSprout = { Image = "" } }),
+		"IconCrystals",
+		"not uploaded"
+	)
+	expectEq(
+		BagLogic.iconFor("Fragment", "IconCrystals", { MatSprout = { Image = "rbxassetid://1" } }),
+		"MatSprout",
+		"uploaded"
+	)
+	expectEq(BagLogic.iconFor("Nope", "Coins", { MatSprout = { Image = "rbxassetid://1" } }), "Coins", "unmapped id")
 end)
 
 local function button(model, id)
@@ -304,7 +332,7 @@ test("inventory: Meta.Locked marks rows locked; Meta cosmetics carry Equipped", 
 	expectEq(rows[1].CornerBadge, "Lock", "locked card shows the padlock")
 	expect(rows[1].Locked == nil, "a player lock never uses the unowned (sorted-last) flag")
 	local cosRows = cos.GetItems(meta, CATALOG)
-	expectEq(cosRows[1].TopTag, "EQUIPPED", "EQUIPPED pill from Meta")
+	expectEq(cosRows[1].Equipped, true, "Equipped from Meta")
 end)
 
 test("stepQty: 1..owned, MAX picks owned, never above the server's 1e6 cap", function()
@@ -369,7 +397,7 @@ test("cosmetics detail: EQUIP / UNEQUIP live, LOCK off with a reason, no-visual 
 	)
 end)
 
-test("dice: UNEQUIP ALL resets to the starter deck; LOCK and SELL keep copies", function()
+test("dice: UNEQUIP ALL resets to the starter deck; SELL stays off", function()
 	local starter = { "C01", "C02", "C03", "C04", "C05" }
 	local catalog = { StarterDeck = starter, Dice = {} }
 	local same = DiceTab.Footer({ Deck = table.clone(starter) }, catalog).Button
@@ -383,10 +411,88 @@ test("dice: UNEQUIP ALL resets to the starter deck; LOCK and SELL keep copies", 
 	for _, it in DiceTab.GetItems(meta, catalog) do
 		if it.Id == "C01" then
 			local d = DiceTab.Detail(it)
-			for _, id in { "Lock", "Sell" } do
-				local b = button(d, id)
-				expect(not b.Enabled and b.Hint == "Copies are kept for future level-ups", id .. " reason")
+			local b = button(d, "Sell")
+			expect(not b.Enabled and b.Hint == "Copies level this die up", "SELL reason")
+			expect(button(d, "Lock") == nil, "no LOCK on dice")
+		end
+	end
+end)
+
+test("dice upgrade: UPGRADE gates on copies, cap and Catalog; copies show on card and detail", function()
+	local DL = { Max = 7, Copies = { 1, 1, 1, 2, 2, 3 } }
+	local catalog = { DieLevel = DL, Dice = {} }
+	local function die(level, copies, c, id)
+		local meta = { Dice = { { Id = id or "C01", Level = level, Copies = copies } }, Deck = {} }
+		for _, it in DiceTab.GetItems(meta, c) do
+			if it.Id == (id or "C01") then
+				return it, DiceTab.Detail(it)
+			end
+		end
+		error("no die")
+	end
+	local _, d = die(4, 2, catalog) -- level 4 costs 2
+	expect(button(d, "Upgrade").Enabled, "UPGRADE on exactly at the cost")
+	expectEq(d.Subline.Copies, "Copies 2 / 2", "detail copies line")
+	expectEq(d.Subline.Max, 7, "Max from the Catalog")
+	local item, d1 = die(4, 1, catalog)
+	expect(not button(d1, "Upgrade").Enabled, "cost - 1 off")
+	expectEq(button(d1, "Upgrade").Hint, "Need 2 copies", "cost hint")
+	expectEq(d1.Subline.Copies, "Copies 1 / 2", "below-cost copies line")
+	expectEq(item.Count, "x1", "card copy count")
+	expectEq(select(1, die(1, 0, catalog)).Count, "x0", "a die owned once shows 0")
+	local _, dm = die(7, 5, catalog)
+	expect(not button(dm, "Upgrade").Enabled and button(dm, "Upgrade").Hint == "Max level", "max level off")
+	expectEq(dm.Subline.Copies, "Copies 5", "max level shows copies alone")
+	local _, dn = die(4, 9, nil)
+	expect(dn.Subline == nil, "no Catalog: no Subline")
+	expect(not button(dn, "Upgrade").Enabled and button(dn, "Upgrade").Hint == "Still loading", "no Catalog hint")
+	local _, du = die(1, 0, { DieLevel = { Max = "x", Copies = "y" } })
+	expect(du.Subline == nil and not button(du, "Upgrade").Enabled, "untrusted Catalog values ignored")
+	local bad = {
+		5,
+		{ Max = 0 / 0, Copies = { 1 } },
+		{ Max = math.huge, Copies = { 1 } },
+		{ Max = 3, Copies = { -1, 1 } },
+		{ Max = 3, Copies = { 1.5, 1 } },
+		{ Max = 3, Copies = { 0 / 0, 1 } },
+		{ Max = 3 },
+		{ Max = 3, Copies = { 1 } },
+	}
+	for i, dl in bad do
+		local _, db = die(1, 9, { DieLevel = dl })
+		expect(
+			db.Subline == nil and not button(db, "Upgrade").Enabled and button(db, "Upgrade").Hint == "Still loading",
+			"malformed DieLevel #" .. i .. " acts as no Catalog"
+		)
+	end
+	for _, it in DiceTab.GetItems({ Dice = {}, Deck = {} }, catalog) do
+		if it.Id == "C02" then
+			local lk = DiceTab.Detail(it)
+			expect(
+				not button(lk, "Upgrade").Enabled and button(lk, "Upgrade").Hint == "Not owned",
+				"unowned: locked footer"
+			)
+			expect(lk.Subline == nil and it.Count == nil, "unowned: no level line or count")
+		end
+	end
+	expect(button(d, "Lock") == nil and button(d, "Upgrade").Style == "Grey", "UPGRADE replaces LOCK")
+end)
+
+test("every Config die is listed, owned or not; removed ids are not", function()
+	local catalog = Catalog.Build()
+	local function find(meta, id)
+		for _, item in DiceTab.GetItems(meta, catalog) do
+			if item.Id == id then
+				return item
 			end
 		end
 	end
+	expect(find({ Dice = {} }, "E08") ~= nil, "unowned die listed")
+	expect(find({ Dice = { { Id = "E08", Level = 3 } } }, "E08") ~= nil, "owned die listed")
+	expect(find({ Dice = {} }, "E02") == nil, "removed id never listed")
+	local chill = find({ Dice = {} }, "C06")
+	expect(
+		chill ~= nil and DiceTab.Detail(chill).Description == "Hits slow enemies by 15% for 1.5 seconds.",
+		"Chill ability visible"
+	)
 end)

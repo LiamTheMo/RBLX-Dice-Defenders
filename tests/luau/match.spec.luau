@@ -1,5 +1,5 @@
--- Formulas, breach/loss, stipend, boss warning, kill MP, perk damage, First
--- targeting, layout geometry, and a scripted win.
+-- Formulas, breach/loss, boss warning, kill MP, perk damage, First
+-- targeting, layout geometry, and a scripted endless run.
 
 local Server = game:GetService("ServerScriptService").Server
 local Match = require(Server.Rules.Match)
@@ -67,42 +67,64 @@ test("wave formulas", function()
 	expectEq(Formulas.SpeedMul(1), 1, "speed 1")
 	expectNear(Formulas.SpeedMul(10), 1.054, 1e-9, "speed 10")
 	expectEq(Formulas.SpeedMul(500), 1.6, "speed cap")
-	expectEq(Formulas.EnemyHp("Grunt", 1), 80, "grunt hp 1")
-	expectEq(Formulas.EnemyHp("Runner", 1), 56, "runner hp 1")
-	expectEq(Formulas.EnemyHp("Brute", 5), 257, "brute hp 5")
-	expectEq(Formulas.EnemyHp("Boss", 10), 1116, "boss hp 10")
-	expectEq(Formulas.Stipend(1), 30, "stipend 1")
-	expectEq(Formulas.Stipend(9), 30, "stipend 9")
-	expectEq(Formulas.Stipend(10), 35, "stipend 10")
-	expectEq(Formulas.RewardGold(0, false), 0, "reward 0")
-	expectEq(Formulas.RewardGold(10, true), 80, "reward 10")
+	expectEq(Formulas.EnemyHp("Grunt", 1), 110, "grunt hp 1")
+	expectEq(Formulas.EnemyHp("Grunt", 10), 506, "grunt hp 10")
+	expectEq(Formulas.EnemyHp("Grunt", 11), 637, "grunt hp 11: the steep band starts")
+	expectEq(Formulas.EnemyHp("Grunt", 15), 1606, "grunt hp 15")
+	expectEq(Formulas.EnemyHp("Grunt", 16), 1718, "grunt hp 16: the gentle band")
+	expectEq(Formulas.EnemyHp("Runner", 1), 55, "runner 0.5x")
+	expectEq(Formulas.EnemyHp("Brute", 1), 220, "brute 2x")
+	expectEq(Formulas.EnemyHp("Boss", 5), 3064, "boss hp 5: 8.5x")
+	expectEq(Formulas.EnemyHp("Boss", 10), 4297, "boss hp 10")
+	expectEq(Formulas.EnemyHp("Boss", 15), 13648, "boss hp 15")
+	expectEq(Formulas.RewardGold(0), 0, "reward 0")
+	expectEq(Formulas.RewardGold(10), 50, "reward 10: no win bonus")
+	expectEq(Formulas.RewardXp(10), 100, "xp 10")
+	expectEq(Formulas.RewardFragments(10), 10, "fragments 10")
+	local gems = {}
+	for w = 1, 10 do
+		gems[w] = Formulas.WaveGems(w)
+	end
+	expectEq(table.concat(gems, ","), "1,1,2,1,3,1,1,2,1,3", "gems: Random Dice's 1,1,2,1,3 cycle (Brute 2, Boss 3)")
+	expectEq(Formulas.RewardGems(0), 0, "gems 0")
+	expectEq(Formulas.RewardGems(15), 24, "gems 15")
+	expectEq(Formulas.WaveGems(45), 3, "gems 45: last of the first band")
+	expectEq(Formulas.WaveGems(46), 6, "gems 46: Brute wave, second band")
+	expectEq(Formulas.WaveGems(47), 2, "gems 47: plain wave, second band")
+	expectEq(Formulas.WaveGems(50), 6, "gems 50: Boss wave, second band")
 end)
 
-test("composition: Brute from wave 5 every 5th, Runner from wave 3 every 3rd", function()
+test("composition: Runner from wave 3 every 3rd; Brute and Boss schedules", function()
 	expectEq(Formulas.KindAt(1, 3), "Grunt", "w1 i3")
-	expectEq(Formulas.KindAt(1, 5), "Grunt", "w1 i5")
 	expectEq(Formulas.KindAt(3, 3), "Runner", "w3 i3")
 	expectEq(Formulas.KindAt(3, 5), "Grunt", "w3 i5")
-	expectEq(Formulas.KindAt(4, 5), "Grunt", "w4 i5")
-	expectEq(Formulas.KindAt(5, 5), "Brute", "w5 i5")
-	expectEq(Formulas.KindAt(5, 15), "Brute", "brute beats runner at i15")
-	expectEq(Formulas.KindAt(5, 6), "Runner", "w5 i6")
+	expectEq(Formulas.KindAt(5, 5), "Grunt", "no Brute in the spawn index")
+	expectEq(Formulas.KindAt(5, 15), "Runner", "w5 i15")
 	expectEq(Formulas.KindAt(5, 7), "Grunt", "w5 i7")
+	for w = 1, 40 do
+		expectEq(Formulas.IsBoss(w), w % 5 == 0, "boss " .. w)
+	end
+	local brutes = {}
+	for w = 1, 40 do
+		if Formulas.HasBrute(w) then
+			table.insert(brutes, w)
+		end
+	end
+	expectEq(table.concat(brutes, ","), "3,8,13,18,23,28,33,36,38,40", "brute waves")
 end)
 
-test("perk damage: hitDamage = max(1, floor(base * pip^0.85 * perk)) plus flat", function()
-	expectEq(Formulas.HitDamage("C01", 1, "Grunt"), 16, "pebble vs grunt")
-	expectEq(Formulas.HitDamage("C01", 3, "Grunt"), 42, "pebble pip 3 vs grunt (x1.05)")
-	expectEq(Formulas.HitDamage("C01", 3, "Runner"), 40, "pebble pip 3 vs runner (no perk)")
-	expectEq(Formulas.HitDamage("C03", 1, "Brute"), 33, "hammer vs armored x1.12")
-	expectEq(Formulas.HitDamage("C03", 1, "Grunt"), 30, "hammer vs grunt")
-	expectEq(Formulas.HitDamage("C03", 1, "Boss"), 30, "boss is not armored")
-	expectEq(Formulas.HitDamage("C05", 1, "Boss"), 19, "longshot x0.9 vs boss")
-	expectEq(Formulas.HitDamage("C05", 1, "Grunt"), 22, "longshot vs grunt")
-	expectEq(Formulas.HitDamage("C04", 1, "Grunt"), 7, "twinshot shot x0.7")
-	expectEq(Formulas.HitDamage("C02", 1, "Grunt"), 9, "needle plain")
-	expectEq(Formulas.HitDamage("C02", 1, "Grunt", 8), 17, "needle with proc")
-	expectEq(Formulas.HitDamage("C04", 1, "Grunt") >= 1, true, "never below 1")
+test("perk damage: hitDamage = max(1, floor(base * perk * tierMul)) plus flat, no pip term", function()
+	expectEq(Formulas.HitDamage("C01", "Grunt"), 16, "pebble vs grunt (x1.05)")
+	expectEq(Formulas.HitDamage("C01", "Runner"), 16, "pebble vs runner (no perk)")
+	expectEq(Formulas.HitDamage("C03", "Brute"), 33, "hammer vs armored x1.12")
+	expectEq(Formulas.HitDamage("C03", "Grunt"), 30, "hammer vs grunt")
+	expectEq(Formulas.HitDamage("C03", "Boss"), 30, "boss is not armored")
+	expectEq(Formulas.HitDamage("C05", "Boss"), 19, "longshot x0.9 vs boss")
+	expectEq(Formulas.HitDamage("C05", "Grunt"), 22, "longshot vs grunt")
+	expectEq(Formulas.HitDamage("C04", "Grunt"), 7, "twinshot shot x0.7")
+	expectEq(Formulas.HitDamage("C02", "Grunt"), 9, "needle plain")
+	expectEq(Formulas.HitDamage("C02", "Grunt", 8), 17, "needle with proc")
+	expectEq(Formulas.HitDamage("C04", "Grunt") >= 1, true, "never below 1")
 end)
 
 test("layout: path length, clamped PositionAt, constant Y, camera, cell grid", function()
@@ -150,27 +172,30 @@ test("first wave starts 4 s after Start and spawns on schedule", function()
 	expectEq(#state.enemies >= 1, true, "first enemy out")
 	local batch = Match.TakeOut(state)
 	expectEq(batch.S[1].Kind, "Grunt", "spawn record kind")
-	expectEq(batch.S[1].Hp, 80, "spawn record hp")
+	expectEq(batch.S[1].Hp, 110, "spawn record hp")
 	expectEq(batch.S[1].Speed, 6, "wave 1 speed")
 	local again = Match.TakeOut(state)
 	expectEq(#again.S, 0, "outbox drained")
 end)
 
-test("breach costs a life, loss at 0, no reward state change by Match", function()
+test("breach costs the kind's lives, loss at 0, no reward state change by Match", function()
+	expectEq(Balance.StartLives, 3, "start lives")
 	local state = newState()
 	openWave(state)
 	addEnemy(state, "Grunt", 80, Layout.PathLength - 0.1)
 	runFor(state, 0.3)
-	expectEq(state.lives, 19, "grunt breach -1")
+	expectEq(state.lives, 2, "grunt breach -1")
 	expectEq(#state.enemies, 0, "removed")
 	local batch = Match.TakeOut(state)
 	expectEq(batch.R[1].Why, "Breach", "breach record")
 
-	local boss = newState()
-	openWave(boss)
-	addEnemy(boss, "Boss", 1116, Layout.PathLength - 0.1)
-	runFor(boss, 0.5)
-	expectEq(boss.lives, 15, "boss breach -5")
+	for kind, cost in { Brute = 2, Boss = 2 } do
+		local s = newState()
+		openWave(s)
+		addEnemy(s, kind, 1000, Layout.PathLength - 0.1)
+		runFor(s, 0.5)
+		expectEq(s.lives, 3 - cost, kind .. " breach")
+	end
 
 	local dying = newState()
 	dying.lives = 1
@@ -180,6 +205,12 @@ test("breach costs a life, loss at 0, no reward state change by Match", function
 	expectEq(dying.phase, "Ended", "ended")
 	expectEq(dying.result, "Lost", "lost")
 	expectEq(dying.lives, 0, "lives floor at 0")
+	local brute = newState()
+	brute.lives = 1
+	openWave(brute)
+	addEnemy(brute, "Brute", 1000, Layout.PathLength - 0.1)
+	runFor(brute, 0.5)
+	expect(brute.lives == 0 and brute.phase == "Ended" and brute.result == "Lost", "Brute breach at 1 life loses")
 	expectEq(dying.rewardGranted, false, "Match never grants")
 	local before = dying.lastNow
 	Match.Step(dying, before + 5)
@@ -192,11 +223,18 @@ test("an undefended run is lost after the breaches add up", function()
 	expectEq(state.phase, "Ended", "ended")
 	expectEq(state.result, "Lost", "lost")
 	expectEq(state.lives, 0, "lives 0")
-	expectEq(state.wavesCompleted, 2, "two waves cleared by breaching before the third finished the run")
 end)
 
-test("kill MP: Grunt 15, Runner 15, Brute 25, Boss 150", function()
-	for kind, expected in { Grunt = 15, Runner = 15, Brute = 25, Boss = 150 } do
+test("kill MP bands and kind multipliers", function()
+	local bands =
+		{ [1] = 10, [5] = 10, [6] = 20, [10] = 20, [11] = 30, [15] = 30, [16] = 40, [20] = 40, [21] = 50, [99] = 50 }
+	for w, band in bands do
+		expectEq(Formulas.KillMp("Grunt", w), band, "grunt w" .. w)
+		expectEq(Formulas.KillMp("Runner", w), band, "runner w" .. w)
+		expectEq(Formulas.KillMp("Brute", w), band * 5, "brute w" .. w)
+		expectEq(Formulas.KillMp("Boss", w), band * 10, "boss w" .. w)
+	end
+	for kind, expected in { Grunt = 10, Runner = 10, Brute = 50, Boss = 100 } do
 		local state = newState()
 		state.mp = 0
 		openWave(state)
@@ -296,45 +334,65 @@ test("a summoned die lands exactly one hit in its first tick", function()
 	expectEq(die.hits, 1, "one hit, no catch-up from cd = 0")
 end)
 
-test("stipend after each cleared wave; boss warning of at least 3 s; boss spawns first", function()
+test("endless run: boss warning of at least 3 s before waves 5 and 10; Brute and Boss queued last", function()
 	local state = newState()
 	for cell = 1, 15 do
 		place(state, cell, if cell % 2 == 0 then "C03" else "C05", 7)
 	end
 	state.mp = 0
-	local mpAfterWave1
-	local bossAtSeen, bossSeenAt
-	local bossFirst = nil
+	local warned = {} -- wave -> lead seconds
+	local lastWarn
+	local bossAtWave, bossSpawn = {}, {}
+	local queues = {}
 	local t = 0
-	for _ = 1, 30000 do
-		if state.phase ~= "Playing" then
+	for _ = 1, 40000 do
+		if state.phase ~= "Playing" or state.wave > 10 then
 			break
 		end
 		t += DT
 		Match.Step(state, t)
-		if state.bossAt ~= nil and bossAtSeen == nil then
-			bossAtSeen, bossSeenAt = state.bossAt, t
+		if state.waveState == "Prep" and state.bossAt ~= nil and lastWarn ~= state.bossAt then
+			lastWarn = state.bossAt
+			warned[state.wave + 1] = state.bossAt - t
 		end
-		local batch = Match.TakeOut(state)
-		if state.wave == 10 and bossFirst == nil and #batch.S > 0 then
-			bossFirst = batch.S[1].Kind
+		if state.waveState == "Active" and Formulas.IsBoss(state.wave) and bossAtWave[state.wave] == nil then
+			bossAtWave[state.wave] = state.bossAt
 		end
-		if state.wavesCompleted == 1 and mpAfterWave1 == nil then
-			mpAfterWave1 = state.mp
+		for _, enemy in state.enemies do
+			if enemy.kind == "Boss" and bossSpawn[state.wave] == nil then
+				bossSpawn[state.wave] = enemy.spawnAt
+			end
 		end
+		if state.waveState == "Active" and queues[state.wave] == nil then
+			queues[state.wave] = table.clone(state.queue)
+		end
+		Match.TakeOut(state)
 	end
-	expectEq(state.phase, "Ended", "ended")
-	expectEq(state.result, "Won", "scripted win")
-	expectEq(state.wavesCompleted, 10, "ten waves cleared")
-	expectEq(state.lives, 20, "no breaches")
-	expect(bossAtSeen ~= nil, "boss warning was set")
-	expect(bossAtSeen - bossSeenAt >= 3, "warning lead " .. tostring(bossAtSeen and bossAtSeen - bossSeenAt))
-	expectEq(state.bossAt, nil, "warning cleared when the wave started")
-	expectEq(bossFirst, "Boss", "boss spawns first in wave 10")
-	expect(
-		mpAfterWave1 ~= nil and mpAfterWave1 >= 30 + 8 * 15,
-		"wave 1: 8 kills x15 + stipend 30: " .. tostring(mpAfterWave1)
-	)
+	expectEq(state.phase, "Playing", "no win: the run goes on past wave 10")
+	expectEq(state.result, nil, "no result")
+	expect(state.wavesCompleted >= 10, "ten waves cleared")
+	expectEq(state.wave, 11, "wave 11 started")
+	expectEq(state.lives, 3, "no breaches")
+	expect(warned[5] ~= nil and warned[5] >= 3, "warning before wave 5: " .. tostring(warned[5]))
+	expect(warned[10] ~= nil and warned[10] >= 3, "warning before wave 10: " .. tostring(warned[10]))
+	expectEq(warned[6], nil, "no warning before wave 6")
+	for _, w in { 5, 10 } do
+		expect(
+			bossAtWave[w] ~= nil and bossSpawn[w] ~= nil and math.abs(bossAtWave[w] - bossSpawn[w]) <= DT,
+			"wave "
+				.. w
+				.. " bossAt is the Boss spawn time: "
+				.. tostring(bossAtWave[w])
+				.. " vs "
+				.. tostring(bossSpawn[w])
+		)
+	end
+	expectEq(queues[3][#queues[3]], "Brute", "wave 3 ends with the Brute")
+	expectEq(#queues[3], Formulas.WaveCount(3) + 1, "wave 3 queue")
+	expectEq(queues[5][#queues[5]], "Boss", "wave 5 ends with the Boss")
+	expectEq(#queues[5], Formulas.WaveCount(5) + 1, "wave 5: no Brute")
+	expectEq(queues[10][#queues[10]], "Boss", "wave 10 ends with the Boss")
+	expectEq(#queues[4], Formulas.WaveCount(4), "wave 4: plain")
 end)
 
 test("max 90 alive: spawns wait and are never dropped", function()
@@ -362,7 +420,8 @@ test("Finish ends once with a valid result; Ended match ignores intents", functi
 	expect(not Match.Finish(state, "Nope"), "invalid result")
 	expect(Match.Finish(state, "Aborted"), "abort")
 	expectEq(state.result, "Aborted", "result")
-	expect(not Match.Finish(state, "Won"), "only once")
+	expect(not Match.Finish(state, "Lost"), "only once")
+	expect(not Match.Finish(state, "Won"), "Won is no result")
 	expectEq(state.result, "Aborted", "result kept")
 	local ok, code = Match.TrySummon(state)
 	expect(not ok and code == "WrongPhase", "no summon after end")
@@ -394,7 +453,7 @@ test("summons and merges draw only from the passed deck, which Match copies", fu
 end)
 
 test("a Rare/Epic/Legendary deck summons, merges and deals damage", function()
-	local deck = { "R03", "E01", "L03", "R04", "E05" }
+	local deck = { "R03", "E01", "L06", "R04", "E05" }
 	local state = Match.New(1, Random.new(7), 0, deck)
 	openWave(state)
 	for _ = 1, Balance.BoardCells do
@@ -441,5 +500,23 @@ test("kills count only deaths by damage, never breaches", function()
 	expectEq(state.kills, 0, "starts at 0")
 	runFor(state, 2)
 	expectEq(state.kills, 1, "one kill, one breach")
-	expectEq(state.lives, 19, "the breach still cost a life")
+	expectEq(state.lives, 2, "the breach still cost a life")
+end)
+
+test("Chill slows without stacking, then restores speed and reports movement", function()
+	local state = newState()
+	openWave(state)
+	place(state, 1, "C06")
+	local enemy = addEnemy(state, "Grunt", 10000, 0)
+	runFor(state, 0.1)
+	expectNear(enemy.speed, 6 * 0.85, 1e-8, "slow applied")
+	local batch = Match.TakeOut(state)
+	expectNear(batch.H[1].Speed, enemy.speed, 1e-8, "slow speed sent")
+	runFor(state, 1)
+	expectNear(enemy.speed, 6 * 0.85, 1e-8, "refresh does not stack")
+	state.board[1] = nil
+	runFor(state, 1.6)
+	expectNear(enemy.speed, 6, 1e-8, "speed restored")
+	batch = Match.TakeOut(state)
+	expectNear(batch.H[1].Speed, 6, 1e-8, "restoration sent")
 end)

@@ -3,6 +3,7 @@
 --   Account: total account Xp
 --   Mastery: a die's mastery points; Milestones are the levels that pay a reward,
 --            Rewards[level] the Rules/Rewards bundle each pays once per die
+--   DieLevel: a die's level cap and the spare copies each level-up spends
 local Validate = require(script.Parent.Parent.Rules.Validate)
 
 export type Curve = { Max: number, Need: (number) -> number, Milestones: { number }?, Rewards: { [number]: any }? }
@@ -28,6 +29,13 @@ Progression.Mastery = table.freeze({
 		[15] = table.freeze({ Gems = 50 }),
 		[20] = table.freeze({ Gems = 100 }),
 	}),
+})
+
+-- Copies[l] = spare copies of the SAME die spent to go from level l to l + 1 (Max - 1
+-- entries, the same for every rarity).
+Progression.DieLevel = table.freeze({
+	Max = 7, -- *tune*
+	Copies = table.freeze({ 1, 1, 1, 2, 2, 3 }), -- *tune*
 })
 
 -- (level, into, need) for a running total on `curve`: level starts at 1; at Max

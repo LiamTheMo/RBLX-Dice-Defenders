@@ -52,7 +52,7 @@ Roll.Pools = freeze({
 			{ Rarity = "Secret", Bp = 0 },
 		},
 		Pity = { Rarity = "Legendary", Max = 80 },
-		Featured = { "L01", "L02", "L03" },
+		Featured = { "L01", "L02" },
 	}),
 })
 

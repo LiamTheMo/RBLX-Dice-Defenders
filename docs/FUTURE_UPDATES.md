@@ -183,3 +183,5 @@ Materials earned at boss milestones are escrowed, with run-end award and once-on
 - Whether PvP is best with player-sent mobs or mirrored survival-only tiebreaks; prototype both before locking ranked.
 - How competitive seasons reset rank without excessively punishing inactive skilled players.
 - Whether four-player raids can maintain low-end phone frame rate, or should use simplified VFX.
+- Whether persistent dice levels add +3% base damage per level (BALANCING proposal; today level has no combat effect, so levels cost copies and give nothing). Owner decision pending.
+- Stronger decks only reach about wave 25 with the current curve (boss HP linear in the wave); revisit when dice levels or abilities add power.

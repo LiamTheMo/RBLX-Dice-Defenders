@@ -20,6 +20,7 @@ local Quests = require(script.Parent.Parent.Rules.Quests)
 local Roll = require(script.Parent.Parent.Rules.Roll)
 local Shop = require(script.Parent.Parent.Rules.Shop)
 local Settings = require(script.Parent.Parent.Rules.Settings)
+local Upgrade = require(script.Parent.Parent.Rules.Upgrade)
 local PlayerPolicy = require(script.Parent.PlayerPolicy)
 local ProfileService = require(script.Parent.ProfileService)
 
@@ -30,6 +31,7 @@ local order: { Player } = {} -- loaded players, oldest first
 local match = nil -- nil = Lobby
 local rewardGold: number? = nil
 local rewardXp: number? = nil
+local rewardGems: number? = nil
 local catalog = Catalog.Build() -- the same display catalogue for every player
 local lastTick = 0
 local runRng = Random.new()
@@ -77,6 +79,8 @@ local function snapshot(player: Player)
 	out.Result = match.result
 	out.RewardGold = rewardGold
 	out.RewardXp = rewardXp
+	out.RewardGems = rewardGems
+	out.Tiers = Match.TiersView(match)
 	for i = 1, Balance.BoardCells do
 		local die = match.board[i]
 		if die then
@@ -191,34 +195,27 @@ local function flush(intent: boolean?)
 	end
 end
 
--- Pays the reward once per match end; Aborted and Error grant nothing.
+-- Pays the reward once per match end; an Aborted run pays like a Lost one, Error grants nothing.
 local function settle()
 	if match == nil or match.phase ~= "Ended" or match.rewardGranted then
 		return
 	end
 	match.rewardGranted = true
-	if (match.result ~= "Won" and match.result ~= "Lost") or owner == nil then
+	if (match.result ~= "Lost" and match.result ~= "Aborted") or owner == nil then
 		return
 	end
 	local profile = ProfileService.Get(owner)
 	if profile == nil then
 		return
 	end
-	local ok, bundle = Quests.SettleRun(
-		profile,
-		match.runId,
-		match.wavesCompleted,
-		match.result == "Won",
-		match.kills,
-		os.time(),
-		match.deck
-	)
+	local ok, bundle = Quests.SettleRun(profile, match.runId, match.wavesCompleted, match.kills, os.time(), match.deck)
 	if not ok then
 		warn("[MatchService] Reward refused: " .. tostring(bundle))
 		return
 	end
 	rewardGold = bundle.Gold or 0 -- a wave-0 loss pays nothing
 	rewardXp = bundle.Xp or 0
+	rewardGems = bundle.Gems or 0
 	ProfileService.MarkChanged(owner)
 	task.spawn(ProfileService.SaveNow, owner)
 end
@@ -226,9 +223,9 @@ end
 local function abortMatch()
 	if match then
 		Match.Finish(match, "Aborted")
-		match.rewardGranted = true -- no reward
+		settle() -- the owner's profile is still loaded: pay as a loss at this moment
 		match = nil
-		rewardGold, rewardXp = nil, nil
+		rewardGold, rewardXp, rewardGems = nil, nil, nil
 	end
 end
 
@@ -256,7 +253,7 @@ local function onLoaded(player: Player)
 	pushMeta(player)
 end
 
--- Before the release save: an owner leaving (or shutdown) aborts without reward.
+-- Before the release save: an owner leaving (or shutdown) aborts and settles like a loss.
 local function onRemoving(player: Player)
 	removeFromOrder(player)
 	if player == owner then
@@ -287,7 +284,7 @@ local function handleStart(player: Player): (boolean, string?)
 	if not Deck.Check(profile.Dice, profile.Deck) then
 		return false, "BadDeck" -- never swap in a different deck silently
 	end
-	rewardGold, rewardXp = nil, nil
+	rewardGold, rewardXp, rewardGems = nil, nil, nil
 	match = Match.New(newRunId(profile), Random.new(), workspace:GetServerTimeNow(), profile.Deck)
 	flush(true)
 	return true, nil
@@ -311,6 +308,15 @@ local function handleMerge(_, from: number, to: number): (boolean, string?)
 	return ok, code
 end
 
+local function handlePowerUp(_, typeId: string): (boolean, string?)
+	if match == nil then
+		return false, "WrongPhase"
+	end
+	local ok, code = Match.TryPowerUp(match, typeId)
+	flush(true)
+	return ok, code
+end
+
 local function handleEquipDeck(player: Player, ids: any): (boolean, string?)
 	if match and match.phase == "Playing" then
 		return false, "WrongPhase"
@@ -322,6 +328,21 @@ local function handleEquipDeck(player: Player, ids: any): (boolean, string?)
 	local ok, code = Deck.Equip(profile, ids)
 	if ok then
 		ProfileService.MarkChanged(player) -- Changed pushes Meta
+	end
+	return ok, code
+end
+
+local function handleUpgradeDie(player: Player, id: string): (boolean, string?)
+	if match and match.phase == "Playing" then
+		return false, "WrongPhase"
+	end
+	local profile = ProfileService.Get(player)
+	if profile == nil then
+		return false, "NotLoaded"
+	end
+	local ok, code = Upgrade.Die(profile, id)
+	if ok then
+		ProfileService.MarkChanged(player) -- Changed pushes State and Meta
 	end
 	return ok, code
 end
@@ -428,12 +449,14 @@ function MatchService.Init()
 	Net.Handle("Start", handleStart)
 	Net.Handle("Summon", handleSummon)
 	Net.Handle("Merge", handleMerge)
+	Net.Handle("PowerUp", handlePowerUp)
 	Net.Handle("EquipDeck", handleEquipDeck)
 	Net.Handle("ClaimQuest", handleClaimQuest)
 	Net.Handle("SaveSettings", handleSaveSettings)
 	Net.Handle("BagAction", handleBagAction)
 	Net.Handle("Roll", handleRoll)
 	Net.Handle("Buy", handleBuy)
+	Net.Handle("UpgradeDie", handleUpgradeDie)
 end
 
 function MatchService.Start()

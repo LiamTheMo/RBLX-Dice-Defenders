@@ -153,7 +153,7 @@ test("Daily, Milestones, Achievements, Mastery and Repeat equal config", functio
 	for i, m in c.Milestones do
 		local cfg = MilestoneConfig.List[i]
 		expect(m.Id == cfg.Id and m.Wave == cfg.Wave and m.Reachable == cfg.Reachable, "milestone " .. cfg.Id)
-		expectEq(m.Reachable, m.Wave <= Balance.Waves, cfg.Id .. " reachable")
+		expectEq(m.Reachable, true, cfg.Id .. " reachable")
 		expectEq(dump(m.Rewards), dump(Rewards.Lines(cfg.Reward)), cfg.Id .. " rewards")
 	end
 	expectEq(#c.Achievements, #AchievementConfig.List, "achievements")
@@ -177,10 +177,15 @@ test("Daily, Milestones, Achievements, Mastery and Repeat equal config", functio
 		expectEq(dump(m.Rewards), dump(Rewards.Lines(curve.Rewards[m.Lv])), "Lv" .. m.Lv .. " rewards")
 	end
 	local r = Balance.Reward
-	local perWave = { Gold = r.goldPerWave, Xp = r.xpPerWave, Materials = { Fragment = r.fragmentsPerWave } }
-	local win = { Gold = r.goldWin, Xp = r.xpWin, Materials = { Fragment = r.fragmentsWin } }
+	local perWave = {
+		Gold = r.goldPerWave,
+		Gems = Balance.WaveGems[1].wave,
+		Xp = r.xpPerWave,
+		Materials = { Fragment = r.fragmentsPerWave },
+	}
 	expectEq(dump(c.Repeat.PerWave), dump(Rewards.Lines(perWave)), "repeat per wave")
-	expectEq(dump(c.Repeat.Win), dump(Rewards.Lines(win)), "repeat win bonus")
+	expectEq(dump(c.Repeat.BossWave), dump(Rewards.Lines({ Gems = Balance.WaveGems[1].boss })), "repeat boss wave")
+	expectEq(c.Repeat.Win, nil, "no win bonus")
 end)
 
 test("every achievement Badge is a sprite the Quest Log already has", function()

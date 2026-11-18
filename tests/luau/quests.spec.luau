@@ -96,16 +96,16 @@ end)
 
 test("SettleRun pays once per runId and counts kills only when paid", function()
 	local p = fresh()
-	local ok, bundle = Quests.SettleRun(p, 7, 3, false, 40, N)
+	local ok, bundle = Quests.SettleRun(p, 7, 3, 40, N)
 	expect(ok and bundle.Gold == 15 and bundle.Xp == 30 and bundle.Materials.Fragment == 3, "paid 3 waves of a loss")
 	expectEq(p.Daily.Kills, 40, "kills added")
 	expectEq(p.Daily.Day, 20000, "day set")
 	expectEq(p.RunsPlayed, 1, "run counted")
 	local before = snap(p)
-	local ok2, code = Quests.SettleRun(p, 7, 3, false, 40, N)
+	local ok2, code = Quests.SettleRun(p, 7, 3, 40, N)
 	expect(not ok2 and code == "AlreadyGranted", "replay refused")
 	expectEq(snap(p), before, "replay changes nothing, kills not doubled")
-	expect(Quests.SettleRun(p, 8, 1, false, 10, N + 1), "second run")
+	expect(Quests.SettleRun(p, 8, 1, 10, N + 1), "second run")
 	expectEq(p.Daily.Kills, 50, "accumulates within a day")
 end)
 
@@ -113,21 +113,21 @@ test("SettleRun rejects bad kills and now without touching the profile", functio
 	local p = fresh()
 	local before = snap(p)
 	for _, kills in { -1, 1.5, 0 / 0, math.huge, 1e6 + 1, "5", {} } do
-		local ok, code = Quests.SettleRun(p, 1, 1, false, kills, N)
+		local ok, code = Quests.SettleRun(p, 1, 1, kills, N)
 		expect(not ok and code == "BadKills", "bad kills " .. tostring(kills))
 	end
 	for _, now in { -1, 0 / 0, math.huge, -math.huge, "x", {} } do
-		local ok, code = Quests.SettleRun(p, 1, 1, false, 5, now)
+		local ok, code = Quests.SettleRun(p, 1, 1, 5, now)
 		expect(not ok and code == "BadTime", "bad now " .. tostring(now))
 	end
 	expectEq(snap(p), before, "unchanged")
-	expect(Quests.SettleRun(p, 1, 1, false, 1e6, N), "max kills accepted")
+	expect(Quests.SettleRun(p, 1, 1, 1e6, N), "max kills accepted")
 	expectEq(p.Daily.Kills, 1e6, "stored")
 end)
 
 test("daily quest: rolls to day N+1; yesterday's unclaimed daily is not claimable", function()
 	local p = fresh()
-	Quests.SettleRun(p, 1, 1, false, 150, N)
+	Quests.SettleRun(p, 1, 1, 150, N)
 	expectEq(find(Quests.View(p, N), "D1").Progress, 150, "complete on day N")
 	expectEq(find(Quests.View(p, N + DAY), "D1").Progress, 0, "new day empty in view")
 	local before = snap(p)
@@ -135,13 +135,13 @@ test("daily quest: rolls to day N+1; yesterday's unclaimed daily is not claimabl
 	expect(not ok and code == "NotComplete", "yesterday's daily is gone")
 	expectEq(snap(p), before, "Claim and View never rolled the day")
 	expectEq(p.Daily.Day, 20000, "still day N")
-	Quests.SettleRun(p, 2, 1, false, 20, N + DAY)
+	Quests.SettleRun(p, 2, 1, 20, N + DAY)
 	expectEq(p.Daily.Day, 20001, "rolled by a run")
 	expectEq(p.Daily.Kills, 20, "fresh count")
 	expect(next(p.Daily.Claimed) == nil, "claims reset")
 
 	local q = fresh()
-	Quests.SettleRun(q, 1, 1, false, 150, N)
+	Quests.SettleRun(q, 1, 1, 150, N)
 	expect(Quests.Claim(q, "D1", N + 100), "claim today")
 	expectEq(q.Gold, 5 + 100, "run reward + quest gold")
 	local _, again = Quests.Claim(q, "D1", N + 200)
@@ -150,14 +150,14 @@ end)
 
 test("a clock going backwards never reopens a claimed day", function()
 	local p = fresh()
-	Quests.SettleRun(p, 1, 1, false, 150, N + DAY) -- day N+1
+	Quests.SettleRun(p, 1, 1, 150, N + DAY) -- day N+1
 	expect(Quests.Claim(p, "D1", N + DAY), "claimed on N+1")
 	local gold = p.Gold
 	local _, code = Quests.Claim(p, "D1", N) -- clock now says day N
 	expectEq(code, "AlreadyClaimed", "still claimed")
 	expectEq(find(Quests.View(p, N), "D1").Claimed, true, "view agrees")
 	expectEq(Quests.View(p, N).DailyResetAt, 20002 * DAY, "reset uses effective day")
-	Quests.SettleRun(p, 2, 1, false, 30, N) -- backwards clock must not roll back
+	Quests.SettleRun(p, 2, 1, 30, N) -- backwards clock must not roll back
 	expectEq(p.Daily.Day, 20001, "day did not go back")
 	expectEq(p.Daily.Kills, 180, "kills join the stored day")
 	local _, code2 = Quests.Claim(p, "D1", N)
@@ -166,62 +166,68 @@ test("a clock going backwards never reopens a claimed day", function()
 end)
 
 -- Moved from economy.spec with Economy.GrantRunReward.
-test("SettleRun pays Gold 5/wave +30, Xp 10/wave +40, Fragments 1/wave +5 on a win, once per run id", function()
+test("SettleRun pays Gold 5, Xp 10, Fragments 1 and Gems 1-3 a wave (no win bonus), once per run id", function()
 	local p = fresh()
-	local ok, bundle = Quests.SettleRun(p, 7, 4, false, 0, N)
+	local ok, bundle = Quests.SettleRun(p, 7, 4, 0, N)
 	expect(ok and bundle.Gold == 20 and bundle.Xp == 40 and bundle.Materials.Fragment == 4, "4-wave loss")
+	expectEq(bundle.Gems, 5, "gems for waves 1-4")
 	expect(p.Gold == 20 and p.Xp == 40 and p.Materials.Fragment == 4, "paid onto the profile")
-	expectEq(p.Gems, 50, "gems untouched")
+	expectEq(p.Gems, 55, "gems paid onto the profile")
 	expect(p.BestWave == 4 and p.RunsPlayed == 1 and p.TrialCleared == false, "stats")
 	expectEq(p.LastRewardRunId, 7, "run id recorded")
 
 	local before = snap(p)
-	local ok2, code2 = Quests.SettleRun(p, 7, 10, true, 5, N)
+	local ok2, code2 = Quests.SettleRun(p, 7, 10, 5, N)
 	expect(not ok2 and code2 == "AlreadyGranted", "same run id refused")
 	expectEq(snap(p), before, "replay changes nothing")
 
-	local ok3, win = Quests.SettleRun(p, 8, 10, true, 0, N)
-	expect(ok3 and win.Gold == 80 and win.Xp == 140 and win.Materials.Fragment == 15, "10-wave win")
-	expect(p.Gold == 100 and p.Xp == 180 and p.Materials.Fragment == 19, "sums")
+	local ok3, win = Quests.SettleRun(p, 8, 10, 0, N)
+	expect(ok3 and win.Gold == 50 and win.Xp == 100 and win.Materials.Fragment == 10, "10-wave trial clear")
+	expect(p.Gold == 70 and p.Xp == 140 and p.Materials.Fragment == 14, "sums")
 	expect(p.BestWave == 10 and p.TrialCleared == true, "best wave raised, cleared")
 
-	Quests.SettleRun(p, 9, 1, false, 0, N)
+	Quests.SettleRun(p, 9, 1, 0, N)
 	expect(p.BestWave == 10 and p.TrialCleared == true, "best wave never lowered, cleared never unset")
 end)
 
 test("a wave-0 loss pays nothing but still counts the run and its kills", function()
 	local p = fresh()
-	local ok, bundle = Quests.SettleRun(p, 3, 0, false, 12, N)
+	local ok, bundle = Quests.SettleRun(p, 3, 0, 12, N)
 	expect(ok and next(bundle) == nil, "empty bundle")
 	expect(p.Gold == 0 and p.Xp == 0 and p.Gems == 50 and next(p.Materials) == nil, "nothing paid")
 	expect(p.RunsPlayed == 1 and p.LastRewardRunId == 3 and p.Daily.Kills == 12, "run counted once")
-	local _, code = Quests.SettleRun(p, 3, 0, false, 12, N)
+	local _, code = Quests.SettleRun(p, 3, 0, 12, N)
 	expectEq(code, "AlreadyGranted", "still once per run id")
-	local _, zeroWin = Quests.SettleRun(p, 4, 0, true, 0, N)
-	expect(zeroWin.Gold == 30 and zeroWin.Xp == 40 and zeroWin.Materials.Fragment == 5, "a win pays its bonus")
+	expectEq(p.Stats.Wins, 0, "a zero-wave run is no win")
+end)
+
+test("a win is derived from the server's waves, not the caller", function()
+	local p = fresh()
+	Quests.SettleRun(p, 1, 9, 0, N)
+	expect(p.TrialCleared == false and p.Stats.Wins == 0, "9 waves is no clear")
+	Quests.SettleRun(p, 2, 10, 0, N)
+	expect(p.TrialCleared == true and p.Stats.Wins == 1, "10 waves clears the trial")
 end)
 
 test("SettleRun rejects bad run input and leaves the profile unchanged", function()
 	local p = fresh()
 	local before = snap(p)
 	local cases = {
-		{ nil, 1, false, "BadRun" },
-		{ 0, 1, false, "BadRun" },
-		{ 1.5, 1, false, "BadRun" },
-		{ NAN, 1, false, "BadRun" },
-		{ "1", 1, false, "BadRun" },
-		{ 2 ^ 31, 1, false, "BadRun" },
-		{ 1, -1, false, "BadWaves" },
-		{ 1, 1.5, false, "BadWaves" },
-		{ 1, NAN, false, "BadWaves" },
-		{ 1, INF, false, "BadWaves" },
-		{ 1, 1001, false, "BadWaves" },
-		{ 1, 1, "yes", "BadResult" },
-		{ 1, 1, nil, "BadResult" },
+		{ nil, 1, "BadRun" },
+		{ 0, 1, "BadRun" },
+		{ 1.5, 1, "BadRun" },
+		{ NAN, 1, "BadRun" },
+		{ "1", 1, "BadRun" },
+		{ 2 ^ 31, 1, "BadRun" },
+		{ 1, -1, "BadWaves" },
+		{ 1, 1.5, "BadWaves" },
+		{ 1, NAN, "BadWaves" },
+		{ 1, INF, "BadWaves" },
+		{ 1, 1001, "BadWaves" },
 	}
 	for index, args in cases do
-		local ok, code = Quests.SettleRun(p, args[1], args[2], args[3], 5, N)
-		expect(not ok and code == args[4], "case " .. index .. " -> " .. args[4] .. " (got " .. tostring(code) .. ")")
+		local ok, code = Quests.SettleRun(p, args[1], args[2], 5, N)
+		expect(not ok and code == args[3], "case " .. index .. " -> " .. args[3] .. " (got " .. tostring(code) .. ")")
 	end
 	expectEq(snap(p), before, "profile unchanged")
 end)
@@ -231,7 +237,7 @@ test("a full counter refuses the whole run: Overflow, nothing changes, run id no
 		local p = fresh()
 		p[field] = Economy.MAX
 		local before = snap(p)
-		local ok, code = Quests.SettleRun(p, 1, 5, true, 40, N)
+		local ok, code = Quests.SettleRun(p, 1, 5, 40, N)
 		expect(not ok and code == "Overflow", field .. " at MAX: Overflow")
 		expectEq(snap(p), before, field .. ": no partial payment, stats or kills")
 		expectEq(p.LastRewardRunId, 0, field .. ": run id not written")
@@ -239,7 +245,7 @@ test("a full counter refuses the whole run: Overflow, nothing changes, run id no
 	local q = fresh()
 	q.Materials.Fragment = Economy.MAX
 	local before = snap(q)
-	local _, code = Quests.SettleRun(q, 1, 5, true, 40, N)
+	local _, code = Quests.SettleRun(q, 1, 5, 40, N)
 	expectEq(code, "Overflow", "fragments at MAX")
 	expectEq(snap(q), before, "fragments: unchanged")
 end)
@@ -292,13 +298,13 @@ test("weekly quests: progress only from settled runs, claim once, roll at the ne
 	local p = fresh()
 	expectEq(find(Quests.View(p, MON), "W1").Progress, 0, "nothing yet")
 	for run = 1, 9 do
-		Quests.SettleRun(p, run, 1, false, 100, MON + run)
+		Quests.SettleRun(p, run, 1, 100, MON + run)
 	end
 	expectEq(find(Quests.View(p, MON + 50), "W1").Progress, 900, "W1 kills this week")
 	expectEq(find(Quests.View(p, MON + 50), "W2").Progress, 9, "W2 runs this week")
 	refuse(p, "W1", MON + 50, "NotComplete", "W1 at 900")
 	refuse(p, "W2", MON + 50, "NotComplete", "W2 at 9")
-	Quests.SettleRun(p, 10, 0, false, 100, MON + 10) -- a wave-0 loss still counts as a run
+	Quests.SettleRun(p, 10, 0, 100, MON + 10) -- a wave-0 loss still counts as a run
 	local gold, gems = p.Gold, p.Gems
 	expect(Quests.Claim(p, "W1", MON + 60), "W1 claimed")
 	expect(Quests.Claim(p, "W2", MON + 60), "W2 claimed")
@@ -314,9 +320,9 @@ test("weekly quests: progress only from settled runs, claim once, roll at the ne
 	expect(r.Progress == 0 and r.Claimed == false, "a new week starts empty in the view")
 	refuse(p, "W1", nextMon, "NotComplete", "not rolled by Claim")
 	expectEq(p.Weekly.Week, Quests.Week(MON), "View and Claim never roll")
-	Quests.SettleRun(p, 11, 1, false, 5, nextMon - 1) -- Sunday 23:59:59
+	Quests.SettleRun(p, 11, 1, 5, nextMon - 1) -- Sunday 23:59:59
 	expect(p.Weekly.Week == Quests.Week(MON) and p.Weekly.Kills == 1005, "Sunday joins the old week")
-	Quests.SettleRun(p, 12, 1, false, 7, nextMon)
+	Quests.SettleRun(p, 12, 1, 7, nextMon)
 	expect(p.Weekly.Week == Quests.Week(nextMon) and p.Weekly.Kills == 7 and p.Weekly.Runs == 1, "rolled")
 	expect(next(p.Weekly.Claimed) == nil, "claims reset")
 end)
@@ -329,7 +335,7 @@ test("weekly: a clock going backwards never reopens a claimed week", function()
 	refuse(p, "W1", MON - 30 * DAY, "AlreadyClaimed", "clock a month back")
 	expectEq(find(Quests.View(p, MON - 1), "W1").Claimed, true, "view agrees")
 	expectEq(Quests.View(p, MON - 1).WeeklyResetAt, MON + 7 * DAY, "reset uses the effective week")
-	Quests.SettleRun(p, 1, 1, false, 7, MON - 3 * DAY)
+	Quests.SettleRun(p, 1, 1, 7, MON - 3 * DAY)
 	expect(p.Weekly.Week == Quests.Week(MON) and p.Weekly.Kills == 1007, "the week did not go back")
 	local q = fresh()
 	q.Weekly = { Week = Quests.Week(MON) + 500, Kills = 5000, Runs = 50, Claimed = { W1 = true } }
@@ -338,35 +344,35 @@ end)
 
 test("SettleRun counts Stats.Kills and Stats.Wins once per run id", function()
 	local p = fresh()
-	Quests.SettleRun(p, 1, 10, true, 120, N)
-	Quests.SettleRun(p, 2, 3, false, 30, N)
+	Quests.SettleRun(p, 1, 10, 120, N)
+	Quests.SettleRun(p, 2, 3, 30, N)
 	expect(p.Stats.Kills == 150 and p.Stats.Wins == 1, "kills and wins")
 	local before = snap(p)
-	Quests.SettleRun(p, 2, 3, true, 30, N)
+	Quests.SettleRun(p, 2, 3, 30, N)
 	expectEq(snap(p), before, "a replay counts nothing")
 	local q = fresh()
 	q.Gold = Economy.MAX
 	local qBefore = snap(q)
-	Quests.SettleRun(q, 1, 10, true, 120, N, { "C01" })
+	Quests.SettleRun(q, 1, 10, 120, N, { "C01" })
 	expectEq(snap(q), qBefore, "a refused settle counts no stats, weekly or mastery")
 end)
 
 test("SettleRun adds Mastery Xp = waves to owned deck dice only, once per run id", function()
 	local p = fresh()
 	local deck = { "C01", "C02", "R01", "C01", "Z99" } -- R01 unowned, C01 twice, Z99 unknown
-	expect(Quests.SettleRun(p, 1, 6, false, 0, N, deck), "settled")
+	expect(Quests.SettleRun(p, 1, 6, 0, N, deck), "settled")
 	expectEq(p.Mastery.C01.Xp, 6, "owned deck die: once, even if listed twice")
 	expectEq(p.Mastery.C02.Xp, 6, "second deck die")
 	expect(p.Mastery.R01 == nil and p.Mastery.Z99 == nil, "unowned and unknown dice gain nothing")
 	expectEq(p.Mastery.C03, nil, "dice outside the deck gain nothing")
 	local before = snap(p)
-	local ok, code = Quests.SettleRun(p, 1, 6, false, 0, N, deck)
+	local ok, code = Quests.SettleRun(p, 1, 6, 0, N, deck)
 	expect(not ok and code == "AlreadyGranted", "replay refused")
 	expectEq(snap(p), before, "no Xp on a replay")
-	Quests.SettleRun(p, 2, 4, true, 0, N, deck)
+	Quests.SettleRun(p, 2, 4, 0, N, deck)
 	expectEq(p.Mastery.C01.Xp, 10, "accumulates")
 	expect(next(p.Mastery.C01.Claimed) == nil, "settle never claims")
-	Quests.SettleRun(p, 3, 0, false, 0, N, { "C03" })
+	Quests.SettleRun(p, 3, 0, 0, N, { "C03" })
 	expectEq(p.Mastery.C03, nil, "a wave-0 run adds nothing")
-	expect(Quests.SettleRun(fresh(), 1, 2, false, 0, N), "no deck is fine")
+	expect(Quests.SettleRun(fresh(), 1, 2, 0, N), "no deck is fine")
 end)

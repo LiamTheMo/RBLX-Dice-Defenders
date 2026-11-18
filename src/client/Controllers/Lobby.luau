@@ -9,6 +9,7 @@ local Players = game:GetService("Players")
 local NetClient = require(script.Parent.NetClient)
 local UiKit = require(script.Parent.UiKit)
 local LobbyHud = require(script.Parent.LobbyHud)
+local Chrome = require(script.Parent.Bag.Chrome)
 local Bag = require(script.Parent.Bag.Bag)
 local QuestLog = require(script.Parent.QuestLog.QuestLog)
 local Play = require(script.Parent.Play.Play)
@@ -45,7 +46,7 @@ local TOASTS = {
 	Throttled = "Slow down",
 	Network = "Connection problem",
 }
-local RESULT_TITLES = { Won = "Victory!", Lost = "Defeat", Aborted = "Run Ended", Error = "Something went wrong" }
+local RESULT_TITLES = { Lost = "Defeat", Aborted = "Run Ended", Error = "Something went wrong" }
 
 local Lobby = {}
 
@@ -87,11 +88,14 @@ local function toast(text: string)
 	toastToken += 1
 	local token = toastToken
 	ui.Toast.Text = text
-	-- A menu open: sit over the HUD currency block so the banner, X and tabs stay visible.
+	-- A menu open: sit over the coin row so the banner, X and tabs stay visible.
 	if anyMenuOpen() then
 		ui.ToastFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-		-- Clamped: on phones the HUD block is hidden and bottomTopReal is the screen height.
-		local y = math.min(ui.LobbyHud:GetBagInsets().bottomTopReal + 26, UiKit.screenSize(ui.Root).Y - 26)
+		-- Clamped: on phones the coin row is hidden and bottomTopReal is the screen height.
+		local row = ui.LobbyHud.Currencies
+		local y = if row.Visible
+			then row.AbsolutePosition.Y + row.AbsoluteSize.Y / 2
+			else math.min(ui.LobbyHud:GetBagInsets().bottomTopReal + 26, UiKit.screenSize(ui.Root).Y - 26)
 		ui.ToastFrame.Position = UDim2.new(0.5, 0, 0, y)
 	else
 		ui.ToastFrame.AnchorPoint = Vector2.new(0.5, 0)
@@ -239,7 +243,11 @@ local function renderResult(snap)
 	if show then
 		ui.ResultTitle.Text = RESULT_TITLES[snap.Result] or "Run Ended"
 		ui.ResultWave.Text = "Wave " .. tostring(snap.Wave or 0)
-		ui.ResultReward.Text = ("+%d Gold   +%d XP"):format(snap.RewardGold or 0, snap.RewardXp or 0)
+		ui.ResultReward.Text = ("+%d Gold   +%d XP   +%d Gems"):format(
+			snap.RewardGold or 0,
+			snap.RewardXp or 0,
+			snap.RewardGems or 0
+		)
 		ui.ResultReward.Visible = snap.RewardGold ~= nil
 	end
 end
@@ -348,14 +356,17 @@ local function build()
 	continue.Name = "Continue"
 
 	-- Top-centre: the bottom of the screen holds the HUD's deck bar.
-	ui.ToastFrame = skin(panel({
+	ui.ToastFrame = Chrome.panel(gui, {
+		Name = "ToastFrame",
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.new(0.5, 0, 0, 10),
-		Size = UDim2.new(0.5, 0, 0, 40),
+		Size = UDim2.new(0.5, 0, 0, 44),
 		Visible = false,
 		ZIndex = 60, -- above the bag banner (Z 30+)
-	}, gui))
-	make("UISizeConstraint", { MinSize = Vector2.new(220, 40), MaxSize = Vector2.new(460, 44) }, ui.ToastFrame)
+		Radius = 22,
+		Rim = 2,
+	})
+	make("UISizeConstraint", { MinSize = Vector2.new(220, 44), MaxSize = Vector2.new(460, 48) }, ui.ToastFrame)
 	ui.Toast = label({ Size = UDim2.fromScale(1, 1), ZIndex = 61 }, ui.ToastFrame, 22)
 	outline(ui.Toast)
 end

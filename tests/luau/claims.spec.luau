@@ -14,7 +14,6 @@ local Milestones = require(Server.Config.Milestones)
 local Achievements = require(Server.Config.Achievements)
 local Progression = require(Server.Config.Progression)
 local Dice = require(Server.Config.Dice)
-local Balance = require(Server.Config.Balance)
 
 local NAN, INF = 0 / 0, math.huge
 local DAY = 86400
@@ -104,7 +103,7 @@ test("id spaces are disjoint, fit the ClaimQuest remote and route to their own k
 		expectEq(seen[id], "Achievement", "achievement " .. id)
 	end
 	expectEq(seen["C01:5"], "Mastery", "mastery C01:5")
-	expectEq(n, 6 + 1 + 6 + 5 + 18 * 4, "every id counted once")
+	expectEq(n, 6 + 1 + 6 + 5 + 28 * 4, "every id counted once")
 end)
 
 test("quest ids claim through the router: paid once, then AlreadyClaimed", function()
@@ -296,7 +295,7 @@ test("View.Login: Streak, ClaimedToday, NextClaimAt and NextDay; View is pure", 
 	expect(v.ClaimedToday == true and v.NextDay == nil and v.NextClaimAt == (D + 51) * DAY, "far future: locked")
 end)
 
-test("milestones: P10 pays once after BestWave >= 10; P20 and up are never claimable", function()
+test("milestones: P10 pays once after BestWave >= 10; every milestone is claimable at its wave", function()
 	local p = fresh()
 	p.BestWave = 9
 	reject(p, "P10", N, "NotComplete", "wave 9")
@@ -304,16 +303,20 @@ test("milestones: P10 pays once after BestWave >= 10; P20 and up are never claim
 	local gems = p.Gems
 	expect(Claims.Claim(p, "P10", N), "P10 claimed")
 	expectEq(p.Gems, gems + 50, "50 Gems")
-	expectEq(p.Items.XpTome, 1, "1 XP Tome")
+	expectEq(p.Dice.R01 and p.Dice.R01.Level, 1, "the tutorial's Frost die unlocked")
 	expectEq(p.Milestones.P10, true, "flag written")
 	reject(p, "P10", N, "AlreadyClaimed", "P10 twice")
-	p.BestWave = 1000
 	for _, m in Milestones.List do
-		expectEq(m.Reachable, m.Wave <= Balance.Waves, m.Id .. " reachable iff wave <= " .. Balance.Waves)
-		if not m.Reachable then
-			reject(p, m.Id, N, "NotComplete", m.Id .. " unreachable")
-		end
+		local q = fresh()
+		q.BestWave = m.Wave - 1
+		reject(q, m.Id, N, "NotComplete", m.Id .. " below its wave")
+		q.BestWave = m.Wave
+		expect(Claims.Claim(q, m.Id, N), m.Id .. " claimable at its wave")
 	end
+	for _, m in Milestones.List do
+		expectEq(m.Reachable, true, m.Id .. " reachable: runs are endless")
+	end
+	p.BestWave = 10
 	local view = Claims.View(p, N).Milestones
 	expectEq(#view, #Milestones.List, "one row per milestone")
 	for i, m in Milestones.List do

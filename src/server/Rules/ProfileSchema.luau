@@ -1,4 +1,4 @@
--- Persisted player profile, v9 (docs/MVP.md "Profile"). Pure: no Instances.
+-- Persisted player profile, v10 (docs/MVP.md "Profile"). Pure: no Instances.
 -- Default() builds a new profile; Migrate() validates stored data. The store
 -- metadata (profileRevision, sessionLease) rides along but is not gameplay data.
 
@@ -17,7 +17,7 @@ local Validate = require(script.Parent.Validate)
 
 local ProfileSchema = {}
 
-ProfileSchema.VERSION = 9
+ProfileSchema.VERSION = 11
 
 local STARTER_GEMS = 50 -- new profiles and every v3 profile once (v3 -> v4)
 
@@ -117,6 +117,66 @@ function ProfileSchema.Default()
 	}
 end
 
+-- v10 -> v11: retired die -> same-rarity replacement.
+local RETIRED = { E02 = "E08", E04 = "E07", L03 = "L06" }
+
+local function clampInt(value: any, min: number, max: number, fallback: number): number
+	return if Validate.IsInt(value, min, max) then value else fallback
+end
+
+-- Moves the retired entries of data.Dice and data.Mastery onto their targets (data is a copy).
+local function convertRetired(data)
+	local dice, mastery = data.Dice, data.Mastery
+	for old, new in RETIRED do
+		if type(dice) == "table" and type(dice[old]) == "table" then
+			local from, to = dice[old], dice[new]
+			local copies = clampInt(from.Copies, 0, Validate.MAX_INT, 0)
+			if type(to) == "table" then
+				dice[new] = {
+					Level = math.max(
+						clampInt(from.Level, 1, Progression.DieLevel.Max, 1),
+						clampInt(to.Level, 1, Progression.DieLevel.Max, 1)
+					),
+					Copies = math.min(Validate.MAX_INT, copies + clampInt(to.Copies, 0, Validate.MAX_INT, 0) + 1),
+				}
+			else
+				dice[new] = { Level = from.Level, Copies = from.Copies }
+			end
+		end
+		if type(dice) == "table" then
+			dice[old] = nil
+		end
+		if type(mastery) == "table" and type(mastery[old]) == "table" then
+			local from, to = mastery[old], mastery[new]
+			if type(to) == "table" then
+				local claimed = if type(to.Claimed) == "table" then table.clone(to.Claimed) else {}
+				if type(from.Claimed) == "table" then
+					for level, flag in from.Claimed do
+						claimed[level] = flag
+					end
+				end
+				mastery[new] = {
+					Xp = math.min(
+						Validate.MAX_INT,
+						clampInt(from.Xp, 0, Validate.MAX_INT, 0) + clampInt(to.Xp, 0, Validate.MAX_INT, 0)
+					),
+					Claimed = claimed,
+				}
+			else
+				mastery[new] = from
+			end
+			mastery[old] = nil
+		end
+	end
+	if type(data.Deck) == "table" then
+		for slot, id in data.Deck do
+			if RETIRED[id] then
+				data.Deck[slot] = RETIRED[id]
+			end
+		end
+	end
+end
+
 -- Pure migrations: MIGRATIONS[n] upgrades a version-n profile (a copy) to n + 1.
 local MIGRATIONS: { [number]: (any) -> any } = {
 	-- v1 -> v2: the new fields start empty; sanitising below fills the defaults.
@@ -166,20 +226,40 @@ local MIGRATIONS: { [number]: (any) -> any } = {
 		data.Purchases, data.Receipts = nil, nil
 		return data
 	end,
+	-- v9 -> v10: the die level cap drops from 10 to Progression.DieLevel.Max. Levels above it clamp
+	-- to it, with no refund: no code path ever raised a level before v10 (levels 8-10 can only be
+	-- hand edits, never paid for). From v10 on, any future cap cut needs a refunding migration.
+	[9] = function(data)
+		local max = Progression.DieLevel.Max
+		if type(data.Dice) == "table" then
+			for id in Dice.Types do
+				local entry = data.Dice[id]
+				if type(entry) == "table" and Validate.IsInt(entry.Level, max + 1, 10) then
+					entry.Level = max
+				end
+			end
+		end
+		return data
+	end,
+	-- v10 -> v11: E02/E04/L03 are removed; owned copies, mastery and deck slots move to E08/E07/L06.
+	[10] = function(data)
+		convertRetired(data)
+		return data
+	end,
 }
 
 local function count(value: any): number
 	return if Validate.IsInt(value, 0, Validate.MAX_INT) then value else 0
 end
 
--- Owned dice: known catalog ids only, Level 1..10, Copies a count; starters always present.
+-- Owned dice: known catalog ids only, Level 1..DieLevel.Max (anything else resets to 1), Copies a count; starters always present.
 local function cleanDice(stored: any)
 	local owned = starterDice()
 	if type(stored) == "table" then
 		for id, entry in stored do
 			if type(id) == "string" and Dice.Types[id] ~= nil and type(entry) == "table" then
 				owned[id] = {
-					Level = if Validate.IsInt(entry.Level, 1, 10) then entry.Level else 1,
+					Level = if Validate.IsInt(entry.Level, 1, Progression.DieLevel.Max) then entry.Level else 1,
 					Copies = count(entry.Copies),
 				}
 			end
@@ -345,6 +425,11 @@ function ProfileSchema.Migrate(stored: any)
 			data.Version += 1
 		end
 	end
+	-- Idempotent: also repairs a current-version save that still holds a retired id (hand-edited or restored).
+	if data == stored then
+		data = deepCopy(stored)
+	end
+	convertRetired(data)
 
 	local dice = cleanDice(data.Dice)
 	local stats = if type(data.Stats) == "table" then data.Stats else {}

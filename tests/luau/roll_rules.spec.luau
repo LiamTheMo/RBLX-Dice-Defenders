@@ -71,12 +71,14 @@ test("Standard: 1 roll 100 Gems, 10 rolls 900; weights sum 10000, Mythic and Sec
 		expectEq(bp[rarity], want, rarity .. " weight")
 	end
 	expect(STANDARD.Pity.Rarity == "Legendary" and STANDARD.Pity.Max == 80, "pity: Legendary on the 80th roll")
-	expectEq(snap(STANDARD.Featured), snap({ "L01", "L02", "L03" }), "Featured = the three Legendaries")
+	expectEq(snap(STANDARD.Featured), snap({ "L01", "L02" }), "Featured = the two active Legendaries")
 	-- the pool's dice are exactly the Config/Dice entries of a weighted rarity, each listed under its own rarity
 	local n = 0
 	for id, t in Dice.Types do
-		n += 1
-		expect(table.find(STANDARD.ByRarity[t.rarity], id) ~= nil, id .. " drawable under " .. t.rarity)
+		if STANDARD.ByRarity[t.rarity] then
+			n += 1
+			expect(table.find(STANDARD.ByRarity[t.rarity], id) ~= nil, id .. " drawable under " .. t.rarity)
+		end
 	end
 	expectEq(#STANDARD.Dice, n, "every die once")
 	for i, d in STANDARD.Dice do
@@ -284,4 +286,21 @@ test("Shape: pool a string of 1..16 bytes, count an integer in 1..10", function(
 	do
 		expect(Roll.Shape(bad[1], bad[2]) == false, "malformed " .. i)
 	end
+end)
+
+test("active roster has the requested counts; every drawable die can roll; removed ids are unknown", function()
+	local counts = { Common = 0, Rare = 0, Epic = 0, Legendary = 0, Mythic = 0 }
+	for _, die in Dice.Types do
+		counts[die.rarity] += 1
+	end
+	for rarity, count in { Common = 7, Rare = 7, Epic = 8, Legendary = 5, Mythic = 1 } do
+		expectEq(counts[rarity], count, rarity .. " roster")
+	end
+	for _, id in { "E02", "E04", "L03" } do
+		expect(Dice.Types[id] == nil, id .. " removed from Config")
+		for _, die in STANDARD.Dice do
+			expect(die.Id ~= id, id .. " excluded from rolls")
+		end
+	end
+	expect(Dice.Types.E08 and Dice.Types.E07 and Dice.Types.L06, "conversion targets exist")
 end)

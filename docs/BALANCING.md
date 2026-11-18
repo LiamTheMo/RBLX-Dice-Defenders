@@ -44,22 +44,27 @@ killPressure = 1 + .30 * surplus          # 1.00–1.06
 Evaluate at **wave boundaries**, not for each hit; enemies spawned within a wave keep fixed HP. This responds to unusual extra kills without punishing efficient teams with uncontrolled runaway HP. Infinite pressure is predominantly wave-based. For a future kills-first variant, use a virtual wave derived from kills **instead** of stacking independent exponentials. Never count boss-generated farmable minions toward `K`.
 
 ### Boss events
-- Staged World 1: wave 10,20,30,...100; final boss must die for stage completion.
+- Implemented (MVP Trial, endless, no win): a boss every 5th wave (5, 10, 15, ...) with 8.5x a Grunt's HP, plus a big Brute mini-boss on waves 3, 8, 13, ... 33 then every even wave from 36; see MVP.md. Later staged-World targets: wave 10,20,30,...100; final boss must die for stage completion.
 - Infinite: wave 110,120,130... OR +400 eligible kills since the previous boss, whichever occurs first. **Exactly one** boss event if thresholds coincide, then reset the kill target. Transition after World 1 wave 100 does not double-spawn.
 - Every 5th non-boss wave can carry an Elite modifier. Telegraph bosses ≥3 seconds ahead.
-- 20 team lives proposed; ordinary breach -1, Elite -2, Boss -5; zero lives is failure.
+- Implemented: 3 lives; Grunt/Runner breach -1, Brute/Boss -2; zero lives ends the run. Proposed for the full game: 20 team lives; ordinary breach -1, Elite -2, Boss -5.
 
 ### Party scaling and fairness
-Two players default. Solo campaign clear with a Rare/Epic-accessible deck must remain viable. Team kill MP is credited to each teammate at `0.75+0.25/n` of normal kill value (rounded with fractional accumulators); wave stipend 30+5*floor(w/10), max 100 per person. Separate Solo/Duo/Trio/Squad leaderboards; launch only Solo/Duo ranked until 3–4-player tests pass. Evaluate threats against modeled actual total player DPS, not assumed identical players.
+Two players default. Solo campaign clear with a Rare/Epic-accessible deck must remain viable. Team kill MP is credited to each teammate at `0.75+0.25/n` of normal kill value (rounded with fractional accumulators); kill MP is paid by wave band (MVP.md), no wave stipend. Separate Solo/Duo/Trio/Squad leaderboards; launch only Solo/Duo ranked until 3–4-player tests pass. Evaluate threats against modeled actual total player DPS, not assumed identical players.
 
 ## 2. Dice damage, pips and merge
 ```text
-pipMultiplier(p) = p^.85                       # 1...7; 7 is ★
-persistentLevel(l) = 1+.03*(l-1)              # l=1...10
-matchUpgrade(t) = 1+.12*t                     # t=0...4
-hitDamage = max(1, floor(baseDamage*pipMultiplier*persistentLevel*matchUpgrade*buffFactor*resistanceFactor))
+attacksPerSecond = rate * PipRate[pip]        # PipRate = {1,2,3,4,5,6,7} (*tune*); each pip is its own shooter; 7 is ★
+tierMult(t) = 1 + DamagePerTier*(t-1)         # t=1...5 (in-match Power Up); DamagePerTier = 0.10 (*tune*)
+hitDamage = max(1, floor(baseDamage*perk*tierMult)) + flat proc   # no pip term; the per-die-level bonus is NOT implemented
 ```
-Merge **two dice of the same identity AND same pip (1–6)** to produce a single pip+1 dice at target, with its type re-rolled from five equipped deck dice; pips cap at 7★. Build-around effects can override explicitly but must obey transaction caps. At 7★ multiplier ≈5.23, not 7. Projectile count, DoT and slow utility count toward balance, not merely hitDamage. All status stacking is capped (slow 45%; vulnerability 25%; armor shred 30%) and dangerous feedback loops have an internal cooldown and max proc depth.
+Merge **two dice of the same identity AND same pip (1–6)** to produce a single pip+1 dice at target, with its type re-rolled from five equipped deck dice; pips cap at 7★. Build-around effects can override explicitly but must obey transaction caps. Pips raise the attack rate only (7★ fires 7x as often as 1 pip); damage per hit does not depend on the pip. `Balance.MaxAttacksPerTick` (8) bounds attacks per die per simulation step and stays above the fastest possible die (rate x 7 x (1 + AuraCap) x 0.25 s, spec-checked). Projectile count, DoT and slow utility count toward balance, not merely hitDamage. All status stacking is capped (slow 45%; vulnerability 25%; armor shred 30%) and dangerous feedback loops have an internal cooldown and max proc depth.
+
+**In-match Power Up (implemented, *tune*):** per die type of the match deck, tier 1-5; the server pays MP through `Rules/Economy` (`Match.TryPowerUp`, remote `PowerUp`). Buying tier t+1 costs `Balance.PowerUp.Costs[t]` = 100 / 200 / 400 / 700 MP (the one sourced Random Dice table; 225 / 450 / 900 / 1800 also met every target in the simulator at DamagePerTier 0.15). Each tier adds 10% of base hit damage to every die of that type, on the board now and summoned or merged in later. It lives only in the match state, resets each match, is never saved and never costs Gems or Robux.
+
+**Aura dice (implemented, *tune*):** one effect, `aura = {base, perPip, perTier}` in the die config: an attack-speed bonus to the four orthogonal neighbours (5x3 board, no row wrap) of `base + perPip*(pip-1) + perTier*(tier-1)`. Beacon 0.06 / 0.01 / 0.01, Light 0.08 / 0.015 / 0.015. A die's total received bonus is capped at `Balance.AuraCap` = 30%; the bonus is recomputed from the board every step (no accumulation, no procs).
+
+**Enemy HP retune with this model (*tune*):** the pip rate and Power Up raise late DPS, so `Balance.EnemyHp` growth is 7% to wave 10, 26% for waves 11-15, then 7% a wave (was 22% and 4%). Simulator (`tools/balance_sim.py`, bots power up when the board is full): starter deck full 15/15/15, eager clears wave 10 in 40/40 runs, single Common decks end at waves 15-18, Rares 18-21, new Epics 19-21, Legendary 25-28.
 
 ## 3. In-match MP (separate from persistent Gold and Gems)
 Starting MP: 100 (exactly four summons). Summon cost after `s` successful summons:
@@ -79,11 +84,11 @@ Base kill MP: Grunt 15, Runner 15, Brute 25, Swarm 5, Elite 40, Boss 150, adjust
 | MP | Kills during a match only | Summons and temporary match upgrades |
 
 **Proposed starter grant:** 500 Gold, 50 Gems, five Common dice, one tutorial chest.  
-**Stage reward seed:** 50+3×waves completed Gold; 40+4×waves completed XP, reduced on repeated clears. First-clear wave 20 guarantees a Rare selection; wave 60 an Epic selection; wave 100 a Legendary blueprint selection + 200 Gems + 800 Gold. Future worlds may unlock via first-clear achievements. Rewards must be idempotent: clear flags prevent reclaims.
+**Stage reward seed (proposal; the MVP run pays 5 Gold, 10 XP, 1 Fragment and 1-3 Gems (Random Dice co-op's card schedule) per wave cleared, no win bonus):** 50+3×waves completed Gold; 40+4×waves completed XP, reduced on repeated clears. First-clear wave 20 guarantees a Rare selection; wave 60 an Epic selection; wave 100 a Legendary blueprint selection + 200 Gems + 800 Gold. Future worlds may unlock via first-clear achievements. Rewards must be idempotent: clear flags prevent reclaims.
 
 **Craft seed:** Rare 80 Verdant Fragments + 300 Gold; Epic 250 fragments + 100 Dust + 1,200 Gold; Legendary 900 fragments + 500 Dust + 5,000 Gold + blueprint; Mythic 2,000 fragments + 1,500 Dust + mastery schematic + 12,000 Gold. Every rarity up to Mythic has an achievable non-Robux unlock route. Secret remains unobtainable at launch.
 
-**Persistent leveling:** levels 1–10. For advancing from level `l` to `l+1`, copies needed `max(1,floor(l/2))`, Gold `100*l^1.55*rarityCostFactor` (round to whole coin), where factor Common=1, Rare=1.6, Epic=2.8, Legendary=5, Mythic=8. Level bonuses must remain small to avoid account-power dominance in Ranked.
+**Persistent leveling:** levels 1–7 (`Progression.DieLevel.Max`, *tune*). Implemented: copies needed 1, 1, 1, 2, 2, 3 for 1→2 … 6→7 (total 10, every rarity, spare copies of the same die), no Gold. Proposal, not implemented: for advancing from level `l` to `l+1`, copies needed `max(1,floor(l/2))`, Gold `100*l^1.55*rarityCostFactor` (round to whole coin), where factor Common=1, Rare=1.6, Epic=2.8, Legendary=5, Mythic=8. Level bonuses must remain small to avoid account-power dominance in Ranked.
 
 ### Rotating store
 - Daily: 4 Gold offers + 2 Gem offers; weekly: 3 featured offers + 1 material bundle (proposed).

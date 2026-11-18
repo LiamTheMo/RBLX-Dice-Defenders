@@ -79,10 +79,42 @@ return {
 		Preview = Rect.new(0, 0, 319, 176),
 		CardC = Rect.new(0, 82, 242, 181),
 	},
-	PurpleBox = {
-		Image = "rbxassetid://105278600388247",
-		Size = Vector2.new(251, 247),
-		Ink = Rect.new(14, 12, 238, 236),
-		Slice = Rect.new(48, 45, 204, 203),
-	},
+	-- New-art sprites (Assets/UI/new/play menu/export/Play_<Name>.png, tools/slice_play.py). Whole assets, no slicing; Ink = the whole export.
+	-- Ids are "" until the uploader fills them (the PNG name is in each comment).
+	BannerDice = {
+		Image = "rbxassetid://118584282211931",
+		Size = Vector2.new(413, 173),
+		Ink = Rect.new(0, 0, 413, 173),
+	}, -- Play_BannerDice.png
+	BannerFrost = {
+		Image = "rbxassetid://105798212328219",
+		Size = Vector2.new(412, 173),
+		Ink = Rect.new(0, 0, 412, 173),
+	}, -- Play_BannerFrost.png
+	BannerMagma = {
+		Image = "rbxassetid://111828937545581",
+		Size = Vector2.new(412, 172),
+		Ink = Rect.new(0, 0, 412, 172),
+	}, -- Play_BannerMagma.png
+	BannerShadow = {
+		Image = "rbxassetid://78290290522605",
+		Size = Vector2.new(412, 173),
+		Ink = Rect.new(0, 0, 412, 173),
+	}, -- Play_BannerShadow.png
+	Start = { Image = "rbxassetid://137516428251478", Size = Vector2.new(458, 120), Ink = Rect.new(0, 0, 458, 120) }, -- Play_Start.png (green button, play arrow, no text)
+	Crown = { Image = "rbxassetid://136843704207563", Size = Vector2.new(125, 90), Ink = Rect.new(0, 0, 125, 90) }, -- Play_Crown.png
+	Trophy = { Image = "rbxassetid://113168285493063", Size = Vector2.new(109, 97), Ink = Rect.new(0, 0, 109, 97) }, -- Play_Trophy.png
+	RankBronze = {
+		Image = "rbxassetid://119454664970528",
+		Size = Vector2.new(163, 180),
+		Ink = Rect.new(0, 0, 163, 180),
+	}, -- Play_RankBronze.png
+	RankSilver = {
+		Image = "rbxassetid://126425480535598",
+		Size = Vector2.new(164, 180),
+		Ink = Rect.new(0, 0, 164, 180),
+	}, -- Play_RankSilver.png
+	RankGold = { Image = "rbxassetid://81609697914210", Size = Vector2.new(163, 180), Ink = Rect.new(0, 0, 163, 180) }, -- Play_RankGold.png
+	Crystals = { Image = "rbxassetid://131377800166120", Size = Vector2.new(126, 105), Ink = Rect.new(0, 0, 126, 105) }, -- Play_Crystals.png
+	CrownGems = { Image = "rbxassetid://90119331133176", Size = Vector2.new(141, 103), Ink = Rect.new(0, 0, 141, 103) }, -- Play_CrownGems.png
 }

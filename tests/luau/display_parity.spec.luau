@@ -6,9 +6,11 @@ local Dice = require(Server.Config.Dice)
 local Enemies = require(Server.Config.Enemies)
 local Board = require(Server.Rules.Board)
 local Formulas = require(Server.Rules.Formulas)
+local Catalog = require(Server.Rules.Catalog)
+local Progression = require(Server.Config.Progression)
 local Display = require(game:GetService("ReplicatedStorage").Shared.Display)
 
-local RARITIES = { Common = true, Rare = true, Epic = true, Legendary = true }
+local RARITIES = { Common = true, Rare = true, Epic = true, Legendary = true, Mythic = true }
 
 local function dps(cfg): number
 	return cfg.base * cfg.rate * (cfg.shots or 1) * (cfg.shotMul or 1)
@@ -18,7 +20,7 @@ end
 local function combatDps(id: string, pip: number, kind: string): number
 	local cfg = Dice.Types[id]
 	local proc = if cfg.procEvery then cfg.procFlat / cfg.procEvery else 0
-	return (Formulas.HitDamage(id, pip, kind) * (cfg.shots or 1) + proc) * cfg.rate
+	return (Formulas.HitDamage(id, kind) * (cfg.shots or 1) + proc) / Formulas.Period(id, pip)
 end
 
 test("config and Display.Dice hold the same ids with the same Name, Rarity and a distinct Color", function()
@@ -53,7 +55,7 @@ test("Locked dice are not playable and no id appears twice", function()
 		expect(not seen[die.Id], "unique " .. die.Id)
 		seen[die.Id] = true
 	end
-	expect(seen.M01 and Dice.Types.M01 == nil, "Mythic Astral stays locked")
+	expect(seen.M01 and Dice.Types.M01 ~= nil, "Mythic Astral has a definition")
 end)
 
 test("every config die has a launch rarity", function()
@@ -94,4 +96,11 @@ test("in combat no non-Common is weaker than any Common, at every pip and enemy 
 			end
 		end
 	end
+end)
+
+test("the client holds no die level cap of its own; the Catalog carries the server cap", function()
+	local source = __sources["StarterPlayer/StarterPlayerScripts/Client/Controllers/Bag/Tabs/Dice"]
+	expect(source ~= nil, "Tabs/Dice source readable")
+	expect(not string.find(source, "MaxLevel%s*=%s*%d"), "no hard-coded MaxLevel = <number>")
+	expectEq(Catalog.Build().DieLevel.Max, Progression.DieLevel.Max, "Catalog DieLevel.Max")
 end)

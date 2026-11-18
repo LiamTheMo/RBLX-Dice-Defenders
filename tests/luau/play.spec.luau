@@ -84,7 +84,7 @@ test("milestones: one row per Catalog milestone, states from Meta", function()
 	})
 	local rows = PlayLogic.milestones(CATALOG, m, {})
 	expectEq(#rows, #CATALOG.Milestones, "count")
-	local want = { "Claimable", "Soon", "Soon", "Soon", "Soon", "Soon" }
+	local want = { "Claimable", "Locked", "Locked", "Locked", "Locked", "Locked" } -- endless: every milestone is reachable
 	for i, row in rows do
 		expectEq(row.Id, CATALOG.Milestones[i].Id, "order " .. i)
 		expectEq(row.Wave, CATALOG.Milestones[i].Wave, "wave " .. i)
@@ -93,10 +93,10 @@ test("milestones: one row per Catalog milestone, states from Meta", function()
 		expectEq(#row.Full, #row.Lines, "full " .. row.Id)
 		expectEq(row.Busy, false, "busy " .. row.Id)
 	end
-	expectEq(rows[1].Icon, "Potion", "P10 icon: the item beats Gems")
+	expectEq(rows[1].Icon, "IconGalaxyDie", "P10 icon: the die beats Gems")
 	expectEq(rows[2].Icon, "IconGalaxyDie", "P20 icon: the die")
 	expectEq(rows[4].Icon, "Gem", "P40 icon: the HUD gem")
-	expectEq(table.concat(rows[1].Full, "|"), "+50 GEMS|+1 XP TOME", "P10 rewards")
+	expectEq(table.concat(rows[1].Full, "|"), "+50 GEMS|+1 FROST DIE", "P10 rewards: the tutorial's gems and Rare die")
 	expectEq(table.concat(rows[2].Lines, "|"), "+100 GOLD|+1 FROST", "P20 beside the icon")
 	expectEq(table.concat(rows[2].Full, "|"), "+100 GOLD|+1 FROST DIE", "P20 phones")
 
@@ -106,7 +106,11 @@ test("milestones: one row per Catalog milestone, states from Meta", function()
 		"claimed"
 	)
 	expectEq(PlayLogic.milestones(CATALOG, nil)[1].State, "Locked", "no Meta: reachable is Locked")
-	expectEq(PlayLogic.milestones(CATALOG, nil)[2].State, "Soon", "no Meta: unreachable is Soon")
+	local unreachable = table.clone(CATALOG)
+	unreachable.Milestones = table.clone(CATALOG.Milestones)
+	unreachable.Milestones[2] = table.clone(CATALOG.Milestones[2])
+	unreachable.Milestones[2].Reachable = false
+	expectEq(PlayLogic.milestones(unreachable, nil)[2].State, "Soon", "no Meta: an unreachable milestone is Soon")
 	expectEq(PlayLogic.milestones(CATALOG, m, { P10 = true })[1].Busy, true, "busy")
 	local claimable = PlayLogic.milestones(CATALOG, meta({ { Id = "P20", Claimable = true } }))[2]
 	expectEq(table.concat(claimable.Lines, "|"), "+100 GOLD|+1 FROST DIE", "CLAIM replaces the icon: full texts")
@@ -126,7 +130,7 @@ test("milestones: nil or malformed Catalog / Meta never errors", function()
 			{ Wave = 5 },
 			{ Id = "P10", Wave = 10, Reachable = true, Rewards = { 1, { Kind = "Gold", Amount = 5 } } },
 		},
-		Repeat = { PerWave = "x", Win = { 2, { Kind = "Xp", Amount = 1 } } },
+		Repeat = { PerWave = { 2, { Kind = "Xp", Amount = 1 }, { Kind = "Gold", Amount = 3 } } },
 	}
 	local good = PlayLogic.milestones(bad, nil)
 	expectEq(#good, 1, "malformed Catalog rows skipped")
@@ -152,8 +156,8 @@ test("repeatLines: the real per-run payout, no drop odds", function()
 	end
 	expectEq(
 		table.concat(text, "|"),
-		"PER WAVE:|+5 GOLD +10 XP|+1 FRAGMENT|WIN: +30 GOLD +40 XP|+5 FRAGMENTS",
-		"payout from Balance.Reward"
+		"PER WAVE:|+5 GOLD +1 GEM +10 XP|+1 FRAGMENT|BOSS WAVE: +3 GEMS",
+		"payout from Balance.Reward and WaveGems"
 	)
 	for _, t in text do
 		expectEq(t:find("%", 1, true), nil, "no odds in " .. t)
@@ -172,4 +176,13 @@ test("worldClear", function()
 	expectEq(PlayLogic.worldClear({ TrialCleared = true }), true, "true")
 	expectEq(PlayLogic.worldClear({}), false, "unset")
 	expectEq(PlayLogic.worldClear(nil), false, "nil")
+end)
+
+test("repeatTiles: the kinds Catalog.Repeat pays per wave, and the boss line", function()
+	local tiles, boss = PlayLogic.repeatTiles(CATALOG)
+	expectEq(#tiles, 4, "gold, gems, xp, materials")
+	expectEq(tiles[1].Label, "GOLD", "first")
+	expectEq(tiles[1].Text, "+" .. tostring(CATALOG.Repeat.PerWave[1].Amount), "amount")
+	expectEq(boss ~= nil and string.sub(boss, 1, 11), "BOSS WAVE: ", "boss line")
+	expectEq(#PlayLogic.repeatTiles(nil), 0, "no Catalog")
 end)

@@ -1,4 +1,4 @@
--- Codes popup controller: one free Shell (CODES banner, close) hosting the Codes View, wired to RedeemCode.
+-- Codes controller: one free Shell (the shared window, CODES title, close) hosting the Codes View, wired to RedeemCode.
 -- Codes.new(parent, { hud = LobbyHud, toast = (string) -> () }) -> :Open() :Close() :Toggle() :IsOpen() :Destroy()
 -- Owns the field's sanitising, the button state machine, result messages and the phone keyboard lift. The client holds no
 -- codes or rewards: the server checks everything, and the Gold reward arrives through the usual Meta push.
@@ -13,14 +13,12 @@ local CodesLogic = require(script.Parent.CodesLogic)
 local NetClient = require(script.Parent.Parent.NetClient)
 local SettingsLogic = require(script.Parent.Parent.Settings.SettingsLogic)
 local Shell = require(script.Parent.Parent.Bag.Shell)
-local Sprites = require(script.Parent.Parent.Sprites)
 local UiKit = require(script.Parent.Parent.UiKit)
 local View = require(script.Parent.View)
 
 local ACTION = "CodesClose"
 local HINT = "Letters, numbers, - and _ only"
 local EMPTY = "Enter a code first!"
-local CODES_ICON = { Image = Sprites.Icon.Codes, Size = Vector2.new(256, 217), Ink = Rect.new(4, 5, 251, 213) }
 local FIELD_TONE = { Success = "Success", Error = "Error" } -- anything else = "Default"
 
 local Codes = {}
@@ -35,11 +33,7 @@ function Codes.new(parent, deps)
 		end,
 		name = "Codes",
 		free = true,
-		size = Vector2.new(623, 532),
-		banner = {
-			text = "CODES",
-			emblems = { { sprite = CODES_ICON, box = { 0, 0, 0.25, 1.006 }, side = true } },
-		},
+		banner = { text = "CODES" },
 	})
 	local view = View.new(shell.Slots.Content)
 	local box, root, scaled = view.Box, shell.Bag, shell.Scaled
@@ -123,12 +117,14 @@ function Codes.new(parent, deps)
 			refresh()
 		end)
 	end
-	table.insert(
-		conns,
-		view.Button.Activated:Connect(function()
-			submit()
-		end)
-	)
+	for _, b in { view.Button, view.Hit } do -- the art and its >= 44 real px hit box
+		table.insert(
+			conns,
+			b.Activated:Connect(function()
+				submit()
+			end)
+		)
+	end
 
 	-- Sanitise every change (typing and paste; a full field refuses inserts). Writing the kept text back re-fires this,
 	-- which then finds nothing to do.
