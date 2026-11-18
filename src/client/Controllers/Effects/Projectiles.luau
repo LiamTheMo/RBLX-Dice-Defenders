@@ -6,6 +6,7 @@ local DOT_COLOR = Color3.fromRGB(190, 190, 190)
 local FLASH_COLOR = Color3.fromRGB(222, 222, 222)
 local RING_ROTATION = CFrame.Angles(0, math.pi / 2, 0)
 local FADE_SECONDS = 0.30
+local TWINSHOT_GLINT_SECONDS = 0.04
 local SILVER = Color3.fromRGB(217, 217, 230)
 local IVORY = Color3.fromRGB(255, 248, 232)
 local styles = {
@@ -27,6 +28,7 @@ local styles = {
 		size = 0.20,
 		pool = {},
 		streak = IVORY,
+		shortStreak = true,
 	},
 }
 
@@ -82,18 +84,30 @@ local function borrow(style)
 		* SIZE_SCALE
 	if style.streak then
 		local top, bottom = Instance.new("Attachment"), Instance.new("Attachment")
-		local halfWidth = Vector3.yAxis * (0.057 * SIZE_SCALE)
+		local halfWidth = Vector3.yAxis * SIZE_SCALE * (if style.shortStreak then 0.035 else 0.057)
 		top.Position, bottom.Position = halfWidth, -halfWidth
 		top.Parent, bottom.Parent = dot, dot
 		local trail = Instance.new("Trail")
 		trail.Attachment0, trail.Attachment1 = top, bottom
 		trail.FaceCamera = true
-		trail.Lifetime = 0.075
-		trail.MaxLength = 1.5 * SIZE_SCALE
-		trail.LightEmission = 0.25
+		trail.Lifetime = if style.shortStreak then 0.045 else 0.075
+		trail.MaxLength = (if style.shortStreak then 0.72 else 1.5) * SIZE_SCALE
+		trail.LightEmission = if style.shortStreak then 0.10 else 0.25
 		trail.Color = ColorSequence.new(style.streak)
-		trail.Transparency = NumberSequence.new(0.38, 1)
-		trail.WidthScale = NumberSequence.new(1, 0)
+		trail.Transparency = if style.shortStreak
+			then NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 0.52),
+				NumberSequenceKeypoint.new(0.5, 1),
+				NumberSequenceKeypoint.new(1, 1),
+			})
+			else NumberSequence.new(0.38, 1)
+		trail.WidthScale = if style.shortStreak
+			then NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 1),
+				NumberSequenceKeypoint.new(0.5, 0),
+				NumberSequenceKeypoint.new(1, 0),
+			})
+			else NumberSequence.new(1, 0)
 		trail.Enabled = false
 		trail.Parent = dot
 		shot.trail = trail
@@ -130,7 +144,7 @@ function Projectiles.Fire(
 	shot.from += lane
 	shot.hitOffset = if attack.SharedTarget then lane else Vector3.zero
 	shot.twinshot = attack.Type == "C04"
-	shot.dot.Transparency = 0
+	shot.dot.Transparency = if shot.twinshot then 0.12 else 0
 	if attack.Type == "C02" then
 		shot.effect.Color = if attack.Boosted and not reducedMotion then Color3.new(1, 1, 1) else SILVER
 	end
@@ -191,7 +205,9 @@ local function advance(shot, dt: number, cameraPosition: Vector3)
 		shot.impact = surface
 		if shot.trail then
 			stopTrail(shot)
-			shot.dot.Parent = nil
+			if not shot.twinshot then
+				shot.dot.Parent = nil
+			end
 		end
 	end
 
@@ -203,8 +219,14 @@ local function advance(shot, dt: number, cameraPosition: Vector3)
 	local facing = CFrame.lookAt(shot.impact, cameraPosition)
 	if shot.trail then
 		local t = 1 - age / FADE_SECONDS
-		shot.effect.Transparency = 1 - shot.strength * t * (0.5 + 0.5 * t)
+		shot.effect.Transparency = 1 - shot.strength * t * (if shot.twinshot then 1 else 0.5 + 0.5 * t)
 		if shot.twinshot then
+			if not shot.reducedMotion and age < TWINSHOT_GLINT_SECONDS then
+				shot.dot.Position = shot.impact
+				shot.dot.Transparency = 0.12 + 0.88 * age / TWINSHOT_GLINT_SECONDS
+			else
+				shot.dot.Parent = nil
+			end
 			local direction = facing:VectorToObjectSpace(shot.impact - shot.from)
 			facing *= CFrame.Angles(0, 0, math.atan2(direction.Y, direction.X))
 		end
