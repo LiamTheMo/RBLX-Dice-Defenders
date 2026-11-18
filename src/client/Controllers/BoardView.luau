@@ -1,5 +1,6 @@
 -- Client-only world (ground, path, cell pads) and the dice on the board, plus tap
--- to merge. Pure presentation: the server validates every Merge.
+-- to merge. Pure presentation: the server validates every Merge. The arena is only
+-- in the workspace while a run is playing; between runs players walk the lobby map.
 
 local GuiService = game:GetService("GuiService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -25,6 +26,7 @@ local playing = false
 local selected: number? = nil
 local boardKey = ""
 local padsFolder: Folder, diceFolder: Folder
+local root: Folder, arena: Folder
 local rayParams = RaycastParams.new()
 
 local function part(parent: Instance, name: string, size: Vector3, cframe: CFrame, color: Color3): Part
@@ -53,13 +55,21 @@ local function world(): Folder
 end
 
 local function buildWorld()
-	local root = world()
+	root = world()
+	arena = Instance.new("Folder") -- parented by render() only while playing
+	arena.Name = "Arena"
 	local center = Layout.Camera.LookAt
-	part(root, "Ground", Vector3.new(170, 1, 120), CFrame.new(center.X, -0.5, 0), Color3.fromRGB(88, 122, 78))
+	part(
+		arena,
+		"Ground",
+		Vector3.new(170, 1, 120),
+		CFrame.new(center.X, -0.5, Layout.ORIGIN.Z),
+		Color3.fromRGB(88, 122, 78)
+	)
 
 	local strips = Instance.new("Folder")
 	strips.Name = "Path"
-	strips.Parent = root
+	strips.Parent = arena
 	local points = Layout.Waypoints
 	for i = 1, #points - 1 do
 		local a, b = points[i], points[i + 1]
@@ -89,10 +99,10 @@ local function buildWorld()
 
 	padsFolder = Instance.new("Folder")
 	padsFolder.Name = "Pads"
-	padsFolder.Parent = root
+	padsFolder.Parent = arena
 	diceFolder = Instance.new("Folder")
 	diceFolder.Name = "Dice"
-	diceFolder.Parent = root
+	diceFolder.Parent = arena
 	for i = 1, CELLS do
 		local c = Layout.CellPosition(i)
 		local pad = part(padsFolder, "Pad" .. i, Vector3.new(5.4, 0.4, 5.4), CFrame.new(c.X, 0.2, c.Z), PAD_COLOR)
@@ -224,6 +234,7 @@ end
 
 local function render(snapshot)
 	playing = snapshot.Phase == "Playing"
+	arena.Parent = if playing then root else nil
 	board = snapshot.Board or {}
 	local parts = {}
 	for i = 1, CELLS do

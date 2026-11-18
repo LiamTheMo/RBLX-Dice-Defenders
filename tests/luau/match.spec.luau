@@ -144,8 +144,12 @@ test("layout: path length, clamped PositionAt, constant Y, camera, cell grid", f
 	expectEq(Balance.BoardCells, Layout.COLS * Layout.ROWS, "board size matches layout")
 	expect(Layout.CellPosition(1).X < Layout.CellPosition(5).X, "row-major columns")
 	expect(Layout.CellPosition(1).Z < Layout.CellPosition(11).Z, "row-major rows")
-	expectEq(Layout.CellPosition(8).X, 0, "centre cell on the origin")
-	expectEq(Layout.CellPosition(8).Z, 0, "centre cell on the origin")
+	expectEq(Layout.CellPosition(8).X, Layout.ORIGIN.X, "centre cell on the arena origin")
+	expectEq(Layout.CellPosition(8).Z, Layout.ORIGIN.Z, "centre cell on the arena origin")
+	-- The lobby map sits around the world origin (about 100 x 70 studs): the arena must stay well clear of it.
+	for _, p in Layout.Waypoints do
+		expect(math.abs(p.X) + math.abs(p.Z) >= 500, "arena clear of the lobby map")
+	end
 end)
 
 test("display data covers every die and enemy; pip 7 shows as 7 star", function()
@@ -502,6 +506,7 @@ test("kills count only deaths by damage, never breaches", function()
 	expectEq(state.kills, 1, "one kill, one breach")
 	expectEq(state.lives, 2, "the breach still cost a life")
 end)
+
 
 test("Chill slows without stacking, then restores speed and reports movement", function()
 	local state = newState()
