@@ -52,47 +52,56 @@ local function refused(p, poolId, count, allowed, code, label)
 	expectEq(snap(p), before, label .. " leaves the profile deep-equal")
 end
 
-test("Standard: 1 roll 100 Gems, 10 rolls 900; weights sum 10000, Mythic and Secret 0; pity 80; Featured", function()
-	expectEq(#RollConfig.Pools, 1, "one pool")
-	expect(STANDARD ~= nil and RollConfig.Pools[1] == STANDARD and STANDARD.Id == "Standard", "Standard by id")
-	local prices = {}
-	for _, p in STANDARD.Prices do
-		prices[p.Count] = p.Gems
-	end
-	expect(prices[1] == 100 and prices[10] == 900 and #STANDARD.Prices == 2, "prices")
-	local sum, bp = 0, {}
-	for _, o in STANDARD.Odds do
-		sum += o.Bp
-		bp[o.Rarity] = o.Bp
-	end
-	expectEq(sum, 10000, "weights sum")
-	expectEq(Roll.TOTAL_BP, 10000, "TOTAL_BP")
-	for rarity, want in { Common = 4000, Rare = 4500, Epic = 1400, Legendary = 100, Mythic = 0, Secret = 0 } do
-		expectEq(bp[rarity], want, rarity .. " weight")
-	end
-	expect(STANDARD.Pity.Rarity == "Legendary" and STANDARD.Pity.Max == 80, "pity: Legendary on the 80th roll")
-	expectEq(snap(STANDARD.Featured), snap({ "L01", "L02" }), "Featured = the two active Legendaries")
-	-- the pool's dice are exactly the Config/Dice entries of a weighted rarity, each listed under its own rarity
-	local n = 0
-	for id, t in Dice.Types do
-		if STANDARD.ByRarity[t.rarity] then
-			n += 1
-			expect(table.find(STANDARD.ByRarity[t.rarity], id) ~= nil, id .. " drawable under " .. t.rarity)
+test(
+	"Standard: 1 roll 100 Gems, 10 rolls 900; weights sum 10000, Mythic and Secret have positive odds; pity 80; Featured",
+	function()
+		expectEq(#RollConfig.Pools, 1, "one pool")
+		expect(STANDARD ~= nil and RollConfig.Pools[1] == STANDARD and STANDARD.Id == "Standard", "Standard by id")
+		local prices = {}
+		for _, p in STANDARD.Prices do
+			prices[p.Count] = p.Gems
 		end
+		expect(prices[1] == 100 and prices[10] == 900 and #STANDARD.Prices == 2, "prices")
+		local sum, bp = 0, {}
+		for _, o in STANDARD.Odds do
+			sum += o.Bp
+			bp[o.Rarity] = o.Bp
+		end
+		expectEq(sum, 10000, "weights sum")
+		expectEq(Roll.TOTAL_BP, 10000, "TOTAL_BP")
+		for rarity, want in { Common = 3989, Rare = 4500, Epic = 1400, Legendary = 100, Mythic = 10, Secret = 1 } do
+			expectEq(bp[rarity], want, rarity .. " weight")
+		end
+		expect(STANDARD.Pity.Rarity == "Legendary" and STANDARD.Pity.Max == 80, "pity: Legendary on the 80th roll")
+		expectEq(snap(STANDARD.Featured), snap({ "L01", "M01", "L02" }), "Astral is the center feature")
+		-- the pool's dice are exactly the Config/Dice entries of a weighted rarity, each listed under its own rarity
+		local n = 0
+		for id, t in Dice.Types do
+			if STANDARD.ByRarity[t.rarity] then
+				n += 1
+				expect(table.find(STANDARD.ByRarity[t.rarity], id) ~= nil, id .. " drawable under " .. t.rarity)
+			end
+		end
+		expectEq(#STANDARD.Dice, n, "every die once")
+		for i, d in STANDARD.Dice do
+			expectEq(d.Rarity, Dice.Types[d.Id].rarity, d.Id .. " rarity")
+			expect(i == 1 or STANDARD.Dice[i - 1].Id < d.Id, "sorted by Id")
+		end
+		expect(
+			STANDARD.ByRarity.Mythic[1] == "M01" and STANDARD.ByRarity.Secret[1] == "S01",
+			"Astral and Dragon are drawable"
+		)
+		for _, id in STANDARD.Featured do
+			expect(
+				Dice.Types[id] ~= nil and table.find(STANDARD.ByRarity[Dice.Types[id].rarity], id) ~= nil,
+				id .. " is grantable"
+			)
+		end
+		expect(table.isfrozen(STANDARD) and table.isfrozen(STANDARD.Odds), "frozen")
 	end
-	expectEq(#STANDARD.Dice, n, "every die once")
-	for i, d in STANDARD.Dice do
-		expectEq(d.Rarity, Dice.Types[d.Id].rarity, d.Id .. " rarity")
-		expect(i == 1 or STANDARD.Dice[i - 1].Id < d.Id, "sorted by Id")
-	end
-	expect(STANDARD.ByRarity.Mythic == nil and STANDARD.ByRarity.Secret == nil, "nothing drawable at 0")
-	for _, id in STANDARD.Featured do
-		expect(Dice.Types[id] ~= nil and Dice.Types[id].rarity == "Legendary", id .. " is a grantable Legendary")
-	end
-	expect(table.isfrozen(STANDARD) and table.isfrozen(STANDARD.Odds), "frozen")
-end)
+)
 
-test("a seeded 100,000-draw run lands within 1 point of 40/45/14/1; never Mythic, Secret or an unknown id", function()
+test("a seeded 100,000-draw run follows the base distribution and awards valid dice", function()
 	local rng, n = Random.new(20261115), 100000
 	local byRarity, byId, bad = {}, {}, 0
 	for _ = 1, n do
@@ -107,14 +116,15 @@ test("a seeded 100,000-draw run lands within 1 point of 40/45/14/1; never Mythic
 	end
 	expectEq(bad, 0, "known ids of their own rarity")
 	local shown = {}
-	for rarity, want in { Common = 40, Rare = 45, Epic = 14, Legendary = 1 } do
+	for rarity, want in { Common = 39.89, Rare = 45, Epic = 14, Legendary = 1 } do
 		local pct = 100 * (byRarity[rarity] or 0) / n
 		table.insert(shown, ("%s %.2f%%"):format(rarity, pct))
 		expectNear(pct, want, 1, rarity .. " share")
 	end
 	table.sort(shown)
 	print("    base distribution (100,000 draws): " .. table.concat(shown, ", "))
-	expect(byRarity.Mythic == nil and byRarity.Secret == nil, "never Mythic or Secret")
+	expectNear(100 * (byRarity.Mythic or 0) / n, 0.1, 0.06, "Mythic share")
+	expectNear(100 * (byRarity.Secret or 0) / n, 0.01, 0.009, "Secret share")
 	for rarity, list in STANDARD.ByRarity do -- uniform within a rarity
 		local each = (byRarity[rarity] or 0) / #list
 		for _, id in list do
@@ -158,16 +168,27 @@ test("pity: with no Legendary in 79 rolls the 80th is Legendary; any Legendary r
 	expect(forced[1].Rarity == "Legendary" and after == 0, "stored 79: the next roll is the guarantee")
 	local _, p81 = Roll.Draw(0, STANDARD, 81, fixed(1))
 	expectEq(p81, 1, "the counter climbs again after the guarantee")
-	local natural, reset = Roll.Draw(40, STANDARD, 1, fixed(9950)) -- 9901..10000 is the Legendary band
+	local natural, reset = Roll.Draw(40, STANDARD, 1, fixed(9950)) -- 9890..9989 is the Legendary band
 	expect(natural[1].Rarity == "Legendary" and reset == 0, "a natural Legendary resets the counter")
 	local epic, climbed = Roll.Draw(40, STANDARD, 1, fixed(9900))
 	expect(epic[1].Rarity == "Epic" and climbed == 41, "an Epic does not")
-	local bands =
-		{ [1] = "Common", [4000] = "Common", [4001] = "Rare", [8500] = "Rare", [8501] = "Epic", [9901] = "Legendary" }
+	local bands = {
+		[1] = "Common",
+		[3989] = "Common",
+		[3990] = "Rare",
+		[8489] = "Rare",
+		[8490] = "Epic",
+		[9889] = "Epic",
+		[9890] = "Legendary",
+		[9989] = "Legendary",
+		[9990] = "Mythic",
+		[9999] = "Mythic",
+		[10000] = "Secret",
+	}
 	for bp, want in bands do
 		expectEq(Roll.Draw(0, STANDARD, 1, fixed(bp))[1].Rarity, want, "band at " .. bp)
 	end
-	expectEq(Roll.Draw(0, STANDARD, 1, fixed(10000))[1].Rarity, "Legendary", "10000 is Legendary, never Mythic")
+	expectEq(Roll.Draw(0, STANDARD, 1, fixed(10000))[1].Id, "S01", "last ticket grants Dragon")
 end)
 
 test("ROLL 10 with seed S equals ten single draws with seed S", function()
@@ -289,11 +310,11 @@ test("Shape: pool a string of 1..16 bytes, count an integer in 1..10", function(
 end)
 
 test("active roster has the requested counts; every drawable die can roll; removed ids are unknown", function()
-	local counts = { Common = 0, Rare = 0, Epic = 0, Legendary = 0, Mythic = 0 }
+	local counts = { Common = 0, Rare = 0, Epic = 0, Legendary = 0, Mythic = 0, Secret = 0 }
 	for _, die in Dice.Types do
 		counts[die.rarity] += 1
 	end
-	for rarity, count in { Common = 7, Rare = 7, Epic = 8, Legendary = 5, Mythic = 1 } do
+	for rarity, count in { Common = 7, Rare = 7, Epic = 8, Legendary = 5, Mythic = 1, Secret = 1 } do
 		expectEq(counts[rarity], count, rarity .. " roster")
 	end
 	for _, id in { "E02", "E04", "L03" } do

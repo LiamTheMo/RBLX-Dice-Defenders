@@ -39,6 +39,7 @@ local MIN_INTERVAL = {
 	Buy = 1.0, -- server bucket 1/s, burst 3
 	UpgradeDie = 0.5, -- server bucket 2/s, burst 4
 	PowerUp = 0.5, -- server bucket 2/s, burst 4
+	AdminAction = 1.0,
 }
 local pending = {}
 local seq = 0
@@ -70,7 +71,7 @@ function NetClient.Request(name: string, ...): (boolean, string?)
 	if result ~= true then
 		return reject(name, if type(code) == "string" then code else "Rejected")
 	end
-	return true, nil
+	return true, if type(code) == "string" then code else nil
 end
 
 function NetClient.Start()
@@ -91,6 +92,7 @@ function NetClient.Start()
 				"Buy",
 				"UpgradeDie",
 				"PowerUp",
+				"AdminAction",
 			}
 		do
 			functions[name] = folder:WaitForChild(name)

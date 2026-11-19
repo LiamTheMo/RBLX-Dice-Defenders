@@ -89,6 +89,7 @@ Dice.Types = table.freeze({
 		aura = table.freeze({ base = 0.08, perPip = 0.015, perTier = 0.015 }),
 	}),
 	M01 = table.freeze({ name = "Astral", rarity = "Mythic", base = 32, rate = 0.80 }),
+	S01 = table.freeze({ name = "Dragon", rarity = "Secret", base = 36, rate = 0.80 }),
 })
 
 return table.freeze(Dice)

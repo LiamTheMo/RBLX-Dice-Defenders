@@ -1,7 +1,7 @@
 -- Shop menu view: the Starter hero, a row of offer cards and a row of gem packs (or a "Coming soon" card), drawn inside the shared
 -- shell's content slot to the shop mockup. Visual only: no NetClient, no game data. Design px under the shell's UIScale; the slot's
 -- Size picks the layout (one code path: the mockup's x positions scale with the row width, heights and text sizes do not).
--- View.new(slot) -> :SetSections(ShopLogic.sectionsFor(...), keepScroll?) :OnAction(cb(offerId)) :Destroy()
+-- View.new(slot) -> :SetSections(ShopLogic.sections(...), keepScroll?) :OnAction(cb(offerId)) :Destroy()
 -- Setters only store state; one deferred rebuild draws it (also on every slot size change).
 -- Layers (slot z 22): scroll 23, panels 24, art and glow 25-27, text and buttons 28-31, scroll bar 31-32, Soon card 29-31.
 -- Coordinates are slot-relative: mockup (x, y) minus (302, 225) at 1672x941.
@@ -32,7 +32,6 @@ local ROLE = {
 	pack = { 22, 15, 2, { "1,200 Gems", 120 } }, -- gem pack name
 	heroPrice = { 40, 15, 3, { "399", 65 } },
 	price = { 34, 15, 2, { "299", 58 } },
-	soon = { 40, 20, 3 },
 	soonSub = { 26, 15, 2 },
 }
 local ICON = { -- price and bullet currency icons: the HUD coin and gem
@@ -372,42 +371,16 @@ function View:_drawCard(L, item, x: number, y: number, pack: boolean, w: number,
 	self:_buy(btn, item)
 end
 
-function View:_drawSoon(L, sec)
-	local W, H = L.W, L.H
-	local w, h = math.min(460, W - 40), math.min(220, H - 16)
-	local panel = Chrome.panel(self._soon, {
-		Name = "SoonCard",
-		Position = UDim2.fromOffset(round((W - w) / 2), round((H - h) / 2)),
-		Size = UDim2.fromOffset(w, h),
-		ZIndex = 29,
-		Radius = 18,
+function View:_drawNotice(L, sec, y: number, height: number)
+	local panel = Chrome.strip(self._canvas, {
+		Name = sec.Kind,
+		Position = UDim2.fromOffset(L.x0, y),
+		Size = UDim2.fromOffset(L.rowW, height),
+		ZIndex = 24,
 	})
-	local ih = math.floor(h * 0.42)
-	pic(
-		panel,
-		if sec.Tab == "GAMEPASSES" then ShopSprites.Crown else ShopSprites.Robux,
-		w / 2,
-		14 + ih / 2,
-		ih * 2,
-		ih,
-		30,
-		"Icon"
-	)
-	local title = string.upper(sec.Heading or "")
-	local ts = roleSize(ROLE.soon, { title }, w - 40, L.k)
-	local ss = roleSize(ROLE.soonSub, { "Coming soon" }, w - 40, L.k)
-	label(
-		panel,
-		"Title",
-		title,
-		ROLE.soon,
-		math.min(ts, math.floor(h * 0.17)),
-		w / 2,
-		14 + ih + (h - 14 - ih) * 0.38,
-		w - 40,
-		31
-	)
-	label(panel, "Sub", "Coming soon", ROLE.soonSub, ss, w / 2, h - (h - 14 - ih) * 0.24, w - 40, 31)
+	local text = if sec.Kind == "Loading" then sec.Heading else "Coming soon"
+	local size = roleSize(ROLE.soonSub, { text }, L.rowW - 24, L.k)
+	label(panel, "Notice", text, ROLE.soonSub, size, L.rowW / 2, height / 2, L.rowW - 24, 29)
 end
 
 local function strings(items, f)
@@ -430,21 +403,12 @@ function View:_build()
 		conn:Disconnect()
 	end
 	table.clear(self._connsBuild)
-	for _, parent in { self._canvas, self._soon } do
-		for _, ch in parent:GetChildren() do
-			ch:Destroy()
-		end
+	for _, ch in self._canvas:GetChildren() do
+		ch:Destroy()
 	end
 	local sections = self._sections
-	local soon = sections[1] ~= nil and sections[1].Kind == "Soon"
-	self._scroll.Visible = not soon
-	self._soon.Visible = soon
-	self._bar.Layout(if soon then 0 else H, BAR_W, 4)
+	self._bar.Layout(H, BAR_W, 4)
 	local L = { W = W, H = H, k = k }
-	if soon then
-		self:_drawSoon(L, sections[1])
-		return
-	end
 	local reserve = if W < 1068 then 18 else 0 -- narrower slots keep a lane for the scroll bar
 	L.rowW = math.min(ROW_W, W - 10 - reserve)
 	L.fx = L.rowW / ROW_W
@@ -459,9 +423,9 @@ function View:_build()
 	for _, sec in sections do
 		if sec.Kind == "Hero" then
 			hero = sec.Items[1]
-		elseif sec.Heading == "GEMS" and #sections > 1 then
+		elseif sec.Kind == "Cards" and sec.Heading == "GEMS" then
 			packs = sec.Items
-		else
+		elseif sec.Kind == "Cards" then
 			offers = sec.Items
 		end
 	end
@@ -508,22 +472,34 @@ function View:_build()
 	end
 	L.cardIcon = math.floor(L.btnH * 0.64)
 	L.priceSize = roleSize(ROLE.price, all, 118 * fx - 16 - L.cardIcon * 1.3, k)
-	local totalH, rowsH = 0, {}
-	local single = #sections == 1
+	local y = 4
 	for _, sec in sections do
-		local h = if sec.Kind == "Hero" then HERO_H else cardH(L, sec.Heading == "GEMS" and not single)
-		table.insert(rowsH, h)
-		totalH += h
-	end
-	totalH += (#sections - 1) * ROW_GAP
-	local y = if single and not self._compactish then math.max(1, math.floor((H - totalH) / 2)) else 1
-	local gap = ROW_GAP
-	for i, sec in sections do
+		if sec.Kind ~= "Hero" and sec.Kind ~= "Loading" then
+			local titleSize = roleSize(ROLE.name, { sec.Heading }, L.rowW - 12, k)
+			label(
+				self._canvas,
+				"Section_" .. sec.Heading,
+				sec.Heading,
+				ROLE.name,
+				titleSize,
+				L.x0 + 4,
+				y + titleSize / 2,
+				L.rowW - 8,
+				29,
+				0
+			)
+			y += titleSize + 8
+		end
 		if sec.Kind == "Hero" then
 			self:_drawHero(L, sec.Items[1], y)
+			y += HERO_H
+		elseif sec.Kind == "Loading" or sec.Kind == "Soon" then
+			local h = math.max(54, math.ceil(34 / k))
+			self:_drawNotice(L, sec, y, h)
+			y += h
 		else
 			local items = sec.Items or {}
-			local pack = sec.Heading == "GEMS" and not single
+			local pack = sec.Heading == "GEMS"
 			local labelW = 0
 			for _, it in items do
 				if it.Label then
@@ -533,17 +509,19 @@ function View:_build()
 			local cw = if pack then L.packW else L.colW
 			local colText = cw - (if pack then 8 else 15) - (if pack then 129 else 162) * fx
 			local bw = math.floor(math.min(colText, math.max((if pack then 118 else 167) * fx, labelW)))
+			local columns = if pack then 4 else 3
+			local rowGap = if pack then 12.33 else ROW_GAP
+			local h = cardH(L, pack)
 			for j, item in items do
-				local x = if pack
-					then L.x0 + (j - 1) * (cw + 12.33) -- filled from the left
-					else L.x0 + (3 - #items) * (L.colW + ROW_GAP) / 2 + (j - 1) * (L.colW + ROW_GAP)
-				self:_drawCard(L, item, x, y, pack, cw, bw)
+				local row = (j - 1) // columns
+				local x = L.x0 + ((j - 1) % columns) * (cw + rowGap)
+				self:_drawCard(L, item, x, y + row * (h + ROW_GAP), pack, cw, bw)
 			end
+			y += math.ceil(#items / columns) * (h + ROW_GAP) - ROW_GAP
 		end
-		gap = if sec.Kind == "Hero" then 16 else ROW_GAP -- mockup: hero to offers 16, offers to packs 14
-		y += rowsH[i] + gap
+		y += ROW_GAP
 	end
-	local canvasH = math.ceil(y - gap + 4)
+	local canvasH = math.ceil(y - ROW_GAP + 6)
 	self._canvas.Size = UDim2.new(1, 0, 0, canvasH)
 	self._bar.Track.Visible = canvasH > H
 end
@@ -570,14 +548,7 @@ function View.new(slot)
 		{ Name = "Canvas", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 0), ZIndex = scroll.ZIndex },
 		scroll
 	)
-	local soon = make("Frame", {
-		Name = "Soon",
-		BackgroundTransparency = 1,
-		Size = UDim2.fromScale(1, 1),
-		Visible = false,
-		ZIndex = scroll.ZIndex + 6,
-	}, slot)
-	self._scroll, self._canvas, self._soon = scroll, canvas, soon
+	self._scroll, self._canvas = scroll, canvas
 	self._bar = Parts.scrollBar(slot, scroll, scroll.ZIndex + 8)
 	local pending = false
 	local scaleSeen = {}
@@ -606,7 +577,6 @@ function View.new(slot)
 				a = a.Parent
 			end
 			self._k = math.max(k, 0.01)
-			self._compactish = slot:GetAttribute("Compact") == true
 			self:_build()
 		end)
 	end
@@ -639,7 +609,6 @@ function View:Destroy()
 	table.clear(self._conns)
 	table.clear(self._connsBuild)
 	self._bar.Track:Destroy()
-	self._soon:Destroy()
 	self._scroll:Destroy()
 end
 

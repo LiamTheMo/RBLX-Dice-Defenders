@@ -1,7 +1,7 @@
 -- Roll pools (docs/MVP.md "Roll"; *tune*). Server-only: clients see the Catalog projection, never this module.
 -- Odds are basis points per rarity for one roll (they sum to 10000); the dice of a rarity are every Config/Dice entry
 -- of that rarity, drawn uniformly. Pity: a roll after Pity.Max - 1 in a row without a Pity.Rarity die is one of them
--- (the counter resets on any). Featured lists grantable ids only. Mythic and Secret stay at 0: nothing is drawable there.
+-- (the counter resets on any). Featured lists grantable ids only.
 local Dice = require(script.Parent.Dice)
 
 local Roll = {}
@@ -35,6 +35,12 @@ local function pool(def)
 		end
 	end
 	def.ByRarity, def.Dice = byRarity, dice
+	local total = 0
+	for _, odds in def.Odds do
+		total += odds.Bp
+		assert(odds.Bp == 0 or #byRarity[odds.Rarity] > 0, "Roll: weighted rarity has no dice")
+	end
+	assert(total == 10000, "Roll: odds must sum to 10000 basis points")
 	return freeze(def)
 end
 
@@ -44,15 +50,15 @@ Roll.Pools = freeze({
 		Name = "Standard",
 		Prices = { { Count = 1, Gems = 100 }, { Count = 10, Gems = 900 } },
 		Odds = { -- draw order; Rules/Roll walks it against one roll of 1..10000
-			{ Rarity = "Common", Bp = 4000 },
+			{ Rarity = "Common", Bp = 3989 },
 			{ Rarity = "Rare", Bp = 4500 },
 			{ Rarity = "Epic", Bp = 1400 },
 			{ Rarity = "Legendary", Bp = 100 },
-			{ Rarity = "Mythic", Bp = 0 },
-			{ Rarity = "Secret", Bp = 0 },
+			{ Rarity = "Mythic", Bp = 10 },
+			{ Rarity = "Secret", Bp = 1 },
 		},
 		Pity = { Rarity = "Legendary", Max = 80 },
-		Featured = { "L01", "L02" },
+		Featured = { "L01", "M01", "L02" },
 	}),
 })
 

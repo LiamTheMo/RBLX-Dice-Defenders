@@ -281,7 +281,7 @@ end
 -- The live profile, or nil while loading, after a failed load or lost lease.
 function ProfileService.Get(player: Player)
 	local state = states[player]
-	if state == nil or store == nil then
+	if state == nil or state.resetting or store == nil then
 		return nil
 	end
 	if state.loadState ~= "Loaded" and state.loadState ~= "Studio" then
@@ -307,6 +307,32 @@ end
 
 function ProfileService.SaveNow(player: Player)
 	return saveUser(player.UserId, false, player)
+end
+
+function ProfileService.BlockForReset(player: Player)
+	local state = states[player]
+	if state then
+		state.resetting = true
+	end
+end
+
+function ProfileService.EditOffline(userId: number, edit)
+	if shuttingDown or not store then
+		return false, "DataStoreUnavailable"
+	end
+	if loading[userId] or store:IsLoaded(userId) or Players:GetPlayerByUserId(userId) then
+		return false, "ProfileBusy"
+	end
+	loading[userId] = true
+	pendingLoads += 1
+	local ran, ok, code = pcall(store.EditOffline, store, userId, HttpService:GenerateGUID(false), edit)
+	loading[userId] = nil
+	pendingLoads -= 1
+	if not ran then
+		warn("[ProfileService] Offline edit failed: " .. tostring(ok))
+		return false, "SaveUncertain"
+	end
+	return ok, code
 end
 
 return ProfileService

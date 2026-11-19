@@ -114,15 +114,7 @@ function Dice.GetItems(meta, catalog)
 	table.sort(unowned)
 	for _, id in unowned do
 		local info = Display.Dice[id]
-		local unavailable = info.Rarity == "Mythic"
-		local note = if unavailable
-			then "Not available yet"
-			elseif info.Rarity == "Common" then "Not owned"
-			else "Not owned"
-		table.insert(
-			items,
-			lockedItem(id, info.Name, info.Rarity, if unavailable then "Locked" else "Not owned", note, stats[id])
-		)
+		table.insert(items, lockedItem(id, info.Name, info.Rarity, "Not owned", "Not owned", stats[id]))
 	end
 	for _, die in Display.Locked do
 		table.insert(items, lockedItem(die.Id, die.Name, die.Rarity, "Locked", "Not available yet"))

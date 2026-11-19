@@ -5,7 +5,7 @@ local BagLogic = {}
 
 BagLogic.MAX_QTY = 1_000_000 -- server's BagAction qty cap (Rules/Bag.MAX_QTY): a larger qty is a hard strike
 
-local RANK = { Mythic = 6, Legendary = 5, Epic = 4, Rare = 3, Uncommon = 2, Common = 1 }
+local RANK = { Secret = 7, Mythic = 6, Legendary = 5, Epic = 4, Rare = 3, Uncommon = 2, Common = 1 }
 
 function BagLogic.rarityRank(rarity: string?): number
 	return RANK[rarity or ""] or 0

@@ -1,4 +1,4 @@
--- Shop menu controller: one Shell (banner, close, FEATURED / GAMEPASSES / GEMS / SHARDS tabs) hosting the Shop View.
+-- Shop menu controller: one scrollable page of offers, gem packs and upcoming sections.
 -- Shop.new(parent, { hud = LobbyHud, toast = (string) -> () }) -> :Open() :Close() :Toggle() :IsOpen() :Destroy()
 -- Renders the server's Catalog.Shop offers with the Gems (Meta) and Gold (State) balances. A Gold or Gems offer sends Buy(id);
 -- an available Robux offer only prompts the developer product (the server grants it from the Marketplace receipt); an
@@ -45,14 +45,8 @@ function Shop.new(parent, deps)
 		free = true,
 		banner = { text = "SHOP" },
 	})
-	local tabs = {}
-	for i, tab in ShopLogic.TABS do
-		tabs[i] = { Id = tab.Id, Label = tab.Label } -- the mockup's tabs carry no icon
-	end
-	shell:SetTabs(tabs)
 	local view = View.new(shell.Slots.Content)
 
-	local tab = 1
 	local shown -- ShopLogic.key of the last render
 	local function data()
 		return ShopLogic.data(NetClient.LastCatalog, NetClient.LastMeta, NetClient.Last)
@@ -60,16 +54,7 @@ function Shop.new(parent, deps)
 	local function render(keepScroll: boolean)
 		local d = data()
 		shown = ShopLogic.key(d)
-		local id = ShopLogic.TABS[tab].Id
-		local sections = ShopLogic.sectionsFor(id, d)
-		if id == "FEATURED" and sections[1].Kind ~= "Soon" then -- the mockup's Featured page ends with the gem pack row
-			for _, sec in ShopLogic.sectionsFor("GEMS", d) do
-				if sec.Kind ~= "Soon" then
-					table.insert(sections, sec)
-				end
-			end
-		end
-		view:SetSections(sections, keepScroll)
+		view:SetSections(ShopLogic.sections(d), keepScroll)
 	end
 	local function refresh()
 		if shell:IsOpen() and ShopLogic.key(data()) ~= shown then -- redraw only on a visible change
@@ -100,10 +85,6 @@ function Shop.new(parent, deps)
 			deps.toast(arg)
 		end
 	end)
-	shell:OnTab(function(i)
-		tab = i
-		render(false)
-	end)
 	table.insert(conns, NetClient.Meta:Connect(refresh))
 	table.insert(conns, NetClient.Catalog:Connect(refresh))
 
@@ -128,15 +109,10 @@ function Shop.new(parent, deps)
 		end)
 	)
 
-	local opened = false
 	self.Shell, self.View, self._conns = shell, view, conns
 	self._open = function()
 		if shell:IsOpen() then
 			return
-		end
-		if not opened then
-			opened = true
-			shell:SetTab(1) -- FEATURED on first open
 		end
 		render(false) -- the balances and offers as of now
 		shell:Open()

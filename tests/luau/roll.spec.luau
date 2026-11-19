@@ -29,7 +29,9 @@ test("oddsRows: the Catalog's basis points as true percentages in display order,
 	for _, row in rows do
 		text[row.Rarity] = row.Text
 	end
-	for r, want in { Secret = "0%", Mythic = "0%", Legendary = "1%", Epic = "14%", Rare = "45%", Common = "40%" } do
+	for r, want in
+		{ Secret = "0.01%", Mythic = "0.1%", Legendary = "1%", Epic = "14%", Rare = "45%", Common = "39.89%" }
+	do
 		expectEq(text[r], want, r)
 	end
 	expectEq(#RollLogic.oddsRows(nil), 0, "no Catalog yet: no rows")

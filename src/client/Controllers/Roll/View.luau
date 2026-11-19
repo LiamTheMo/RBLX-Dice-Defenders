@@ -48,7 +48,11 @@ local ROW_ICON = { -- { sprite, box w, box h } at f = 1
 	Rare = { RollSprites.StarsRare, 50, 20 },
 	Common = { RollSprites.StarCommon, 24, 23 },
 }
-local CHIP = { rgb(66, 36, 2), rgb(36, 9, 72), rgb(30, 30, 34) } -- gold, purple, grey
+local BUTTON = {
+	{ rgb(217, 144, 23), rgb(143, 75, 11), rgb(255, 217, 133), rgb(66, 36, 2) },
+	{ rgb(127, 68, 217), rgb(70, 34, 130), rgb(206, 158, 255), rgb(36, 9, 72) },
+}
+local DISABLED = { rgb(91, 90, 104), rgb(54, 52, 63), rgb(151, 150, 167), rgb(30, 30, 34) }
 local GEM_YELLOW = Color3.fromRGB(254, 229, 1)
 
 local function round(n: number): number
@@ -75,22 +79,26 @@ View.__index = View
 -- Layout ----------------------------------------------------------------------------------------------------
 
 local function compute(W: number, H: number)
+	W -= 14 -- inset panel rims and reserve the scrollbar lane
 	local f = math.clamp(H / 507, 0.5, 1)
 	local w = math.clamp(W / 1068, 0.4, 1.3)
 	local L = { W = W, H = H, f = f, w = w }
 	L.tmin = math.max(8, math.ceil(14 / K)) -- design px of the 14 real px text floor
 	L.gap = round(10 * w)
-	L.pityH = round(80 * f)
+	L.pityH = math.max(round(80 * f), math.ceil(44 / K) + 8, 3 * L.tmin + 18)
 	L.btnH = math.max(round(87 * f), math.ceil(44 / K)) -- hit area >= 44 real px
-	L.btnW = math.min(L.btnH * 3.48, (W - 3 * L.gap) / 2)
+	L.btnW = math.min(math.max(L.btnH * 3.48, 235 * w), (W - 2 * L.gap) / 2)
 	L.btnGap = round(11 * f)
 	-- the panel never gets shorter than six rows of the 14 real px text under the heading: below that the stack scrolls
 	local panelMin = round(61 * f) + 6 * (L.tmin + 4) + 5 * round(2 * f) + round(12 * f)
-	L.panelH = math.max(panelMin, H - L.pityH - L.btnH - 2 * L.btnGap - round(3 * f))
-	L.fw = round(W * 0.676)
-	L.rx = L.fw + L.gap
+	local stacked = W * K < 530
+	L.panelH = math.max(panelMin, H - L.pityH - L.btnH - 2 * L.btnGap - 8)
+	L.fw = if stacked then W else round(W * 0.64)
+	L.featureH = if stacked then math.max(round(198 * f), 4 * L.tmin + 70) else L.panelH
+	L.rx = if stacked then 0 else L.fw + L.gap
+	L.ry = if stacked then L.featureH + L.btnGap else 0
 	L.rw = W - L.rx
-	L.total = L.panelH + L.pityH + L.btnH + 2 * L.btnGap + round(3 * f)
+	L.total = L.ry + L.panelH + L.pityH + L.btnH + 2 * L.btnGap + 8
 	return L
 end
 
@@ -121,7 +129,7 @@ local function label(parent, L, o)
 			else Enum.TextXAlignment.Center,
 		ZIndex = o.Z,
 	}, o.Stroke or 2)
-	l.TextTruncate = Enum.TextTruncate.None
+	l.TextTruncate = Enum.TextTruncate.AtEnd
 	return l
 end
 
@@ -134,6 +142,7 @@ end
 
 -- Heading: the diamond plate (native aspect) with live text between the diamonds.
 local function heading(parent, L, text: string, cx: number, top: number, h: number, z: number)
+	h = math.min(h, (2 * cx - 18) / aspect(RollSprites.HeaderPlate))
 	local pw = h * aspect(RollSprites.HeaderPlate)
 	whole(parent, RollSprites.HeaderPlate, "Plate", cx, top + h / 2, h, z)
 	label(parent, L, { Name = "Title", Text = text, Base = 36, X = cx, Y = top + h / 2, W = pw * 0.7, Z = z + 1 })
@@ -142,7 +151,7 @@ end
 -- Build -----------------------------------------------------------------------------------------------------
 
 function View:_drawFeatured(L, z: number)
-	local Pw, Ph, f = L.fw, L.panelH, L.f
+	local Pw, Ph, f = L.fw, L.featureH, L.f
 	local panel = Chrome.panel(self._canvas, {
 		Name = "Featured",
 		Size = UDim2.fromOffset(Pw, Ph),
@@ -161,10 +170,12 @@ function View:_drawFeatured(L, z: number)
 	end
 	local n = if hole then 3 else math.max(last, 1)
 	local pitch = math.min(0.31 * Pw, Pw / n)
-	local pillH = round(42 * f)
-	local pillCy = Ph - round(50 * f)
+	local pillH = math.max(round(32 * f), L.tmin + 6)
+	local pillCy = Ph - math.max(round(12 * f), 8) - pillH / 2
+	local nameH = math.max(round(24 * f), L.tmin + 4)
+	local nameCy = pillCy - pillH / 2 - nameH / 2 - 4
 	local dieTop = plateTop + plateH + round(4 * f)
-	local dieBot = pillCy - pillH / 2 - round(3 * f)
+	local dieBot = nameCy - nameH / 2 - 4
 	local dieS = math.max(10, math.min(pitch * 0.92, dieBot - dieTop))
 	local dieCy = (dieTop + dieBot) / 2
 	local function cx(i: number): number
@@ -218,7 +229,18 @@ function View:_drawFeatured(L, z: number)
 			t:Play()
 		end
 		local word = string.upper(item.Rarity)
-		local pillW = math.min(round(pitch - 14), round(132 * L.w))
+		label(panel, L, {
+			Name = "DieName" .. i,
+			Text = item.Name,
+			Base = 25,
+			X = x,
+			Y = nameCy,
+			W = pitch - 8,
+			H = nameH,
+			Z = z + 3,
+		})
+		local pillW =
+			math.min(round(pitch - 10), math.max(round(132 * L.w), math.ceil(Parts.measure(word, L.tmin)) + 14))
 		local pill = Parts.Pill(panel, item.Rarity, word, {
 			Name = "RarityPill" .. i,
 			W = pillW,
@@ -240,7 +262,7 @@ function View:_drawRarity(L, z: number)
 	local Pw, Ph, f = L.rw, L.panelH, L.f
 	local panel = Chrome.panel(self._canvas, {
 		Name = "Rarity",
-		Position = UDim2.fromOffset(L.rx, 0),
+		Position = UDim2.fromOffset(L.rx, L.ry),
 		Size = UDim2.fromOffset(Pw, Ph),
 		ZIndex = z,
 	})
@@ -253,7 +275,7 @@ function View:_drawRarity(L, z: number)
 	local pitch = (avail - rowH) / 5
 	local rowW = Pw - round(34 * L.w)
 	local rowX = (Pw - rowW) / 2
-	local nameW, pctW = rowW * 0.5, rowW * 0.3
+	local nameW, pctW = rowW * 0.43, rowW * 0.29
 	local rowSize = math.max(math.floor(math.min(27 * f, rowH * 0.67) + 0.5), L.tmin)
 	for _, r in self._rows do
 		rowSize = math.min(
@@ -310,29 +332,14 @@ function View:_drawPity(L, z: number, y: number)
 		Size = UDim2.fromOffset(W, H),
 		ZIndex = z,
 	})
-	local pill = RollSprites.PityPill
-	local pillH = round(38 * f)
-	local pillW = pillH * aspect(pill)
-	local pillX = round(56 * w)
-	local pillCy = H / 2
-	local p = whole(panel, pill, "PityPill", pillX + pillW / 2, pillCy, pillH, z + 1)
-	label(p.Parent, L, {
-		Name = "PityLabel",
-		Text = "PITY",
-		Base = 34,
-		X = pillX + pillW * 0.67,
-		Y = pillCy,
-		W = pillW * 0.5,
-		Z = z + 2,
-	})
 	-- info button: >= 44 real px hit area, art 36 design px
 	local hs = math.max(math.ceil(44 / K), round(36 * f))
-	local infoCx = pillX + pillW + round(14 * f) + round(36 * f) / 2 - round(7 * w)
+	local infoCx = hs / 2 + 6
 	local hit = make("ImageButton", {
 		Name = "InfoHit",
 		BackgroundTransparency = 1,
 		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromOffset(round(infoCx), round(pillCy)),
+		Position = UDim2.fromOffset(round(infoCx), round(H / 2)),
 		Size = UDim2.fromOffset(hs, hs),
 		ZIndex = z + 1,
 	}, panel)
@@ -347,11 +354,11 @@ function View:_drawPity(L, z: number, y: number)
 			end
 		end)
 	)
-	local barL = math.max(round(291 * w), infoCx + round(36 * f) / 2 + round(24 * f))
-	local barR = round(1007 * w)
-	local barW = math.max(40, barR - barL)
-	local barH = math.max(round(24 * f), 12)
-	local barY = H * 0.6
+	local barL = hs + 12
+	local barR = W - math.max(10, round(20 * w))
+	local barW = barR - barL
+	local barH = math.max(round(17 * f), 8)
+	local barY = H * 0.72
 	local pity = self._pity
 	local _, fill = Chrome.track(panel, {
 		Name = "PityBar",
@@ -374,32 +381,32 @@ function View:_drawPity(L, z: number, y: number)
 	make("UICorner", { CornerRadius = UDim.new(1, 0) }, fill.Gloss)
 	if pity then
 		local color = Parts.RarityColor[pity.Rarity] or Color3.new(1, 1, 1)
-		local plain = `Guaranteed {pity.Rarity} in {pity.Max} rolls!`
-		local textY = H * 0.22
+		local plain = `{pity.Rarity} guarantee`
+		local textY = H * 0.33
+		local count = RollLogic.pityText(pity.Count, pity.Max)
+		local countW = math.ceil(Parts.measure(count, math.max(round(28 * f), L.tmin))) + 6
 		label(panel, L, {
 			Name = "PityText",
 			Text = plain,
-			Rich = `Guaranteed <font color="#{color:ToHex()}">{pity.Rarity}</font> in {pity.Max} rolls!`,
+			Rich = `<font color="#{color:ToHex()}">{pity.Rarity}</font> guarantee`,
 			Plain = plain,
-			Base = 37,
-			X = barL + barW * 0.377, -- mockup: box centre x 863 of a bar 593..1309
+			Base = 28,
+			AX = 0,
+			X = barL,
 			Y = textY,
-			W = math.max(round(310 * w), Parts.measure(plain, L.tmin) + 4),
-			H = round(20 * f),
+			W = barW - countW - 8,
 			Z = z + 2,
 		})
-		local count = RollLogic.pityText(pity.Count, pity.Max)
 		label(panel, L, {
 			Name = "Count",
 			Text = count,
 			Rich = `<font color="{YELLOW}">{pity.Count} /</font> {pity.Max}`, -- the count and the slash are yellow
 			Plain = count,
-			Base = 31,
+			Base = 28,
 			AX = 1,
-			X = barL + barW - round(11 * w),
-			Y = textY + 2 * f,
-			W = round(96 * w),
-			H = round(24 * f),
+			X = barR,
+			Y = textY,
+			W = countW,
 			Z = z + 2,
 		})
 	end
@@ -407,48 +414,51 @@ end
 
 function View:_drawButtons(L, z: number, y: number)
 	local bh, f = L.btnH, L.f
-	local defs = {
-		{ On = RollSprites.BtnGold, Chip = CHIP[1], Dice = RollSprites.Die1, DieW = 56, DieH = 60, X = 346 * L.w },
-		{ On = RollSprites.BtnPurple, Chip = CHIP[2], Dice = RollSprites.Dice3, DieW = 74, DieH = 66, X = 724 * L.w },
-	}
+	local defs = { RollSprites.Die1, RollSprites.Dice3 }
 	local rolling = self._rolling
 	local s = bh / 87 -- sizes below are at the 87 design px button height
 	for i, d in defs do
 		local st = self._buttonState[i] or { Count = if i == 1 then 1 else 10, Price = 0, Enabled = false }
 		local on = st.Enabled and not rolling -- rolling: every button reads disabled
-		local art = if on then d.On else RollSprites.BtnGrey
-		local bwi = bh * aspect(art)
-		local cxBtn = math.clamp(d.X, bwi / 2, L.W - bwi / 2)
-		local btn = Draw.img(self._canvas, {
+		local colors = if on then BUTTON[i] else DISABLED
+		local bwi = L.btnW
+		local gap = math.max(L.gap, 8)
+		local startX = (L.W - 2 * bwi - gap) / 2
+		local btn = make("TextButton", {
 			Name = "Roll" .. st.Count,
-			Position = UDim2.fromOffset(round(cxBtn - bwi / 2), y),
+			Position = UDim2.fromOffset(round(startX + (i - 1) * (bwi + gap)), y),
 			Size = UDim2.fromOffset(round(bwi), bh),
-			ZIndex = z,
-		}, "ImageButton")
-		btn.Image = art.Image
-		btn.ScaleType = Enum.ScaleType.Stretch
+			Text = "",
+			AutoButtonColor = false,
+			BackgroundTransparency = 1,
+			ZIndex = z + 1,
+		}, self._canvas)
+		local body =
+			Chrome.panel(btn, { Name = "Body", Size = UDim2.fromScale(1, 1), Radius = 13, Rim = 2, ZIndex = z })
+		body.UIGradient.Color = ColorSequence.new(colors[1], colors[2])
+		body.UIStroke.Color = colors[3]
 		Parts.interact(btn) -- hover / press scale and the gamepad focus rim
-		local dh = d.DieH * s
-		local dw = d.DieW * s
+		local dw, dh = math.min(72 * s, bwi * 0.25), bh * 0.68
 		local die = Draw.img(btn, { Name = "Dice", ZIndex = z + 2 })
-		Draw.icon(die, d.Dice, bwi * 0.25, bh / 2, dw, dh)
-		local cx = bwi * 0.61
+		Draw.icon(die, d, bwi * 0.18, bh / 2, dw, dh)
+		die.ImageColor3 = if on then Color3.new(1, 1, 1) else rgb(190, 190, 203)
+		local cx = bwi * 0.64
 		local busy = rolling and rolling.Count == st.Count
 		label(btn, L, {
 			Name = "Label",
 			Text = if busy then ROLLING else `ROLL {st.Count}`,
-			Size = textSize(L, 36 * s / f, if busy then ROLLING else `ROLL {st.Count}`, bwi * 0.46),
+			Size = textSize(L, 33 * s / f, if busy then ROLLING else `ROLL {st.Count}`, bwi * 0.62),
 			X = cx,
 			Y = bh * 0.28,
-			W = bwi * 0.46,
+			W = bwi * 0.62,
 			Z = z + 2,
 		})
-		local chipW, chipH = bwi * 0.445, bh * 0.31
+		local chipW, chipH = bwi * 0.62, bh * 0.38
 		local chip = Chrome.panel(btn, {
 			Name = "Chip",
 			Position = UDim2.fromOffset(round(cx - chipW / 2), round(bh * 0.69 - chipH / 2)),
 			Size = UDim2.fromOffset(round(chipW), round(chipH)),
-			BackgroundColor3 = if on then d.Chip else CHIP[3],
+			BackgroundColor3 = colors[4],
 			NoGradient = true,
 			Radius = 999,
 			Rim = 1,
@@ -475,8 +485,8 @@ function View:_drawButtons(L, z: number, y: number)
 			})
 		else
 			local priceText = `x{st.Price}`
-			local size = textSize(L, 29 * s / f, priceText, chipW * 0.6)
-			local gemS = chipH * 0.85
+			local gemS = math.min(chipH * 0.73, chipW * 0.22)
+			local size = textSize(L, 27 * s / f, priceText, chipW - gemS - 12)
 			local tw = Parts.measure(priceText, size)
 			local gx = (chipW - (gemS + 6 + tw)) / 2
 			local gem = Draw.img(chip, { Name = "Gem", Image = Sprites.Gem, ZIndex = z + 2 })
@@ -537,7 +547,7 @@ function View:_build()
 	end
 	self:_drawFeatured(L, z)
 	self:_drawRarity(L, z)
-	local y = L.panelH + L.btnGap
+	local y = L.ry + L.panelH + L.btnGap
 	self:_drawPity(L, z, y)
 	self:_drawButtons(L, z, y + L.pityH + L.btnGap)
 	self._scroll.CanvasSize = UDim2.fromOffset(0, math.max(L.H, L.total))
@@ -556,18 +566,20 @@ function View.new(slot)
 		Name = "RollView",
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		ScrollBarThickness = 0,
-		ScrollBarImageTransparency = 1,
+		ScrollBarThickness = 4,
+		ScrollBarImageTransparency = 0.25,
 		ScrollingDirection = Enum.ScrollingDirection.Y,
 		CanvasSize = UDim2.new(),
 		Size = UDim2.fromScale(1, 1),
 		ZIndex = slot.ZIndex + 1,
 	}, slot)
-	local canvas = make(
-		"Frame",
-		{ Name = "Canvas", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = scroll.ZIndex },
-		scroll
-	)
+	local canvas = make("Frame", {
+		Name = "Canvas",
+		BackgroundTransparency = 1,
+		Position = UDim2.fromOffset(4, 4),
+		Size = UDim2.fromScale(1, 1),
+		ZIndex = scroll.ZIndex,
+	}, scroll)
 	self._scroll, self._canvas = scroll, canvas
 	local pending = false
 	local scaleSeen = {}

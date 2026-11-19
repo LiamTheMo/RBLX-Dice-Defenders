@@ -444,6 +444,7 @@ function ProfileSchema.Migrate(stored: any)
 		TrialCleared = data.TrialCleared == true,
 		LastRewardRunId = if Validate.IsInt(data.LastRewardRunId, 0, 2 ^ 31 - 1) then data.LastRewardRunId else 0, -- run ids are 31-bit
 		profileRevision = Validate.IsInt(data.profileRevision, 0, 2 ^ 52) and data.profileRevision or 0,
+		adminEditId = if type(data.adminEditId) == "string" and #data.adminEditId == 36 then data.adminEditId else nil,
 		Dice = dice,
 		Deck = deck,
 		Claimed = cleanFlags(data.Claimed, Quests.List, function(quest)

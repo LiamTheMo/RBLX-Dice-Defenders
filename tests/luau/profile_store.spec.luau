@@ -6,8 +6,49 @@ local Server = game:GetService("ServerScriptService").Server
 local ProfileStore = require(Server.Infrastructure.ProfileStore)
 local ProfileSchema = require(Server.Rules.ProfileSchema)
 local DataStoreGateway = require(Server.Infrastructure.DataStoreGateway)
+local Admin = require(Server.Rules.Admin)
 
 local KEY = ProfileStore.KeyFor(1)
+
+test("admin revoke removes a die and its spare copies and repairs the deck", function()
+	local profile = ProfileSchema.Default()
+	local starter = profile.Deck[1]
+	expect(Admin.Apply(profile, "Give", "Dice", "R01", 5), "give a die and copies")
+	profile.Deck[1] = "R01"
+	expect(Admin.Apply(profile, "Revoke", "Dice", "R01", 1), "revoke the whole stack")
+	expectEq(profile.Dice.R01, nil, "copies and ownership removed")
+	expectEq(profile.Deck[1], starter, "equipped slot repaired")
+	local ok, code = Admin.Apply(profile, "Revoke", "Dice", starter, 1)
+	expect(not ok and code == "StarterDie", "core starter ownership retained")
+end)
+
+test("admin edits honor active leases and replay only once, then reset defaults without erasing receipts", function()
+	local a = FakeStores.new("A")
+	local profile = a.store:Load(1)
+	profile.Receipts = { "already-paid" }
+	local b = FakeStores.new("B", a)
+	local editId = "11111111-1111-1111-1111-111111111111"
+	local function grant(p)
+		return Admin.Apply(p, "Give", "Gold", "", 25)
+	end
+	local ok, code = b.store:EditOffline(1, editId, grant)
+	expect(not ok, "active lease prevents the edit")
+	expectEq(code, "LeaseHeld", "active lease")
+	expect(a.store:Save(1, true), "owner released profile")
+	expect(b.store:EditOffline(1, editId, grant), "grant applied")
+	expect(b.store:EditOffline(1, editId, grant), "retry recognized")
+	expectEq(a.backing._data[KEY].Gold, 25, "grant applied once")
+	expect(
+		b.store:EditOffline(1, "22222222-2222-2222-2222-222222222222", function(p)
+			return Admin.Apply(p, "Reset", "", "RESET", 0)
+		end),
+		"reset applied"
+	)
+	local stored = a.backing._data[KEY]
+	expectEq(stored.Gold, 0, "gold reset")
+	expectEq(stored.Gems, 50, "starter gems restored")
+	expectEq(stored.Receipts[1], "already-paid", "paid receipt preserved")
+end)
 
 test("new player loads defaults, leased, and nothing else is written", function()
 	local fake = FakeStores.new("A")

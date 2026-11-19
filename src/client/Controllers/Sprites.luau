@@ -33,6 +33,8 @@ return {
 	-- Elemental die art, one icon per die cut from bag menu/sheets/dice-icons-clean.png (the only source covering all 10 in one style):
 	-- awaiting upload. Only dice listed in DieArt use it; other dice show Icon.Roll tinted with their Display colour.
 	Dice = {
+		Astral = "rbxthumb://type=Asset&id=100392198939888&w=420&h=420",
+		Dragon = "rbxthumb://type=Asset&id=140058325428836&w=420&h=420",
 		Sun = "rbxassetid://92375704626493", -- HUD_Die_Sun.png
 		Ice = "rbxassetid://137551370057628", -- HUD_Die_Ice.png
 		Fire = "rbxassetid://92126709791096", -- HUD_Die_Fire.png
@@ -45,6 +47,8 @@ return {
 		Shadow = "rbxassetid://101027605408362", -- HUD_Die_Shadow.png
 	},
 	DieArt = {
+		M01 = "Astral",
+		S01 = "Dragon",
 		L04 = "Sun",
 		E06 = "Ice",
 		L05 = "Fire",

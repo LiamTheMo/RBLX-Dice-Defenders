@@ -8,6 +8,7 @@ local Display = require(ReplicatedStorage.Shared.Display)
 local Layout = require(ReplicatedStorage.Shared.Layout)
 local NetClient = require(script.Parent.NetClient)
 local CommonProjectiles = require(script.Parent.Effects.CommonProjectiles)
+local RarityEffects = require(script.Parent.Effects.RarityEffects)
 local SettingsLogic = require(script.Parent.Settings.SettingsLogic)
 
 local EnemyView = {}
@@ -20,6 +21,7 @@ local enemies = {} -- id -> { part, fill, spawnAt, speed, maxHp, lift }
 local folder: Folder
 local tracers = {} -- pool of { part, until }
 local tracerFolder: Folder
+local chronoCells
 
 local function remove(id: number)
 	local e = enemies[id]
@@ -74,6 +76,7 @@ local function spawn(record)
 		spawnAt = record.SpawnAt,
 		speed = record.Speed,
 		maxHp = record.MaxHp,
+		hp = record.Hp,
 		lift = size / 2,
 	}
 end
@@ -128,6 +131,7 @@ local function onBatch(batch)
 	for _, record in batch.H or {} do
 		local e = enemies[record.Id]
 		if e then
+			e.hp = record.Hp
 			e.fill.Size = UDim2.fromScale(math.clamp(record.Hp / e.maxHp, 0, 1), 1)
 			if record.Speed and record.SpawnAt then
 				e.speed, e.spawnAt = record.Speed, record.SpawnAt
@@ -154,11 +158,17 @@ local function onFrame(dt: number)
 			t.part.Parent = nil
 		end
 	end
-	CommonProjectiles.Step(dt)
+	local reducedMotion = SettingsLogic.get("reducedMotion")
+	CommonProjectiles.Step(dt, reducedMotion)
+	RarityEffects.StepStatus(now, reducedMotion)
+	if chronoCells then
+		RarityEffects.StepChrono(reducedMotion)
+	end
 end
 
 local function clearEffects()
 	CommonProjectiles.Clear()
+	RarityEffects.ClearStatus()
 	for _, t in tracers do
 		t.part.Parent = nil
 		t.untilTime = 0
@@ -181,16 +191,23 @@ function EnemyView.Start()
 
 	NetClient.Enemies:Connect(onBatch)
 	NetClient.State:Connect(function(snapshot)
+		chronoCells = if snapshot.Phase == "Playing" then snapshot.ChronoCells else nil
+		if SettingsLogic.get("projectileEffects") then
+			RarityEffects.SetChronoAllies(tracerFolder, chronoCells)
+		end
 		if snapshot.Phase ~= "Playing" then
 			clear()
 			clearEffects()
 		end
 	end)
 	SettingsLogic.onChanged(function(id, value)
-		if id == "projectileEffects" and not value then
-			clearEffects()
+		if id == "projectileEffects" then
+			RarityEffects.SetChronoAllies(tracerFolder, if value then chronoCells else nil)
+			if not value then
+				clearEffects()
+			end
 		elseif id == "reducedMotion" and value then
-			CommonProjectiles.Clear()
+			CommonProjectiles.Clear(true)
 		end
 	end)
 	RunService.RenderStepped:Connect(onFrame)

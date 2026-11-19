@@ -1,6 +1,6 @@
 # Dice Catalog — launch roster and mechanics
 
-**Current roster:** 7 Common (Pebble, Needle, Hammer, Twinshot, Longshot, Chill, Spark), 7 Rare (the five below plus Wind, Rock), 8 Epic (Emberstorm, Mirror, Gravity plus Ice, Leaf, Lightning, Water, Shadow), 5 Legendary (Chrono, Forge plus Sun, Fire, Light), and 1 Mythic (Astral). No Secret dice. Chill slows hit enemies by 15% for 1.5 seconds, refreshing without stacking; Spark adds 5 damage every fourth hit. The ten newest dice are stat-only for now (table below). Higher-rarity abilities in the tables below are proposals, not implemented. The starter deck remains the first five Commons. Mythic is not currently obtainable.
+**Current roster:** 7 Common (Pebble, Needle, Hammer, Twinshot, Longshot, Chill, Spark), 7 Rare (the five below plus Wind, Rock), 8 Epic (Emberstorm, Mirror, Gravity plus Ice, Leaf, Lightning, Water, Shadow), 5 Legendary (Chrono, Forge plus Sun, Fire, Light), 1 Mythic (Astral), and 1 Secret (Dragon). Chill slows hit enemies by 15% for 1.5 seconds, refreshing without stacking; Spark adds 5 damage every fourth hit. The ten newest dice are stat-only for now (table below). Higher-rarity abilities in the tables below are proposals, not implemented. The starter deck remains the first five Commons. Standard rolls award Astral at 0.1% and Dragon at 0.01% before pity.
 
 **Removed in v11:** Reactor (E02), Catalyst (E04) and Prism (L03) no longer exist; profile migration v11 converts owned copies, mastery and deck slots to Lightning (E08), Leaf (E07) and Light (L06).
 
@@ -20,7 +20,7 @@
 | L06 | Light | Legendary | 28 | 0.90 | Aura: orthogonal neighbours +8% attack speed (+1.5% per extra pip and per Power Up tier), implemented |
 
 The tables below describe the earlier proposed roster and ability design; current combat values are in the server configuration.
-**Status:** 19 proposed launch dice; 18 Common–Legendary available first, single Mythic gated by v1.0 readiness. Secret rarity declared, **zero Secret dice at launch**. All statistics are **level-1, 1-pip tuning seeds**, not confirmed balance. Base DPS = hit damage × attacks/s before armor. Every die hits the enemy closest to the exit (global targeting), so there is no range stat.
+**Design notes for the original launch roster.** The current roster appears above. All statistics are **level-1, 1-pip tuning seeds**, not confirmed balance. Base DPS = hit damage × attacks/s before armor. Every die hits the enemy closest to the exit (global targeting), so there is no range stat.
 
 ## Universal dice rules
 - Each player equips **five unique dice**; summons sample the five with equal probability. A die's visual asset and game definition share a stable unique ID.
@@ -84,7 +84,7 @@ The tables below describe the earlier proposed roster and ability design; curren
 | Epic | One guaranteed Epic choice on Wave 60 first-clear | World boss fragments, crafting, chest pity |
 | Legendary | Wave 100 first-clear **choice of a Legendary blueprint** (not complete die) | Long-term crafting, rare premium/free chest pity |
 | Mythic | Post-clear mastery quest ending in guaranteed Astral schematic | Repeated world mastery crafting; optional high-tier chest at disclosed low chance |
-| Secret | Not available | Future expansion only |
+| Secret | Standard rolls | Dragon at 0.01% before pity |
 
 **Persistent leveling proposal:** Levels 1–7, +3% baseline role-specific stat/level (not implemented); level-ups spend spare copies of the same die (1, 1, 1, 2, 2, 3 for 1→2 … 6→7, *tune*), no Gold cost yet; unlock any dice's defining ability immediately at acquisition, not paywalled behind upgrading. All players receive the exact same **ability rules** at any level; levels change output, not feature ownership. Crafting guarantees targeted unlocks given time investment. Details in BALANCING.md.
 

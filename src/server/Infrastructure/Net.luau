@@ -2,7 +2,7 @@
 -- Shared.Net.Remotes and routes every client request through RemoteGuard.
 --   Net.Handle(name, handler)   -- RemoteFunction: handler(player, ...) -> (ok, code?)
 --   Net.Fire(name, player, payload)  -- RemoteEvent to one player
---   Net.SetReadyCheck(fn(player) -> (boolean, code?))
+--   Net.SetReadyCheck(fn(player, remoteName) -> (boolean, code?))
 -- Server never calls into clients: events only.
 
 local Players = game:GetService("Players")
@@ -13,15 +13,15 @@ local Remotes = require(ReplicatedStorage.Shared.Net.Remotes)
 
 local Net = {}
 
-local readyCheck: ((Player) -> (boolean, string?))? = nil
+local readyCheck: ((Player, string) -> (boolean, string?))? = nil
 
 local guard = RemoteGuard.new({
 	clock = os.clock,
-	ready = function(player)
+	ready = function(player, name)
 		if readyCheck == nil then
 			return false, "NotLoaded"
 		end
-		return readyCheck(player)
+		return readyCheck(player, name)
 	end,
 	kick = function(player)
 		player:Kick("Disconnected.")
@@ -54,7 +54,7 @@ local function getRemote(name: string, className: string)
 	return remote
 end
 
-function Net.SetReadyCheck(ready: (Player) -> (boolean, string?))
+function Net.SetReadyCheck(ready: (Player, string) -> (boolean, string?))
 	readyCheck = ready
 end
 

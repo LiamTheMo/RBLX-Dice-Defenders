@@ -6,6 +6,7 @@
 -- reaching the threshold calls `kick` exactly once. Soft rejections (anything the
 -- ready check or a handler returns) are never counted.
 local Balance = require(script.Parent.Parent.Config.Balance)
+local Admin = require(script.Parent.Parent.Rules.Admin)
 local Bag = require(script.Parent.Parent.Rules.Bag)
 local Deck = require(script.Parent.Parent.Rules.Deck)
 local Roll = require(script.Parent.Parent.Rules.Roll)
@@ -43,6 +44,7 @@ RemoteGuard.Specs = table.freeze({
 	Roll = table.freeze({ argc = 3, check = Roll.Shape }),
 	Buy = table.freeze({ argc = 2, check = Shop.Shape }),
 	UpgradeDie = table.freeze({ argc = 2, check = Upgrade.Shape }),
+	AdminAction = table.freeze({ argc = 6, check = Admin.Shape }),
 	-- A die type id, 1..8 bytes (whether it is in the match deck is the rule's job).
 	PowerUp = table.freeze({
 		argc = 2,
@@ -60,8 +62,8 @@ RemoteGuard.Specs = table.freeze({
 
 export type Options = {
 	clock: () -> number,
-	-- (owner) -> true, or (false, softCode). Throwing counts as "NotLoaded".
-	ready: ((any) -> (boolean, string?))?,
+	-- (owner, name) -> true, or (false, softCode). Throwing counts as "NotLoaded".
+	ready: ((any, string) -> (boolean, string?))?,
 	-- (owner, reason) -> (); called once per player at the threshold.
 	kick: ((any, string) -> ())?,
 	warn: ((string) -> ())?,
@@ -165,7 +167,7 @@ function RemoteGuard:Call(owner: any, name: string, handler: (any, ...any) -> (b
 	end
 
 	if self._ready then
-		local readyOk, ready, code = pcall(self._ready, owner)
+		local readyOk, ready, code = pcall(self._ready, owner, name)
 		if not readyOk or ready ~= true then
 			return false, if readyOk and type(code) == "string" then code else "NotLoaded"
 		end

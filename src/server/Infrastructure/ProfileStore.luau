@@ -77,6 +77,47 @@ function ProfileStore:IsLoaded(userId: number): boolean
 	return self._entries[userId] ~= nil
 end
 
+-- Writes only existing profiles with no live lease. The edit ID makes gateway retries idempotent.
+function ProfileStore:EditOffline(userId: number, editId: string, edit)
+	local reason
+	local ok, result = self._gateway:Update(ProfileStore.KeyFor(userId), function(old)
+		reason = nil
+		if old == nil then
+			reason = "NoProfile"
+			return nil
+		end
+		local profile, problem = ProfileSchema.Migrate(old)
+		if not profile then
+			reason = problem
+			return nil
+		end
+		if profile.adminEditId == editId then
+			reason = "AlreadyApplied"
+			return nil
+		end
+		if not SessionLease.CanAcquire(profile.sessionLease, "", self._clock()) then
+			reason = "LeaseHeld"
+			return nil
+		end
+		local applied, code = edit(profile)
+		if not applied then
+			reason = code
+			return nil
+		end
+		profile.profileRevision += 1
+		profile.sessionLease = nil
+		profile.adminEditId = editId
+		return profile
+	end)
+	if not ok then
+		return false, "SaveUncertain"
+	end
+	if reason == "AlreadyApplied" or (reason == nil and result ~= nil) then
+		return true
+	end
+	return false, reason or "Error"
+end
+
 function ProfileStore:IsSaving(userId: number): boolean
 	local entry = self._entries[userId]
 	return entry ~= nil and entry.saving

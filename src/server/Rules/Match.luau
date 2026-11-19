@@ -20,6 +20,19 @@ local Layout = require(game:GetService("ReplicatedStorage").Shared.Layout)
 local Match = {}
 
 local RESULTS = { Lost = true, Aborted = true, Error = true }
+local FEATURED_VFX = {
+	R01 = true,
+	R02 = true,
+	R03 = true,
+	R04 = true,
+	R05 = true,
+	E01 = true,
+	E03 = true,
+	E05 = true,
+	L01 = true,
+	L02 = true,
+	M01 = true,
+}
 
 local function newOut()
 	return { S = {}, H = {}, R = {}, F = {}, Hidx = {}, dirty = false }
@@ -152,12 +165,16 @@ end
 
 -- Aura attack-speed bonus (fraction) per occupied cell, recomputed from the board: every aura die adds its
 -- bonus to each orthogonal neighbour; a die's total is capped at Balance.AuraCap.
+local function auraFrom(state, die): number
+	return Formulas.Aura(die.type, die.pip, state.tiers[die.type] or 1)
+end
+
 function Match.Auras(state): { [number]: number }
 	local bonus = {}
 	for cell = 1, Balance.BoardCells do
 		local die = state.board[cell]
 		if die then
-			local give = Formulas.Aura(die.type, die.pip, state.tiers[die.type] or 1)
+			local give = auraFrom(state, die)
 			if give > 0 then
 				for _, n in Board.Neighbours(cell) do
 					bonus[n] = math.min(Balance.AuraCap, (bonus[n] or 0) + give)
@@ -166,6 +183,24 @@ function Match.Auras(state): { [number]: number }
 		end
 	end
 	return bonus
+end
+
+function Match.SupportCells(state, typeId: string, sourceCell: number?): { number }?
+	local cells
+	local seen = {}
+	for cell = sourceCell or 1, sourceCell or Balance.BoardCells do
+		local die = state.board[cell]
+		if die and die.type == typeId and auraFrom(state, die) > 0 then
+			for _, neighbor in Board.Neighbours(cell) do
+				if state.board[neighbor] and not seen[neighbor] then
+					seen[neighbor] = true
+					cells = cells or {}
+					table.insert(cells, neighbor)
+				end
+			end
+		end
+	end
+	return cells
 end
 
 -- Codes: WrongPhase, IllegalMerge.
@@ -280,7 +315,7 @@ local function attack(state, now: number)
 			local tier = state.tiers[die.type] or 1 -- a die off the deck (only a spec places one) is tier 1
 			local period = Formulas.Period(die.type, die.pip, auras[cell])
 			local twinshot = die.type == "C04"
-			local showProjectile = cfg.rarity == "Common"
+			local showProjectile = cfg.rarity == "Common" or FEATURED_VFX[die.type]
 			local attacks = 0
 			while die.cd <= now and attacks < Balance.MaxAttacksPerTick do
 				local first
@@ -313,6 +348,7 @@ local function attack(state, now: number)
 				end
 				die.hits += 1
 				local flat = if cfg.procEvery and die.hits % cfg.procEvery == 0 then cfg.procFlat else 0
+				local supportCells = if die.type == "R05" then Match.SupportCells(state, die.type, cell) else nil
 				for shot = 1, cfg.shots or 1 do
 					local target = if shot == 1 then first else second
 					damage(
@@ -334,6 +370,8 @@ local function attack(state, now: number)
 						Distance = if showProjectile then target.dist else nil,
 						Boosted = if showProjectile and flat > 0 then true else nil,
 						Slowed = if showProjectile and cfg.slow and target.hp > 0 then true else nil,
+						SlowUntil = if cfg.slow and target.hp > 0 then target.slowUntil else nil,
+						SupportCells = supportCells,
 						Lane = if twinshot then (if shot == 1 then 1 else -1) else nil,
 						SharedTarget = if twinshot and first == second then true else nil,
 					})

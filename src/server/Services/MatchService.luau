@@ -10,10 +10,12 @@ local Progression = require(script.Parent.Parent.Config.Progression)
 local RollConfig = require(script.Parent.Parent.Config.Roll)
 local ShopConfig = require(script.Parent.Parent.Config.Shop)
 local Net = require(script.Parent.Parent.Infrastructure.Net)
+local Admin = require(script.Parent.Parent.Rules.Admin)
 local Bag = require(script.Parent.Parent.Rules.Bag)
 local Catalog = require(script.Parent.Parent.Rules.Catalog)
 local Claims = require(script.Parent.Parent.Rules.Claims)
 local Deck = require(script.Parent.Parent.Rules.Deck)
+local Economy = require(script.Parent.Parent.Rules.Economy)
 local Formulas = require(script.Parent.Parent.Rules.Formulas)
 local Match = require(script.Parent.Parent.Rules.Match)
 local Quests = require(script.Parent.Parent.Rules.Quests)
@@ -81,6 +83,7 @@ local function snapshot(player: Player)
 	out.RewardXp = rewardXp
 	out.RewardGems = rewardGems
 	out.Tiers = Match.TiersView(match)
+	out.ChronoCells = if match.phase == "Playing" then Match.SupportCells(match, "L01") else nil
 	for i = 1, Balance.BoardCells do
 		local die = match.board[i]
 		if die then
@@ -436,8 +439,29 @@ local function tick()
 	flush()
 end
 
+function MatchService.AdminMP(player: Player?, delta: number)
+	if player == nil or not isOwner(player) or match == nil or match.phase ~= "Playing" then
+		return false, "NoLiveMatch"
+	end
+	local ok, code = Economy.TryChange(match, "mp", delta)
+	if ok then
+		push(player)
+	end
+	return ok, code
+end
+
+function MatchService.AdminReset(player: Player)
+	if isOwner(player) then
+		match = nil
+		rewardGold, rewardXp, rewardGems = nil, nil, nil
+	end
+end
+
 function MatchService.Init()
-	Net.SetReadyCheck(function(player)
+	Net.SetReadyCheck(function(player, name)
+		if name == "AdminAction" then
+			return Admin.IsAllowed(player.UserId), "Forbidden"
+		end
 		if ProfileService.Get(player) == nil then
 			return false, "NotLoaded"
 		end

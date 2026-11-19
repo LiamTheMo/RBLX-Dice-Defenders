@@ -19,6 +19,7 @@ Remotes.Kinds = table.freeze({
 	Buy = "Function", -- (seq, offerId): a Gold or Gems Shop offer (Rules/Shop); price and grant stay on the server
 	UpgradeDie = "Function", -- (seq, dieId): spend spare copies of that die for +1 level (Rules/Upgrade); the client never sends a level, copies or cost
 	PowerUp = "Function", -- (seq, dieId): in-match Power Up of one die type of the deck (Rules/Match.TryPowerUp); MP, tier and cost stay on the server
+	AdminAction = "Function", -- (seq, action, userId, kind, id, quantity)
 	State = "Event", -- S -> C snapshot
 	Enemies = "Event", -- S -> C, owner only: {S, H, R, F}
 	Meta = "Event", -- S -> C, that player only: lobby payload (docs/MVP.md "Meta")

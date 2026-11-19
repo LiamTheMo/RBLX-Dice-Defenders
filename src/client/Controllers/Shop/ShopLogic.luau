@@ -4,15 +4,7 @@
 
 local ShopLogic = {}
 
-export type Section = { Kind: string, Heading: string, Tab: string?, Items: { any }? }
-
--- Tab order and labels; icons are the View's job.
-ShopLogic.TABS = {
-	{ Id = "FEATURED", Label = "FEATURED" },
-	{ Id = "GAMEPASSES", Label = "GAMEPASSES" },
-	{ Id = "GEMS", Label = "GEMS" },
-	{ Id = "SHARDS", Label = "SHARDS" },
-}
+export type Section = { Kind: string, Heading: string, Items: { any }? }
 
 -- Product art per offer (View ART keys); an offer not listed shows the gem bag.
 local ART = {
@@ -27,15 +19,6 @@ local ART = {
 -- Hero bullet icon per Rewards.Lines Kind (View BULLET keys).
 local BULLET_ICON = { Gems = "Gem", Gold = "Coin", Die = "Dice3", Xp = "Potion", Item = "Potion" }
 local LABEL = { Owned = "Owned", Unavailable = "Not available yet" }
-
-local function soonHeading(tabId: string): string
-	for _, tab in ShopLogic.TABS do
-		if tab.Id == tabId then
-			return tab.Label
-		end
-	end
-	return "COMING SOON"
-end
 
 -- Whole number with thousands commas: 1200 -> "1,200". Floors; never negative.
 function ShopLogic.priceText(n: number): string
@@ -161,40 +144,33 @@ local function item(offer: any, data: any, withBullets: boolean?): any
 	}
 end
 
-local function soon(tabId: string): { Section }
-	return { { Kind = "Soon", Heading = soonHeading(tabId), Tab = tabId } }
-end
-
-function ShopLogic.sectionsFor(tabId: string, data: any): { Section }
+function ShopLogic.sections(data: any): { Section }
 	if data == nil then
-		return soon(tabId)
-	elseif tabId == "FEATURED" then
-		local hero, cards = nil, {}
-		for _, offer in data.Offers do
-			if offer.Tab == "Featured" and offer.Currency == "Robux" then
-				hero = hero or offer
-			elseif offer.Tab == "Featured" then
-				table.insert(cards, item(offer, data))
-			end
-		end
-		local sections: { Section } = {}
-		if hero then
-			table.insert(sections, { Kind = "Hero", Heading = "STARTER PACK", Items = { item(hero, data, true) } })
-		end
-		if #cards > 0 then
-			table.insert(sections, { Kind = "Cards", Heading = "OFFERS", Items = cards })
-		end
-		return if #sections > 0 then sections else soon(tabId)
-	elseif tabId == "GEMS" then
-		local cards = {}
-		for _, offer in data.Offers do
-			if offer.Tab == "Gems" then
-				table.insert(cards, item(offer, data))
-			end
-		end
-		return if #cards > 0 then { { Kind = "Cards", Heading = "GEMS", Items = cards } } else soon(tabId)
+		return { { Kind = "Loading", Heading = "Loading shop…" } }
 	end
-	return soon(tabId) -- GAMEPASSES (none defined), SHARDS (crafting deferred), unknown
+	local hero, offers, gems = nil, {}, {}
+	for _, offer in data.Offers do
+		if offer.Id == "Starter" then
+			hero = offer
+		elseif offer.Tab == "Featured" then
+			table.insert(offers, item(offer, data))
+		elseif offer.Tab == "Gems" then
+			table.insert(gems, item(offer, data))
+		end
+	end
+	local sections: { Section } = {}
+	if hero then
+		table.insert(sections, { Kind = "Hero", Heading = "STARTER PACK", Items = { item(hero, data, true) } })
+	end
+	if #offers > 0 then
+		table.insert(sections, { Kind = "Cards", Heading = "OFFERS", Items = offers })
+	end
+	if #gems > 0 then
+		table.insert(sections, { Kind = "Cards", Heading = "GEMS", Items = gems })
+	end
+	table.insert(sections, { Kind = "Soon", Heading = "GAMEPASSES" })
+	table.insert(sections, { Kind = "Soon", Heading = "SHARDS" })
+	return sections
 end
 
 -- Changes whenever a render would look different (offers' states and their prices): the controller redraws only then.

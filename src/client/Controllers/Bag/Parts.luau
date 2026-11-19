@@ -45,6 +45,7 @@ Parts.RarityColor = {
 	Epic = Color3.fromRGB(170, 100, 240),
 	Legendary = GOLD,
 	Mythic = Color3.fromRGB(247, 142, 236),
+	Secret = Color3.fromRGB(255, 111, 111),
 }
 -- Rarity / colour tags are code-drawn (plan D1): fill colour per key; the rim is the same colour lightened.
 local PILL = {
@@ -54,6 +55,7 @@ local PILL = {
 	Epic = Color3.fromRGB(136, 62, 216),
 	Legendary = Color3.fromRGB(228, 142, 26),
 	Mythic = Color3.fromRGB(222, 62, 162),
+	Secret = Color3.fromRGB(198, 37, 49),
 	Equipped = Color3.fromRGB(36, 168, 54),
 	Grey = Color3.fromRGB(104, 104, 118),
 	Green = Color3.fromRGB(36, 168, 54),

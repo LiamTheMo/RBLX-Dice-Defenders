@@ -244,6 +244,16 @@ test("malformed argument matrix: BadArgs, never reaches the handler, seq not con
 			P(1, NAN),
 			P(1, INF),
 		},
+		AdminAction = {
+			P(1, "Give", 123, "Gold", ""),
+			P(1, "Give", {}, "Gold", "", 1),
+			P(1, "Give", 123, "Gold", "Gold", 1),
+			P(1, "Give", 123, "Cosmetics", "Trail", 2),
+			P(1, "Take", 123, "Dice", "C01", 0),
+			P(1, "Revoke", 123, "Items", "XpTome", 1),
+			P(1, "Revoke", 123, "Dice", "C01", 2),
+			P(1, "Reset", 123, "", "", 0),
+		},
 		Merge = {
 			P(),
 			P(1),
@@ -281,6 +291,7 @@ test("malformed argument matrix: BadArgs, never reaches the handler, seq not con
 		Buy = P(1, "Frag20"),
 		UpgradeDie = P(1, "C01"),
 		PowerUp = P(1, "C01"),
+		AdminAction = P(1, "Give", 123, "Gold", "", 1),
 	}
 	for name in RemoteGuard.Specs do
 		expect(matrix[name] ~= nil and valid[name] ~= nil, name .. " is covered by the matrix")
@@ -298,6 +309,18 @@ test("malformed argument matrix: BadArgs, never reaches the handler, seq not con
 			)
 		end
 	end
+end)
+
+test("AdminAction authorizes the requester independently of the target user ID", function()
+	local Admin = require(Server.Rules.Admin)
+	local env = make(function(player, remote)
+		return remote == "AdminAction" and Admin.IsAllowed(player.UserId), "Forbidden"
+	end)
+	local ok, code = env.call({ UserId = 123 }, "AdminAction", 1, "Reset", 855002824, "", "RESET", 0)
+	expect(not ok and code == "Forbidden", "an allowlisted target grants no permission to the requester")
+	expectEq(env.calls, 0, "rejected before the handler")
+	expect(env.call({ UserId = 855002824 }, "AdminAction", 1, "Revoke", 123, "R01", 1), "allowlisted requester")
+	expectEq(env.calls, 1, "authorized action reaches the handler")
 end)
 
 test("exact arg count: extra and missing args fail, nil seq is BadSeq", function()
