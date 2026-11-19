@@ -10,10 +10,17 @@ local TWINSHOT_GLINT_SECONDS = 0.04
 local SILVER = Color3.fromRGB(217, 217, 230)
 local IVORY = Color3.fromRGB(255, 248, 232)
 local styles = {
-	C01 = { name = "Pebble", effect = script.Parent.PebbleRing, color = DOT_COLOR, speed = 140, size = 0.22, pool = {} },
+	C01 = {
+		name = "Pebble",
+		effect = script.Parent:FindFirstChild("PebbleRing"),
+		color = DOT_COLOR,
+		speed = 140,
+		size = 0.22,
+		pool = {},
+	},
 	C02 = {
 		name = "Needle",
-		effect = script.Parent.NeedleFlash,
+		effect = script.Parent:FindFirstChild("NeedleFlash"),
 		color = SILVER,
 		speed = 170,
 		size = 0.18,
@@ -22,7 +29,7 @@ local styles = {
 	},
 	C04 = {
 		name = "Twinshot",
-		effect = script.Parent.TwinshotFlash,
+		effect = script.Parent:FindFirstChild("TwinshotFlash"),
 		color = IVORY,
 		speed = 155,
 		size = 0.20,
@@ -76,12 +83,28 @@ local function borrow(style)
 	dot.CanQuery = false
 	dot.CanTouch = false
 	local template = style.effect
-	local shot = { dot = dot, effect = template:Clone() }
-	shot.effect.Size *= SIZE_SCALE
-	local pivot = template.PivotOffset
-	shot.effect.PivotOffset = pivot.Rotation + pivot.Position * SIZE_SCALE
-	shot.impactRadius = (math.max(template.Size.X, template.Size.Y, template.Size.Z) / 2 + pivot.Position.Magnitude)
-		* SIZE_SCALE
+	local effect
+	if template and template:IsA("BasePart") then
+		effect = template:Clone()
+	else
+		effect = Instance.new("Part")
+		effect.Name = style.name .. "Impact"
+		effect.Shape = if style.streak then Enum.PartType.Ball else Enum.PartType.Cylinder
+		effect.Size = if style.streak then Vector3.new(0.24, 0.24, 0.10) else Vector3.new(0.06, 0.26, 0.26)
+		effect.Material = dot.Material
+		effect.Color = style.color
+		effect.Anchored = true
+		effect.CastShadow = false
+		effect.CanCollide = false
+		effect.CanQuery = false
+		effect.CanTouch = false
+	end
+	local shot = { dot = dot, effect = effect }
+	effect.Size *= SIZE_SCALE
+	local pivot = effect.PivotOffset
+	effect.PivotOffset = pivot.Rotation + pivot.Position * SIZE_SCALE
+	shot.impactRadius = math.max(effect.Size.X, effect.Size.Y, effect.Size.Z) / 2
+		+ pivot.Position.Magnitude * SIZE_SCALE
 	if style.streak then
 		local top, bottom = Instance.new("Attachment"), Instance.new("Attachment")
 		local halfWidth = Vector3.yAxis * SIZE_SCALE * (if style.shortStreak then 0.035 else 0.057)
