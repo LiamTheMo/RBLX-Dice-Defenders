@@ -177,10 +177,19 @@ local function applyMeshes(anchor: BasePart, visuals: Folder, typeId: string, la
 	if not (body and marks and texture) then
 		return false
 	end
+	-- The templates use their full-size offsets even if they arrive mid-animation.
+	local model = anchor:FindFirstAncestorOfClass("Model")
+	local scale = if model then model:GetScale() else 1
+	if model and scale ~= 1 then
+		model:ScaleTo(1)
+	end
 	cloneMesh(body, visuals, anchor, "ChamferedBody", WHITE).TextureContent = texture
 	cloneMesh(marks, visuals, anchor, if layout == 7 then "Stars" else "Pips", WHITE)
 	if typeId == "C06" and iceChips then
 		cloneMesh(iceChips, visuals, anchor, "IceChips", WHITE)
+	end
+	if model and scale ~= 1 then
+		model:ScaleTo(scale)
 	end
 	anchor.Transparency = 1
 	return true

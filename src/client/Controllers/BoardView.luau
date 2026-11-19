@@ -4,12 +4,14 @@
 
 local GuiService = game:GetService("GuiService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
 local Display = require(ReplicatedStorage.Shared.Display)
 local Layout = require(ReplicatedStorage.Shared.Layout)
 local NetClient = require(script.Parent.NetClient)
 local DiceVisuals = require(script.Parent.Dice.Visuals)
+local SettingsLogic = require(script.Parent.Settings.SettingsLogic)
 
 local BoardView = {}
 
@@ -19,9 +21,13 @@ local SELECT_COLOR = Color3.fromRGB(255, 220, 60)
 local PARTNER_COLOR = Color3.fromRGB(80, 220, 230)
 local PARTNER_OUTLINE = Color3.new(1, 1, 1) -- distinct from every type colour
 local LIFT = 0.8
+local MIN_DIE_SCALE = 0.001
+local SHRINK_TIME = 0.1
+local EXPAND_TIME = 0.25
 
 local pads = {} -- cell -> Part
-local dice = {} -- cell -> { model, part, base, highlight, lifted, key }
+local dice = {} -- cell -> { model, part, pad, highlight, lifted, key }
+local animations = {} -- die -> current transition
 local board = {} -- latest Board from State
 local playing = false
 local selected: number? = nil
@@ -114,14 +120,74 @@ local function buildWorld()
 	rayParams.FilterDescendantsInstances = { padsFolder, diceFolder }
 end
 
-local function placeDie(die, cell: number, size: number)
-	local c = Layout.CellPosition(cell)
-	die.base = CFrame.new(c.X, 0.4 + size / 2, c.Z)
-	die.part.Size = Vector3.one * size
-	die.model:PivotTo(die.base * CFrame.new(0, if die.lifted then LIFT else 0, 0))
+local function positionDie(die)
+	local height = die.part.Size.Y / 2 + (if die.lifted then LIFT else 0)
+	die.model:PivotTo(die.pad * CFrame.new(0, height, 0))
+end
+
+local function scaleDie(die, scale: number)
+	die.model:ScaleTo(scale)
+	positionDie(die)
+end
+
+local function applyDie(die, entry)
+	die.model:ScaleTo(1)
+	die.part.Size = Vector3.one * DiceVisuals.Size(entry.T)
+	positionDie(die)
+	local style = Display.Dice[entry.T]
+	DiceVisuals.Apply(die.part, entry.T, entry.P, if style then style.Color else Color3.new(1, 1, 1))
+end
+
+local function hideDie(die)
+	animations[die] = nil
+	die.model.Parent = nil
+	die.lifted = false
+end
+
+local function animateDie(die, now: number, shrinking: boolean, result)
+	animations[die] = {
+		start = now,
+		from = die.model:GetScale(),
+		shrink = if shrinking then SHRINK_TIME else 0,
+		swapped = not shrinking,
+		result = result,
+	}
+	if not shrinking then
+		scaleDie(die, MIN_DIE_SCALE)
+	end
+end
+
+local function stepAnimations()
+	if next(animations) == nil then
+		return
+	end
+	local now = os.clock()
+	local still = SettingsLogic.get("reducedMotion")
+	for die, animation in animations do
+		local elapsed = if still then math.huge else now - animation.start
+		if elapsed < animation.shrink then
+			local t = elapsed / animation.shrink
+			scaleDie(die, animation.from + (MIN_DIE_SCALE - animation.from) * t * t)
+		else
+			if not animation.swapped then
+				if not animation.result then
+					hideDie(die)
+					continue
+				end
+				applyDie(die, animation.result)
+				animation.swapped = true
+			end
+			local t = math.min(1, (elapsed - animation.shrink) / EXPAND_TIME)
+			scaleDie(die, 1 - (1 - MIN_DIE_SCALE) * (1 - t) ^ 2)
+			if t == 1 then
+				animations[die] = nil
+			end
+		end
+	end
 end
 
 local function makeDie(cell: number)
+	local c = Layout.CellPosition(cell)
 	local model = Instance.new("Model")
 	model.Name = "Die" .. cell
 	local body = part(model, "Body", Vector3.one, CFrame.identity, Color3.new(1, 1, 1))
@@ -138,7 +204,7 @@ local function makeDie(cell: number)
 	return {
 		model = model,
 		part = body,
-		base = body.CFrame,
+		pad = CFrame.new(c.X, 0.4, c.Z),
 		highlight = highlight,
 		lifted = false,
 		key = "",
@@ -167,19 +233,23 @@ local function refreshPads()
 			die.highlight.OutlineColor = if isSelected then SELECT_COLOR else PARTNER_OUTLINE
 			if die.lifted ~= isSelected then
 				die.lifted = isSelected
-				die.model:PivotTo(die.base * CFrame.new(0, if isSelected then LIFT else 0, 0))
+				positionDie(die)
 			end
 		end
 	end
 end
 
 local function render(snapshot)
+	local previous = board
 	playing = snapshot.Phase == "Playing"
 	arena.Parent = if playing then root else nil
-	board = snapshot.Board or {}
+	board = if playing then snapshot.Board or {} else {}
+	local still = SettingsLogic.get("reducedMotion")
+	local now = os.clock()
 	local parts = {}
 	for i = 1, CELLS do
 		local entry = board[i]
+		local before = previous[i]
 		parts[i] = if entry then entry.T .. entry.P else "-"
 		local die = dice[i]
 		if entry then
@@ -189,15 +259,27 @@ local function render(snapshot)
 			end
 			if die.key ~= parts[i] then
 				die.key = parts[i]
-				local style = Display.Dice[entry.T]
-				local color = if style then style.Color else Color3.new(1, 1, 1)
-				placeDie(die, i, DiceVisuals.Size(entry.T))
-				DiceVisuals.Apply(die.part, entry.T, entry.P, color)
+				if not still and before and entry.P > before.P then
+					animateDie(die, now, true, entry)
+				else
+					animations[die] = nil
+					applyDie(die, entry)
+					if not still and not before then
+						animateDie(die, now, false)
+					end
+				end
 			end
 			die.model.Parent = diceFolder
-		elseif die then
-			die.model.Parent = nil -- reused when the cell fills again
+		elseif die and (die.key ~= "" or not playing) then
 			die.key = ""
+			die.highlight.Enabled = false
+			die.lifted = false
+			positionDie(die)
+			if playing and before and not still then
+				animateDie(die, now, true)
+			else
+				hideDie(die)
+			end
 		end
 	end
 	local key = table.concat(parts, ",")
@@ -250,6 +332,7 @@ end
 
 function BoardView.Start()
 	buildWorld()
+	RunService.RenderStepped:Connect(stepAnimations)
 	UserInputService.InputBegan:Connect(onInput)
 	NetClient.State:Connect(render)
 	if NetClient.Last then
