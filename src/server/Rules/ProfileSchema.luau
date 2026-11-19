@@ -18,7 +18,7 @@ local Validate = require(script.Parent.Validate)
 
 local ProfileSchema = {}
 
-ProfileSchema.VERSION = 11
+ProfileSchema.VERSION = 13
 
 local LEGACY_STARTER_GEMS = 50 -- old profiles migrating from v3 once (v3 -> v4)
 
@@ -128,16 +128,29 @@ local function newProfile()
 end
 
 -- v10 -> v11: retired die -> same-rarity replacement.
-local RETIRED = { E02 = "E08", E04 = "E07", L03 = "L06" }
+local RETIRED_V11 = { E02 = "E08", E04 = "E07", L03 = "L06" }
+local RETIRED_V12 = {
+	R06 = "R02",
+	R07 = "R03",
+	E06 = "E03",
+	E07 = "E05",
+	E08 = "E01",
+	E09 = "E03",
+	E10 = "E05",
+	L04 = "L02",
+	L05 = "L02",
+	L06 = "L01",
+}
+local EPIC_IDS_V13 = { E03 = "E02", E05 = "E03" }
 
 local function clampInt(value: any, min: number, max: number, fallback: number): number
 	return if Validate.IsInt(value, min, max) then value else fallback
 end
 
 -- Moves the retired entries of data.Dice and data.Mastery onto their targets (data is a copy).
-local function convertRetired(data)
+local function convertRetired(data, retired)
 	local dice, mastery = data.Dice, data.Mastery
-	for old, new in RETIRED do
+	for old, new in retired do
 		if type(dice) == "table" and type(dice[old]) == "table" then
 			local from, to = dice[old], dice[new]
 			local copies = clampInt(from.Copies, 0, Validate.MAX_INT, 0)
@@ -162,7 +175,9 @@ local function convertRetired(data)
 				local claimed = if type(to.Claimed) == "table" then table.clone(to.Claimed) else {}
 				if type(from.Claimed) == "table" then
 					for level, flag in from.Claimed do
-						claimed[level] = flag
+						if flag == true then
+							claimed[level] = true
+						end
 					end
 				end
 				mastery[new] = {
@@ -179,9 +194,24 @@ local function convertRetired(data)
 		end
 	end
 	if type(data.Deck) == "table" then
-		for slot, id in data.Deck do
-			if RETIRED[id] then
-				data.Deck[slot] = RETIRED[id]
+		local used = {}
+		for _, id in data.Deck do
+			if type(id) == "string" and not retired[id] then
+				used[id] = true
+			end
+		end
+		for slot = 1, #Dice.Deck do
+			local replacement = retired[data.Deck[slot]]
+			if replacement then
+				if used[replacement] then
+					for _, starter in Dice.Deck do
+						if not used[starter] then
+							replacement = starter
+							break
+						end
+					end
+				end
+				data.Deck[slot], used[replacement] = replacement, true
 			end
 		end
 	end
@@ -242,9 +272,12 @@ local MIGRATIONS: { [number]: (any) -> any } = {
 	[9] = function(data)
 		local max = Progression.DieLevel.Max
 		if type(data.Dice) == "table" then
-			for id in Dice.Types do
-				local entry = data.Dice[id]
-				if type(entry) == "table" and Validate.IsInt(entry.Level, max + 1, 10) then
+			for id, entry in data.Dice do
+				if
+					(Dice.Types[id] or RETIRED_V12[id] or RETIRED_V11[id] or EPIC_IDS_V13[id])
+					and type(entry) == "table"
+					and Validate.IsInt(entry.Level, max + 1, 10)
+				then
 					entry.Level = max
 				end
 			end
@@ -253,7 +286,29 @@ local MIGRATIONS: { [number]: (any) -> any } = {
 	end,
 	-- v10 -> v11: E02/E04/L03 are removed; owned copies, mastery and deck slots move to E08/E07/L06.
 	[10] = function(data)
-		convertRetired(data)
+		convertRetired(data, RETIRED_V11)
+		return data
+	end,
+	[11] = function(data)
+		convertRetired(data, RETIRED_V11)
+		convertRetired(data, RETIRED_V12)
+		return data
+	end,
+	[12] = function(data)
+		-- Clear the retired Reactor ID before reusing it for Mirror.
+		convertRetired(data, RETIRED_V11)
+		convertRetired(data, RETIRED_V12)
+		for _, field in { "Dice", "Mastery" } do
+			local entries = data[field]
+			if type(entries) == "table" then
+				entries.E02, entries.E03, entries.E05 = entries.E03, entries.E05, nil
+			end
+		end
+		if type(data.Deck) == "table" then
+			for slot, id in data.Deck do
+				data.Deck[slot] = EPIC_IDS_V13[id] or id
+			end
+		end
 		return data
 	end,
 }
@@ -435,12 +490,6 @@ function ProfileSchema.Migrate(stored: any)
 			data.Version += 1
 		end
 	end
-	-- Idempotent: also repairs a current-version save that still holds a retired id (hand-edited or restored).
-	if data == stored then
-		data = deepCopy(stored)
-	end
-	convertRetired(data)
-
 	local rolling = type(data.Tutorial) == "table" and data.Tutorial.Stage == "Roll"
 	local dice = cleanDice(data.Dice, rolling)
 	local tutorial = Tutorial.Restore(data.Tutorial, dice)

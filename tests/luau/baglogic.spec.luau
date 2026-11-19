@@ -101,6 +101,8 @@ test("replaceSlot: happy path replaces one slot and never mutates the input", fu
 	local out = BagLogic.replaceSlot(deck, owned, "C06", 3)
 	expectEq(table.concat(out, ","), "C01,C02,C06,C04,C05", "replaced")
 	expectEq(table.concat(deck, ","), "C01,C02,C03,C04,C05", "input untouched")
+	expectEq(table.concat(BagLogic.replaceSlot({}, owned, "C06", 1), ","), "C06", "equip into an empty loadout")
+	expectEq(table.concat(BagLogic.replaceSlot({ "C01" }, owned, "C06", 2), ","), "C01,C06", "append into a free slot")
 end)
 
 test("replaceSlot: rejects duplicate, unowned, bad size, bad slot, nil input", function()
@@ -108,7 +110,7 @@ test("replaceSlot: rejects duplicate, unowned, bad size, bad slot, nil input", f
 	local owned = { "C01", "C02", "C03", "C04", "C05", "C06" }
 	expect(BagLogic.replaceSlot(deck, owned, "C02", 1) == nil, "duplicate id")
 	expect(BagLogic.replaceSlot(deck, owned, "R01", 1) == nil, "not owned")
-	expect(BagLogic.replaceSlot({ "C01", "C02", "C03", "C04" }, owned, "C06", 1) == nil, "4 ids")
+	expect(BagLogic.replaceSlot({ "C01" }, owned, "C06", 3) == nil, "no gaps")
 	expect(BagLogic.replaceSlot({ "C01", "C02", "C03", "C04", "C05", "C06" }, owned, "C06", 1) == nil, "6 ids")
 	expect(BagLogic.replaceSlot(deck, owned, "C06", 0) == nil, "slot 0")
 	expect(BagLogic.replaceSlot(deck, owned, "C06", 6) == nil, "slot 6")
@@ -275,8 +277,8 @@ test("dice detail: Damage, Attack Speed and Aura from the Catalog, ability note 
 	expectEq(detail(nil, "C02").Stats[1].Value, D, "no Catalog yet: dash")
 	expectEq(values(detail(catalog, "R05")), "5,1.25s,+6%", "aura die: Aura row")
 	local astral = detail(catalog, "M01")
-	expectEq(values(astral), `{D},{D},{D}`, "unreleased die: all dashes")
-	expectEq(astral.Description, "Not available yet", "unreleased die keeps its note")
+	expectEq(values(astral), `{D},{D},{D}`, "unowned die without catalog stats: all dashes")
+	expectEq(astral.Description, "Not owned", "unowned Astral is still in the roster")
 end)
 
 test("cosmetics counter: owned / total from the Catalog", function()
@@ -397,22 +399,20 @@ test("cosmetics detail: EQUIP / UNEQUIP live, LOCK off with a reason, no-visual 
 	)
 end)
 
-test("dice: UNEQUIP ALL resets to the starter deck; SELL stays off", function()
+test("dice: UNEQUIP ALL can clear any equipped loadout and the selected die has the matching action", function()
 	local starter = { "C01", "C02", "C03", "C04", "C05" }
 	local catalog = { StarterDeck = starter, Dice = {} }
-	local same = DiceTab.Footer({ Deck = table.clone(starter) }, catalog).Button
-	expect(not same.Enabled and same.Hint ~= "Coming soon", "already the starter deck: off")
-	local moved = DiceTab.Footer({ Deck = { "C02", "C01", "C03", "C04", "C05" } }, catalog).Button
-	expect(moved.Enabled and moved.Deck == starter, "another order: live, sends the starter deck")
-	expect(not DiceTab.Footer({ Deck = {} }, nil).Button.Enabled, "no Catalog yet: off")
-	expect(BagLogic.sameDeck(starter, table.clone(starter)) and not BagLogic.sameDeck(starter, { "C01" }), "sameDeck")
-	expect(not BagLogic.sameDeck(nil, starter), "sameDeck nil")
+	expect(DiceTab.Footer({ Deck = starter }).Button.Enabled, "clear the starter deck")
+	expect(DiceTab.Footer({ Deck = { "C01" } }).Button.Enabled, "clear a partial deck")
+	expect(not DiceTab.Footer({ Deck = {} }).Button.Enabled, "empty deck: off")
 	local meta = { Dice = { { Id = "C01", Level = 1 } }, Deck = starter }
 	for _, it in DiceTab.GetItems(meta, catalog) do
 		if it.Id == "C01" then
 			local d = DiceTab.Detail(it)
-			local b = button(d, "Sell")
-			expect(not b.Enabled and b.Hint == "Copies level this die up", "SELL reason")
+			expect(button(d, "Unequip").Enabled and button(d, "Equip") == nil, "equipped die can be removed")
+			local reEquip = DiceTab.Detail(DiceTab.GetItems({ Dice = meta.Dice, Deck = {} }, catalog)[1])
+			expect(button(reEquip, "Equip").Enabled, "owned die can be equipped again")
+			expect(button(d, "Sell") == nil, "no SELL on dice")
 			expect(button(d, "Lock") == nil, "no LOCK on dice")
 		end
 	end
@@ -487,9 +487,9 @@ test("every Config die is listed, owned or not; removed ids are not", function()
 			end
 		end
 	end
-	expect(find({ Dice = {} }, "E08") ~= nil, "unowned die listed")
-	expect(find({ Dice = { { Id = "E08", Level = 3 } } }, "E08") ~= nil, "owned die listed")
-	expect(find({ Dice = {} }, "E02") == nil, "removed id never listed")
+	expect(find({ Dice = {} }, "E03") ~= nil, "unowned die listed")
+	expect(find({ Dice = { { Id = "E03", Level = 3 } } }, "E03") ~= nil, "owned die listed")
+	expect(find({ Dice = {} }, "E05") == nil, "retired Gravity ID never listed")
 	local chill = find({ Dice = {} }, "C06")
 	expect(
 		chill ~= nil and DiceTab.Detail(chill).Description == "Hits slow enemies by 15% for 1.5 seconds.",

@@ -63,7 +63,7 @@ local GAP = 10 -- vertical gap left panel to footer
 local TOOLBAR_H, FOOTER_H = 63, 83 -- mockup: grid top y 288 (content y 63), loadout strip 682x83 at y 651
 local GRID_INSET = 13
 local DETAIL_MAX, DETAIL_MIN = 368, 310 -- mockup detail panel 368 wide
-local DETAIL_CUT = 41 -- detail panel ends above the footer strip's bottom (Bag mockup: panel bottom y 690, strip bottom y 733)
+local LEFT_PANEL_BOTTOM_INSET = 41 -- left panel inset on desktop tabs without a footer
 local MIN_SCALE, MAX_SCALE = 0.8, 1.5
 
 local Shell = {}
@@ -234,7 +234,7 @@ function Shell.new(parent, deps)
 		local leftH = if compact
 			then contentH
 			elseif self._footerOn then contentH - FOOTER_H - GAP
-			else contentH - DETAIL_CUT
+			else contentH - LEFT_PANEL_BOTTOM_INSET
 
 		-- Phones: centred in the free region. Full: horizontally centred at design y 86 (the 1672x941 mockup); on a taller-than-16:9
 		-- screen the spare height splits evenly; the window is never lower than the bag row's top nor higher than 4 real px.
@@ -246,6 +246,7 @@ function Shell.new(parent, deps)
 			top = math.max(4, math.min(top, ins.bottomTopReal - 8 - hf * es))
 		end
 		local real = if compact then bs else es
+		local minD = math.ceil(MIN_HIT / es) -- round design pixels up for the 44 px touch target
 		window.Size = UDim2.fromOffset(winW, hf)
 		window.Position = UDim2.new(0.5, 0, 0, (top + hf * real / 2) / es)
 		if ins.placeRow and self.Bag.Visible then -- the shared bag row follows the OPEN menu only (closed ones refit on resize too)
@@ -258,22 +259,21 @@ function Shell.new(parent, deps)
 			left.Size = UDim2.fromOffset(leftW, contentH)
 			leftPanel.Size = UDim2.fromOffset(leftW, leftH)
 			toolbar.Size = UDim2.fromOffset(leftW, TOOLBAR_H)
-			grid:SetAttribute("FooterInset", FOOTER_H + GAP - DETAIL_CUT) -- Cosmetics sizes its cards as if the Dice footer were shown
+			grid:SetAttribute("FooterInset", FOOTER_H + GAP - LEFT_PANEL_BOTTOM_INSET) -- Cosmetics sizes its cards as if the Dice footer were shown
 			local fx = if compact then 0 else 7 -- mockup: grid x 313, strip x 309 (panel x 302)
 			local footerY = contentH - FOOTER_H + (if compact then 0 else 2)
 			grid.Position = UDim2.fromOffset(if compact then 3 else 11, TOOLBAR_H)
 			grid.Size = if compact
-				then UDim2.fromOffset(leftW - 6, leftH - TOOLBAR_H - GRID_INSET)
+				then UDim2.fromOffset(leftW - 6, leftH - TOOLBAR_H - (if self._footerOn then minD + 12 else GRID_INSET))
 				else UDim2.fromOffset(
 					leftW - 17,
 					(if self._footerOn then footerY - GRID_INSET else contentH - 26) - TOOLBAR_H
 				)
 			footer.Position = UDim2.fromOffset(fx, footerY) -- compact: an overlay on the panel bottom
 			footer.Size = UDim2.fromOffset(if compact then leftW else leftW - 15, FOOTER_H)
-			local detailH = contentH - (if compact then 0 else DETAIL_CUT)
 			detail.Position = UDim2.fromOffset(leftW + gap, 0)
-			detail.Size = UDim2.fromOffset(detailW, detailH)
-			detailSlot.Size = UDim2.fromOffset(detailW, detailH - 8) -- offsets: Parts read slot widths in design px
+			detail.Size = UDim2.fromOffset(detailW, contentH)
+			detailSlot.Size = UDim2.fromOffset(detailW, contentH - 8) -- offsets: Parts read slot widths in design px
 		end
 		for _, slotFrame in self.Slots do
 			slotFrame:SetAttribute("Compact", compact)
@@ -293,7 +293,6 @@ function Shell.new(parent, deps)
 		-- Close X: visible art at its measured size, hit box >= 44 real px.
 		close.Size = UDim2.fromOffset(closeBox.w, closeBox.h)
 		close.Position = UDim2.fromOffset(winW - closeBox.dx, closeBox.cy)
-		local minD = math.ceil(MIN_HIT / es) -- design px (UDim offsets are whole numbers: round up to stay >= 44 real px)
 		closeHit.Size = UDim2.fromOffset(math.max(closeBox.w, minD), math.max(closeBox.h, minD))
 
 		-- Tabs: equal widths filling the row (or deps.tabW); the label shrinks (>= 15) and the icon drops when narrow.

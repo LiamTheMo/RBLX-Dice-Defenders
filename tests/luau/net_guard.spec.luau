@@ -67,8 +67,7 @@ test("malformed argument matrix: BadArgs, never reaches the handler, seq not con
 		EquipDeck = {
 			P(),
 			P(1),
-			P(1, {}),
-			P(1, { "C01", "C02", "C03", "C04" }),
+			P(1, { [2] = "C01" }),
 			P(1, { "C01", "C02", "C03", "C04", "C05", "C06" }),
 			P(1, { "C01", "C01", "C02", "C03", "C04" }),
 			P(1, { "C01", "C02", "C03", "C04", 5 }),
@@ -542,6 +541,8 @@ test("EquipDeck and ClaimQuest pass their arguments through; ids of 1 and 16 byt
 	expect(got.n == 1 and got[1] == "S1", "id passed")
 	expect(env.call(owner, "ClaimQuest", 3, "x"), "1 byte")
 	expect(env.call(owner, "ClaimQuest", 4, ("x"):rep(16)), "16 bytes")
+	expect(env.call(owner, "EquipDeck", 5, { "C01" }), "partial deck reaches the handler")
+	expect(env.call(owner, "EquipDeck", 6, {}), "clearing the deck reaches the handler")
 end)
 
 test("EquipDeck and ClaimQuest buckets match Balance (burst 3 and 4), per remote", function()

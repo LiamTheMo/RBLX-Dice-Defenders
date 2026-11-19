@@ -139,15 +139,6 @@ return {
 		Size = Vector2.new(410, 337),
 		Ink = Rect.new(11, 12, 399, 326),
 	},
-	DieFire = { Image = "rbxassetid://93532995776333", Size = Vector2.new(292, 309), Ink = Rect.new(12, 11, 281, 297) },
-	DieIce = { Image = "rbxassetid://113373610042543", Size = Vector2.new(286, 305), Ink = Rect.new(11, 11, 275, 293) },
-	DieLeaf = { Image = "rbxassetid://123689222857445", Size = Vector2.new(287, 308), Ink = Rect.new(11, 12, 276, 297) },
-	DieLightning = {
-		Image = "rbxassetid://113124787534973",
-		Size = Vector2.new(290, 309),
-		Ink = Rect.new(11, 13, 277, 298),
-	},
-	DieSun = { Image = "rbxassetid://135528766837983", Size = Vector2.new(286, 308), Ink = Rect.new(11, 12, 274, 297) },
 	SkinFire = {
 		Image = "rbxassetid://107455813792198",
 		Size = Vector2.new(191, 258),

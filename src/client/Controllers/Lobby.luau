@@ -35,7 +35,8 @@ local ROW = 48 -- touch row / button height in px (>= 44)
 local TOAST_NAMES = { Start = true, EquipDeck = true, ClaimQuest = true, CoopReady = true }
 local TOASTS = {
 	WrongPhase = "Not available right now",
-	BadDeck = "Your deck is invalid. Fix it in your Bag.",
+	BadDeck = "Equip five dice in your Bag to play.",
+	PartnerDeck = "Both players need five equipped dice to play Co-op.",
 	FinishStarterRolls = "Finish your starter rolls first.",
 	NeedPartner = "Join the same server as your partner to play co-op.",
 	UnknownDie = "Unknown die",

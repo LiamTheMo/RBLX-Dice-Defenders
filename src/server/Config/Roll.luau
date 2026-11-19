@@ -50,9 +50,9 @@ Roll.Pools = freeze({
 		Name = "Standard",
 		Prices = { { Count = 1, Gems = 100 }, { Count = 10, Gems = 900 } },
 		Odds = { -- draw order; Rules/Roll walks it against one roll of 1..10000
-			{ Rarity = "Common", Bp = 3989 },
-			{ Rarity = "Rare", Bp = 4500 },
-			{ Rarity = "Epic", Bp = 1400 },
+			{ Rarity = "Common", Bp = 5889 },
+			{ Rarity = "Rare", Bp = 3000 },
+			{ Rarity = "Epic", Bp = 1000 },
 			{ Rarity = "Legendary", Bp = 100 },
 			{ Rarity = "Mythic", Bp = 10 },
 			{ Rarity = "Secret", Bp = 1 },

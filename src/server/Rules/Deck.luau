@@ -1,11 +1,11 @@
--- Deck rules: exactly SIZE distinct owned die ids, in a table keyed 1..SIZE. Pure.
+-- Deck rules: up to SIZE distinct owned die ids in a dense array. Pure.
 local Dice = require(script.Parent.Parent.Config.Dice)
 
 local Deck = {}
 
 Deck.SIZE = 5
 
--- True for a plain 1..SIZE array of distinct strings of 1..8 bytes. Untrusted input:
+-- True for a dense array of up to SIZE distinct strings of 1..8 bytes. Untrusted input:
 -- stops counting past SIZE entries, so a huge table is never fully scanned.
 function Deck.Shape(ids: any): boolean
 	if type(ids) ~= "table" then
@@ -26,7 +26,12 @@ function Deck.Shape(ids: any): boolean
 		end
 		seen[id] = true
 	end
-	return n == Deck.SIZE
+	for i = 1, n do
+		if ids[i] == nil then
+			return false
+		end
+	end
+	return true
 end
 
 -- Codes: BadDeck (shape), UnknownDie (not in the catalog), NotOwned.
@@ -55,6 +60,10 @@ function Deck.Equip(profile: any, ids: any): (boolean, string?)
 	end
 	profile.Deck = table.clone(ids)
 	return true, nil
+end
+
+function Deck.IsReady(profile): boolean
+	return Deck.Check(profile.Dice, profile.Deck) and #profile.Deck == Deck.SIZE
 end
 
 return Deck

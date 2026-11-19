@@ -10,7 +10,7 @@ Remotes.Kinds = table.freeze({
 	Start = "Function", -- (seq)
 	Summon = "Function", -- (seq)
 	Merge = "Function", -- (seq, from, to)
-	EquipDeck = "Function", -- (seq, ids): 5 distinct owned die ids
+	EquipDeck = "Function", -- (seq, ids): up to 5 distinct owned die ids
 	ClaimQuest = "Function", -- (seq, questId)
 	RedeemCode = "Function", -- (seq, code)
 	SaveSettings = "Function", -- (seq, patch): {[settingId] = value}, cleaned against Shared/SettingsDefs

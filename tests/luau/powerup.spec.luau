@@ -174,13 +174,11 @@ test("Board.Neighbours: orthogonal only, no wrap across rows", function()
 end)
 
 test("aura: formula, adjacency, cap, recomputed (no accumulation)", function()
-	expect(Dice.Types.R05.aura and Dice.Types.L06.aura, "R05 and L06 carry an aura")
 	expectNear(Formulas.Aura("R05", 1, 1), 0.06, 1e-9, "beacon base")
 	expectNear(Formulas.Aura("R05", 4, 3), 0.06 + 0.01 * 3 + 0.01 * 2, 1e-9, "beacon pip 4 tier 3")
-	expectNear(Formulas.Aura("L06", 1, 1), 0.08, 1e-9, "light base")
 	expectEq(Formulas.Aura("C01", 7, 5), 0, "no aura, no bonus")
 
-	local state = newState({ "R05", "L06", "C01" })
+	local state = newState({ "R05", "C01" })
 	place(state, 8, "R05", 1)
 	local a = Match.Auras(state)
 	expectNear(a[7], 0.06, 1e-9, "left neighbour")
@@ -191,10 +189,10 @@ test("aura: formula, adjacency, cap, recomputed (no accumulation)", function()
 	expectEq(a[2], nil, "diagonal gets nothing")
 	expectEq(a[4], nil, "two away gets nothing")
 	-- Many sources add, then the total caps at AuraCap.
-	place(state, 6, "L06", 7)
-	place(state, 12, "L06", 7)
-	place(state, 2, "L06", 7)
-	state.tiers.L06 = PU.Max
+	place(state, 6, "R05", 7)
+	place(state, 12, "R05", 7)
+	place(state, 2, "R05", 7)
+	state.tiers.R05 = PU.Max
 	local b = Match.Auras(state)
 	for cell, v in b do
 		expect(v <= Balance.AuraCap + 1e-12, "cap at cell " .. cell)
@@ -230,7 +228,6 @@ test("Catalog dice rows: AttackSpeed (2 dp, 1 pip) for all, Aura (base %) for au
 		end
 	end
 	expectEq(byId.R05.Aura, 6, "Beacon 6%")
-	expectEq(byId.L06.Aura, 8, "Light 8%")
 	expectEq(byId.C01.AttackSpeed, 1, "Pebble 1.00 s")
 	expectEq(byId.C02.AttackSpeed, 0.57, "Needle 0.57 s")
 	expectEq(c.PowerUp.Max, PU.Max, "PowerUp.Max")

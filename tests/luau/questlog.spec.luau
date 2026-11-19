@@ -299,7 +299,7 @@ end)
 local META_MASTERY = {
 	Mastery = {
 		{ Id = "C01", Level = 12, Xp = 20, XpGoal = 60, Claimed = { 5 } },
-		{ Id = "R06", Level = 3, Xp = 4, XpGoal = 15, Claimed = {} },
+		{ Id = "M01", Level = 3, Xp = 4, XpGoal = 15, Claimed = {} },
 		{ Id = "E01", Level = 20, Xp = 0, XpGoal = 0, Claimed = { 5, 10, 15, 20 } },
 		{ Id = "C02", Level = 15, Xp = 0, XpGoal = 75, Claimed = { 10 } },
 	},
@@ -307,13 +307,13 @@ local META_MASTERY = {
 
 test("masteryRows: names, die art by the Bag rule, milestones", function()
 	local rows = QuestLogic.masteryRows(CATALOG, META_MASTERY)
-	expectEq(ids(rows), "C01,R06,E01,C02", "meta order")
+	expectEq(ids(rows), "C01,M01,E01,C02", "meta order")
 	expectEq(rows[1].Name, "Pebble", "catalog name")
 	expectEq(rows[1].Level .. ":" .. rows[1].Xp .. "/" .. rows[1].XpGoal, "12:20/60", "level and xp")
 	expectEq(rows[1].Art, Sprites.Icon.Roll, "no DieArt: roll glyph")
 	expect(rows[1].Tint == Display.Dice.C01.Color, "roll glyph tinted with the Display colour")
-	expectEq(rows[2].Art, Sprites.Dice[Sprites.DieArt.R06], "DieArt die: its elemental art")
-	expectEq(rows[2].Tint, nil, "elemental art untinted")
+	expectEq(rows[2].Art, Sprites.Dice[Sprites.DieArt.M01], "DieArt die: its model thumbnail")
+	expectEq(rows[2].Tint, nil, "thumbnail untinted")
 	expectEq(#rows[1].Milestones, 4, "Lv 5/10/15/20")
 	expectEq(states(rows[1]), "Done,Claimable,Locked,Locked", "lv 12, 5 claimed")
 	expectEq(states(rows[2]), "Locked,Locked,Locked,Locked", "lv 3")
@@ -367,9 +367,9 @@ end)
 
 test("sortMastery: default, asc, name, stable", function()
 	local rows = QuestLogic.masteryRows(CATALOG, META_MASTERY)
-	expectEq(ids(QuestLogic.sortMastery(rows, nil)), "E01,C02,C01,R06", "level desc")
-	expectEq(ids(QuestLogic.sortMastery(rows, "LevelAsc")), "R06,C01,C02,E01", "asc")
-	expectEq(QuestLogic.sortMastery(rows, "Name")[1].Name, "Emberstorm", "name")
+	expectEq(ids(QuestLogic.sortMastery(rows, nil)), "E01,C02,C01,M01", "level desc")
+	expectEq(ids(QuestLogic.sortMastery(rows, "LevelAsc")), "M01,C01,C02,E01", "asc")
+	expectEq(QuestLogic.sortMastery(rows, "Name")[1].Name, "Astral", "name")
 	local ties = { { Id = "a", Level = 3 }, { Id = "b", Level = 3 }, { Id = "c", Level = 3 } }
 	expectEq(ids(QuestLogic.sortMastery(ties, "LevelDesc")), "a,b,c", "stable desc")
 	expectEq(ids(QuestLogic.sortMastery(ties, "LevelAsc")), "a,b,c", "stable asc")

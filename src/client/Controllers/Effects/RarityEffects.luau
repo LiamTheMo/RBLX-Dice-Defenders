@@ -61,8 +61,8 @@ RarityEffects.Styles = {
 	R04 = style("Venom", "Orb", 5, "55D20A", "B7FF3A", "55D20A", "2B6E00", "E8FFB4"),
 	R05 = style("Beacon", "Orb", 5, "FFC400", "FF9A00", "FFC400", "6B4A00", "FFF08A"),
 	E01 = style("Emberstorm", "Ember", 7, "FFD33A", "FF8A00", "FF8A00", "FF4A00", "FFF7A3"),
-	E03 = style("Mirror", "Orb", 8, "00FFE6", "E6FFFF", "00BDAA", "007D75", "AFFFFF"),
-	E05 = style("Gravity", "Orb", 5, "7A3BFF", "C67AFF", "C67AFF", "3A0C7A", "F5E8FF"),
+	E02 = style("Mirror", "Orb", 8, "00FFE6", "E6FFFF", "00BDAA", "007D75", "AFFFFF"),
+	E03 = style("Gravity", "Orb", 5, "7A3BFF", "C67AFF", "C67AFF", "3A0C7A", "F5E8FF"),
 	L01 = style("Chrono", "Diamond", 8, "00FFF6", "00C4BD", "00C4BD", "007F7A", "E6FFFF"),
 	L02 = style("Forge", "Diamond", 6, "FFD34D", "FF8A00", "FF8A00", "C24B00", "FFF7B2"),
 	M01 = style("Astral", "Star", 8, "F7B6FF", "5E6BFF", "B967FF", "1B0D4A", "FFFFFF"),
@@ -255,6 +255,8 @@ function RarityEffects.Create(style, dot)
 		visuals.splash = pieces(style.rays, burst, "Splash", style.streak, "Ball")
 		visuals.dust = pieces(3, travel, "SlimeDrop", style.color, "Ball")
 	elseif name == "Beacon" then
+		visuals.supportRing = ring(root, style.accent)
+		visuals.supportRing.part.Name = "SupportPulse"
 		visuals.neighbors = {}
 		visuals.supportLinks = pieces(4, root, "SupportLink", style.glow)
 		for i = 1, 4 do
@@ -627,6 +629,9 @@ function RarityEffects.Impact(shot, age, facing)
 	if v.neighbors then
 		local source = Layout.CellPosition(shot.attack.Cell, shot.attack.Seat, shot.attack.PlayerCount)
 			- Vector3.yAxis * 0.40
+		if shot.supportCells and #shot.supportCells > 0 then
+			showRing(v.supportRing, source, 2.8 + growth * 1.45, opacity * 0.66)
+		end
 		for i, cell in shot.supportCells or {} do
 			local center = Layout.CellPosition(cell, shot.attack.Seat, shot.attack.PlayerCount) - Vector3.yAxis * 0.53
 			showRing(v.neighbors[i], center, 3.35 + growth * 1.65, opacity * 0.72)

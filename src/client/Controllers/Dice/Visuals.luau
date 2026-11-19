@@ -2,6 +2,7 @@ local AssetService = game:GetService("AssetService")
 local EncodingService = game:GetService("EncodingService")
 
 local Data = require(script.Parent.ModelData)
+local Rare = require(script.Parent.RareModelData)
 
 local Visuals = {}
 
@@ -10,18 +11,27 @@ local PIP = Color3.fromHex("#16171B")
 local GOLD = Color3.fromHex("#FFD65C")
 local STAR_RIM = Color3.fromHex("#32201A")
 local WHITE = Color3.new(1, 1, 1)
+local BLACK = Color3.new()
 local BODIES = {}
 local MARKS = {}
+local RARE_BODIES = {}
+local RARE_MARKS = {}
 local TOP_TEXTURES = {}
 local iceChips
 local ready = Instance.new("BindableEvent")
 local loading = true
 
 function Visuals.Size(typeId: string): number
-	return if Data.Styles[typeId] then AUTHORED_SIZE * 2 else 4.4
+	return if Data.Styles[typeId] or Rare.Styles[typeId] then AUTHORED_SIZE * 2 else 4.4
 end
 
-local function meshTemplate(packet: string, palette: { Color3 }, paintTop: boolean?, firstMesh: EditableMesh?)
+local function meshTemplate(
+	packet: string,
+	palette: { Color3 },
+	paintTop: boolean?,
+	firstMesh: EditableMesh?,
+	swatches: boolean?
+)
 	local editable
 	local ok, template, offset = pcall(function()
 		editable = firstMesh or AssetService:CreateEditableMesh()
@@ -48,10 +58,13 @@ local function meshTemplate(packet: string, palette: { Color3 }, paintTop: boole
 		end
 		local center = (min + max) / 2
 		local topUVs = {}
-		local blankUVs
+		local blankUVs = {}
 		if paintTop then
 			local blank = editable:AddUV(Vector2.zero)
-			blankUVs = { blank, blank, blank }
+			for i = 1, 3 do
+				local uv = if swatches then editable:AddUV(Vector2.new((14 + (i - 1) * 20) / 128, 2 / 128)) else blank
+				blankUVs[i] = { uv, uv, uv }
+			end
 		end
 		for i, p in positions do
 			ids[i] = editable:AddVertex(p - center)
@@ -83,7 +96,10 @@ local function meshTemplate(packet: string, palette: { Color3 }, paintTop: boole
 			editable:SetFaceNormals(triangle, faceNormals)
 			editable:SetFaceColors(triangle, colors[shade])
 			if paintTop then
-				editable:SetFaceUVs(triangle, if shade == 4 then { topUVs[a], topUVs[b], topUVs[c] } else blankUVs)
+				editable:SetFaceUVs(
+					triangle,
+					if shade == 4 then { topUVs[a], topUVs[b], topUVs[c] } else blankUVs[shade]
+				)
 			end
 			cursor += 7
 		end
@@ -112,7 +128,14 @@ local function meshTemplate(packet: string, palette: { Color3 }, paintTop: boole
 	return nil
 end
 
-local function topTexture(packet: string, color: Color3)
+local function pixelColor(color: Color3): number
+	return 0xFF000000
+		+ math.round(color.R * 255)
+		+ math.round(color.G * 255) * 0x100
+		+ math.round(color.B * 255) * 0x10000
+end
+
+local function topTexture(packet: string, color: Color3, style)
 	local editable
 	local ok, texture = pcall(function()
 		local size = Vector2.one * Data.TextureSize
@@ -122,19 +145,33 @@ local function topTexture(packet: string, color: Color3)
 		end
 		local runs = EncodingService:Base64Decode(buffer.fromstring(packet))
 		local pixels = buffer.create(size.X * size.Y * 4)
+		local ink = if style then Color3.fromHex(style.Ink) else BLACK
 		local pixel = 0
 		for i = 0, buffer.len(runs) - 1, 2 do
 			local shade = buffer.readu8(runs, i + 1)
-			local rgba = 0xFF000000
-				+ math.round(color.R * shade)
-				+ math.round(color.G * shade) * 0x100
-				+ math.round(color.B * shade) * 0x10000
+			local rgba = pixelColor(color:Lerp(ink, 1 - shade / 255))
 			for _ = 0, buffer.readu8(runs, i) do
 				buffer.writeu32(pixels, pixel, rgba)
 				pixel += 4
 			end
 		end
 		assert(pixel == buffer.len(pixels), "Top texture has the wrong pixel count")
+		if style then
+			-- Flat color swatches sit above the top panel's UV island.
+			for i, rgba in
+				{
+					pixelColor(color),
+					pixelColor(color:Lerp(BLACK, 0.27)),
+					pixelColor(Color3.fromHex(style.Bevel)),
+				}
+			do
+				for y = 0, 4 do
+					for x = 8 + (i - 1) * 20, 20 + (i - 1) * 20 do
+						buffer.writeu32(pixels, (y * size.X + x) * 4, rgba)
+					end
+				end
+			end
+		end
 		editable:WritePixelsBuffer(Vector2.zero, size, pixels)
 		return Content.fromObject(editable)
 	end)
@@ -151,6 +188,9 @@ task.spawn(function()
 	for typeId, style in Data.Styles do
 		TOP_TEXTURES[typeId] = topTexture(style.Texture, Color3.fromHex(style.Body))
 	end
+	for typeId, style in Rare.Styles do
+		TOP_TEXTURES[typeId] = topTexture(style.Texture, Color3.fromHex(style.Body), style)
+	end
 	local allowed, firstMesh = pcall(AssetService.CreateEditableMesh, AssetService)
 	if allowed and firstMesh then
 		local bodyPalette = { Color3.fromHex("#E1E1E1"), Color3.fromHex("#B2B2B2"), WHITE, WHITE }
@@ -158,13 +198,17 @@ task.spawn(function()
 			BODIES[tier] = meshTemplate(packet, bodyPalette, true, if tier == 1 then firstMesh else nil)
 			MARKS[tier] = meshTemplate(Data.Marks[tier], if tier == 7 then { STAR_RIM, GOLD } else { PIP })
 		end
+		for tier, packet in Rare.Bodies do
+			RARE_BODIES[tier] = meshTemplate(packet, { WHITE, WHITE, WHITE, WHITE }, true, nil, true)
+			RARE_MARKS[tier] = meshTemplate(Rare.Marks[tier], { WHITE })
+		end
 		iceChips = meshTemplate(Data.Ice, { Color3.fromHex("#245C8C"), Color3.fromHex("#58C9F1") })
 	end
 	loading = false
 	ready:Fire()
 end)
 
-local function cloneMesh(template, parent: Folder, anchor: BasePart, name: string, color: Color3)
+local function cloneMesh(template, parent: Instance, anchor: BasePart, name: string, color: Color3)
 	local mesh = template.Part:Clone()
 	local scale = anchor.Size.X / AUTHORED_SIZE
 	mesh.Name = name
@@ -175,8 +219,11 @@ local function cloneMesh(template, parent: Folder, anchor: BasePart, name: strin
 	return mesh
 end
 
-local function applyMeshes(anchor: BasePart, visuals: Folder, typeId: string, layout: number): boolean
-	local body, marks, texture = BODIES[layout], MARKS[layout], TOP_TEXTURES[typeId]
+local function applyMeshes(anchor: BasePart, visuals: Instance, typeId: string, layout: number): boolean
+	local style = Rare.Styles[typeId]
+	local body = if style then RARE_BODIES[layout] else BODIES[layout]
+	local marks = if style then RARE_MARKS[layout] else MARKS[layout]
+	local texture = TOP_TEXTURES[typeId]
 	if not (body and marks and texture) then
 		return false
 	end
@@ -187,7 +234,17 @@ local function applyMeshes(anchor: BasePart, visuals: Folder, typeId: string, la
 		model:ScaleTo(1)
 	end
 	cloneMesh(body, visuals, anchor, "ChamferedBody", WHITE).TextureContent = texture
-	cloneMesh(marks, visuals, anchor, if layout == 7 then "Stars" else "Pips", WHITE)
+	-- Limit bloom so each star point and each pip in the six-pip grid stays distinct.
+	local mark = cloneMesh(
+		marks,
+		visuals,
+		anchor,
+		if layout == 7 then "Stars" else "Pips",
+		if style then Color3.fromHex(style.Pip):Lerp(BLACK, 0.24) else WHITE
+	)
+	if style then
+		mark.Material = Enum.Material.Neon
+	end
 	if typeId == "C06" and iceChips then
 		cloneMesh(iceChips, visuals, anchor, "IceChips", WHITE)
 	end
@@ -215,8 +272,10 @@ end
 
 -- Surface marks also work in experiences or on devices without an editable mesh budget.
 local function applySurfaces(anchor: BasePart, fallback: Folder, tier: number, color: Color3, style, texture: Content?)
-	anchor.Color = if style then Color3.fromHex(style.Body) else WHITE
+	anchor.Color = if style then Color3.fromHex(style.Body) else color:Lerp(BLACK, 0.35)
 	anchor.Transparency = 0
+	local rare = style and style.Pip
+	local pipColor = if rare then Color3.fromHex(rare) elseif style then PIP else color:Lerp(WHITE, 0.55)
 	for _, face in Enum.NormalId:GetEnumItems() do
 		local surface = Instance.new("SurfaceGui")
 		surface.Name = face.Name
@@ -233,9 +292,22 @@ local function applySurfaces(anchor: BasePart, fallback: Folder, tier: number, c
 					paint.BackgroundTransparency = 1
 					paint.ImageContent = texture
 					paint.Size = UDim2.fromScale(1, 1)
+					if rare then
+						paint.ImageRectOffset = Vector2.new(0, 5)
+						paint.ImageRectSize = Vector2.new(128, 123)
+						paint.Position = UDim2.fromScale(0, 5 / 128)
+						paint.Size = UDim2.fromScale(1, 123 / 128)
+					end
 					paint.Parent = surface
 				else
-					local paint = symbol(surface, "TopDesign", style.Mark, PIP, 0.5, 0.7)
+					local paint = symbol(
+						surface,
+						"TopDesign",
+						style.Mark,
+						if rare then Color3.fromHex(style.Ink) else PIP,
+						0.5,
+						0.7
+					)
 					paint.TextTransparency = 0.65
 				end
 			end
@@ -251,19 +323,19 @@ local function applySurfaces(anchor: BasePart, fallback: Folder, tier: number, c
 		end
 
 		if tier == 7 then
-			local star = symbol(surface, "Star", "★", GOLD, 0.5, 0.46)
+			local star = symbol(surface, "Star", "★", if rare then pipColor else GOLD, 0.5, 0.46)
 			star.ZIndex = 2
 			star.TextStrokeColor3 = STAR_RIM
-			star.TextStrokeTransparency = 0
+			star.TextStrokeTransparency = if rare then 1 else 0
 		else
-			for i, slot in Data.Layouts[tier] do
+			for i, slot in (if rare and tier == 6 then Rare.TierSix else Data.Layouts[tier]) do
 				local pip = Instance.new("Frame")
 				pip.Name = "Pip" .. i
 				pip.AnchorPoint = Vector2.new(0.5, 0.5)
 				pip.Position = UDim2.fromScale(0.5 + slot[1] / 2.5, 0.5 - slot[2] / 2.5)
 				pip.Size = UDim2.fromScale(0.176, 0.176)
 				pip.BorderSizePixel = 0
-				pip.BackgroundColor3 = PIP
+				pip.BackgroundColor3 = pipColor
 				pip.ZIndex = 2
 				pip.Parent = surface
 				local round = Instance.new("UICorner")
@@ -283,19 +355,27 @@ function Visuals.Apply(anchor: BasePart, typeId: string, tier: number, color: Co
 	local visuals = Instance.new("Folder")
 	visuals.Name = "Visuals"
 	visuals.Parent = anchor
-	local style = Data.Styles[typeId]
-	if style and applyMeshes(anchor, visuals, typeId, tier) then
+	local style = Rare.Styles[typeId] or Data.Styles[typeId]
+	local target: Instance = visuals
+	if style and style.Name then
+		local variant = Instance.new("Model")
+		variant.Name = string.format("%s_%02d", style.Name, tier)
+		variant.WorldPivot = anchor.CFrame
+		variant.Parent = visuals
+		target = variant
+	end
+	if style and applyMeshes(anchor, target, typeId, tier) then
 		return
 	end
 
 	local fallback = Instance.new("Folder")
 	fallback.Name = "SurfaceMarks"
-	fallback.Parent = visuals
+	fallback.Parent = target
 	applySurfaces(anchor, fallback, tier, color, style, TOP_TEXTURES[typeId])
 	if style and loading then
 		ready.Event:Once(function()
 			if visuals.Parent == anchor then
-				if applyMeshes(anchor, visuals, typeId, tier) then
+				if applyMeshes(anchor, target, typeId, tier) then
 					fallback:Destroy()
 				elseif TOP_TEXTURES[typeId] then
 					fallback:ClearAllChildren()

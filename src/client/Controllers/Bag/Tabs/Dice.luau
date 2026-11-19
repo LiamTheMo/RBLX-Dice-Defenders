@@ -144,12 +144,10 @@ local function stats(item)
 	}
 end
 
--- Buttons: one size; EQUIP for an owned die not in the deck, UPGRADE when the spare copies cover the next level.
 function Dice.Detail(item)
 	local locked = item.Locked == true
 	local equipped = item.Equipped == true
 	local hint = if locked then item.Footer else nil
-	local equipOk = not locked and not equipped
 	local max, cost = item.LevelMax, item.LevelCost
 	local loaded = max ~= nil and (cost ~= nil or item.Level >= max)
 	local atMax = loaded and item.Level >= max
@@ -174,7 +172,7 @@ function Dice.Detail(item)
 		ArtY = 28,
 		ArtH = 105,
 		NameY = 126,
-		Ys = { Sub = 166, Desc = 194, Extra = 244 }, -- mockup rows (detail panel y 224): level 390, text 418, stats 468
+		Ys = { Sub = 166, Desc = 194, Extra = 280 },
 		Subline = if copies
 			then {
 				Kind = "Level",
@@ -188,11 +186,11 @@ function Dice.Detail(item)
 		Stats = stats(item),
 		Buttons = {
 			{
-				Id = "Equip",
-				Label = "EQUIP",
-				Style = "Green",
-				Enabled = equipOk,
-				Hint = hint or "Already equipped",
+				Id = if equipped then "Unequip" else "Equip",
+				Label = if equipped then "UNEQUIP" else "EQUIP",
+				Style = if equipped then "Grey" else "Green",
+				Enabled = not locked,
+				Hint = hint,
 			},
 			{
 				Id = "Upgrade",
@@ -212,11 +210,8 @@ function Dice.Detail(item)
 	}
 end
 
--- UNEQUIP ALL resets the loadout to the Catalog's starter deck (EquipDeck needs 5 dice); off when it already is.
-function Dice.Footer(meta, catalog)
+function Dice.Footer(meta)
 	local deck = meta and meta.Deck or {}
-	local starter = catalog and catalog.StarterDeck
-	local same = BagLogic.sameDeck(deck, starter)
 	local icons, tints = {}, {}
 	for i, id in deck do
 		icons[i] = art(id) or Sprites.Icon.Roll
@@ -229,9 +224,8 @@ function Dice.Footer(meta, catalog)
 		Tints = tints,
 		Button = {
 			Label = "UNEQUIP ALL",
-			Enabled = starter ~= nil and not same,
-			Hint = if same then "Already the starter deck" else "Still loading",
-			Deck = starter,
+			Enabled = #deck > 0,
+			Hint = if meta then "No dice equipped" else "Still loading",
 		},
 	}
 end

@@ -1097,6 +1097,7 @@ end
 function Parts.Footer(parent)
 	local api, conns = {}, {}
 	local onButton, onSlot, hint
+	local picking = false
 
 	local root = make("Frame", {
 		Name = "FooterStrip",
@@ -1189,14 +1190,14 @@ function Parts.Footer(parent)
 			onButton(hint)
 		end
 	end)
-	-- Sizes by panel width: roomy (>=700), narrow full (label wraps, smaller slots/button) and compact overlay
-	-- (slots only, fitted to the left panel width).
+	-- Compact shows the clear button, or the slot picker while replacing a die.
 	local function layoutFooter()
 		local w = parent.Size.X.Offset
 		local compact = parent:GetAttribute("Compact")
 		local dw, dh, labelW, btnW, btnH, gap = 64, 64, 96, 134, 42, 11
 		if compact then
 			gap, dw, dh = 4, 56, 56 -- touch floor: wrap into rows (3+2 on a narrow panel) instead of shrinking
+			btnH = touchMin(parent)
 		elseif w < 640 then
 			dw, dh, labelW, btnW, gap = 56, 58, 84, 120, 6
 		end
@@ -1210,7 +1211,8 @@ function Parts.Footer(parent)
 			fk = math.min(1, (w - 4) / base)
 			dw, dh, labelW, btnW, gap, rowGap = dw * fk, dh * fk, labelW * fk, btnW * fk, gap * fk, rowGap * fk
 		end
-		label.Visible, btn.Visible, backing.Visible = not compact, not compact, compact
+		label.Visible, btn.Visible, backing.Visible = not compact, not compact or not picking, compact
+		slotsFrame.Visible = not compact or picking
 		div1.Visible, div2.Visible = not compact, false -- the mockup draws one divider, after the label
 		label.Size = UDim2.fromOffset(labelW, 70)
 		label.TextSize = if roomy then Parts.fitSize("EQUIPPED", labelW - 6, 22, 11) else 15 * fk -- 3 lines: EQUIPPED / LOADOUT / (5/5)
@@ -1224,9 +1226,10 @@ function Parts.Footer(parent)
 		local rows = math.ceil(5 / perRow)
 		slotsLayout.Wraps = true
 		slotsFrame.Size = UDim2.fromOffset(perRow * dw + (perRow - 1) * gap, rows * dh + (rows - 1) * gap)
-		root.Size = if compact
-			then UDim2.new(1, 0, 0, if rows > 1 then slotsFrame.Size.Y.Offset + 36 else 97)
-			else UDim2.fromScale(1, 1) -- Full: the whole footer box is the strip (visible 242-1018 x 734-832)
+		root.Size = if not compact
+			then UDim2.fromScale(1, 1)
+			elseif not picking then UDim2.new(1, 0, 0, btnH + 6)
+			else UDim2.new(1, 0, 0, if rows > 1 then slotsFrame.Size.Y.Offset + 36 else 97)
 		for i, slot in slots do
 			slot.Size = UDim2.fromOffset(dw, dh)
 			local ic = if roomy then dw - 10 else dw - 16
@@ -1261,6 +1264,10 @@ function Parts.Footer(parent)
 	end
 	-- Pick mode: slots glow gold while the controller waits for the player to choose one.
 	function api:SetSlotHighlight(on: boolean)
+		if picking ~= on then
+			picking = on
+			layoutFooter()
+		end
 		for _, slot in slots do
 			slot.ImageColor3 = if on then GOLD else WHITE
 		end
@@ -1493,7 +1500,6 @@ function Parts.Detail(parent)
 		at(name, nameY + (lay.nameDY or 0), nameH)
 		local ys = lay.ys -- fixed mockup rows (the Dice detail); other tabs flow
 		if ys then
-			scroll.Size = UDim2.fromScale(1, 1)
 			at(preview, lay.artY, lay.artH)
 			glow.Size = UDim2.fromOffset(math.min(lay.artH * 1.6, w), math.min(lay.artH * 1.6, w))
 			icon.Size = UDim2.fromOffset(lay.artH, lay.artH)
@@ -1518,12 +1524,16 @@ function Parts.Detail(parent)
 			y += divH + gap
 		end
 		if extraH > 0 then
-			at(extra, if ys then ys.Extra else y, extraH)
+			at(extra, if ys then math.max(ys.Extra, ys.Desc + descH + MIN_GAP) else y, extraH)
 			y += extraH
 		end
 		bottom = math.max(y, bottom)
 		if ys then
-			bottom = ys.Extra + extraH
+			bottom = extra.Position.Y.Offset + extraH
+			scroll.Size = UDim2.new(1, 0, 1, -(ACTION_TOP + MIN_GAP))
+			if bottom > parent.Size.Y.Offset - ACTION_TOP - MIN_GAP then
+				scroll.ScrollBarThickness = 4
+			end
 		end
 		body.Size = UDim2.new(1, -2 * side(), 0, bottom)
 		scroll.CanvasSize = UDim2.fromOffset(0, bottom)

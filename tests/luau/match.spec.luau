@@ -515,7 +515,7 @@ test("summons and merges draw only from the passed deck, which Match copies", fu
 end)
 
 test("a Rare/Epic/Legendary deck summons, merges and deals damage", function()
-	local deck = { "R03", "E01", "L06", "R04", "E05" }
+	local deck = { "R03", "E01", "L02", "R04", "E03" }
 	local state = Match.New(1, Random.new(7), 0, deck)
 	openWave(state)
 	for _ = 1, Balance.BoardCells do

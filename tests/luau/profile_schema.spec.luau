@@ -1,4 +1,4 @@
--- Profile v11: defaults, nil -> default, Corrupt / NewerVersion reported (never
+-- Profile v13: defaults, nil -> tutorial, Corrupt / NewerVersion reported (never
 -- repaired), field sanitising, store metadata kept, input never mutated.
 
 local Server = game:GetService("ServerScriptService").Server
@@ -7,9 +7,9 @@ local Dice = require(Server.Config.Dice)
 
 local NAN, INF = 0 / 0, math.huge
 
-test("default profile has the v11 fields", function()
+test("default profile has the v13 fields", function()
 	local p = ProfileSchema.Default()
-	expectEq(p.Version, 11, "version")
+	expectEq(p.Version, 13, "version")
 	expectEq(p.RollPity.Standard, 0, "no rolls toward the Standard guarantee")
 	expectEq(p.Stats.Rolls, 0, "no rolls")
 	expectEq(p.Gold, 0, "gold")
@@ -65,8 +65,8 @@ test("bad shape is Corrupt, a newer version is NewerVersion; neither is repaired
 			"Corrupt for " .. tostring(type(bad) == "table" and bad.Version or bad)
 		)
 	end
-	local p, problem = ProfileSchema.Migrate({ Version = 12, Gold = 5 })
-	expect(p == nil and problem == "NewerVersion", "v12 refused")
+	local p, problem = ProfileSchema.Migrate({ Version = ProfileSchema.VERSION + 1, Gold = 5 })
+	expect(p == nil and problem == "NewerVersion", "newer version refused")
 	local p2, problem2 = ProfileSchema.Migrate({ Version = 99 })
 	expect(p2 == nil and problem2 == "NewerVersion", "v99 refused")
 end)
@@ -171,13 +171,13 @@ test("v1 -> v8 keeps stats, adds starters and 50 Gems, claims and redeems nothin
 		profileRevision = 4,
 		-- stray v2-shaped data in a v1 record is discarded by the migration
 		Claimed = table.freeze({ S1 = true }),
-		Deck = table.freeze({ "C01" }),
+		Deck = table.freeze({ [2] = "C01" }),
 		Redeemed = table.freeze({ welcome = true }),
 		Gems = 999, -- stray v4-shaped data too
 		Materials = table.freeze({ Fragment = 9 }),
 	})
 	local p = ProfileSchema.Migrate(stored)
-	expect(p.Version == 11 and p.Gold == 70 and p.BestWave == 6 and p.RunsPlayed == 3, "stats kept")
+	expect(p.Version == 13 and p.Gold == 70 and p.BestWave == 6 and p.RunsPlayed == 3, "stats kept")
 	expect(p.TrialCleared == true and p.LastRewardRunId == 99 and p.profileRevision == 4, "rest kept")
 	expectEq(#p.Deck, 5, "starter deck")
 	expect(p.Dice.C05 ~= nil, "starters")
@@ -215,7 +215,7 @@ test("an illegal Deck resets to the starter deck; a legal one is kept as a copy"
 	expect(p.Deck ~= stored.Deck, "copied")
 	for _, bad in
 		{
-			{ "C01" },
+			{ [2] = "C01" },
 			{ "C01", "C01", "C02", "C03", "C04" },
 			{ "C01", "C02", "C03", "C04", "ZZZ" },
 			{ "C01", "C02", "C03", "C04", "C05", x = 1 },
@@ -227,6 +227,10 @@ test("an illegal Deck resets to the starter deck; a legal one is kept as a copy"
 	end
 	local unowned = ProfileSchema.Migrate({ Version = 2, Deck = { "C01", "C02", "C03", "C04", "R01" } })
 	expectEq(unowned.Deck[5], "C05", "unknown die resets deck")
+	for _, deck in { {}, { "C02", "C01" } } do
+		local saved = ProfileSchema.Migrate({ Version = ProfileSchema.VERSION, Deck = deck })
+		expectEq(table.concat(saved.Deck, ","), table.concat(deck, ","), "empty and partial loadouts survive loading")
+	end
 end)
 
 test("Claimed and Daily keep only true flags of the right kind and sane counts", function()
@@ -279,7 +283,7 @@ test("v2 -> v8 keeps every v2 field, starts Redeemed empty, never touches a froz
 		Redeemed = table.freeze({ welcome = true }), -- stray: v2 had no codes
 	})
 	local p = ProfileSchema.Migrate(stored)
-	expect(p.Version == 11 and p.Gold == 70 and p.BestWave == 6 and p.RunsPlayed == 3, "stats kept")
+	expect(p.Version == 13 and p.Gold == 70 and p.BestWave == 6 and p.RunsPlayed == 3, "stats kept")
 	expect(p.TrialCleared == true and p.LastRewardRunId == 99 and p.profileRevision == 4, "rest kept")
 	expectEq(p.Gems, 50, "starter gems")
 	expect(p.Dice.C01.Level == 3 and p.Dice.C01.Copies == 2 and p.Deck[1] == "C05", "dice and deck kept")
@@ -343,7 +347,7 @@ test("v3 -> v8 keeps every v3 value, adds 50 Gems and empty inventories, never t
 		Cosmetics = table.freeze({ Owned = table.freeze({ ThornDice = true }) }),
 	})
 	local p = ProfileSchema.Migrate(stored)
-	expect(p.Version == 11 and p.Gold == 70 and p.BestWave == 6 and p.RunsPlayed == 3, "stats kept")
+	expect(p.Version == 13 and p.Gold == 70 and p.BestWave == 6 and p.RunsPlayed == 3, "stats kept")
 	expect(p.TrialCleared == true and p.LastRewardRunId == 99 and p.profileRevision == 4, "rest kept")
 	expect(p.Dice.C01.Level == 3 and p.Dice.C01.Copies == 2 and p.Deck[1] == "C05", "dice and deck kept")
 	expect(p.Claimed.S1 == true and p.Daily.Day == 7 and p.Daily.Claimed.D1 == true, "quests kept")
@@ -354,7 +358,7 @@ test("v3 -> v8 keeps every v3 value, adds 50 Gems and empty inventories, never t
 	expect(next(p.Cosmetics.Owned) == nil, "stray cosmetics dropped")
 	expectEq(stored.Version, 3, "input untouched")
 	local again = ProfileSchema.Migrate(ProfileSchema.DeepCopy(p))
-	expect(again.Gems == 50 and again.Version == 11, "idempotent: no second grant")
+	expect(again.Gems == 50 and again.Version == 13, "idempotent: no second grant")
 end)
 
 test("Gems, Xp, Materials, Items and Cosmetics keep only valid counts for catalogue ids", function()
@@ -472,7 +476,7 @@ test("v4 -> v8 keeps every v4 value and drops stray values of the new fields; fr
 		Mastery = f({ C01 = f({ Xp = 50, Claimed = f({ ["5"] = true }) }) }),
 	})
 	local p = ProfileSchema.Migrate(stored)
-	expect(p.Version == 11 and p.Gold == 70 and p.Gems == 120 and p.Xp == 345, "counters kept, no second Gem grant")
+	expect(p.Version == 13 and p.Gold == 70 and p.Gems == 120 and p.Xp == 345, "counters kept, no second Gem grant")
 	expect(p.BestWave == 6 and p.RunsPlayed == 3 and p.TrialCleared and p.LastRewardRunId == 99, "stats kept")
 	expect(p.Dice.C01.Copies == 2 and p.Dice.R01 ~= nil and p.Deck[1] == "R01", "dice and deck kept")
 	expect(p.Claimed.S1 and p.Daily.Day == 7 and p.Daily.Claimed.D1 and p.Redeemed.welcome, "claims kept")
@@ -494,7 +498,7 @@ test("v1 -> v8 chain ends with the v5, v6 and v8 defaults", function()
 		Login = table.freeze({ Streak = 4 }),
 		Settings = table.freeze({ shadows = false }),
 	}))
-	expect(p.Version == 11 and p.Gold == 5 and p.Gems == 50, "v1 data kept, starter Gems once")
+	expect(p.Version == 13 and p.Gold == 5 and p.Gems == 50, "v1 data kept, starter Gems once")
 	expect(p.Login.Streak == 0 and p.Stats.Kills == 0 and next(p.Mastery) == nil, "v5 fields start empty")
 	expect(next(p.Settings) == nil, "v6 Settings start empty")
 	expect(p.RollPity.Standard == 0 and p.Stats.Rolls == 0, "v8 roll fields start empty")
@@ -623,7 +627,7 @@ test("v5 -> v8 keeps every v5 value and drops a stray Settings; frozen input unt
 	}
 	local stored = f(fields)
 	local p = ProfileSchema.Migrate(stored)
-	expectEq(p.Version, 11, "version")
+	expectEq(p.Version, 13, "version")
 	expect(next(p.Settings) == nil, "stray Settings dropped")
 	for key, value in fields do
 		if key == "Cosmetics" then
@@ -738,7 +742,7 @@ test("v6 -> v8 keeps every v6 value and drops stray Locked and Equipped; frozen 
 	}
 	local stored = f(fields)
 	local p = ProfileSchema.Migrate(stored)
-	expectEq(p.Version, 11, "version")
+	expectEq(p.Version, 13, "version")
 	expect(next(p.Locked) == nil, "stray Locked dropped")
 	expect(next(p.Cosmetics.Equipped) == nil, "stray Equipped dropped")
 	expectEq(snap(p.Cosmetics.Owned), snap(fields.Cosmetics.Owned), "Cosmetics.Owned kept")
@@ -853,7 +857,7 @@ test("v7 -> v8 keeps every v7 value, starts RollPity and Stats.Rolls empty; froz
 	}
 	local stored = f(fields)
 	local p = ProfileSchema.Migrate(stored)
-	expectEq(p.Version, 11, "version")
+	expectEq(p.Version, 13, "version")
 	expectEq(snap(p.RollPity), snap({ Standard = 0 }), "stray RollPity dropped")
 	expectEq(snap(p.Stats), snap({ Kills = 500, Wins = 3, Rolls = 0 }), "stray Stats.Rolls dropped, the rest kept")
 	for key, value in fields do
@@ -925,7 +929,7 @@ test("v8 -> v9 keeps every v8 value, starts Purchases and Receipts empty; frozen
 	for _, stored in { v8, stray } do
 		freeze(stored)
 		local p = ProfileSchema.Migrate(stored)
-		expectEq(p.Version, 11, "version")
+		expectEq(p.Version, 13, "version")
 		expect(next(p.Purchases) == nil and #p.Receipts == 0, "starts empty")
 		expect(p.Gold == 123 and p.Gems == 456 and p.Stats.Rolls == 7 and p.RollPity.Standard == 5, "v8 fields kept")
 		expectEq(snap(ProfileSchema.Migrate(ProfileSchema.DeepCopy(p))), snap(p), "idempotent")
@@ -963,9 +967,9 @@ test(
 	end
 )
 
-test("v12 is NewerVersion and never repaired", function()
-	local p, problem = ProfileSchema.Migrate({ Version = 12 })
-	expect(p == nil and problem == "NewerVersion", "v12 refused")
+test("newer version is NewerVersion and never repaired", function()
+	local p, problem = ProfileSchema.Migrate({ Version = ProfileSchema.VERSION + 1 })
+	expect(p == nil and problem == "NewerVersion", "newer version refused")
 end)
 
 test("v9 -> v10 clamps die levels above the cap, no refund; corrupt v10 levels reset", function()
@@ -1024,15 +1028,15 @@ local function v10(extra)
 	return stored
 end
 
-test("v10 -> v11: a retired die moves to a target that is not owned, keeping Level and Copies", function()
+test("v10 -> v13: a retired die moves to a target that is not owned, keeping Level and Copies", function()
 	local stored = v10({
 		Dice = { E02 = { Level = 4, Copies = 6 }, E04 = { Level = 2, Copies = 1 }, L03 = { Level = 7, Copies = 3 } },
 	})
 	local before = snap(stored)
 	local p = ProfileSchema.Migrate(stored)
-	expect(p.Dice.E08.Level == 4 and p.Dice.E08.Copies == 6, "E02 -> E08")
-	expect(p.Dice.E07.Level == 2 and p.Dice.E07.Copies == 1, "E04 -> E07")
-	expect(p.Dice.L06.Level == 7 and p.Dice.L06.Copies == 3, "L03 -> L06")
+	expect(p.Dice.E01.Level == 4 and p.Dice.E01.Copies == 6, "E02 -> E01")
+	expect(p.Dice.E03.Level == 2 and p.Dice.E03.Copies == 1, "E04 -> E03")
+	expect(p.Dice.L01.Level == 7 and p.Dice.L01.Copies == 3, "L03 -> L01")
 	expect(p.Dice.E02 == nil and p.Dice.E04 == nil and p.Dice.L03 == nil, "retired ids gone")
 	expectEq(snap(stored), before, "input untouched")
 end)
@@ -1042,30 +1046,30 @@ test("v11: a save that still holds a retired id is converted, not dropped", func
 	stored.Version = 11
 	local before = snap(stored)
 	local p = ProfileSchema.Migrate(stored)
-	expect(p.Dice.E08.Level == 3 and p.Dice.E08.Copies == 2 and p.Dice.E02 == nil, "E02 -> E08 at v11")
-	expectEq(p.Deck[5], "E08", "deck slot rewritten")
+	expect(p.Dice.E01.Level == 3 and p.Dice.E01.Copies == 2 and p.Dice.E02 == nil, "E02 restored and forwarded to E01")
+	expectEq(p.Deck[5], "E01", "deck slot rewritten")
 	expectEq(snap(stored), before, "input untouched")
 end)
 
-test("v10 -> v11: an owned target takes the higher Level and sums Copies + 1", function()
+test("v10 -> v13: an owned target takes the higher Level and sums Copies + 1", function()
 	local p =
 		ProfileSchema.Migrate(v10({ Dice = { E02 = { Level = 4, Copies = 6 }, E08 = { Level = 6, Copies = 2 } } }))
-	expect(p.Dice.E08.Level == 6 and p.Dice.E08.Copies == 9, "max level, 6 + 2 + 1 copies")
+	expect(p.Dice.E01.Level == 6 and p.Dice.E01.Copies == 9, "max level, 6 + 2 + 1 copies")
 	local q =
 		ProfileSchema.Migrate(v10({ Dice = { E02 = { Level = 7, Copies = 0 }, E08 = { Level = 3, Copies = 0 } } }))
-	expect(q.Dice.E08.Level == 7 and q.Dice.E08.Copies == 1, "old die counts as one copy")
+	expect(q.Dice.E01.Level == 7 and q.Dice.E01.Copies == 1, "old die counts as one copy")
 end)
 
-test("v10 -> v11: merged Copies and Xp cap at 1e9", function()
+test("v10 -> v13: merged Copies and Xp cap at 1e9", function()
 	local p = ProfileSchema.Migrate(v10({
 		Dice = { L03 = { Level = 1, Copies = 900_000_000 }, L06 = { Level = 1, Copies = 900_000_000 } },
 		Mastery = { L03 = { Xp = 900_000_000, Claimed = {} }, L06 = { Xp = 900_000_000, Claimed = {} } },
 	}))
-	expectEq(p.Dice.L06.Copies, 1_000_000_000, "Copies capped")
-	expectEq(p.Mastery.L06.Xp, 1_000_000_000, "Xp capped")
+	expectEq(p.Dice.L01.Copies, 1_000_000_000, "Copies capped")
+	expectEq(p.Mastery.L01.Xp, 1_000_000_000, "Xp capped")
 end)
 
-test("v10 -> v11: Mastery moves, summing Xp and uniting Claimed", function()
+test("v10 -> v13: Mastery moves, summing Xp and uniting Claimed", function()
 	local p = ProfileSchema.Migrate(v10({
 		Mastery = {
 			E04 = { Xp = 50, Claimed = { ["5"] = true } },
@@ -1073,28 +1077,97 @@ test("v10 -> v11: Mastery moves, summing Xp and uniting Claimed", function()
 			L06 = { Xp = 20, Claimed = { ["10"] = true } },
 		},
 	}))
-	expect(p.Mastery.E07.Xp == 50 and p.Mastery.E07.Claimed["5"] == true, "moved to an empty target")
-	expect(p.Mastery.L06.Xp == 50 and p.Mastery.L06.Claimed["5"] and p.Mastery.L06.Claimed["10"], "merged")
+	expect(p.Mastery.E03.Xp == 50 and p.Mastery.E03.Claimed["5"] == true, "moved to an empty target")
+	expect(p.Mastery.L01.Xp == 50 and p.Mastery.L01.Claimed["5"] and p.Mastery.L01.Claimed["10"], "merged")
 	expect(p.Mastery.E04 == nil and p.Mastery.L03 == nil, "retired mastery gone")
 end)
 
-test("v10 -> v11: Deck slots are rewritten; a duplicate falls back to the starter deck", function()
+test("v10 -> v13: Deck slots are rewritten; a duplicate uses a starter in the retired slot", function()
 	local d = ProfileSchema.Migrate(v10({
 		Dice = { E02 = { Level = 1, Copies = 0 }, R01 = { Level = 1, Copies = 0 }, L03 = { Level = 1, Copies = 0 } },
 		Deck = { "E02", "R01", "L03", "C01", "C02" },
 	}))
-	expect(table.concat(d.Deck, ",") == "E08,R01,L06,C01,C02", "slots rewritten")
+	expect(table.concat(d.Deck, ",") == "E01,R01,L01,C01,C02", "slots rewritten")
 	local dup = ProfileSchema.Migrate(v10({
 		Dice = { E02 = { Level = 1, Copies = 0 }, E08 = { Level = 1, Copies = 0 } },
 		Deck = { "E02", "E08", "C01", "C02", "C03" },
 	}))
-	expect(table.concat(dup.Deck, ",") == table.concat(Dice.Deck, ","), "duplicate -> starter deck")
+	expect(table.concat(dup.Deck, ",") == "C04,E01,C01,C02,C03", "duplicate fills only the retired slot")
 end)
 
-test("v10 -> v11: every other field is unchanged and v11 is idempotent", function()
+test("v10 -> v13: every other field is unchanged and v13 is idempotent", function()
 	local stored = v10({ Dice = { R01 = { Level = 3, Copies = 2 } } })
 	local p = ProfileSchema.Migrate(stored)
-	expect(p.Version == 11 and p.Gold == 77 and p.Gems == 123 and p.BestWave == 9, "fields kept")
+	expect(p.Version == 13 and p.Gold == 77 and p.Gems == 123 and p.BestWave == 9, "fields kept")
 	expect(p.Dice.R01.Level == 3 and p.Dice.R01.Copies == 2, "other dice kept")
 	expectEq(snap(ProfileSchema.Migrate(p)), snap(p), "re-migration changes nothing")
+end)
+
+test("v11 saves transfer every retired die to a supported roster slot", function()
+	local stored = v10({
+		Version = 11,
+		Dice = {
+			R06 = { Level = 4, Copies = 2 },
+			R07 = { Level = 5, Copies = 1 },
+			E06 = { Level = 2, Copies = 3 },
+			E07 = { Level = 3, Copies = 5 },
+			E08 = { Level = 6, Copies = 8 },
+			E09 = { Level = 5, Copies = 1 },
+			E10 = { Level = 2, Copies = 4 },
+			L04 = { Level = 1, Copies = 1 },
+			L05 = { Level = 2, Copies = 2 },
+			L06 = { Level = 7, Copies = 6 },
+			R02 = { Level = 1, Copies = 1 },
+		},
+		Deck = { "C01", "R06", "R02", "E09", "L06" },
+		Mastery = { E06 = { Xp = 100, Claimed = { ["5"] = true } }, E09 = { Xp = 80, Claimed = { ["10"] = true } } },
+	})
+	local before = snap(stored)
+	local p = ProfileSchema.Migrate(stored)
+	expectEq(p.Version, 13, "upgraded")
+	expectEq(table.concat(p.Deck, ","), "C01,C02,R02,E02,L01", "unaffected slots kept")
+	expectEq(p.Dice.R02.Level, 4, "level survives conversion")
+	expectEq(p.Dice.R02.Copies, 4, "owned target receives the base die and its copies")
+	expectEq(p.Dice.R03.Copies, 1, "Wind and Rock map to separate Rare dice")
+	expectEq(p.Dice.E01.Copies, 8, "Lightning transfers")
+	expectEq(p.Dice.E02.Copies, 5, "Ice and Water merge")
+	expectEq(p.Dice.E03.Copies, 10, "Leaf and Shadow merge")
+	expectEq(p.Dice.L02.Copies, 4, "Sun and Fire merge")
+	expectEq(p.Dice.L01.Level, 7, "Light transfers")
+	expectEq(p.Mastery.E02.Xp, 180, "mastery combines")
+	expect(p.Mastery.E02.Claimed["5"] and p.Mastery.E02.Claimed["10"], "claimed rewards stay claimed")
+	for id in p.Dice do
+		expect(Dice.Types[id] ~= nil, "only current dice")
+	end
+	expectEq(snap(stored), before, "input untouched")
+	expectEq(snap(ProfileSchema.Migrate(p)), snap(p), "conversion is idempotent")
+end)
+
+test("v12 renames Mirror and Gravity without mixing their progression", function()
+	local stored = v10({
+		Version = 12,
+		Dice = {
+			E02 = { Level = 2, Copies = 3 }, -- Reactor in a restored legacy save
+			E03 = { Level = 4, Copies = 9 },
+			E05 = { Level = 7, Copies = 1 },
+		},
+		Deck = { "C01", "E03", "C02", "E05", "E02" },
+		Mastery = {
+			E03 = { Xp = 50, Claimed = { ["5"] = true } },
+			E05 = { Xp = 180, Claimed = { ["10"] = true } },
+		},
+	})
+	local before = snap(stored)
+	local profile = ProfileSchema.Migrate(stored)
+	expectEq(table.concat(profile.Deck, ","), "C01,E02,C02,E03,E01", "deck slots follow the renamed dice")
+	expectEq(profile.Dice.E01.Copies, 3, "legacy Reactor keeps its old replacement")
+	expectEq(profile.Dice.E02.Level, 4, "Mirror level")
+	expectEq(profile.Dice.E02.Copies, 9, "Mirror copies")
+	expectEq(profile.Dice.E03.Level, 7, "Gravity level")
+	expectEq(profile.Dice.E03.Copies, 1, "Gravity copies")
+	expect(profile.Mastery.E02.Xp == 50 and profile.Mastery.E02.Claimed["5"], "Mirror mastery")
+	expect(profile.Mastery.E03.Xp == 180 and profile.Mastery.E03.Claimed["10"], "Gravity mastery")
+	expect(profile.Dice.E05 == nil and profile.Mastery.E05 == nil, "former Gravity ID removed")
+	expectEq(snap(stored), before, "input untouched")
+	expectEq(snap(ProfileSchema.Migrate(profile)), snap(profile), "current IDs are not renamed again")
 end)

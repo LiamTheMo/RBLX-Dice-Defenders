@@ -61,7 +61,7 @@ def tint(hex_color, factor):
     return "#%02X%02X%02X" % tuple(min(255, round(c * factor)) for c in base._rgb(hex_color))
 
 
-def shell(source, tier):
+def shell(source, tier, layouts=LAYOUTS, *, inset_star=False, mark_depth=.046):
     body = base._Mesh()
     marks = base._Mesh()
     hull = base._hull_faces()
@@ -75,16 +75,18 @@ def shell(source, tier):
         for loop, index in zip(poly.loops, p.loop_indices):
             loop[body.uv].uv = source.data.uv_layers.active.data[index].uv
         poly.material_index = 2 if p.normal.z > .1 else 1
+    star_socket = tier == 7 and inset_star
     for face in base.ORDER:
         coords = list(base.OCTAGON)
         rings = []
-        for u, v in LAYOUTS[tier]:
+        slots = [(0, 0)] if star_socket else layouts[tier]
+        for u, v in slots:
             start = len(coords)
-            coords.extend(base._ring(u, v, .222, 12))
+            coords.extend(radial(10, .57, .26) if star_socket else base._ring(u, v, .222, 12))
             rings.append(list(range(start, len(coords))))
         boundary = [list(range(8))] + [r[::-1] for r in rings]
         out, _, triangles, original, _, _ = geometry.delaunay_2d_cdt(coords, [], boundary, 3, 1e-8)
-        assert len(out) == len(coords) and len(triangles) == 6 + 14 * len(rings)
+        assert len(out) == len(coords) and len(triangles) == 6 + sum(len(ring) + 2 for ring in rings)
         verts = [body.v(base._pt(face, u, v)) for u, v in coords]
         for tri in triangles:
             ids = [original[i][0] for i in tri]
@@ -97,16 +99,17 @@ def shell(source, tier):
                 for loop in panel.loops:
                     x, y, _ = loop.vert.co
                     loop[body.uv].uv = (0.5 + x / 2.5, 0.5 + y / 2.5)
-        for (u, v), ring in zip(LAYOUTS[tier], rings):
-            floor_coords = base._ring(u, v, .208, 12)
+        for (u, v), ring in zip(slots, rings):
+            floor_coords = radial(10, .568, .258) if star_socket else base._ring(u, v, .208, 12)
             floor = [body.v(base._pt(face, x, y, .048)) for x, y in floor_coords]
-            for i in range(12):
-                j = (i + 1) % 12
+            for i in range(len(ring)):
+                j = (i + 1) % len(ring)
                 body.f([verts[ring[i]], verts[ring[j]], floor[j], floor[i]], face).material_index = 1
             body.f(floor, face).material_index = 1
-            # Dark insert sits inside the cup. Its hidden underside is the cup floor.
-            marks.f([marks.v(base._pt(face, x, y, .046)) for x, y in floor_coords], face)
-        if tier == 7:
+            # A shallower insert follows the taper at its depth, leaving a hairline around the rim.
+            insert = floor_coords if mark_depth == .046 or star_socket else base._ring(u, v, .219, 12)
+            marks.f([marks.v(base._pt(face, x, y, mark_depth)) for x, y in insert], face)
+        if tier == 7 and not inset_star:
             points = radial(10, .42, .19)
             outer = [marks.v(base._pt(face, x, y, -.001)) for x, y in points]
             inner = [marks.v(base._pt(face, x * .78, y * .78, -.013)) for x, y in points]
@@ -123,7 +126,7 @@ def radial(count, outer, inner):
             for i in range(count) for radius in [inner if i % 2 else outer]]
 
 
-def top_texture(style):
+def top_texture(style, draw_art=None):
     """Rasterize original face artwork in the same top view used by both exporters."""
     size = TEXTURE_SIZE * 2
     pixels = bytearray([255]) * size**2
@@ -156,7 +159,9 @@ def top_texture(style):
                  neck - across * .24, tip, neck + across * .24, neck + across * .10,
                  start + direction * .12 + across * .10], 156)
 
-    if style == "C01":
+    if draw_art:
+        draw_art(polygon, line)
+    elif style == "C01":
         polygon([(-.91, .29), (-.63, .78), (-.12, .90), (.06, .68),
                  (-.06, .31), (-.46, .05), (-.79, -.03)], 211)
         polygon([(.15, -.49), (.63, -.18), (.89, -.31), (.78, -.74), (.26, -.90), (-.11, -.76)], 206)

@@ -104,13 +104,12 @@ function Bag.new(parent, deps)
 
 	local function renderFooter()
 		local tab = TABS[cur]
-		-- Loadout strip: DICE tab only; on short screens (Compact) it is an overlay shown just while picking a slot.
-		footer:SetVisible(tab.Footer ~= nil and (not shell.Compact or pending ~= nil))
+		footer:SetVisible(tab.Footer ~= nil)
 		shell:SetFooter(tab.Footer ~= nil)
 		if not tab.Footer then
 			return
 		end
-		local f = tab.Footer(meta, catalog)
+		local f = tab.Footer(meta)
 		footerButton = f.Button
 		footer:SetLabel(if pending then "PICK A SLOT TO REPLACE" else f.Label)
 		footer:SetSlots(f.Slots)
@@ -317,9 +316,24 @@ function Bag.new(parent, deps)
 					)
 				end)
 			elseif id == "Equip" then
-				pending = st.selected
-				renderFooter()
-				toast("Pick a loadout slot")
+				local deck = meta and meta.Deck
+				if deck and #deck < 5 then
+					pending = st.selected
+					pickSlot(#deck + 1)
+				elseif deck then
+					pending = st.selected
+					renderFooter()
+					toast("Pick a loadout slot")
+				end
+			elseif id == "Unequip" and meta and meta.Deck then
+				local slot = table.find(meta.Deck, st.selected)
+				if slot then
+					local ids = table.clone(meta.Deck)
+					table.remove(ids, slot)
+					pending = nil
+					renderFooter()
+					sendDeck(ids)
+				end
 			end
 		end)
 	end)
@@ -339,10 +353,10 @@ function Bag.new(parent, deps)
 	end)
 	footer:OnButton(function(hint)
 		safe("footer", function()
-			if footerButton and footerButton.Enabled and footerButton.Deck then
+			if footerButton and footerButton.Enabled then
 				pending = nil
 				renderFooter()
-				sendDeck(footerButton.Deck) -- UNEQUIP ALL = the starter deck; a rejection is toasted by Lobby
+				sendDeck({})
 			else
 				toast(hint or "Not available")
 			end

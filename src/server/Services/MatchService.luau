@@ -323,11 +323,11 @@ local function startMatch(player, partner): (boolean, string?)
 	if not Tutorial.CanStart(profile) or (otherProfile and not Tutorial.CanStart(otherProfile)) then
 		return false, "FinishStarterRolls"
 	end
-	if
-		not Deck.Check(profile.Dice, profile.Deck)
-		or (otherProfile and not Deck.Check(otherProfile.Dice, otherProfile.Deck))
-	then
-		return false, "BadDeck" -- never swap in a different deck silently
+	if not Deck.IsReady(profile) then
+		return false, if partner then "PartnerDeck" else "BadDeck"
+	end
+	if otherProfile and not Deck.IsReady(otherProfile) then
+		return false, "PartnerDeck"
 	end
 	table.clear(rewards)
 	table.clear(readyForCoop)
@@ -358,8 +358,17 @@ local function handleCoopReady(player: Player, ready: boolean): (boolean, string
 	if not second or (player ~= first and player ~= second) then
 		return false, "NeedPartner"
 	end
-	if ready and not Tutorial.CanStart(ProfileService.Get(player)) then
-		return false, "FinishStarterRolls"
+	if ready then
+		local profile = ProfileService.Get(player)
+		if not profile then
+			return false, "NotLoaded"
+		end
+		if not Tutorial.CanStart(profile) then
+			return false, "FinishStarterRolls"
+		end
+		if not Deck.IsReady(profile) then
+			return false, "BadDeck"
+		end
 	end
 	readyForCoop[player] = if ready then true else nil
 	if readyForCoop[first] and readyForCoop[second] then
@@ -415,6 +424,10 @@ local function handleEquipDeck(player: Player, ids: any): (boolean, string?)
 	local ok, code = Deck.Equip(profile, ids)
 	if ok then
 		ProfileService.MarkChanged(player) -- Changed pushes Meta
+		if readyForCoop[player] and #profile.Deck < Deck.SIZE then
+			readyForCoop[player] = nil
+			push(player)
+		end
 	end
 	return ok, code
 end

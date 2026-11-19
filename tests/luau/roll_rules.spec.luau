@@ -69,7 +69,7 @@ test(
 		end
 		expectEq(sum, 10000, "weights sum")
 		expectEq(Roll.TOTAL_BP, 10000, "TOTAL_BP")
-		for rarity, want in { Common = 3989, Rare = 4500, Epic = 1400, Legendary = 100, Mythic = 10, Secret = 1 } do
+		for rarity, want in { Common = 5889, Rare = 3000, Epic = 1000, Legendary = 100, Mythic = 10, Secret = 1 } do
 			expectEq(bp[rarity], want, rarity .. " weight")
 		end
 		expect(STANDARD.Pity.Rarity == "Legendary" and STANDARD.Pity.Max == 80, "pity: Legendary on the 80th roll")
@@ -116,7 +116,7 @@ test("a seeded 100,000-draw run follows the base distribution and awards valid d
 	end
 	expectEq(bad, 0, "known ids of their own rarity")
 	local shown = {}
-	for rarity, want in { Common = 39.89, Rare = 45, Epic = 14, Legendary = 1 } do
+	for rarity, want in { Common = 58.89, Rare = 30, Epic = 10, Legendary = 1 } do
 		local pct = 100 * (byRarity[rarity] or 0) / n
 		table.insert(shown, ("%s %.2f%%"):format(rarity, pct))
 		expectNear(pct, want, 1, rarity .. " share")
@@ -174,10 +174,10 @@ test("pity: with no Legendary in 79 rolls the 80th is Legendary; any Legendary r
 	expect(epic[1].Rarity == "Epic" and climbed == 41, "an Epic does not")
 	local bands = {
 		[1] = "Common",
-		[3989] = "Common",
-		[3990] = "Rare",
-		[8489] = "Rare",
-		[8490] = "Epic",
+		[5889] = "Common",
+		[5890] = "Rare",
+		[8889] = "Rare",
+		[8890] = "Epic",
 		[9889] = "Epic",
 		[9890] = "Legendary",
 		[9989] = "Legendary",
@@ -256,7 +256,7 @@ test("Buy: duplicates become copies; a new die arrives at Level 1 and only its f
 	for i, r in owned.Results do
 		expect(r.Id == "C01" and r.New == false, "owned die is not new " .. i)
 	end
-	local _, _, fresh = Roll.Buy(p, "Standard", 10, true, fixed(4001)) -- ten R01 (not owned)
+	local _, _, fresh = Roll.Buy(p, "Standard", 10, true, fixed(5890)) -- ten R01 (not owned)
 	expect(p.Dice.R01 ~= nil and p.Dice.R01.Level == 1 and p.Dice.R01.Copies == 9, "unlocked at Level 1 + 9 copies")
 	expectEq(fresh.Results[1].New, true, "first R01 is new")
 	for i = 2, 10 do
@@ -314,14 +314,13 @@ test("active roster has the requested counts; every drawable die can roll; remov
 	for _, die in Dice.Types do
 		counts[die.rarity] += 1
 	end
-	for rarity, count in { Common = 7, Rare = 7, Epic = 8, Legendary = 5, Mythic = 1, Secret = 1 } do
+	for rarity, count in { Common = 7, Rare = 5, Epic = 3, Legendary = 2, Mythic = 1, Secret = 1 } do
 		expectEq(counts[rarity], count, rarity .. " roster")
 	end
-	for _, id in { "E02", "E04", "L03" } do
+	for _, id in { "E04", "E05", "L03", "R06", "R07", "E06", "E07", "E08", "E09", "E10", "L04", "L05", "L06" } do
 		expect(Dice.Types[id] == nil, id .. " removed from Config")
 		for _, die in STANDARD.Dice do
 			expect(die.Id ~= id, id .. " excluded from rolls")
 		end
 	end
-	expect(Dice.Types.E08 and Dice.Types.E07 and Dice.Types.L06, "conversion targets exist")
 end)

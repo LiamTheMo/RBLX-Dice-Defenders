@@ -30,7 +30,7 @@ test("oddsRows: the Catalog's basis points as true percentages in display order,
 		text[row.Rarity] = row.Text
 	end
 	for r, want in
-		{ Secret = "0.01%", Mythic = "0.1%", Legendary = "1%", Epic = "14%", Rare = "45%", Common = "39.89%" }
+		{ Secret = "0.01%", Mythic = "0.1%", Legendary = "1%", Epic = "10%", Rare = "30%", Common = "58.89%" }
 	do
 		expectEq(text[r], want, r)
 	end
@@ -80,9 +80,9 @@ end)
 
 test("featured: the Catalog's ids with their rarity and Display name", function()
 	local f = RollLogic.featured(POOL)
-	expectEq(#f, 2, "two")
+	expectEq(#f, #POOL.Featured, "all featured dice")
 	for i, id in POOL.Featured do
-		expect(f[i].Id == id and f[i].Rarity == "Legendary" and f[i].Name == Display.Dice[id].Name, id)
+		expect(f[i].Id == id and f[i].Rarity == Display.Dice[id].Rarity and f[i].Name == Display.Dice[id].Name, id)
 	end
 	expectEq(#RollLogic.featured(nil), 0, "no Catalog")
 end)
@@ -94,11 +94,11 @@ test("result tiles: one result in the middle; ten show the three rarest, the bes
 	for i = 1, 10 do
 		ten[i] = { Id = "C01", Rarity = "Common", New = false }
 	end
-	ten[4] = { Id = "E03", Rarity = "Epic", New = false }
+	ten[4] = { Id = "E02", Rarity = "Epic", New = false }
 	ten[7] = { Id = "L02", Rarity = "Legendary", New = true }
 	ten[9] = { Id = "R02", Rarity = "Rare", New = false }
 	local t = RollLogic.resultTiles(ten)
-	expect(t[2].Id == "L02" and t[1].Id == "E03" and t[3].Id == "R02", "best three, best centred")
+	expect(t[2].Id == "L02" and t[1].Id == "E02" and t[3].Id == "R02", "best three, best centred")
 	expectEq(t[2].Name, "Forge", "named")
 end)
 
