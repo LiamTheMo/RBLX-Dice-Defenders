@@ -7,7 +7,7 @@ local RunService = game:GetService("RunService")
 local Display = require(ReplicatedStorage.Shared.Display)
 local Layout = require(ReplicatedStorage.Shared.Layout)
 local NetClient = require(script.Parent.NetClient)
-local Projectiles = require(script.Parent.Effects.Projectiles)
+local CommonProjectiles = require(script.Parent.Effects.CommonProjectiles)
 local SettingsLogic = require(script.Parent.Settings.SettingsLogic)
 
 local EnemyView = {}
@@ -105,12 +105,10 @@ local function fire(record)
 	if e == nil or not SettingsLogic.get("projectileEffects") then
 		return
 	end
-	local from = Layout.CellPosition(record.Cell) + Vector3.new(0, 3, 0)
-	if record.Distance ~= nil then
-		local hit = Layout.PositionAt(record.Distance) + Vector3.new(0, e.lift, 0)
-		Projectiles.Fire(tracerFolder, from, hit, e.part, record, SettingsLogic.get("reducedMotion"))
+	if CommonProjectiles.Fire(tracerFolder, e, record, SettingsLogic.get("reducedMotion")) then
 		return
 	end
+	local from = Layout.CellPosition(record.Cell) + Vector3.new(0, 3, 0)
 	local t = tracer()
 	if t == nil then
 		return
@@ -156,11 +154,11 @@ local function onFrame(dt: number)
 			t.part.Parent = nil
 		end
 	end
-	Projectiles.Step(dt)
+	CommonProjectiles.Step(dt)
 end
 
 local function clearEffects()
-	Projectiles.Clear()
+	CommonProjectiles.Clear()
 	for _, t in tracers do
 		t.part.Parent = nil
 		t.untilTime = 0
@@ -192,7 +190,7 @@ function EnemyView.Start()
 		if id == "projectileEffects" and not value then
 			clearEffects()
 		elseif id == "reducedMotion" and value then
-			Projectiles.Clear()
+			CommonProjectiles.Clear()
 		end
 	end)
 	RunService.RenderStepped:Connect(onFrame)

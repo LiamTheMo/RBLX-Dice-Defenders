@@ -255,7 +255,27 @@ test("kill MP bands and kind multipliers", function()
 		end
 		expectEq(why, "Kill", kind .. " removal reason")
 		expectEq(batch.F[1].Type, "C03", "attack identifies the firing die")
-		expectEq(batch.F[1].Distance, nil, "tracers need no hit distance")
+		expectEq(batch.F[1].Distance, enemy.dist, "Hammer keeps the lethal impact position")
+	end
+end)
+
+test("all Common dice report confirmed hits and the visual ability flags", function()
+	for _, id in { "C01", "C02", "C03", "C04", "C05", "C06", "C07" } do
+		local state = newState()
+		openWave(state)
+		place(state, 5, id, 1)
+		local target = addEnemy(state, "Grunt", 1000, 1)
+		local cfg = Dice.Types[id]
+		state.board[5].hits = (cfg.procEvery or 1) - 1
+		Match.Step(state, state.lastNow + DT)
+		local batch = Match.TakeOut(state)
+		expectEq(#batch.F, cfg.shots or 1, id .. " shot count")
+		for _, shot in batch.F do
+			expectEq(shot.Type, id, "effect identifier")
+			expectEq(shot.Distance, target.dist, id .. " confirmed impact position")
+			expectEq(shot.Boosted, if cfg.procEvery then true else nil, id .. " boosted impact")
+			expectEq(shot.Slowed, if cfg.slow then true else nil, id .. " slow marker")
+		end
 	end
 end)
 

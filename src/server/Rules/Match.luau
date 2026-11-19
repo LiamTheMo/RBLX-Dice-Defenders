@@ -280,7 +280,7 @@ local function attack(state, now: number)
 			local tier = state.tiers[die.type] or 1 -- a die off the deck (only a spec places one) is tier 1
 			local period = Formulas.Period(die.type, die.pip, auras[cell])
 			local twinshot = die.type == "C04"
-			local showProjectile = die.type == "C01" or die.type == "C02" or twinshot
+			local showProjectile = cfg.rarity == "Common"
 			local attacks = 0
 			while die.cd <= now and attacks < Balance.MaxAttacksPerTick do
 				local first
@@ -332,7 +332,8 @@ local function attack(state, now: number)
 						Id = target.id,
 						Type = die.type,
 						Distance = if showProjectile then target.dist else nil,
-						Boosted = if die.type == "C02" and flat > 0 then true else nil,
+						Boosted = if showProjectile and flat > 0 then true else nil,
+						Slowed = if showProjectile and cfg.slow and target.hp > 0 then true else nil,
 						Lane = if twinshot then (if shot == 1 then 1 else -1) else nil,
 						SharedTarget = if twinshot and first == second then true else nil,
 					})

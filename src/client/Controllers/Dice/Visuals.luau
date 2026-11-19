@@ -5,6 +5,7 @@ local Data = require(script.Parent.ModelData)
 
 local Visuals = {}
 
+local AUTHORED_SIZE = 2.5
 local PIP = Color3.fromHex("#16171B")
 local GOLD = Color3.fromHex("#FFD65C")
 local STAR_RIM = Color3.fromHex("#32201A")
@@ -17,7 +18,7 @@ local ready = Instance.new("BindableEvent")
 local loading = true
 
 function Visuals.Size(typeId: string): number
-	return if Data.Styles[typeId] then 2.5 else 4.4
+	return if Data.Styles[typeId] then AUTHORED_SIZE * 2 else 4.4
 end
 
 local function meshTemplate(packet: string, palette: { Color3 }, paintTop: boolean?, firstMesh: EditableMesh?)
@@ -165,9 +166,11 @@ end)
 
 local function cloneMesh(template, parent: Folder, anchor: BasePart, name: string, color: Color3)
 	local mesh = template.Part:Clone()
+	local scale = anchor.Size.X / AUTHORED_SIZE
 	mesh.Name = name
 	mesh.Color = color
-	mesh.CFrame = anchor.CFrame * CFrame.new(template.Offset)
+	mesh.Size *= scale
+	mesh.CFrame = anchor.CFrame * CFrame.new(template.Offset * scale)
 	mesh.Parent = parent
 	return mesh
 end
