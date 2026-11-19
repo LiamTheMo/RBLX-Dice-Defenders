@@ -88,7 +88,14 @@ Dice.Types = table.freeze({
 		rate = 0.90,
 		aura = table.freeze({ base = 0.08, perPip = 0.015, perTier = 0.015 }),
 	}),
-	M01 = table.freeze({ name = "Astral", rarity = "Mythic", base = 32, rate = 0.80 }),
+	M01 = table.freeze({
+		name = "Astral",
+		rarity = "Mythic",
+		base = 140,
+		rate = 0.80,
+		singularity = table.freeze({ damage = 5, critChance = 10, critDamage = 2 }),
+		description = "Singularity: With exactly one Astral on your board, it deals 5× damage. 10% of those hits deal 10× damage.",
+	}),
 	S01 = table.freeze({ name = "Dragon", rarity = "Secret", base = 36, rate = 0.80 }),
 })
 

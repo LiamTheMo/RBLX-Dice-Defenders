@@ -7,6 +7,7 @@
 -- ready check or a handler returns) are never counted.
 local Balance = require(script.Parent.Parent.Config.Balance)
 local Admin = require(script.Parent.Parent.Rules.Admin)
+local Tutorial = require(script.Parent.Parent.Rules.Tutorial)
 local Bag = require(script.Parent.Parent.Rules.Bag)
 local Deck = require(script.Parent.Parent.Rules.Deck)
 local Roll = require(script.Parent.Parent.Rules.Roll)
@@ -24,6 +25,13 @@ RemoteGuard.MAX_SEQ = 2 ^ 31 - 1
 -- arguments after seq and must return exactly true.
 RemoteGuard.Specs = table.freeze({
 	Start = table.freeze({ argc = 1 }),
+	CoopReady = table.freeze({
+		argc = 2,
+		check = function(ready)
+			return type(ready) == "boolean"
+		end,
+	}),
+	TutorialAction = table.freeze({ argc = 3, check = Tutorial.Shape }),
 	Summon = table.freeze({ argc = 1 }),
 	EquipDeck = table.freeze({ argc = 2, check = Deck.Shape }),
 	ClaimQuest = table.freeze({

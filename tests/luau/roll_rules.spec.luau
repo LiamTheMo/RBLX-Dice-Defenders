@@ -170,7 +170,7 @@ test("pity: with no Legendary in 79 rolls the 80th is Legendary; any Legendary r
 	expectEq(p81, 1, "the counter climbs again after the guarantee")
 	local natural, reset = Roll.Draw(40, STANDARD, 1, fixed(9950)) -- 9890..9989 is the Legendary band
 	expect(natural[1].Rarity == "Legendary" and reset == 0, "a natural Legendary resets the counter")
-	local epic, climbed = Roll.Draw(40, STANDARD, 1, fixed(9900))
+	local epic, climbed = Roll.Draw(40, STANDARD, 1, fixed(9889))
 	expect(epic[1].Rarity == "Epic" and climbed == 41, "an Epic does not")
 	local bands = {
 		[1] = "Common",

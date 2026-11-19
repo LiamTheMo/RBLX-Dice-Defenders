@@ -501,7 +501,7 @@ local function clockTicks(ticks, ground, diameter, opacity, scale)
 	end
 end
 
-function RarityEffects.SetChronoAllies(parent, cells)
+function RarityEffects.SetChronoAllies(parent, cells, seat, playerCount)
 	local keep = {}
 	local style = RarityEffects.Styles.L01
 	for _, cell in cells or {} do
@@ -514,7 +514,7 @@ function RarityEffects.SetChronoAllies(parent, cells)
 				ring = ring(root, style.glow),
 				ticks = pieces(12, root, "ClockTick", style.burstColor),
 				pillars = pieces(4, root, "ClockLight", style.color),
-				center = Layout.CellPosition(cell) - Vector3.yAxis * 0.53,
+				center = Layout.CellPosition(cell, seat, playerCount) - Vector3.yAxis * 0.53,
 			}
 			root.Parent = parent
 		end
@@ -544,7 +544,7 @@ local function links(shot, opacity)
 	local parts = shot.visuals.links
 	if shot.style.name == "Arc" then
 		for i, distance in shot.links or {} do
-			local finish = Layout.PositionAt(distance) + Vector3.yAxis * shot.lift
+			local finish = Layout.PositionAt(distance, shot.enemySeat, shot.playerCount) + Vector3.yAxis * shot.lift
 			local previous = shot.center
 			for segment = 1, 5 do
 				local point = shot.center:Lerp(finish, segment / 5)
@@ -582,6 +582,7 @@ function RarityEffects.Impact(shot, age, facing)
 	local motion = if shot.reducedMotion then 0.45 else t
 	local growth = 1 - (1 - motion) ^ 2
 	local strength = if shot.reducedMotion then 0.44 else 0.92
+	local criticalScale = if s.name == "Astral" and shot.attack.Critical and not shot.reducedMotion then 1.22 else 1
 	local opacity = (1 - t) * strength
 	local flash = math.max(0, 1 - age / 0.10) ^ (if shot.reducedMotion then 1.45 else 0.95) * strength
 	local size = if s.name == "Astral" then 2.2 else 1.65
@@ -594,11 +595,11 @@ function RarityEffects.Impact(shot, age, facing)
 	v.burst.Parent = if flash > 0 then v.root else nil
 	if v.hitGlow and flash > 0 and not shot.reducedMotion then
 		local glowSize = if s.name == "Volley" then 1.6 elseif s.name == "Astral" then 3.5 else 2.65
-		Textures.Show(v.hitGlow, facing.Position, glowSize * IMPACT_SCALE, flash * 0.83)
+		Textures.Show(v.hitGlow, facing.Position, glowSize * IMPACT_SCALE * criticalScale, flash * 0.83)
 	end
 	if flash > 0 and v.flashMesh then
 		local radius = if s.name == "Volley" then 0.42 elseif s.name == "Astral" then 1.05 else 0.84
-		poseMesh(v.flash, v.flashMesh, facing, radius * IMPACT_SCALE * (0.9 + growth * 0.22), flash)
+		poseMesh(v.flash, v.flashMesh, facing, radius * IMPACT_SCALE * criticalScale * (0.9 + growth * 0.22), flash)
 	elseif flash > 0 and v.shards then
 		for i, shard in v.shards do
 			local pose = facing
@@ -624,9 +625,10 @@ function RarityEffects.Impact(shot, age, facing)
 		showRing(v.poolRing, ground - Vector3.yAxis * 0.025, diameter * size, opacity * 0.48, 4)
 	end
 	if v.neighbors then
-		local source = Layout.CellPosition(shot.attack.Cell) - Vector3.yAxis * 0.40
+		local source = Layout.CellPosition(shot.attack.Cell, shot.attack.Seat, shot.attack.PlayerCount)
+			- Vector3.yAxis * 0.40
 		for i, cell in shot.supportCells or {} do
-			local center = Layout.CellPosition(cell) - Vector3.yAxis * 0.53
+			local center = Layout.CellPosition(cell, shot.attack.Seat, shot.attack.PlayerCount) - Vector3.yAxis * 0.53
 			showRing(v.neighbors[i], center, 3.35 + growth * 1.65, opacity * 0.72)
 			if not shot.reducedMotion then
 				line(v.supportLinks[i], source, center + Vector3.yAxis * 0.13, 0.10, opacity * 0.58)

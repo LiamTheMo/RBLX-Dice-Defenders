@@ -27,6 +27,8 @@ local EXPAND_TIME = 0.25
 
 local pads = {} -- cell -> Part
 local dice = {} -- cell -> { model, part, pad, highlight, lifted, key }
+local allyDice = {}
+local seat, playerCount = 1, 1
 local animations = {} -- die -> current transition
 local board = {} -- latest Board from State
 local playing = false
@@ -62,6 +64,17 @@ local function world(): Folder
 end
 
 local function buildWorld()
+	if arena then
+		for _, collection in { dice, allyDice } do
+			for _, die in collection do
+				die.model:Destroy()
+			end
+			table.clear(collection)
+		end
+		table.clear(animations)
+		table.clear(pads)
+		arena:Destroy()
+	end
 	root = world()
 	arena = Instance.new("Folder") -- parented by render() only while playing
 	arena.Name = "Arena"
@@ -77,32 +90,39 @@ local function buildWorld()
 	local strips = Instance.new("Folder")
 	strips.Name = "Path"
 	strips.Parent = arena
-	local points = Layout.Waypoints
-	for i = 1, #points - 1 do
-		local a, b = points[i], points[i + 1]
-		local length = (b - a).Magnitude
+	for lane = 1, playerCount do
+		local points = Layout.Path(lane, playerCount)
+		for i = 1, #points - 1 do
+			if lane == 2 and i == #points - 1 then
+				break -- shared exit stretch already built by lane one
+			end
+			local a, b = points[i], points[i + 1]
+			local length = (b - a).Magnitude
+			part(
+				strips,
+				"Strip",
+				Vector3.new(7, 0.2, length + 7),
+				CFrame.lookAt(Vector3.new((a.X + b.X) / 2, 0.1, (a.Z + b.Z) / 2), Vector3.new(b.X, 0.1, b.Z)),
+				Color3.fromRGB(150, 120, 80)
+			)
+		end
 		part(
 			strips,
-			"Strip",
-			Vector3.new(7, 0.2, length + 7),
-			CFrame.lookAt(Vector3.new((a.X + b.X) / 2, 0.1, (a.Z + b.Z) / 2), Vector3.new(b.X, 0.1, b.Z)),
-			Color3.fromRGB(150, 120, 80)
+			"Start",
+			Vector3.new(5, 0.4, 5),
+			CFrame.new(points[1].X, 0.3, points[1].Z),
+			Color3.fromRGB(60, 200, 90)
 		)
+		if lane == 1 then
+			part(
+				strips,
+				"End",
+				Vector3.new(5, 0.4, 5),
+				CFrame.new(points[#points].X, 0.3, points[#points].Z),
+				Color3.fromRGB(220, 70, 70)
+			)
+		end
 	end
-	part(
-		strips,
-		"Start",
-		Vector3.new(5, 0.4, 5),
-		CFrame.new(points[1].X, 0.3, points[1].Z),
-		Color3.fromRGB(60, 200, 90)
-	)
-	part(
-		strips,
-		"End",
-		Vector3.new(5, 0.4, 5),
-		CFrame.new(points[#points].X, 0.3, points[#points].Z),
-		Color3.fromRGB(220, 70, 70)
-	)
 
 	padsFolder = Instance.new("Folder")
 	padsFolder.Name = "Pads"
@@ -110,11 +130,16 @@ local function buildWorld()
 	diceFolder = Instance.new("Folder")
 	diceFolder.Name = "Dice"
 	diceFolder.Parent = arena
-	for i = 1, CELLS do
-		local c = Layout.CellPosition(i)
-		local pad = part(padsFolder, "Pad" .. i, Vector3.new(5.4, 0.4, 5.4), CFrame.new(c.X, 0.2, c.Z), PAD_COLOR)
-		pad:SetAttribute("Cell", i)
-		pads[i] = pad
+	for side = 1, playerCount do
+		for i = 1, CELLS do
+			local c = Layout.CellPosition(i, side, playerCount)
+			local color = if side == seat then PAD_COLOR else Color3.fromRGB(63, 87, 98)
+			local pad = part(padsFolder, "Pad" .. i, Vector3.new(5.4, 0.4, 5.4), CFrame.new(c.X, 0.2, c.Z), color)
+			if side == seat then
+				pad:SetAttribute("Cell", i)
+				pads[i] = pad
+			end
+		end
 	end
 	rayParams.FilterType = Enum.RaycastFilterType.Include
 	rayParams.FilterDescendantsInstances = { padsFolder, diceFolder }
@@ -186,13 +211,15 @@ local function stepAnimations()
 	end
 end
 
-local function makeDie(cell: number)
-	local c = Layout.CellPosition(cell)
+local function makeDie(cell: number, side: number)
+	local c = Layout.CellPosition(cell, side, playerCount)
 	local model = Instance.new("Model")
 	model.Name = "Die" .. cell
 	local body = part(model, "Body", Vector3.one, CFrame.identity, Color3.new(1, 1, 1))
 	body.CanQuery = true
-	body:SetAttribute("Cell", cell)
+	if side == seat then
+		body:SetAttribute("Cell", cell)
+	end
 	model.PrimaryPart = body
 	local highlight = Instance.new("Highlight")
 	highlight.Adornee = model
@@ -242,6 +269,11 @@ end
 local function render(snapshot)
 	local previous = board
 	playing = snapshot.Phase == "Playing"
+	if playing and ((snapshot.Seat or 1) ~= seat or (snapshot.PlayerCount or 1) ~= playerCount) then
+		seat, playerCount = snapshot.Seat or 1, snapshot.PlayerCount or 1
+		previous, selected, boardKey = {}, nil, ""
+		buildWorld()
+	end
 	arena.Parent = if playing then root else nil
 	board = if playing then snapshot.Board or {} else {}
 	local still = SettingsLogic.get("reducedMotion")
@@ -254,7 +286,7 @@ local function render(snapshot)
 		local die = dice[i]
 		if entry then
 			if die == nil then
-				die = makeDie(i)
+				die = makeDie(i, seat)
 				dice[i] = die
 			end
 			if die.key ~= parts[i] then
@@ -287,6 +319,25 @@ local function render(snapshot)
 		selected = nil -- never merge from a stale selection
 	end
 	boardKey = key
+	local ally = if playing then snapshot.PartnerBoard else nil
+	for i = 1, CELLS do
+		local entry = if ally then ally[i] else nil
+		local die = allyDice[i]
+		if entry then
+			if not die then
+				die = makeDie(i, 3 - seat)
+				allyDice[i] = die
+			end
+			local key = entry.T .. entry.P
+			if die.key ~= key then
+				die.key = key
+				applyDie(die, entry)
+			end
+			die.model.Parent = diceFolder
+		elseif die then
+			die.model.Parent = nil
+		end
+	end
 	refreshPads()
 end
 

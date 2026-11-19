@@ -6,6 +6,7 @@ local Match = require(Server.Rules.Match)
 local Board = require(Server.Rules.Board)
 local Formulas = require(Server.Rules.Formulas)
 local Balance = require(Server.Config.Balance)
+local CoopWaves = require(Server.Config.CoopWaves)
 local Dice = require(Server.Config.Dice)
 local Enemies = require(Server.Config.Enemies)
 local Layout = require(game:GetService("ReplicatedStorage").Shared.Layout)
@@ -28,7 +29,7 @@ end
 local function openWave(state)
 	state.wave = 1
 	state.waveState = "Active"
-	state.queue = { "Grunt" }
+	state.queue = { { kind = "Grunt", hp = 20 } }
 	state.qi = 1
 	state.nextSpawnAt = math.huge
 end
@@ -171,11 +172,11 @@ test("first wave starts 4 s after Start and spawns on schedule", function()
 	runFor(state, 1)
 	expectEq(state.wave, 1, "wave 1 started")
 	expectEq(state.waveState, "Active", "active")
-	expectEq(#state.queue, 8, "8 spawns queued")
+	expectEq(#state.queue, 10, "10 spawns queued")
 	expectEq(#state.enemies >= 1, true, "first enemy out")
 	local batch = Match.TakeOut(state)
 	expectEq(batch.S[1].Kind, "Grunt", "spawn record kind")
-	expectEq(batch.S[1].Hp, 110, "spawn record hp")
+	expectEq(batch.S[1].Hp, 20, "spawn record hp")
 	expectEq(batch.S[1].Speed, 6, "wave 1 speed")
 	local again = Match.TakeOut(state)
 	expectEq(#again.S, 0, "outbox drained")
@@ -396,7 +397,7 @@ test("a summoned die lands exactly one hit in its first tick", function()
 	expectEq(die.hits, 1, "one hit, no catch-up from cd = 0")
 end)
 
-test("endless run: boss warning of at least 3 s before waves 5 and 10; Brute and Boss queued last", function()
+test("endless run warns before the wave 10 boss; historical waves use the shared queue", function()
 	local state = newState()
 	for cell = 1, 15 do
 		place(state, cell, if cell % 2 == 0 then "C03" else "C05", 7)
@@ -417,7 +418,7 @@ test("endless run: boss warning of at least 3 s before waves 5 and 10; Brute and
 			lastWarn = state.bossAt
 			warned[state.wave + 1] = state.bossAt - t
 		end
-		if state.waveState == "Active" and Formulas.IsBoss(state.wave) and bossAtWave[state.wave] == nil then
+		if state.waveState == "Active" and CoopWaves.IsBoss(state.wave) and bossAtWave[state.wave] == nil then
 			bossAtWave[state.wave] = state.bossAt
 		end
 		for _, enemy in state.enemies do
@@ -435,10 +436,10 @@ test("endless run: boss warning of at least 3 s before waves 5 and 10; Brute and
 	expect(state.wavesCompleted >= 10, "ten waves cleared")
 	expectEq(state.wave, 11, "wave 11 started")
 	expectEq(state.lives, 3, "no breaches")
-	expect(warned[5] ~= nil and warned[5] >= 3, "warning before wave 5: " .. tostring(warned[5]))
+	expectEq(warned[5], nil, "miniboss is not a boss wave")
 	expect(warned[10] ~= nil and warned[10] >= 3, "warning before wave 10: " .. tostring(warned[10]))
 	expectEq(warned[6], nil, "no warning before wave 6")
-	for _, w in { 5, 10 } do
+	for _, w in { 10 } do
 		expect(
 			bossAtWave[w] ~= nil and bossSpawn[w] ~= nil and math.abs(bossAtWave[w] - bossSpawn[w]) <= DT,
 			"wave "
@@ -449,19 +450,18 @@ test("endless run: boss warning of at least 3 s before waves 5 and 10; Brute and
 				.. tostring(bossSpawn[w])
 		)
 	end
-	expectEq(queues[3][#queues[3]], "Brute", "wave 3 ends with the Brute")
-	expectEq(#queues[3], Formulas.WaveCount(3) + 1, "wave 3 queue")
-	expectEq(queues[5][#queues[5]], "Boss", "wave 5 ends with the Boss")
-	expectEq(#queues[5], Formulas.WaveCount(5) + 1, "wave 5: no Brute")
-	expectEq(queues[10][#queues[10]], "Boss", "wave 10 ends with the Boss")
-	expectEq(#queues[4], Formulas.WaveCount(4), "wave 4: plain")
+	expectEq(#queues[3], 10, "ordinary wave size")
+	expectEq(queues[5][1].kind, "Brute", "wave 5 first-slot miniboss")
+	expectEq(queues[5][10].kind, "Runner", "wave 5 last-slot runner")
+	expectEq(#queues[10], 1, "boss replaces the wave")
+	expectEq(queues[10][1].hp, 8460, "wave 10 shared scaling")
 end)
 
 test("max 90 alive: spawns wait and are never dropped", function()
 	local state = newState()
 	state.wave = 1
 	state.waveState = "Active"
-	state.queue = { "Grunt", "Grunt", "Grunt" }
+	state.queue = table.create(3, { kind = "Grunt", hp = 20 })
 	state.qi = 1
 	state.nextSpawnAt = 0
 	for _ = 1, Balance.MaxAlive do
@@ -542,7 +542,7 @@ end)
 
 test("stat-only dice: one pip-1 hit deals exactly base, with no perk", function()
 	for id, cfg in Dice.Types do
-		if cfg.rarity ~= "Common" then
+		if cfg.rarity ~= "Common" and not cfg.singularity then
 			local state = newState()
 			openWave(state)
 			place(state, 5, id, 1)

@@ -37,18 +37,35 @@ function Play.new(parent, deps)
 	shell:SetTab(1)
 
 	local busy = false
+	local function viewKey(snap)
+		return snap
+			and `{snap.Phase}|{snap.BestWave}|{snap.TrialCleared}|{snap.CanSolo}|{snap.CanCoop}|{snap.CoopReady}`
+	end
 	local pending = {} -- milestone ids with a ClaimQuest in flight, held until the next Meta after a success
 
 	local shown -- the State fields the last render drew
 	local function render()
 		local snap = NetClient.Last
-		shown = snap and `{snap.Phase}|{snap.BestWave}|{snap.TrialCleared}`
+		shown = viewKey(snap)
 		local catalog = NetClient.LastCatalog
 		view:SetWorlds(PlayLogic.worlds(snap))
 		view:SetSelected(PlayLogic.WORLD.Id)
 		view:SetMilestones(PlayLogic.milestones(catalog, NetClient.LastMeta, pending))
 		view:SetRepeat(PlayLogic.repeatTiles(catalog))
-		view:SetStartState(PlayLogic.startState(snap, busy))
+		local tutorial = NetClient.LastMeta and NetClient.LastMeta.Tutorial
+		local blocked = tutorial and tutorial.Stage == "Roll"
+		view:SetStartState(
+			if blocked or (snap and snap.CanSolo == false) then "Disabled" else PlayLogic.startState(snap, busy)
+		)
+		view:SetCoopState(
+			if busy
+					or blocked
+					or not snap
+					or not snap.CanCoop
+				then "Disabled"
+				elseif snap.CoopReady then "Waiting"
+				else "Ready"
+		)
 	end
 
 	view:OnSelect(function(id)
@@ -90,6 +107,23 @@ function Play.new(parent, deps)
 			end
 		end)
 	end)
+	view:OnCoop(function(ready)
+		if busy then
+			return
+		end
+		busy = true
+		render()
+		task.spawn(function()
+			local ok = NetClient.Request("CoopReady", ready)
+			busy = false
+			if shell:IsOpen() then
+				if ok and ready then
+					deps.toast("Ready for co-op. Waiting for your partner.")
+				end
+				render()
+			end
+		end)
+	end)
 	table.insert(
 		conns,
 		NetClient.State:Connect(function(snap)
@@ -99,7 +133,7 @@ function Play.new(parent, deps)
 			if snap.Phase ~= "Lobby" and snap.Phase ~= "Ended" then
 				shell:Close()
 			else
-				local key = `{snap.Phase}|{snap.BestWave}|{snap.TrialCleared}` -- State ticks often; rebuild only on a visible change
+				local key = viewKey(snap)
 				if key ~= shown then
 					render()
 				end

@@ -16,7 +16,7 @@ local Y = Layout.Y
 local O = Layout.ORIGIN
 
 -- Cell i in 1..15, row-major (row 1 is the top/back row, z negative).
-function Layout.CellPosition(i: number): Vector3
+function Layout.CellPosition(i: number, seat: number?, playerCount: number?): Vector3
 	local col = (i - 1) % Layout.COLS
 	local row = (i - 1) // Layout.COLS
 	return O
@@ -24,6 +24,7 @@ function Layout.CellPosition(i: number): Vector3
 			(col - (Layout.COLS - 1) / 2) * Layout.CELL_SIZE,
 			Y,
 			(row - (Layout.ROWS - 1) / 2) * Layout.CELL_SIZE
+				+ (if playerCount == 2 then (if seat == 2 then 13 else -13) else 0)
 		)
 end
 
@@ -36,24 +37,45 @@ Layout.Waypoints = table.freeze({
 })
 
 -- cumulative[i] = path distance of waypoint i.
-local cumulative = { 0 }
-for i = 2, #Layout.Waypoints do
-	cumulative[i] = cumulative[i - 1] + (Layout.Waypoints[i] - Layout.Waypoints[i - 1]).Magnitude
+local function distances(points)
+	local cumulative = { 0 }
+	for i = 2, #points do
+		cumulative[i] = cumulative[i - 1] + (points[i] - points[i - 1]).Magnitude
+	end
+	return cumulative
 end
+local cumulative = distances(Layout.Waypoints)
 Layout.PathLength = cumulative[#cumulative]
+local function coopPath(z: number)
+	return table.freeze({
+		O + Vector3.new(-38, Y, z),
+		O + Vector3.new(14, Y, z),
+		O + Vector3.new(14, Y, 0),
+		O + Vector3.new(59, Y, 0),
+	})
+end
+local coop = { coopPath(-27), coopPath(27) }
+local coopDistances = distances(coop[1])
+Layout.CoopJunction = coopDistances[3]
+Layout.CoopPathLength = coopDistances[#coopDistances]
+
+function Layout.Path(seat: number?, playerCount: number?)
+	return if playerCount == 2 then coop[seat or 1] else Layout.Waypoints
+end
 
 -- World position at `dist` studs along the path, clamped to [0, PathLength].
-function Layout.PositionAt(dist: number): Vector3
-	local waypoints = Layout.Waypoints
+function Layout.PositionAt(dist: number, seat: number?, playerCount: number?): Vector3
+	local waypoints = Layout.Path(seat, playerCount)
+	local walked = if playerCount == 2 then coopDistances else cumulative
 	if dist ~= dist or dist <= 0 then
 		return waypoints[1]
 	end
-	if dist >= Layout.PathLength then
+	if dist >= walked[#walked] then
 		return waypoints[#waypoints]
 	end
 	for i = 2, #waypoints do
-		if dist <= cumulative[i] then
-			local t = (dist - cumulative[i - 1]) / (cumulative[i] - cumulative[i - 1])
+		if dist <= walked[i] then
+			local t = (dist - walked[i - 1]) / (walked[i] - walked[i - 1])
 			return waypoints[i - 1] + (waypoints[i] - waypoints[i - 1]) * t
 		end
 	end
@@ -66,6 +88,12 @@ Layout.Camera = table.freeze({
 	Position = O + Vector3.new(2, 50.5, 11.6),
 	LookAt = O + Vector3.new(2, 0, -1),
 	FieldOfView = 55,
+})
+
+Layout.CoopCamera = table.freeze({
+	Position = O + Vector3.new(10, 76, 18),
+	LookAt = O + Vector3.new(10, 0, 0),
+	FieldOfView = 56,
 })
 
 return table.freeze(Layout)

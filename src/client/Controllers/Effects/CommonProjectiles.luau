@@ -256,11 +256,13 @@ local function fire(parent, enemy, attack, reducedMotion, style, visualLane)
 		return not style.impactOnly
 	end
 	local distance = attack.Distance or enemy.speed * (workspace:GetServerTimeNow() - enemy.spawnAt)
-	local center = Layout.PositionAt(distance) + Vector3.yAxis * enemy.lift
+	local center = Layout.PositionAt(distance, enemy.seat, enemy.playerCount) + Vector3.yAxis * enemy.lift
 	-- The die stands on a 0.4-stud pad, with a quarter stud between its top and the launch.
 	local from = if style.impactOnly
 		then center
-		else Layout.CellPosition(attack.Cell) + Vector3.yAxis * (DiceVisuals.Size(attack.Type) + 0.65 - Layout.Y)
+		else Layout.CellPosition(attack.Cell, attack.Seat, attack.PlayerCount) + Vector3.yAxis * (DiceVisuals.Size(
+			attack.Type
+		) + 0.65 - Layout.Y)
 	local camera = workspace.CurrentCamera
 	local up = if camera then camera.CFrame.UpVector else Vector3.yAxis
 	local lane = up * ((attack.Lane or visualLane) * 0.22 * SIZE_SCALE)
@@ -277,6 +279,7 @@ local function fire(parent, enemy, attack, reducedMotion, style, visualLane)
 	shot.impact = nil
 	local arrival = workspace:GetServerTimeNow() + shot.flight
 	if shot.visuals then
+		shot.enemySeat, shot.playerCount = enemy.seat, enemy.playerCount
 		shot.attack = attack
 		shot.visualLane = visualLane
 		shot.lift = enemy.lift
@@ -285,14 +288,15 @@ local function fire(parent, enemy, attack, reducedMotion, style, visualLane)
 		shot.effectCell = shot.copiedCell or shot.transformedCell
 		shot.supportCells, shot.links = attack.SupportCells, attack.ChainDistances
 		if shot.effectCell then
-			local cell = Layout.CellPosition(shot.effectCell)
+			local cell = Layout.CellPosition(shot.effectCell, attack.Seat, attack.PlayerCount)
 			shot.center = cell + Vector3.yAxis * 2
 			shot.halfSize = DiceVisuals.Size(attack.Type) / 2
 			shot.flight = if reducedMotion then 0 else (shot.center - from).Magnitude / style.speed
 		end
 	end
 	if not (shot.visuals and shot.effectCell) and enemy.hp > 0 then
-		shot.center = Layout.PositionAt(enemy.speed * (arrival - enemy.spawnAt)) + Vector3.yAxis * enemy.lift
+		shot.center = Layout.PositionAt(enemy.speed * (arrival - enemy.spawnAt), enemy.seat, enemy.playerCount)
+			+ Vector3.yAxis * enemy.lift
 	end
 	local eye = if camera then (camera.CFrame.Position - shot.center).Unit else Vector3.yAxis
 	local axis = math.max(math.abs(eye.X), math.abs(eye.Y), math.abs(eye.Z))

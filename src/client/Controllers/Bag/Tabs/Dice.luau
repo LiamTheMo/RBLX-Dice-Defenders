@@ -74,6 +74,13 @@ function Dice.GetItems(meta, catalog)
 	local costs = if ok then DL.Copies else {}
 	local items = {}
 	local owned = {}
+	local shards = 0
+	for _, stack in meta and meta.Materials or {} do
+		if stack.Id == "DieShard" then
+			shards = stack.Quantity
+			break
+		end
+	end
 	for _, die in meta and meta.Dice or {} do
 		owned[die.Id] = true
 		local info = Display.Dice[die.Id]
@@ -102,6 +109,7 @@ function Dice.GetItems(meta, catalog)
 				Copies = spare,
 				LevelMax = cap,
 				LevelCost = if type(cost) == "number" then cost else nil,
+				Shards = shards,
 			})
 		end
 	end
@@ -194,12 +202,11 @@ function Dice.Detail(item)
 				Hint = upHint,
 			},
 			{
-				Id = "Sell",
-				Label = "SELL",
-				Style = "Red",
-				Icon = "Coins",
-				Enabled = false,
-				Hint = hint or "Copies level this die up",
+				Id = "ConvertShard",
+				Label = "USE SHARD",
+				Style = "Grey",
+				Enabled = not locked and (item.Shards or 0) > 0,
+				Hint = hint or "One Dice Shard gives one spare copy",
 			},
 		},
 	}

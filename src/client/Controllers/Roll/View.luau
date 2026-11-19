@@ -27,6 +27,7 @@ local NOTICE =
 	{ -- chip text of a disabled button, longest first: the first that fits the chip at the 14 real px floor is used
 		gems = { "Not enough Gems", "Need Gems", "Gems" },
 		region = { "Not in your region", "Region locked", "N/A" },
+		starter = { "Starter rolls are single", "Single roll", "N/A" },
 	} -- chip text of a disabled button; the toast carries the full sentence
 -- Row colours sampled from the mockup: { top, bottom, rim }.
 local function rgb(r, g, b)

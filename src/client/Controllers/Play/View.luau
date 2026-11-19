@@ -700,7 +700,9 @@ function View:_buildRight(pnl)
 	end
 	info.CanvasSize = UDim2.fromOffset(0, y + 4)
 	self._scrolls.Info = info
-	local hit, setOn = bigButton(pnl, "START", startW, startH, rw / 2, L.h - startH / 2 - 19, pnl.ZIndex + 5)
+	local buttonY = L.h - startH / 2 - 19
+	local sideW = math.floor((rw - 28) / 2)
+	local hit, setOn = bigButton(pnl, "SOLO", sideW, startH, rw / 2 - sideW / 2 - 4, buttonY, pnl.ZIndex + 5)
 	hit.Activated:Connect(function()
 		if self._startState == "Ready" and self._onStart then
 			self._onStart()
@@ -708,6 +710,22 @@ function View:_buildRight(pnl)
 	end)
 	self._startBtn, self._setStartOn = hit, setOn
 	setOn(self._startState == "Ready")
+	local mode = self._coopState
+	local coop, setCoop = bigButton(
+		pnl,
+		if mode == "Waiting" then "CANCEL READY" else "CO-OP",
+		sideW,
+		startH,
+		rw / 2 + sideW / 2 + 4,
+		buttonY,
+		pnl.ZIndex + 5
+	)
+	setCoop(mode == "Ready" or mode == "Waiting")
+	coop.Activated:Connect(function()
+		if self._onCoop and (mode == "Ready" or mode == "Waiting") then
+			self._onCoop(mode ~= "Waiting")
+		end
+	end)
 end
 
 -- 1v1 ---------------------------------------------------------------------------------------------------------
@@ -983,6 +1001,17 @@ end
 
 function View:OnStart(cb)
 	self._onStart = cb
+end
+
+function View:SetCoopState(state: string)
+	if self._coopState ~= state then
+		self._coopState = state
+		self:_queue()
+	end
+end
+
+function View:OnCoop(cb)
+	self._onCoop = cb
 end
 
 function View:OnClaim(cb)

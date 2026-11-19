@@ -13,13 +13,14 @@ local RollConfig = require(script.Parent.Parent.Config.Roll)
 local ShopConfig = require(script.Parent.Parent.Config.Shop)
 local SettingsDefs = require(game:GetService("ReplicatedStorage").Shared.SettingsDefs)
 local Deck = require(script.Parent.Deck)
+local Tutorial = require(script.Parent.Tutorial)
 local Validate = require(script.Parent.Validate)
 
 local ProfileSchema = {}
 
 ProfileSchema.VERSION = 11
 
-local STARTER_GEMS = 50 -- new profiles and every v3 profile once (v3 -> v4)
+local LEGACY_STARTER_GEMS = 50 -- old profiles migrating from v3 once (v3 -> v4)
 
 local function deepCopy(value)
 	if type(value) ~= "table" then
@@ -98,7 +99,7 @@ function ProfileSchema.Default()
 		Claimed = {},
 		Daily = { Day = 0, Kills = 0, Claimed = {} },
 		Redeemed = {},
-		Gems = STARTER_GEMS,
+		Gems = LEGACY_STARTER_GEMS,
 		Xp = 0,
 		Materials = {},
 		Items = {},
@@ -115,6 +116,15 @@ function ProfileSchema.Default()
 		Purchases = {},
 		Receipts = {},
 	}
+end
+
+local function newProfile()
+	local profile = ProfileSchema.Default()
+	profile.Gems = 0
+	profile.Dice = {}
+	profile.Deck = {}
+	profile.Tutorial = { Stage = "Roll", Rolls = {} }
+	return profile
 end
 
 -- v10 -> v11: retired die -> same-rarity replacement.
@@ -191,7 +201,7 @@ local MIGRATIONS: { [number]: (any) -> any } = {
 	end,
 	-- v3 -> v4: the starter Gems; any stray value of a new field is dropped.
 	[3] = function(data)
-		data.Gems, data.Xp, data.Materials, data.Items, data.Cosmetics = STARTER_GEMS, nil, nil, nil, nil
+		data.Gems, data.Xp, data.Materials, data.Items, data.Cosmetics = LEGACY_STARTER_GEMS, nil, nil, nil, nil
 		return data
 	end,
 	-- v4 -> v5: the progress fields start empty (any stray value is dropped).
@@ -253,8 +263,8 @@ local function count(value: any): number
 end
 
 -- Owned dice: known catalog ids only, Level 1..DieLevel.Max (anything else resets to 1), Copies a count; starters always present.
-local function cleanDice(stored: any)
-	local owned = starterDice()
+local function cleanDice(stored: any, rolling: boolean)
+	local owned = if rolling then {} else starterDice()
 	if type(stored) == "table" then
 		for id, entry in stored do
 			if type(id) == "string" and Dice.Types[id] ~= nil and type(entry) == "table" then
@@ -401,10 +411,10 @@ local function cleanSettings(stored: any)
 end
 
 -- Returns (profile) or (nil, problem). Problems: "Corrupt", "NewerVersion". A nil
--- `stored` is a brand-new player and yields Default(). Never mutates `stored`.
+-- A nil `stored` starts onboarding. Never mutates `stored`.
 function ProfileSchema.Migrate(stored: any)
 	if stored == nil then
-		return ProfileSchema.Default()
+		return newProfile()
 	end
 	if type(stored) ~= "table" or not Validate.IsInt(stored.Version, 1, 2 ^ 31) then
 		return nil, "Corrupt"
@@ -431,10 +441,15 @@ function ProfileSchema.Migrate(stored: any)
 	end
 	convertRetired(data)
 
-	local dice = cleanDice(data.Dice)
+	local rolling = type(data.Tutorial) == "table" and data.Tutorial.Stage == "Roll"
+	local dice = cleanDice(data.Dice, rolling)
+	local tutorial = Tutorial.Restore(data.Tutorial, dice)
 	local stats = if type(data.Stats) == "table" then data.Stats else {}
 	local login = if type(data.Login) == "table" then data.Login else {}
-	local deck = if Deck.Check(dice, data.Deck) then table.clone(data.Deck) else table.clone(Dice.Deck)
+	local deck = if rolling
+		then {}
+		elseif Deck.Check(dice, data.Deck) then table.clone(data.Deck)
+		else table.clone(Dice.Deck)
 
 	local profile = {
 		Version = ProfileSchema.VERSION,
@@ -447,6 +462,7 @@ function ProfileSchema.Migrate(stored: any)
 		adminEditId = if type(data.adminEditId) == "string" and #data.adminEditId == 36 then data.adminEditId else nil,
 		Dice = dice,
 		Deck = deck,
+		Tutorial = tutorial,
 		Claimed = cleanFlags(data.Claimed, Quests.List, function(quest)
 			return quest.Daily ~= true and quest.Weekly == nil
 		end),

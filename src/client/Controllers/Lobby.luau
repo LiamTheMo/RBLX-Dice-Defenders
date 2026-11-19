@@ -18,6 +18,7 @@ local Daily = require(script.Parent.Daily.Daily)
 local Shop = require(script.Parent.Shop.Shop)
 local Settings = require(script.Parent.Settings.Settings)
 local Codes = require(script.Parent.Codes.Codes)
+local TutorialView = require(script.Parent.TutorialView)
 
 local make, panel, label, button = UiKit.make, UiKit.panel, UiKit.label, UiKit.button
 local NAVY, WHITE, GREEN = UiKit.NAVY, UiKit.WHITE, UiKit.GREEN
@@ -31,10 +32,12 @@ local CREAM = Color3.fromRGB(242, 226, 205)
 local TEXT_STROKE = Color3.fromRGB(9, 14, 24)
 
 local ROW = 48 -- touch row / button height in px (>= 44)
-local TOAST_NAMES = { Start = true, EquipDeck = true, ClaimQuest = true }
+local TOAST_NAMES = { Start = true, EquipDeck = true, ClaimQuest = true, CoopReady = true }
 local TOASTS = {
 	WrongPhase = "Not available right now",
 	BadDeck = "Your deck is invalid. Fix it in your Bag.",
+	FinishStarterRolls = "Finish your starter rolls first.",
+	NeedPartner = "Join the same server as your partner to play co-op.",
 	UnknownDie = "Unknown die",
 	NotOwned = "You don't own that die",
 	UnknownQuest = "Unknown quest",
@@ -156,6 +159,9 @@ local function showPanel(name: string?, tab: number?)
 				end
 			end
 			ui[menu.Key]:Toggle(tab)
+			if ui.RenderTutorial then
+				ui.RenderTutorial(anyMenuOpen())
+			end
 			return
 		end
 	end
@@ -165,6 +171,9 @@ local function showPanel(name: string?, tab: number?)
 		p.Frame.Visible = key == name
 	end
 	ui.Hud.Visible = name == nil
+	if ui.RenderTutorial then
+		ui.RenderTutorial(anyMenuOpen())
+	end
 end
 
 -- A panel with a header (title + Close) and a scrolling body.
@@ -277,7 +286,9 @@ local function renderMeta()
 	local meta = NetClient.LastMeta
 	ui.LobbyHud:SetDeck(meta and meta.Deck)
 	if meta then
-		ui.LobbyHud:SetGems(meta.Gems)
+		ui.LobbyHud:SetGems(
+			meta.Gems + (if meta.Tutorial and meta.Tutorial.Stage == "Roll" then meta.Tutorial.Gems else 0)
+		)
 		ui.LobbyHud:SetXp(meta.Level, meta.XpInto, meta.XpNeed)
 	end
 	renderProfile(NetClient.Last)
@@ -305,6 +316,7 @@ local function build()
 	ui.Daily = Daily.new(ui.Root, { hud = ui.LobbyHud, toast = toast })
 	ui.Settings = Settings.new(ui.Root, { hud = ui.LobbyHud, toast = toast })
 	ui.Codes = Codes.new(ui.Root, { hud = ui.LobbyHud, toast = toast })
+	ui.RenderTutorial = TutorialView.new(gui, showPanel, toast)
 
 	newPanel("Profile")
 
@@ -378,6 +390,17 @@ function Lobby.Start()
 
 	table.insert(connections, NetClient.State:Connect(renderState))
 	table.insert(connections, NetClient.Meta:Connect(renderMeta))
+	local function renderTutorial()
+		ui.RenderTutorial(anyMenuOpen())
+	end
+	table.insert(connections, NetClient.State:Connect(renderTutorial))
+	table.insert(connections, NetClient.Meta:Connect(renderTutorial))
+	for _, menu in MENUS do
+		local shell = ui[menu.Key].Shell
+		if shell and shell.Bag then
+			table.insert(connections, shell.Bag:GetPropertyChangedSignal("Visible"):Connect(renderTutorial))
+		end
+	end
 	table.insert(
 		connections,
 		NetClient.Rejected:Connect(function(name, code)
@@ -389,6 +412,7 @@ function Lobby.Start()
 
 	renderMeta()
 	renderState(NetClient.Last or { Phase = "Loading" })
+	renderTutorial()
 end
 
 function Lobby.Destroy()

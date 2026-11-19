@@ -45,7 +45,7 @@ end
 
 function Admin.Apply(profile, action, kind, id, quantity)
 	if action == "Reset" then
-		local fresh = ProfileSchema.Default()
+		local fresh = ProfileSchema.Migrate(nil)
 		-- Store metadata and paid receipt IDs survive a gameplay reset.
 		fresh.profileRevision, fresh.sessionLease = profile.profileRevision, profile.sessionLease
 		fresh.adminEditId = profile.adminEditId

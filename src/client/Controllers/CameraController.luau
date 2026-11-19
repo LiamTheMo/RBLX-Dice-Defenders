@@ -13,6 +13,7 @@ local CameraController = {}
 local DEFAULT_FOV = 70 -- Roblox's default camera field of view, restored when leaving the board
 
 local onBoard = false
+local view = Layout.Camera
 local controls: any = nil -- PlayerModule's ControlModule, once loaded
 
 local function setControls()
@@ -34,8 +35,8 @@ local function apply()
 		if camera.CameraType ~= Enum.CameraType.Scriptable then
 			camera.CameraType = Enum.CameraType.Scriptable
 		end
-		camera.FieldOfView = Layout.Camera.FieldOfView
-		camera.CFrame = CFrame.lookAt(Layout.Camera.Position, Layout.Camera.LookAt)
+		camera.FieldOfView = view.FieldOfView
+		camera.CFrame = CFrame.lookAt(view.Position, view.LookAt)
 	elseif camera.CameraType == Enum.CameraType.Scriptable then
 		camera.CameraType = Enum.CameraType.Custom
 		camera.FieldOfView = DEFAULT_FOV
@@ -62,8 +63,9 @@ end
 
 local function onState(snapshot)
 	local board = snapshot.Phase == "Playing"
-	if board ~= onBoard then
-		onBoard = board
+	local nextView = if snapshot.PlayerCount == 2 then Layout.CoopCamera else Layout.Camera
+	if board ~= onBoard or (board and nextView ~= view) then
+		onBoard, view = board, nextView
 		setControls()
 		apply()
 	end

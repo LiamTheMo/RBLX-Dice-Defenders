@@ -254,6 +254,8 @@ test("malformed argument matrix: BadArgs, never reaches the handler, seq not con
 			P(1, "Revoke", 123, "Dice", "C01", 2),
 			P(1, "Reset", 123, "", "", 0),
 		},
+		CoopReady = { P(1), P(1, "true"), P(1, true, 2) },
+		TutorialAction = { P(1, "Claim"), P(1, "Other", ""), P(1, "Convert", ""), P(1, "End", "R01") },
 		Merge = {
 			P(),
 			P(1),
@@ -292,6 +294,8 @@ test("malformed argument matrix: BadArgs, never reaches the handler, seq not con
 		UpgradeDie = P(1, "C01"),
 		PowerUp = P(1, "C01"),
 		AdminAction = P(1, "Give", 123, "Gold", "", 1),
+		CoopReady = P(1, true),
+		TutorialAction = P(1, "Roll", ""),
 	}
 	for name in RemoteGuard.Specs do
 		expect(matrix[name] ~= nil and valid[name] ~= nil, name .. " is covered by the matrix")
@@ -319,7 +323,7 @@ test("AdminAction authorizes the requester independently of the target user ID",
 	local ok, code = env.call({ UserId = 123 }, "AdminAction", 1, "Reset", 855002824, "", "RESET", 0)
 	expect(not ok and code == "Forbidden", "an allowlisted target grants no permission to the requester")
 	expectEq(env.calls, 0, "rejected before the handler")
-	expect(env.call({ UserId = 855002824 }, "AdminAction", 1, "Revoke", 123, "R01", 1), "allowlisted requester")
+	expect(env.call({ UserId = 855002824 }, "AdminAction", 1, "Revoke", 123, "Dice", "R01", 1), "allowlisted requester")
 	expectEq(env.calls, 1, "authorized action reaches the handler")
 end)
 

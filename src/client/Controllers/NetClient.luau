@@ -40,6 +40,8 @@ local MIN_INTERVAL = {
 	UpgradeDie = 0.5, -- server bucket 2/s, burst 4
 	PowerUp = 0.5, -- server bucket 2/s, burst 4
 	AdminAction = 1.0,
+	CoopReady = 0.5,
+	TutorialAction = 0.5,
 }
 local pending = {}
 local seq = 0
@@ -93,6 +95,8 @@ function NetClient.Start()
 				"UpgradeDie",
 				"PowerUp",
 				"AdminAction",
+				"CoopReady",
+				"TutorialAction",
 			}
 		do
 			functions[name] = folder:WaitForChild(name)

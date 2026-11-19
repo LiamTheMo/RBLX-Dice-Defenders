@@ -42,6 +42,10 @@ function Roll.new(parent, deps)
 
 	local result -- the last RollResult of this opening (shown in the featured panel until the menu closes)
 	local shown -- the Catalog / Meta fields the last render drew
+	local function starterRoll(meta)
+		local tutorial = meta and meta.Tutorial
+		return if tutorial and tutorial.Stage == "Roll" then tutorial else nil
+	end
 	-- (pool, gems, allowed, pity count, key of those) from the latest Catalog and Meta
 	local function inputs()
 		local pool = RollLogic.pool(NetClient.LastCatalog, POOL)
@@ -49,11 +53,27 @@ function Roll.new(parent, deps)
 		local gems = if meta and type(meta.Gems) == "number" then meta.Gems else nil
 		local allowed = meta ~= nil and meta.RollAllowed == true
 		local pity = RollLogic.pityCount(meta, POOL)
-		return pool, gems, allowed, pity, `{pool ~= nil}|{gems}|{allowed}|{pity}`
+		local starter = starterRoll(meta)
+		return pool, gems, allowed, pity, `{pool ~= nil}|{gems}|{allowed}|{pity}|{starter and starter.Rolls}`
 	end
 	local function render()
 		local pool, gems, allowed, pity, key = inputs()
 		shown = key
+		local starter = starterRoll(NetClient.LastMeta)
+		if starter then
+			view:SetFeatured(
+				if result then RollLogic.resultTiles(result.Results) else {},
+				`STARTER DICE {starter.Rolls}/{starter.RollCount}`
+			)
+			view:SetOdds({ { Rarity = "Common", Pct = 100, Text = "100%" } })
+			view:SetPity({ Count = starter.Rolls, Max = starter.RollCount, Rarity = "Starter" })
+			view:SetButtons({
+				{ Count = 1, Price = starter.RollCost, Enabled = true },
+				{ Count = 10, Price = "-", Enabled = false },
+			})
+			view:SetNotice("starter")
+			return
+		end
 		if result then
 			view:SetFeatured(RollLogic.resultTiles(result.Results), "YOUR ROLL")
 		else
@@ -121,14 +141,18 @@ function Roll.new(parent, deps)
 			return
 		end
 		local meta = NetClient.LastMeta
+		local starter = starterRoll(meta)
 		local pool = RollLogic.pool(NetClient.LastCatalog, POOL)
 		if meta == nil or pool == nil then
 			deps.toast(REPLIES.NotLoaded)
 			return
-		elseif meta.RollAllowed ~= true then
+		elseif starter and count ~= 1 then
+			deps.toast("Roll one die at a time for your starter deck.")
+			return
+		elseif not starter and meta.RollAllowed ~= true then
 			deps.toast(REPLIES.Restricted)
 			return
-		elseif not RollLogic.canAfford(meta.Gems, RollLogic.price(pool, count)) then
+		elseif not starter and not RollLogic.canAfford(meta.Gems, RollLogic.price(pool, count)) then
 			deps.toast(REPLIES.Insufficient)
 			return
 		end
@@ -140,11 +164,20 @@ function Roll.new(parent, deps)
 		local a = flow:Press(os.clock(), SettingsLogic.get("reducedMotion") == true)
 		apply(a)
 		task.spawn(function()
-			local ok, code = NetClient.Request("Roll", POOL, count)
+			local ok, code
+			if starter then
+				ok, code = NetClient.Request("TutorialAction", "Roll", "")
+			else
+				ok, code = NetClient.Request("Roll", POOL, count)
+			end
 			apply(flow:Reply(a.gen, ok, code, os.clock()))
 		end)
 	end)
 	view:OnInfo(function()
+		if starterRoll(NetClient.LastMeta) then
+			deps.toast("Starter rolls use your free tutorial Gems and guarantee five different dice.")
+			return
+		end
 		local pool = RollLogic.pool(NetClient.LastCatalog, POOL)
 		deps.toast(
 			if pool
@@ -178,7 +211,12 @@ function Roll.new(parent, deps)
 	table.insert(
 		conns,
 		NetClient.RollResult:Connect(function(r)
-			if type(r) ~= "table" or r.Pool ~= POOL or type(r.Results) ~= "table" or #r.Results == 0 then
+			if
+				type(r) ~= "table"
+				or (r.Pool ~= POOL and r.Pool ~= "Tutorial")
+				or type(r.Results) ~= "table"
+				or #r.Results == 0
+			then
 				return
 			end
 			apply(flow:Result(r, os.clock()))
@@ -215,7 +253,7 @@ function Roll.new(parent, deps)
 		shell:Open()
 		hud:SetBagMode(true, "Roll")
 		local meta = NetClient.LastMeta
-		if meta and meta.RollAllowed ~= true then
+		if meta and not starterRoll(meta) and meta.RollAllowed ~= true then
 			deps.toast(REPLIES.Restricted)
 		end
 		ContextActionService:BindActionAtPriority(ACTION, function(_, inputState)

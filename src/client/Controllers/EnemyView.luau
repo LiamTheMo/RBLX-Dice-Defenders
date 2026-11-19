@@ -22,6 +22,7 @@ local folder: Folder
 local tracers = {} -- pool of { part, until }
 local tracerFolder: Folder
 local chronoCells
+local chronoSeat, chronoPlayerCount
 
 local function remove(id: number)
 	local e = enemies[id]
@@ -52,6 +53,11 @@ local function spawn(record)
 	p.Size = Vector3.new(size, size, size)
 	p.Color = if style then style.Color else Color3.new(1, 0, 1)
 	p.Material = Enum.Material.SmoothPlastic
+	p.Position = Layout.PositionAt(
+		record.Speed * (workspace:GetServerTimeNow() - record.SpawnAt),
+		record.Seat,
+		record.PlayerCount
+	) + Vector3.yAxis * (size / 2)
 
 	local gui = Instance.new("BillboardGui")
 	gui.Size = UDim2.fromOffset(if record.Kind == "Boss" then 120 else 48, 7)
@@ -78,6 +84,8 @@ local function spawn(record)
 		maxHp = record.MaxHp,
 		hp = record.Hp,
 		lift = size / 2,
+		seat = record.Seat,
+		playerCount = record.PlayerCount,
 	}
 end
 
@@ -111,13 +119,14 @@ local function fire(record)
 	if CommonProjectiles.Fire(tracerFolder, e, record, SettingsLogic.get("reducedMotion")) then
 		return
 	end
-	local from = Layout.CellPosition(record.Cell) + Vector3.new(0, 3, 0)
+	local from = Layout.CellPosition(record.Cell, record.Seat, record.PlayerCount) + Vector3.new(0, 3, 0)
 	local t = tracer()
 	if t == nil then
 		return
 	end
 	-- From the path, not e.part: an enemy spawned in this batch isn't positioned until RenderStepped.
-	local to = Layout.PositionAt(e.speed * (workspace:GetServerTimeNow() - e.spawnAt)) + Vector3.new(0, e.lift, 0)
+	local to = Layout.PositionAt(e.speed * (workspace:GetServerTimeNow() - e.spawnAt), e.seat, e.playerCount)
+		+ Vector3.new(0, e.lift, 0)
 	t.part.Size = Vector3.new(0.35, 0.35, (to - from).Magnitude)
 	t.part.CFrame = CFrame.lookAt((from + to) / 2, to)
 	t.part.Parent = tracerFolder
@@ -149,7 +158,7 @@ end
 local function onFrame(dt: number)
 	local now = workspace:GetServerTimeNow()
 	for _, e in enemies do
-		local p = Layout.PositionAt(e.speed * (now - e.spawnAt))
+		local p = Layout.PositionAt(e.speed * (now - e.spawnAt), e.seat, e.playerCount)
 		e.part.Position = p + Vector3.new(0, e.lift, 0)
 	end
 	local clock = os.clock()
@@ -192,8 +201,9 @@ function EnemyView.Start()
 	NetClient.Enemies:Connect(onBatch)
 	NetClient.State:Connect(function(snapshot)
 		chronoCells = if snapshot.Phase == "Playing" then snapshot.ChronoCells else nil
+		chronoSeat, chronoPlayerCount = snapshot.Seat, snapshot.PlayerCount
 		if SettingsLogic.get("projectileEffects") then
-			RarityEffects.SetChronoAllies(tracerFolder, chronoCells)
+			RarityEffects.SetChronoAllies(tracerFolder, chronoCells, chronoSeat, chronoPlayerCount)
 		end
 		if snapshot.Phase ~= "Playing" then
 			clear()
@@ -202,7 +212,12 @@ function EnemyView.Start()
 	end)
 	SettingsLogic.onChanged(function(id, value)
 		if id == "projectileEffects" then
-			RarityEffects.SetChronoAllies(tracerFolder, if value then chronoCells else nil)
+			RarityEffects.SetChronoAllies(
+				tracerFolder,
+				if value then chronoCells else nil,
+				chronoSeat,
+				chronoPlayerCount
+			)
 			if not value then
 				clearEffects()
 			end

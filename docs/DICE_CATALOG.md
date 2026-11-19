@@ -65,7 +65,7 @@ The tables below describe the earlier proposed roster and ability design; curren
 ## Mythic — 1
 | ID / name | Damage | Attacks/s | Signature and trigger | Intended use |
 |---|---:|---:|---|---|
-| M01 **Astral** | 15 | 0.90 | Always: +4% damage per distinct pip value present on own board (max +24%); at 7★, every 12 s fire a celestial beam hitting 5 unique enemies for 90% attack damage, boss hit capped at 150% total | High-end board diversity payoff; constrained by build puzzle |
+| M01 **Astral** | 140 | 0.80 | Implemented: Singularity activates while exactly one Astral occupies your board. That Astral hits for 5× damage, with a 10% chance to crit for 10× damage. | One Astral per board |
 
 **Mythic parity guardrail:** M01 should not exceed best available Legendary-centered decks by >10–15% sustained boss DPS on comparable investment during target-wave tests. It should lose to specialized Epic setups on relevant maps, making it a desirable *option*, not a necessity.
 
@@ -73,7 +73,7 @@ The tables below describe the earlier proposed roster and ability design; curren
 - Frost + Gravity + Emberstorm: cluster slow enemies for burn detonations; bosses resist displacement.
 - Beacon + Needle/Volley: physical adjacency matters more than raw rarity; Beacon cap prevents stacking monopoly.
 - Chrono + Gravity: longer stalls until enemy fast-resistances and ICD caps; Chrono has low standalone DPS.
-- Astral + rare varied-pip board: diversify pip values, conflict with desire to make all dice 7★.
+- Astral + other attackers: keep one Astral and fill the other cells with different dice to maintain Singularity.
 - New world modifiers (e.g. Burn resistance, high mobility, armored squads, lane splits) should change optimal decks; communicate modifiers *before* deck lock.
 
 ## Acquisition and leveling (proposed)

@@ -1,4 +1,4 @@
--- Pure formulas from docs/MVP.md. No state, no randomness.
+-- Formulas from docs/MVP.md. Random rolls use a caller-supplied server RNG.
 local Balance = require(script.Parent.Parent.Config.Balance)
 local Dice = require(script.Parent.Parent.Config.Dice)
 local Enemies = require(script.Parent.Parent.Config.Enemies)
@@ -126,9 +126,34 @@ function Formulas.Aura(typeId: string, pip: number, tier: number): number
 	return aura.base + aura.perPip * (pip - 1) + aura.perTier * (tier - 1)
 end
 
--- Damage of one shot: max(1, floor(base x perk x tierMul)); no pip term (pips raise the attack rate).
+function Formulas.HasSingularity(board): boolean
+	local found = false
+	for _, die in board do
+		if die and die.type == "M01" then
+			if found then
+				return false
+			end
+			found = true
+		end
+	end
+	return found
+end
+
+function Formulas.SingularityCrit(typeId: string, active: boolean, rng: any): boolean
+	local ability = Dice.Types[typeId].singularity
+	return active and ability ~= nil and rng:NextInteger(1, 100) <= ability.critChance
+end
+
+-- Damage of one shot: base x perks x Power Up x active ability, rounded down.
 -- `procFlat` is the flat bonus already earned by the caller (Needle's every-6th-hit), added afterwards.
-function Formulas.HitDamage(typeId: string, kind: string, procFlat: number?, tier: number?): number
+function Formulas.HitDamage(
+	typeId: string,
+	kind: string,
+	procFlat: number?,
+	tier: number?,
+	singularity: boolean?,
+	critical: boolean?
+): number
 	local cfg = Dice.Types[typeId]
 	local enemy = Enemies.Kinds[kind]
 	local perk = 1
@@ -137,6 +162,9 @@ function Formulas.HitDamage(typeId: string, kind: string, procFlat: number?, tie
 	end
 	if cfg.vsArmored and enemy.armored then
 		perk *= cfg.vsArmored
+	end
+	if singularity and cfg.singularity then
+		perk *= cfg.singularity.damage * (if critical then cfg.singularity.critDamage else 1)
 	end
 	-- 1e-9 keeps an exact product such as 10 x 1.3 from flooring one short on float noise.
 	return math.max(1, math.floor(cfg.base * perk * Formulas.TierMul(tier or 1) + 1e-9)) + (procFlat or 0)

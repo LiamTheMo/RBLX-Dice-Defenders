@@ -46,7 +46,9 @@ test("admin edits honor active leases and replay only once, then reset defaults 
 	)
 	local stored = a.backing._data[KEY]
 	expectEq(stored.Gold, 0, "gold reset")
-	expectEq(stored.Gems, 50, "starter gems restored")
+	expectEq(stored.Gems, 0, "ordinary gem wallet cleared")
+	expectEq(Admin.IsAllowed(855002824), true, "requester allowlist survives a reset")
+	expectEq(stored.Tutorial.Stage, "Roll", "reset restarts onboarding")
 	expectEq(stored.Receipts[1], "already-paid", "paid receipt preserved")
 end)
 

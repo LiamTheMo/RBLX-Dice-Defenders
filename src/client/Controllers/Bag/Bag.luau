@@ -306,6 +306,16 @@ function Bag.new(parent, deps)
 				sendBag(id, st.selected, if id == "Sell" or id == "Use" then st.qty else 1)
 			elseif id == "Upgrade" then
 				sendUpgrade(st.selected)
+			elseif id == "ConvertShard" then
+				task.spawn(function()
+					local ok, code = NetClient.Request("TutorialAction", "Convert", st.selected)
+					toast(
+						if ok
+							then "Converted a Dice Shard into one spare copy"
+							elseif code == "Locked" then "Unlock your Dice Shards first"
+							else "Could not use a Dice Shard"
+					)
+				end)
 			elseif id == "Equip" then
 				pending = st.selected
 				renderFooter()

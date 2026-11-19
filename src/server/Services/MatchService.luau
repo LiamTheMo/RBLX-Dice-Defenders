@@ -1,6 +1,5 @@
 -- Thin glue between the remotes, the profile and the pure Rules.Match. Owns the
--- single match of this server (solo MVP): the owner is the first player whose
--- profile loaded; everyone else is "NotOwner". Rules stay in Rules/*.
+-- server's shared match. The first player can start Solo and the first two can opt into Co-op.
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -22,6 +21,7 @@ local Quests = require(script.Parent.Parent.Rules.Quests)
 local Roll = require(script.Parent.Parent.Rules.Roll)
 local Shop = require(script.Parent.Parent.Rules.Shop)
 local Settings = require(script.Parent.Parent.Rules.Settings)
+local Tutorial = require(script.Parent.Parent.Rules.Tutorial)
 local Upgrade = require(script.Parent.Parent.Rules.Upgrade)
 local PlayerPolicy = require(script.Parent.PlayerPolicy)
 local ProfileService = require(script.Parent.ProfileService)
@@ -31,9 +31,9 @@ local MatchService = {}
 local owner: Player? = nil
 local order: { Player } = {} -- loaded players, oldest first
 local match = nil -- nil = Lobby
-local rewardGold: number? = nil
-local rewardXp: number? = nil
-local rewardGems: number? = nil
+local participants: { Player } = {}
+local readyForCoop: { [Player]: boolean } = {}
+local rewards = {}
 local catalog = Catalog.Build() -- the same display catalogue for every player
 local lastTick = 0
 local runRng = Random.new()
@@ -42,6 +42,19 @@ local lastDay = Quests.Day(os.time()) -- UTC day of the last Meta day-change che
 
 local function isOwner(player: Player): boolean
 	return owner == player
+end
+
+local function seatFor(player: Player): number?
+	return table.find(participants, player)
+end
+
+local function boardView(seat)
+	local view = {}
+	for i = 1, Balance.BoardCells do
+		local die = seat.board[i]
+		view[i] = if die then { T = die.type, P = die.pip } else false
+	end
+	return view
 end
 
 local function snapshot(player: Player)
@@ -59,37 +72,44 @@ local function snapshot(player: Player)
 		Wave = 0,
 		Lives = 0,
 		Board = {},
+		CanSolo = isOwner(player),
+		CanCoop = order[2] ~= nil and (order[1] == player or order[2] == player),
+		CoopReady = readyForCoop[player] == true,
 	}
 	for i = 1, Balance.BoardCells do
 		out.Board[i] = false
 	end
-	if not isOwner(player) then
-		out.Phase = "NotOwner"
+	local index = seatFor(player)
+	if match == nil or not index then
+		out.Phase = if match and match.phase == "Playing" then "NotOwner" else "Lobby"
 		return out
 	end
-	if match == nil then
-		out.Phase = "Lobby"
-		return out
-	end
+	local seat = Match.Seat(match, index)
+	local partner = Match.Seat(match, 3 - index)
 	out.Phase = match.phase
-	out.MP = match.mp
-	out.SummonCost = Match.SummonCost(match)
+	out.Seat = index
+	out.PlayerCount = match.playerCount
+	out.MP = seat.mp
+	out.SummonCost = Match.SummonCost(seat)
 	out.Wave = match.wave
+	out.WavesCompleted = match.wavesCompleted
 	out.Lives = match.lives
-	out.NextWaveAt = if match.waveState == "Prep" and match.phase == "Playing" then match.nextWaveAt else nil
+	out.NextWaveAt = if match.waveState == "Prep"
+			and match.phase == "Playing"
+			and not (match.playerCount == 1 and Tutorial.CanFinish(profile))
+		then match.nextWaveAt
+		else nil
 	out.BossAt = match.bossAt
 	out.Result = match.result
-	out.RewardGold = rewardGold
-	out.RewardXp = rewardXp
-	out.RewardGems = rewardGems
-	out.Tiers = Match.TiersView(match)
-	out.ChronoCells = if match.phase == "Playing" then Match.SupportCells(match, "L01") else nil
-	for i = 1, Balance.BoardCells do
-		local die = match.board[i]
-		if die then
-			out.Board[i] = { T = die.type, P = die.pip }
-		end
-	end
+	local reward = rewards[player]
+	out.RewardGold, out.RewardXp, out.RewardGems =
+		if reward then reward.Gold or 0 else nil,
+		if reward then reward.Xp or 0 else nil,
+		if reward then reward.Gems or 0 else nil
+	out.Tiers = Match.TiersView(seat)
+	out.ChronoCells = if match.phase == "Playing" then Match.SupportCells(seat, "L01") else nil
+	out.Board = boardView(seat)
+	out.PartnerBoard = if partner then boardView(partner) else nil
 	return out
 end
 
@@ -166,6 +186,7 @@ local function meta(player: Player, profile)
 		Locked = locked, -- sorted locked Material and Item ids
 		Settings = table.clone(profile.Settings), -- {[settingId] = value}; a missing id is its default
 		RollAllowed = PlayerPolicy.RollAllowed(player), -- false until the policy answer arrives (fail closed)
+		Tutorial = Tutorial.View(profile),
 		Pity = pity, -- {{Pool, Count}}: rolls toward each pool's guarantee, in Config/Roll order
 		Purchases = purchases, -- {{Id, Count}}: purchases of each limited Shop offer, in Config/Shop order
 	}
@@ -186,49 +207,47 @@ end
 
 -- Drains the outbox to the owner: Enemies batch if non-empty, State if changed.
 local function flush(intent: boolean?)
-	if match == nil or owner == nil then
+	if match == nil then
 		return
 	end
 	local batch, dirty = Match.TakeOut(match)
 	if #batch.S > 0 or #batch.H > 0 or #batch.R > 0 or #batch.F > 0 then
-		Net.Fire("Enemies", owner, batch)
+		for _, player in participants do
+			Net.Fire("Enemies", player, batch)
+		end
 	end
 	if dirty or intent then
-		push(owner)
+		pushAll()
 	end
 end
 
 -- Pays the reward once per match end; an Aborted run pays like a Lost one, Error grants nothing.
-local function settle()
+local function settle(skipPlayer: Player?)
 	if match == nil or match.phase ~= "Ended" or match.rewardGranted then
 		return
 	end
 	match.rewardGranted = true
-	if (match.result ~= "Lost" and match.result ~= "Aborted") or owner == nil then
+	if match.result ~= "Lost" and match.result ~= "Aborted" then
 		return
 	end
-	local profile = ProfileService.Get(owner)
-	if profile == nil then
-		return
-	end
-	local ok, bundle = Quests.SettleRun(profile, match.runId, match.wavesCompleted, match.kills, os.time(), match.deck)
-	if not ok then
-		warn("[MatchService] Reward refused: " .. tostring(bundle))
-		return
-	end
-	rewardGold = bundle.Gold or 0 -- a wave-0 loss pays nothing
-	rewardXp = bundle.Xp or 0
-	rewardGems = bundle.Gems or 0
-	ProfileService.MarkChanged(owner)
-	task.spawn(ProfileService.SaveNow, owner)
-end
-
-local function abortMatch()
-	if match then
-		Match.Finish(match, "Aborted")
-		settle() -- the owner's profile is still loaded: pay as a loss at this moment
-		match = nil
-		rewardGold, rewardXp, rewardGems = nil, nil, nil
+	for index, player in participants do
+		local profile = if player ~= skipPlayer then ProfileService.Get(player) else nil
+		if profile then
+			local seat = Match.Seat(match, index)
+			local ok, bundle =
+				Quests.SettleRun(profile, match.runId, match.wavesCompleted, match.kills, os.time(), seat.deck)
+			local changed = Tutorial.ReachWave(profile, match.wavesCompleted)
+			changed = Tutorial.Finish(profile) or changed
+			if ok then
+				rewards[player] = bundle
+			else
+				warn("[MatchService] Reward refused: " .. tostring(bundle))
+			end
+			if changed or ok then
+				ProfileService.MarkChanged(player)
+				task.spawn(ProfileService.SaveNow, player)
+			end
+		end
 	end
 end
 
@@ -251,32 +270,45 @@ local function onLoaded(player: Player)
 	if owner == nil then
 		owner = player
 	end
-	push(player)
+	pushAll()
 	Net.Fire("Catalog", player, catalog) -- before the first Meta, which refers to its ids
-	pushMeta(player)
+	local profile = ProfileService.Get(player)
+	if profile and Tutorial.Finish(profile) then
+		ProfileService.MarkChanged(player)
+		task.spawn(ProfileService.SaveNow, player)
+	else
+		pushMeta(player)
+	end
 end
 
--- Before the release save: an owner leaving (or shutdown) aborts and settles like a loss.
+-- A departing teammate ends the shared run and settles earned rewards before profile release.
 local function onRemoving(player: Player)
 	removeFromOrder(player)
-	if player == owner then
-		abortMatch()
-		assignOwner()
+	readyForCoop[player] = nil
+	if seatFor(player) and match and match.phase == "Playing" then
+		Match.Finish(match, "Aborted")
+		settle()
 	end
+	if player == owner then
+		assignOwner()
+	else
+		pushAll()
+	end
+	rewards[player] = nil
 end
 
 -- runId is a random 31-bit integer so ids never repeat across servers; it only
 -- has to differ from the profile's last paid id.
-local function newRunId(profile): number
+local function newRunId(profile, otherProfile): number
 	-- shortcut: a fresh id collides with LastRewardRunId with probability 1/2^31 (re-rolled here); two matches sharing an id elsewhere is accepted.
 	local id = runRng:NextInteger(1, 2 ^ 31 - 1)
-	while id == profile.LastRewardRunId do
+	while id == profile.LastRewardRunId or (otherProfile and id == otherProfile.LastRewardRunId) do
 		id = runRng:NextInteger(1, 2 ^ 31 - 1)
 	end
 	return id
 end
 
-local function handleStart(player: Player): (boolean, string?)
+local function startMatch(player, partner): (boolean, string?)
 	if match and match.phase ~= "Ended" then
 		return false, "WrongPhase"
 	end
@@ -284,44 +316,96 @@ local function handleStart(player: Player): (boolean, string?)
 	if profile == nil then
 		return false, "NotLoaded"
 	end
-	if not Deck.Check(profile.Dice, profile.Deck) then
+	local otherProfile = if partner then ProfileService.Get(partner) else nil
+	if partner and not otherProfile then
+		return false, "NotLoaded"
+	end
+	if not Tutorial.CanStart(profile) or (otherProfile and not Tutorial.CanStart(otherProfile)) then
+		return false, "FinishStarterRolls"
+	end
+	if
+		not Deck.Check(profile.Dice, profile.Deck)
+		or (otherProfile and not Deck.Check(otherProfile.Dice, otherProfile.Deck))
+	then
 		return false, "BadDeck" -- never swap in a different deck silently
 	end
-	rewardGold, rewardXp, rewardGems = nil, nil, nil
-	match = Match.New(newRunId(profile), Random.new(), workspace:GetServerTimeNow(), profile.Deck)
+	table.clear(rewards)
+	table.clear(readyForCoop)
+	participants = if partner then { player, partner } else { player }
+	match = Match.New(
+		newRunId(profile, otherProfile),
+		Random.new(),
+		workspace:GetServerTimeNow(),
+		profile.Deck,
+		otherProfile and otherProfile.Deck
+	)
 	flush(true)
 	return true, nil
 end
 
-local function handleSummon(): (boolean, string?)
-	if match == nil then
+local function handleStart(player: Player): (boolean, string?)
+	if not isOwner(player) then
+		return false, "NotOwner"
+	end
+	return startMatch(player, nil)
+end
+
+local function handleCoopReady(player: Player, ready: boolean): (boolean, string?)
+	if match and match.phase == "Playing" then
 		return false, "WrongPhase"
 	end
-	local ok, code = Match.TrySummon(match)
+	local first, second = order[1], order[2]
+	if not second or (player ~= first and player ~= second) then
+		return false, "NeedPartner"
+	end
+	if ready and not Tutorial.CanStart(ProfileService.Get(player)) then
+		return false, "FinishStarterRolls"
+	end
+	readyForCoop[player] = if ready then true else nil
+	if readyForCoop[first] and readyForCoop[second] then
+		local ok, code = startMatch(first, second)
+		if not ok then
+			readyForCoop[player] = nil
+			pushAll()
+		end
+		return ok, code
+	end
+	pushAll()
+	return true, nil
+end
+
+local function handleSummon(player: Player): (boolean, string?)
+	local index = seatFor(player)
+	if match == nil or not index then
+		return false, "WrongPhase"
+	end
+	local ok, code = Match.TrySummon(match, index)
 	flush(true)
 	return ok, code
 end
 
-local function handleMerge(_, from: number, to: number): (boolean, string?)
-	if match == nil then
+local function handleMerge(player: Player, from: number, to: number): (boolean, string?)
+	local index = seatFor(player)
+	if match == nil or not index then
 		return false, "WrongPhase"
 	end
-	local ok, code = Match.TryMerge(match, from, to)
+	local ok, code = Match.TryMerge(match, from, to, index)
 	flush(true)
 	return ok, code
 end
 
-local function handlePowerUp(_, typeId: string): (boolean, string?)
-	if match == nil then
+local function handlePowerUp(player: Player, typeId: string): (boolean, string?)
+	local index = seatFor(player)
+	if match == nil or not index then
 		return false, "WrongPhase"
 	end
-	local ok, code = Match.TryPowerUp(match, typeId)
+	local ok, code = Match.TryPowerUp(match, typeId, index)
 	flush(true)
 	return ok, code
 end
 
 local function handleEquipDeck(player: Player, ids: any): (boolean, string?)
-	if match and match.phase == "Playing" then
+	if match and match.phase == "Playing" and seatFor(player) then
 		return false, "WrongPhase"
 	end
 	local profile = ProfileService.Get(player)
@@ -391,6 +475,9 @@ local function handleRoll(player: Player, poolId: string, count: number): (boole
 	if profile == nil then
 		return false, "NotLoaded"
 	end
+	if not Tutorial.CanStart(profile) then
+		return false, "FinishStarterRolls"
+	end
 	local ok, code, result = Roll.Buy(profile, poolId, count, PlayerPolicy.RollAllowed(player), rollRng)
 	if ok then
 		ProfileService.MarkChanged(player) -- Changed pushes Meta (Gems, dice, pity)
@@ -430,20 +517,33 @@ local function tick()
 	if match == nil or match.phase ~= "Playing" then
 		return
 	end
+	local soloProfile = if match.playerCount == 1 and participants[1] then ProfileService.Get(participants[1]) else nil
+	if soloProfile and Tutorial.CanFinish(soloProfile) and match.wavesCompleted >= Tutorial.TargetWave then
+		match.lastNow, match.nextWaveAt = now, now + 1
+		return
+	end
 	local ok, err = pcall(Match.Step, match, now)
 	if not ok then
 		warn("[MatchService] Step failed: " .. tostring(err))
 		Match.Finish(match, "Error")
+	end
+	for _, player in participants do
+		local profile = ProfileService.Get(player)
+		if profile and Tutorial.ReachWave(profile, match.wavesCompleted) then
+			ProfileService.MarkChanged(player)
+			task.spawn(ProfileService.SaveNow, player)
+		end
 	end
 	settle()
 	flush()
 end
 
 function MatchService.AdminMP(player: Player?, delta: number)
-	if player == nil or not isOwner(player) or match == nil or match.phase ~= "Playing" then
+	local index = if player then seatFor(player) else nil
+	if not index or match == nil or match.phase ~= "Playing" then
 		return false, "NoLiveMatch"
 	end
-	local ok, code = Economy.TryChange(match, "mp", delta)
+	local ok, code = Economy.TryChange(Match.Seat(match, index), "mp", delta)
 	if ok then
 		push(player)
 	end
@@ -451,10 +551,25 @@ function MatchService.AdminMP(player: Player?, delta: number)
 end
 
 function MatchService.AdminReset(player: Player)
-	if isOwner(player) then
-		match = nil
-		rewardGold, rewardXp, rewardGems = nil, nil, nil
+	readyForCoop[player] = nil
+	if match and seatFor(player) and match.phase == "Playing" then
+		Match.Finish(match, "Aborted")
+		settle(player)
+		flush(true)
 	end
+end
+
+function MatchService.FinishTutorial(player: Player): (boolean, string?)
+	if not match or match.phase ~= "Playing" or not seatFor(player) or match.wavesCompleted < Tutorial.TargetWave then
+		return false, "WrongTutorialStep"
+	end
+	if match.playerCount ~= 1 then
+		return false, "ContinueCoop"
+	end
+	Match.Finish(match, "Aborted")
+	settle()
+	flush(true)
+	return true, nil
 end
 
 function MatchService.Init()
@@ -465,12 +580,10 @@ function MatchService.Init()
 		if ProfileService.Get(player) == nil then
 			return false, "NotLoaded"
 		end
-		if not isOwner(player) then
-			return false, "NotOwner"
-		end
 		return true, nil
 	end)
 	Net.Handle("Start", handleStart)
+	Net.Handle("CoopReady", handleCoopReady)
 	Net.Handle("Summon", handleSummon)
 	Net.Handle("Merge", handleMerge)
 	Net.Handle("PowerUp", handlePowerUp)

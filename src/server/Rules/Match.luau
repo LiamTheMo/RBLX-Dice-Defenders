@@ -11,6 +11,7 @@
 -- a virtual clock that trails `now` after a hitch (never jumps).
 local Balance = require(script.Parent.Parent.Config.Balance)
 local Dice = require(script.Parent.Parent.Config.Dice)
+local CoopWaves = require(script.Parent.Parent.Config.CoopWaves)
 local Enemies = require(script.Parent.Parent.Config.Enemies)
 local Board = require(script.Parent.Board)
 local Economy = require(script.Parent.Economy)
@@ -46,34 +47,52 @@ local function tiersFor(deck: { string })
 	return tiers
 end
 
-function Match.New(runId: number, rng: any, now: number, deck: { string })
+local function newSeat(deck: { string })
 	return {
 		deck = table.clone(deck),
 		tiers = tiersFor(deck),
+		mp = Balance.StartMP,
+		summons = 0,
+		board = Board.New(),
+		nextDieId = 1,
+	}
+end
+
+function Match.New(runId: number, rng: any, now: number, deck: { string }, partnerDeck: { string }?)
+	-- Keep the primary seat on the original state for solo callers.
+	local state = {
 		kills = 0,
 		runId = runId,
 		rng = rng,
 		phase = "Playing",
 		result = nil,
-		mp = Balance.StartMP,
-		summons = 0,
 		lives = Balance.StartLives,
+		playerCount = if partnerDeck then 2 else 1,
+		partner = if partnerDeck then newSeat(partnerDeck) else nil,
 		wave = 0,
 		wavesCompleted = 0,
 		waveState = "Prep",
 		nextWaveAt = now + Balance.FirstWaveDelay,
 		bossAt = nil,
 		queue = {},
+		carriedHp = CoopWaves.InitialHp,
+		hpStep = 0,
 		qi = 1,
 		nextSpawnAt = 0,
 		enemies = {},
 		nextEnemyId = 1,
-		board = Board.New(),
-		nextDieId = 1,
 		lastNow = now,
 		rewardGranted = false,
 		out = newOut(),
 	}
+	for key, value in newSeat(deck) do
+		state[key] = value
+	end
+	return state
+end
+
+function Match.Seat(state, index: number?)
+	return if index == 2 then state.partner else state
 end
 
 function Match.SummonCost(state): number
@@ -102,38 +121,46 @@ end
 -- Intents ---------------------------------------------------------------------
 
 -- Codes: WrongPhase, NoMP, BoardFull.
-function Match.TrySummon(state): (boolean, string?)
+function Match.TrySummon(state, index: number?): (boolean, string?)
 	if state.phase ~= "Playing" then
 		return false, "WrongPhase"
 	end
-	local cost = Formulas.SummonCost(state.summons)
-	if state.mp < cost then
+	local seat = Match.Seat(state, index)
+	if not seat then
+		return false, "WrongPhase"
+	end
+	local cost = Formulas.SummonCost(seat.summons)
+	if seat.mp < cost then
 		return false, "NoMP"
 	end
-	local empty = Board.EmptyCells(state.board)
+	local empty = Board.EmptyCells(seat.board)
 	if #empty == 0 then
 		return false, "BoardFull"
 	end
 	local cell = empty[state.rng:NextInteger(1, #empty)]
-	local typeId = state.deck[state.rng:NextInteger(1, #state.deck)]
-	local ok, code = Economy.TryChange(state, "mp", -cost)
+	local typeId = seat.deck[state.rng:NextInteger(1, #seat.deck)]
+	local ok, code = Economy.TryChange(seat, "mp", -cost)
 	if not ok then
 		return false, if code == "Insufficient" then "NoMP" else code
 	end
-	Board.Summon(state.board, cell, typeId, state.nextDieId)
-	state.board[cell].cd = state.lastNow -- ready now, no catch-up hits from time 0
-	state.nextDieId += 1
-	state.summons += 1
+	Board.Summon(seat.board, cell, typeId, seat.nextDieId)
+	seat.board[cell].cd = state.lastNow -- ready now, no catch-up hits from time 0
+	seat.nextDieId += 1
+	seat.summons += 1
 	state.out.dirty = true
 	return true, nil
 end
 
 -- Buys the next Power Up tier of one deck die type for MP. Codes: WrongPhase, NotInDeck, MaxTier, NoMP.
-function Match.TryPowerUp(state, typeId: any): (boolean, string?)
+function Match.TryPowerUp(state, typeId: any, index: number?): (boolean, string?)
 	if state.phase ~= "Playing" then
 		return false, "WrongPhase"
 	end
-	local tier = if type(typeId) == "string" then state.tiers[typeId] else nil
+	local seat = Match.Seat(state, index)
+	if not seat then
+		return false, "WrongPhase"
+	end
+	local tier = if type(typeId) == "string" then seat.tiers[typeId] else nil
 	if tier == nil then
 		return false, "NotInDeck"
 	end
@@ -141,11 +168,11 @@ function Match.TryPowerUp(state, typeId: any): (boolean, string?)
 	if cost == nil then
 		return false, "MaxTier"
 	end
-	local ok, code = Economy.TryChange(state, "mp", -cost)
+	local ok, code = Economy.TryChange(seat, "mp", -cost)
 	if not ok then
 		return false, if code == "Insufficient" then "NoMP" else code
 	end
-	state.tiers[typeId] = tier + 1
+	seat.tiers[typeId] = tier + 1
 	state.out.dirty = true
 	return true, nil
 end
@@ -204,16 +231,20 @@ function Match.SupportCells(state, typeId: string, sourceCell: number?): { numbe
 end
 
 -- Codes: WrongPhase, IllegalMerge.
-function Match.TryMerge(state, from: any, to: any): (boolean, string?)
+function Match.TryMerge(state, from: any, to: any, index: number?): (boolean, string?)
 	if state.phase ~= "Playing" then
 		return false, "WrongPhase"
 	end
-	local legal, code = Board.CheckMerge(state.board, from, to)
+	local seat = Match.Seat(state, index)
+	if not seat then
+		return false, "WrongPhase"
+	end
+	local legal, code = Board.CheckMerge(seat.board, from, to)
 	if not legal then
 		return false, code
 	end
-	local typeId = state.deck[state.rng:NextInteger(1, #state.deck)]
-	local ok, mergeCode = Board.Merge(state.board, from, to, typeId)
+	local typeId = seat.deck[state.rng:NextInteger(1, #seat.deck)]
+	local ok, mergeCode = Board.Merge(seat.board, from, to, typeId)
 	if not ok then
 		return false, mergeCode
 	end
@@ -226,24 +257,11 @@ end
 local function startWave(state)
 	local wave = state.wave + 1
 	state.wave = wave
-	local queue = {}
-	for i = 1, Formulas.WaveCount(wave) do
-		table.insert(queue, Formulas.KindAt(wave, i))
-	end
-	if Formulas.HasBrute(wave) then
-		table.insert(queue, "Brute")
-	end
-	if Formulas.IsBoss(wave) then
-		table.insert(queue, "Boss")
-	end
-	state.queue = queue
+	state.queue, state.carriedHp, state.hpStep = CoopWaves.Next(wave, state.carriedHp, state.hpStep)
 	state.qi = 1
 	state.nextSpawnAt = state.nextWaveAt
 	state.waveState = "Active"
-	-- The warning runs on until the Boss, queued last, actually walks in.
-	state.bossAt = if Formulas.IsBoss(wave)
-		then state.nextSpawnAt + (#queue - 1) * Formulas.SpawnInterval(wave)
-		else nil
+	state.bossAt = if CoopWaves.IsBoss(wave) then state.nextSpawnAt else nil
 	state.out.dirty = true
 end
 
@@ -251,33 +269,39 @@ local function spawn(state, now: number)
 	local interval = Formulas.SpawnInterval(state.wave)
 	local speedMul = Formulas.SpeedMul(state.wave)
 	while state.qi <= #state.queue and state.nextSpawnAt <= now do
-		if #state.enemies >= Balance.MaxAlive then
+		if #state.enemies + state.playerCount > Balance.MaxAlive then
 			state.nextSpawnAt = math.max(state.nextSpawnAt, now) -- wait, never drop
 			return
 		end
-		local kind = state.queue[state.qi]
-		local hp = Formulas.EnemyHp(kind, state.wave)
-		local enemy = {
-			id = state.nextEnemyId,
-			kind = kind,
-			hp = hp,
-			maxHp = hp,
-			speed = Enemies.Kinds[kind].speed * speedMul,
-			spawnAt = state.nextSpawnAt,
-			dist = 0,
-		}
-		state.nextEnemyId += 1
+		local entry = state.queue[state.qi]
+		for index = 1, state.playerCount do
+			local enemy = {
+				id = state.nextEnemyId,
+				kind = entry.kind,
+				hp = entry.hp,
+				maxHp = entry.hp,
+				speed = (if entry.kind == "Runner"
+					then Enemies.Kinds.Grunt.speed * 1.5
+					else Enemies.Kinds[entry.kind].speed) * speedMul,
+				spawnAt = state.nextSpawnAt,
+				dist = 0,
+				seat = index,
+			}
+			state.nextEnemyId += 1
+			table.insert(state.enemies, enemy)
+			table.insert(state.out.S, {
+				Id = enemy.id,
+				Kind = enemy.kind,
+				SpawnAt = enemy.spawnAt,
+				Speed = enemy.speed,
+				MaxHp = enemy.maxHp,
+				Hp = enemy.hp,
+				Seat = index,
+				PlayerCount = state.playerCount,
+			})
+		end
 		state.qi += 1
 		state.nextSpawnAt += interval
-		table.insert(state.enemies, enemy)
-		table.insert(state.out.S, {
-			Id = enemy.id,
-			Kind = kind,
-			SpawnAt = enemy.spawnAt,
-			Speed = enemy.speed,
-			MaxHp = hp,
-			Hp = hp,
-		})
 	end
 end
 
@@ -305,14 +329,16 @@ local function setSpeed(state, enemy, speed, now)
 	updateEnemy(state, enemy)
 end
 
-local function attack(state, now: number)
+local function attack(state, seat, index: number, now: number)
 	local enemies = state.enemies
-	local auras = Match.Auras(state)
+	local auras = Match.Auras(seat)
+	local singularity = Formulas.HasSingularity(seat.board)
+	local restrictLane = state.partner ~= nil
 	for cell = 1, Balance.BoardCells do
-		local die = state.board[cell]
+		local die = seat.board[cell]
 		if die then
 			local cfg = Dice.Types[die.type]
-			local tier = state.tiers[die.type] or 1 -- a die off the deck (only a spec places one) is tier 1
+			local tier = seat.tiers[die.type] or 1 -- a die off the deck (only a spec places one) is tier 1
 			local period = Formulas.Period(die.type, die.pip, auras[cell])
 			local twinshot = die.type == "C04"
 			local showProjectile = cfg.rarity == "Common" or FEATURED_VFX[die.type]
@@ -321,7 +347,9 @@ local function attack(state, now: number)
 				local first
 				local alive = 0
 				for _, enemy in enemies do
-					if enemy.hp > 0 then
+					if
+						enemy.hp > 0 and (not restrictLane or enemy.seat == index or enemy.dist >= Layout.CoopJunction)
+					then
 						alive += 1
 						if first == nil or enemy.dist > first.dist then
 							first = enemy
@@ -337,7 +365,10 @@ local function attack(state, now: number)
 				if twinshot and alive > 1 then
 					local index = state.rng:NextInteger(1, alive)
 					for _, enemy in enemies do
-						if enemy.hp > 0 then
+						if
+							enemy.hp > 0
+							and (not restrictLane or enemy.seat == index or enemy.dist >= Layout.CoopJunction)
+						then
 							index -= 1
 							if index == 0 then
 								second = enemy
@@ -348,13 +379,21 @@ local function attack(state, now: number)
 				end
 				die.hits += 1
 				local flat = if cfg.procEvery and die.hits % cfg.procEvery == 0 then cfg.procFlat else 0
-				local supportCells = if die.type == "R05" then Match.SupportCells(state, die.type, cell) else nil
+				local supportCells = if die.type == "R05" then Match.SupportCells(seat, die.type, cell) else nil
 				for shot = 1, cfg.shots or 1 do
 					local target = if shot == 1 then first else second
+					local critical = Formulas.SingularityCrit(die.type, singularity, state.rng)
 					damage(
 						state,
 						target,
-						Formulas.HitDamage(die.type, target.kind, if shot == 1 then flat else 0, tier)
+						Formulas.HitDamage(
+							die.type,
+							target.kind,
+							if shot == 1 then flat else 0,
+							tier,
+							singularity,
+							critical
+						)
 					)
 					if cfg.slow and target.hp > 0 then
 						if not target.slowUntil then
@@ -365,10 +404,13 @@ local function attack(state, now: number)
 					end
 					table.insert(state.out.F, {
 						Cell = cell,
+						Seat = index,
+						PlayerCount = state.playerCount,
 						Id = target.id,
 						Type = die.type,
 						Distance = if showProjectile then target.dist else nil,
 						Boosted = if showProjectile and flat > 0 then true else nil,
+						Critical = if critical then true else nil,
 						Slowed = if showProjectile and cfg.slow and target.hp > 0 then true else nil,
 						SlowUntil = if cfg.slow and target.hp > 0 then target.slowUntil else nil,
 						SupportCells = supportCells,
@@ -409,7 +451,8 @@ function Match.Step(state, now: number)
 			enemy.slowUntil = nil
 		end
 		enemy.dist = math.max(0, enemy.speed * (now - enemy.spawnAt))
-		if enemy.dist >= Layout.PathLength then
+		local pathLength = if state.playerCount == 2 then Layout.CoopPathLength else Layout.PathLength
+		if enemy.dist >= pathLength then
 			state.lives -= Enemies.Kinds[enemy.kind].lives
 			table.insert(state.out.R, { Id = enemy.id, Why = "Breach" })
 			state.out.dirty = true
@@ -425,13 +468,20 @@ function Match.Step(state, now: number)
 	end
 
 	-- Dice attacks.
-	attack(state, now)
+	attack(state, state, 1, now)
+	if state.partner then
+		attack(state, state.partner, 2, now)
+	end
 
 	-- Deaths + kill MP.
 	local alive = {}
 	for _, enemy in survivors do
 		if enemy.hp <= 0 then
-			Economy.TryChange(state, "mp", Formulas.KillMp(enemy.kind, state.wave))
+			local gain = Formulas.KillMp(enemy.kind, state.wave)
+			Economy.TryChange(state, "mp", gain)
+			if state.partner then
+				Economy.TryChange(state.partner, "mp", gain)
+			end
 			state.kills += 1
 			table.insert(state.out.R, { Id = enemy.id, Why = "Kill" })
 			state.out.dirty = true
@@ -447,7 +497,7 @@ function Match.Step(state, now: number)
 		state.out.dirty = true
 		state.waveState = "Prep"
 		state.nextWaveAt = now + Balance.WaveGap
-		state.bossAt = if Formulas.IsBoss(state.wave + 1) then state.nextWaveAt else nil
+		state.bossAt = if CoopWaves.IsBoss(state.wave + 1) then state.nextWaveAt else nil
 	end
 end
 
