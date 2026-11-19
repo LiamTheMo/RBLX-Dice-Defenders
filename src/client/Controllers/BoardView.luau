@@ -9,6 +9,7 @@ local UserInputService = game:GetService("UserInputService")
 local Display = require(ReplicatedStorage.Shared.Display)
 local Layout = require(ReplicatedStorage.Shared.Layout)
 local NetClient = require(script.Parent.NetClient)
+local DiceVisuals = require(script.Parent.Dice.Visuals)
 
 local BoardView = {}
 
@@ -20,7 +21,7 @@ local PARTNER_OUTLINE = Color3.new(1, 1, 1) -- distinct from every type colour
 local LIFT = 0.8
 
 local pads = {} -- cell -> Part
-local dice = {} -- cell -> { model, part, base, accent, pips, star, highlight, lifted, key }
+local dice = {} -- cell -> { model, part, base, highlight, lifted, key }
 local board = {} -- latest Board from State
 local playing = false
 local selected: number? = nil
@@ -113,61 +114,20 @@ local function buildWorld()
 	rayParams.FilterDescendantsInstances = { padsFolder, diceFolder }
 end
 
-local DIE = 4.4 -- pads are 5.4 studs, cell spacing 6
-local HALF = DIE / 2
-local PIP_D = 1.2
-local FLAT = CFrame.Angles(0, 0, math.rad(90)) -- lays a Cylinder's axis along Y
-local PIP_COLOR = Color3.fromRGB(25, 25, 30)
--- Standard die faces on the top: offsets (right, back) in studs, up to 6 slots.
-local G = 1.3 -- pip edge 1.9 of 2.2, margin .3
-local PIP_LAYOUTS = {
-	{ { 0, 0 } },
-	{ { -G, -G }, { G, G } },
-	{ { -G, -G }, { 0, 0 }, { G, G } },
-	{ { -G, -G }, { G, -G }, { -G, G }, { G, G } },
-	{ { -G, -G }, { G, -G }, { 0, 0 }, { -G, G }, { G, G } },
-	{ { -G, -G }, { G, -G }, { -G, 0 }, { G, 0 }, { -G, G }, { G, G } },
-}
+local function placeDie(die, cell: number, size: number)
+	local c = Layout.CellPosition(cell)
+	die.base = CFrame.new(c.X, 0.4 + size / 2, c.Z)
+	die.part.Size = Vector3.one * size
+	die.model:PivotTo(die.base * CFrame.new(0, if die.lifted then LIFT else 0, 0))
+end
 
 local function makeDie(cell: number)
-	local c = Layout.CellPosition(cell)
 	local model = Instance.new("Model")
 	model.Name = "Die" .. cell
-	local body =
-		part(model, "Body", Vector3.new(DIE, DIE, DIE), CFrame.new(c.X, 0.4 + HALF, c.Z), Color3.fromRGB(245, 245, 245))
+	local body = part(model, "Body", Vector3.one, CFrame.identity, Color3.new(1, 1, 1))
 	body.CanQuery = true
 	body:SetAttribute("Cell", cell)
 	model.PrimaryPart = body
-	-- Type colour: a band around the lower sides, so the top face stays white.
-	local band = part(
-		body,
-		"Band",
-		Vector3.new(DIE + 0.1, HALF, DIE + 0.1),
-		body.CFrame * CFrame.new(0, -HALF / 2, 0),
-		Color3.new(1, 1, 1)
-	)
-	band.CanQuery = false
-	local pips = {}
-	for i = 1, 6 do
-		local pip = part(body, "Pip" .. i, Vector3.new(0.1, PIP_D, PIP_D), body.CFrame, PIP_COLOR)
-		pip.Shape = Enum.PartType.Cylinder
-		pip.Material = Enum.Material.Neon -- unlit flat colour; SmoothPlastic glare washed pips out
-		pip.CanQuery = false
-		pip.Parent = nil
-		pips[i] = pip
-	end
-	local gui = Instance.new("SurfaceGui")
-	gui.Face = Enum.NormalId.Top
-	gui.Enabled = false
-	gui.Parent = body
-	local star = Instance.new("TextLabel")
-	star.Size = UDim2.fromScale(1, 1)
-	star.BackgroundTransparency = 1
-	star.Font = Enum.Font.GothamBlack
-	star.Text = "\u{2605}"
-	star.TextScaled = true
-	star.TextColor3 = Color3.fromRGB(255, 190, 30)
-	star.Parent = gui
 	local highlight = Instance.new("Highlight")
 	highlight.Adornee = model
 	highlight.FillTransparency = 1
@@ -179,29 +139,10 @@ local function makeDie(cell: number)
 		model = model,
 		part = body,
 		base = body.CFrame,
-		accent = band,
-		pips = pips,
-		star = gui,
 		highlight = highlight,
 		lifted = false,
 		key = "",
 	}
-end
-
--- Pip 1-6: dark discs on the top face; pip 7: one large gold star.
-local function setPips(die, pip: number, color: Color3)
-	local layout = PIP_LAYOUTS[pip]
-	die.star.Enabled = layout == nil
-	for i, disc in die.pips do
-		local slot = layout and layout[i]
-		if slot then
-			disc.Color = color
-			disc.CFrame = die.part.CFrame * CFrame.new(slot[1], HALF + 0.05, slot[2]) * FLAT
-			disc.Parent = die.part
-		else
-			disc.Parent = nil
-		end
-	end
 end
 
 local function canMerge(a: number, b: number): boolean
@@ -250,8 +191,8 @@ local function render(snapshot)
 				die.key = parts[i]
 				local style = Display.Dice[entry.T]
 				local color = if style then style.Color else Color3.new(1, 1, 1)
-				die.accent.Color = color
-				setPips(die, entry.P, color:Lerp(Color3.new(0, 0, 0), 0.6)) -- dark saturated type shade
+				placeDie(die, i, DiceVisuals.Size(entry.T))
+				DiceVisuals.Apply(die.part, entry.T, entry.P, color)
 			end
 			die.model.Parent = diceFolder
 		elseif die then
