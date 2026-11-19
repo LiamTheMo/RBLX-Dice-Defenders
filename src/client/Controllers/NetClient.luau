@@ -28,7 +28,7 @@ NetClient.LastCatalog = nil
 -- one request in flight per intent: an honest client can never trip RateLimited.
 local MIN_INTERVAL = {
 	Start = 1.0,
-	Summon = 0.25,
+	Summon = 0.125,
 	Merge = 0.25,
 	EquipDeck = 1.0,
 	ClaimQuest = 0.5,

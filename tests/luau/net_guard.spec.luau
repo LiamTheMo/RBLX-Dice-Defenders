@@ -363,6 +363,18 @@ test("token bucket per player and remote: burst, refill, independence", function
 	expectEq(limited, "RateLimited", "summon over burst")
 end)
 
+test("summon rate limit supports the client sending every 0.125 seconds", function()
+	local env, owner = make(), {}
+	local source = __sources["StarterPlayer/StarterPlayerScripts/Client/Controllers/NetClient"]
+	local interval = tonumber(string.match(source, "\n%s*Summon = ([%d%.]+),"))
+	expectEq(interval, 0.125, "client summon interval")
+	for seq = 1, 32 do
+		expect(env.guard:Call(owner, "Summon", env.handler, seq), "summon " .. seq)
+		env.t += interval or 0
+	end
+	expectEq(env.guard:Violations(owner), 0, "regular summons are never rate-limited")
+end)
+
 test("soft rejections are never counted and never kick", function()
 	local env, owner = make(), {}
 	env.handler = function()
