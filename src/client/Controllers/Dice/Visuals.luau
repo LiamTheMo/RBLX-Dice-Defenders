@@ -11,7 +11,8 @@ local STAR_RIM = Color3.fromHex("#32201A")
 local WHITE = Color3.new(1, 1, 1)
 local BODIES = {}
 local MARKS = {}
-local ORNAMENTS = {}
+local TOP_TEXTURES = {}
+local iceChips
 local ready = Instance.new("BindableEvent")
 local loading = true
 
@@ -19,7 +20,7 @@ function Visuals.Size(typeId: string): number
 	return if Data.Styles[typeId] then 2.5 else 4.4
 end
 
-local function meshTemplate(packet: string, palette: { Color3 }, firstMesh: EditableMesh?)
+local function meshTemplate(packet: string, palette: { Color3 }, paintTop: boolean?, firstMesh: EditableMesh?)
 	local editable
 	local ok, template, offset = pcall(function()
 		editable = firstMesh or AssetService:CreateEditableMesh()
@@ -45,8 +46,17 @@ local function meshTemplate(packet: string, palette: { Color3 }, firstMesh: Edit
 			cursor += 6
 		end
 		local center = (min + max) / 2
+		local topUVs = {}
+		local blankUVs
+		if paintTop then
+			local blank = editable:AddUV(Vector2.zero)
+			blankUVs = { blank, blank, blank }
+		end
 		for i, p in positions do
 			ids[i] = editable:AddVertex(p - center)
+			if paintTop and p.Y == max.Y then
+				topUVs[i] = editable:AddUV(Vector2.new(0.5 + p.X / 2.5, 0.5 + p.Z / 2.5))
+			end
 		end
 
 		local colors, normals = {}, {}
@@ -71,6 +81,9 @@ local function meshTemplate(packet: string, palette: { Color3 }, firstMesh: Edit
 			end
 			editable:SetFaceNormals(triangle, faceNormals)
 			editable:SetFaceColors(triangle, colors[shade])
+			if paintTop then
+				editable:SetFaceUVs(triangle, if shade == 4 then { topUVs[a], topUVs[b], topUVs[c] } else blankUVs)
+			end
 			cursor += 7
 		end
 
@@ -98,18 +111,53 @@ local function meshTemplate(packet: string, palette: { Color3 }, firstMesh: Edit
 	return nil
 end
 
+local function topTexture(packet: string, color: Color3)
+	local editable
+	local ok, texture = pcall(function()
+		local size = Vector2.one * Data.TextureSize
+		editable = AssetService:CreateEditableImage({ Size = size })
+		if not editable then
+			return nil
+		end
+		local runs = EncodingService:Base64Decode(buffer.fromstring(packet))
+		local pixels = buffer.create(size.X * size.Y * 4)
+		local pixel = 0
+		for i = 0, buffer.len(runs) - 1, 2 do
+			local shade = buffer.readu8(runs, i + 1)
+			local rgba = 0xFF000000
+				+ math.round(color.R * shade)
+				+ math.round(color.G * shade) * 0x100
+				+ math.round(color.B * shade) * 0x10000
+			for _ = 0, buffer.readu8(runs, i) do
+				buffer.writeu32(pixels, pixel, rgba)
+				pixel += 4
+			end
+		end
+		assert(pixel == buffer.len(pixels), "Top texture has the wrong pixel count")
+		editable:WritePixelsBuffer(Vector2.zero, size, pixels)
+		return Content.fromObject(editable)
+	end)
+	if ok then
+		return texture
+	end
+	if editable then
+		editable:Destroy()
+	end
+	return nil
+end
+
 task.spawn(function()
+	for typeId, style in Data.Styles do
+		TOP_TEXTURES[typeId] = topTexture(style.Texture, Color3.fromHex(style.Body))
+	end
 	local allowed, firstMesh = pcall(AssetService.CreateEditableMesh, AssetService)
 	if allowed and firstMesh then
-		local bodyPalette = { Color3.fromHex("#E1E1E1"), Color3.fromHex("#B2B2B2"), WHITE }
+		local bodyPalette = { Color3.fromHex("#E1E1E1"), Color3.fromHex("#B2B2B2"), WHITE, WHITE }
 		for tier, packet in Data.Bodies do
-			BODIES[tier] = meshTemplate(packet, bodyPalette, if tier == 1 then firstMesh else nil)
+			BODIES[tier] = meshTemplate(packet, bodyPalette, true, if tier == 1 then firstMesh else nil)
 			MARKS[tier] = meshTemplate(Data.Marks[tier], if tier == 7 then { STAR_RIM, GOLD } else { PIP })
 		end
-		for typeId, style in Data.Styles do
-			ORNAMENTS[typeId] =
-				meshTemplate(style.Mesh, { Color3.fromHex(style.Colors[1]), Color3.fromHex(style.Colors[2]) })
-		end
+		iceChips = meshTemplate(Data.Ice, { Color3.fromHex("#245C8C"), Color3.fromHex("#58C9F1") })
 	end
 	loading = false
 	ready:Fire()
@@ -121,16 +169,19 @@ local function cloneMesh(template, parent: Folder, anchor: BasePart, name: strin
 	mesh.Color = color
 	mesh.CFrame = anchor.CFrame * CFrame.new(template.Offset)
 	mesh.Parent = parent
+	return mesh
 end
 
-local function applyMeshes(anchor: BasePart, visuals: Folder, typeId: string, layout: number, color: Color3): boolean
-	local body, marks, ornaments = BODIES[layout], MARKS[layout], ORNAMENTS[typeId]
-	if not (body and marks and ornaments) then
+local function applyMeshes(anchor: BasePart, visuals: Folder, typeId: string, layout: number): boolean
+	local body, marks, texture = BODIES[layout], MARKS[layout], TOP_TEXTURES[typeId]
+	if not (body and marks and texture) then
 		return false
 	end
-	cloneMesh(body, visuals, anchor, "ChamferedBody", color)
+	cloneMesh(body, visuals, anchor, "ChamferedBody", WHITE).TextureContent = texture
 	cloneMesh(marks, visuals, anchor, if layout == 7 then "Stars" else "Pips", WHITE)
-	cloneMesh(ornaments, visuals, anchor, "Ornaments", WHITE)
+	if typeId == "C06" and iceChips then
+		cloneMesh(iceChips, visuals, anchor, "IceChips", WHITE)
+	end
 	anchor.Transparency = 1
 	return true
 end
@@ -151,7 +202,7 @@ local function symbol(surface: SurfaceGui, name: string, glyph: string, color: C
 end
 
 -- Surface marks also work in experiences or on devices without an editable mesh budget.
-local function applySurfaces(anchor: BasePart, fallback: Folder, tier: number, color: Color3, style)
+local function applySurfaces(anchor: BasePart, fallback: Folder, tier: number, color: Color3, style, texture: Content?)
 	anchor.Color = if style then Color3.fromHex(style.Body) else WHITE
 	anchor.Transparency = 0
 	for _, face in Enum.NormalId:GetEnumItems() do
@@ -163,8 +214,18 @@ local function applySurfaces(anchor: BasePart, fallback: Folder, tier: number, c
 		surface.CanvasSize = Vector2.new(128, 128)
 		surface.LightInfluence = 0.25
 		if style then
-			if face.Name == style.Face or face == Enum.NormalId.Top then
-				symbol(surface, "Ornament", style.Mark, Color3.fromHex(style.Colors[1]), 0.15, 0.15)
+			if face == Enum.NormalId.Top then
+				if texture then
+					local paint = Instance.new("ImageLabel")
+					paint.Name = "TopDesign"
+					paint.BackgroundTransparency = 1
+					paint.ImageContent = texture
+					paint.Size = UDim2.fromScale(1, 1)
+					paint.Parent = surface
+				else
+					local paint = symbol(surface, "TopDesign", style.Mark, PIP, 0.5, 0.7)
+					paint.TextTransparency = 0.65
+				end
 			end
 		elseif face ~= Enum.NormalId.Top then
 			local band = Instance.new("Frame")
@@ -179,6 +240,7 @@ local function applySurfaces(anchor: BasePart, fallback: Folder, tier: number, c
 
 		if tier == 7 then
 			local star = symbol(surface, "Star", "★", GOLD, 0.5, 0.46)
+			star.ZIndex = 2
 			star.TextStrokeColor3 = STAR_RIM
 			star.TextStrokeTransparency = 0
 		else
@@ -190,6 +252,7 @@ local function applySurfaces(anchor: BasePart, fallback: Folder, tier: number, c
 				pip.Size = UDim2.fromScale(0.176, 0.176)
 				pip.BorderSizePixel = 0
 				pip.BackgroundColor3 = PIP
+				pip.ZIndex = 2
 				pip.Parent = surface
 				local round = Instance.new("UICorner")
 				round.CornerRadius = UDim.new(0.5, 0)
@@ -209,19 +272,23 @@ function Visuals.Apply(anchor: BasePart, typeId: string, tier: number, color: Co
 	visuals.Name = "Visuals"
 	visuals.Parent = anchor
 	local style = Data.Styles[typeId]
-	local bodyColor = if style then Color3.fromHex(style.Body) else WHITE
-	if style and applyMeshes(anchor, visuals, typeId, tier, bodyColor) then
+	if style and applyMeshes(anchor, visuals, typeId, tier) then
 		return
 	end
 
 	local fallback = Instance.new("Folder")
 	fallback.Name = "SurfaceMarks"
 	fallback.Parent = visuals
-	applySurfaces(anchor, fallback, tier, color, style)
+	applySurfaces(anchor, fallback, tier, color, style, TOP_TEXTURES[typeId])
 	if style and loading then
 		ready.Event:Once(function()
-			if visuals.Parent == anchor and applyMeshes(anchor, visuals, typeId, tier, bodyColor) then
-				fallback:Destroy()
+			if visuals.Parent == anchor then
+				if applyMeshes(anchor, visuals, typeId, tier) then
+					fallback:Destroy()
+				elseif TOP_TEXTURES[typeId] then
+					fallback:ClearAllChildren()
+					applySurfaces(anchor, fallback, tier, color, style, TOP_TEXTURES[typeId])
+				end
 			end
 		end)
 	end

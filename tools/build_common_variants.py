@@ -3,8 +3,9 @@
 import base64
 from collections import Counter
 import importlib.util
+from itertools import groupby
 import json
-from math import cos, hypot, pi, sin
+from math import ceil, cos, floor, hypot, pi, sin
 from pathlib import Path
 import struct
 import sys
@@ -22,27 +23,30 @@ base = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(base)
 fbx = base._load("roblox_fbx", Path(base.SKILL) / "roblox_fbx.py")
 
-# Identify the die without taking a position away from any of the six pip layouts.
 STYLES = {
-    "C01_Pebble": ("#929496", "right", "#555B61", "#ADB1B4", "◆"),
-    "C02_Needle": ("#ADBFCB", "left", "#273843", "#DCEBF2", "///"),
-    "C03_Hammer": ("#CD8A45", "left", "#5E301B", "#FFD087", "⚒"),
-    "C04_Twinshot": ("#F2E5D0", "right", "#423128", "#B18A68", "⇗⇗"),
-    "C05_Longshot": ("#2DAC63", "right", "#F2F4D9", "#166547", "⊕"),
-    "C06_Chill": ("#ABE1F3", "right", "#245C8C", "#58C9F1", "❄"),
-    "C07_Spark": ("#F6C438", "right", "#7A4615", "#FFF398", "ϟ"),
+    "C01_Pebble": ("#929496", "◆"),
+    "C02_Needle": ("#ADBFCB", "///"),
+    "C03_Hammer": ("#CD8A45", "⚒"),
+    "C04_Twinshot": ("#F2E5D0", "⇗⇗"),
+    "C05_Longshot": ("#2DAC63", "⊕"),
+    "C06_Chill": ("#ABE1F3", "❄"),
+    "C07_Spark": ("#F6C438", "ϟ"),
 }
+TEXTURE_SIZE = 128
 LAYOUTS = {**base.LAYOUTS, 7: []}
 VIEWS = {
-    "three_quarter": (0.98, -1.5, 1.33),
+    "three_quarter": (0.78, -1.1, 1.8),
     "front": (0, -1, 0), "back": (0, 1, 0), "left": (-1, 0, 0),
     "right": (1, 0, 0), "top": (0, 0, 1), "bottom": (0, 0, -1),
 }
 
 
+def linear_channel(c):
+    return c / 255 / 12.92 if c < 11 else ((c / 255 + 0.055) / 1.055) ** 2.4
+
+
 def material(source, name, hex_color, roughness=0.72, metallic=0):
-    rgb = base._rgb(hex_color)
-    linear = tuple(c / 255 / 12.92 if c < 11 else ((c / 255 + 0.055) / 1.055) ** 2.4 for c in rgb)
+    linear = tuple(map(linear_channel, base._rgb(hex_color)))
     mat = source.copy()
     mat.name = name
     mat.diffuse_color = (*linear, 1)
@@ -87,7 +91,12 @@ def shell(source, tier):
             a, b, c = [Vector(coords[i]).to_3d() for i in ids]
             if (b - a).cross(c - a).z < 0:
                 ids.reverse()
-            body.f([verts[i] for i in ids], face).material_index = 2 if face == "top" else 0
+            panel = body.f([verts[i] for i in ids], face)
+            if face == "top":
+                panel.material_index = 3
+                for loop in panel.loops:
+                    x, y, _ = loop.vert.co
+                    loop[body.uv].uv = (0.5 + x / 2.5, 0.5 + y / 2.5)
         for (u, v), ring in zip(LAYOUTS[tier], rings):
             floor_coords = base._ring(u, v, .208, 12)
             floor = [body.v(base._pt(face, x, y, .048)) for x, y in floor_coords]
@@ -114,88 +123,134 @@ def radial(count, outer, inner):
             for i in range(count) for radius in [inner if i % 2 else outer]]
 
 
-def ornaments(style, face):
-    mesh = base._Mesh()
+def top_texture(style):
+    """Rasterize original face artwork in the same top view used by both exporters."""
+    size = TEXTURE_SIZE * 2
+    pixels = bytearray([255]) * size**2
 
-    def polygon(points, color=0, side=face):
-        points = [base._pt(side, u, v, -.002 - .001 * color) for u, v in points]
-        normal = Vector(base.FRAMES[side][0])
-        tris = geometry.tessellate_polygon([points])
-        for tri in tris:
-            a, b, c = [points[i] for i in tri]
-            if (b - a).cross(c - a).dot(normal) < 0:
+    def polygon(points, shade=168):
+        coords = [Vector(((.5 + x / 2.5) * size, (.5 - y / 2.5) * size, 0)) for x, y in points]
+        for tri in geometry.tessellate_polygon([coords]):
+            a, b, c = (coords[i] for i in tri)
+            if (b - a).cross(c - a).z < 0:
                 b, c = c, b
-            mesh.f([mesh.v(v) for v in (a, b, c)], side).material_index = color
+            edges = ((a, b), (b, c), (c, a))
+            for y in range(max(0, floor(min(a.y, b.y, c.y))), min(size, ceil(max(a.y, b.y, c.y)))):
+                for x in range(max(0, floor(min(a.x, b.x, c.x))), min(size, ceil(max(a.x, b.x, c.x)))):
+                    if all((q.x - p.x) * (y + .5 - p.y) >= (q.y - p.y) * (x + .5 - p.x) for p, q in edges):
+                        pixels[y * size + x] = shade
 
-    def line(a, b, width, color=0, side=face):
+    def line(a, b, width, shade=168):
         x, y = a
         u, v = b
         k = width / (2 * hypot(u - x, v - y))
         dx, dy = (y - v) * k, (u - x) * k
-        polygon([(x + dx, y + dy), (x - dx, y - dy), (u - dx, v - dy), (u + dx, v + dy)], color, side)
+        polygon([(x + dx, y + dy), (x - dx, y - dy), (u - dx, v - dy), (u + dx, v + dy)], shade)
 
-    def polyline(path, width, color=0, side=face):
-        for a, b in zip(path, path[1:]):
-            line(a, b, width, color, side)
+    def arrow(a, b):
+        direction = (Vector(b) - Vector(a)).normalized()
+        across = Vector((-direction.y, direction.x))
+        start, tip = Vector(a), Vector(b)
+        neck = tip - direction * .40
+        polygon([start, start + direction * .12 - across * .10, neck - across * .10,
+                 neck - across * .24, tip, neck + across * .24, neck + across * .10,
+                 start + direction * .12 + across * .10], 156)
 
-    # One strip above the outermost cup, repeated on top for the match camera.
-    for side in (face, "top"):
-        def badge(points, color=0):
-            polygon([(x, y + .87) for x, y in points], color, side)
+    if style == "C01":
+        polygon([(-.91, .29), (-.63, .78), (-.12, .90), (.06, .68),
+                 (-.06, .31), (-.46, .05), (-.79, -.03)], 211)
+        polygon([(.15, -.49), (.63, -.18), (.89, -.31), (.78, -.74), (.26, -.90), (-.11, -.76)], 206)
+        for a, b in zip([(-.91, .29), (-.58, .20), (-.28, -.14), (.12, -.22), (.39, -.50)],
+                        [(-.58, .20), (-.28, -.14), (.12, -.22), (.39, -.50), (.78, -.74)]):
+            line(a, b, .085, 166)
+        line((-.28, -.14), (-.49, -.50), .055, 186)
+        line((.12, -.22), (.43, .16), .061, 186)
+    elif style == "C02":
+        for shift in (-.40, 0, .40):
+            x, y = shift, -shift * .6
+            polygon([(x - .48, y - .61), (x - .05, y + .23),
+                     (x + .48, y + .65), (x + .11, y - .13)], 158)
+    elif style == "C03":
+        line((-.66, -.74), (.31, .37), .28, 167)
+        polygon([(-.11, .39), (.23, .81), (.42, .83), (.86, .40),
+                 (.80, .21), (.49, -.13), (.33, -.04)], 147)
+        polygon([(-.11, .39), (.23, .81), (.42, .83), (.52, .72), (.32, .67), (.01, .30)], 188)
+    elif style == "C04":
+        arrow((-.84, -.48), (.43, .84))
+        arrow((-.43, -.84), (.84, .48))
+    elif style == "C05":
+        ring = [(.58 * cos(i * pi / 16), .58 * sin(i * pi / 16)) for i in range(32)]
+        for i, point in enumerate(ring):
+            line(point, ring[(i + 1) % len(ring)], .115, 151)
+        for x, y in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            line((x * .42, y * .42), (x * .83, y * .83), .095, 151)
+        for x in (-1, 1):
+            for y in (-1, 1):
+                line((x * .62, y * .84), (x * .84, y * .84), .08, 188)
+                line((x * .84, y * .84), (x * .84, y * .62), .08, 188)
+    elif style == "C06":
+        for i in range(6):
+            x, y = cos(i * pi / 3), sin(i * pi / 3)
+            line((0, 0), (.83 * x, .83 * y), .116, 151)
+            for side in (-1, 1):
+                line((.47 * x, .47 * y), (.64 * x - .20 * side * y, .64 * y + .20 * side * x), .09, 177)
+    elif style == "C07":
+        polygon([(-.19, .84), (.58, .84), (.18, .22), (.64, .22), (-.51, -.86),
+                 (-.19, -.16), (-.66, -.16)], 147)
+        polygon([(-.19, .84), (.58, .84), (.45, .67), (-.28, .67)], 183)
+        for points in [[(-.85, .35), (-.73, .66), (-.6, .42)], [(.63, -.41), (.86, -.18), (.79, -.48)]]:
+            polygon(points, 195)
 
-        def stroke(a, b, width=.022, color=0):
-            line((a[0], a[1] + .87), (b[0], b[1] + .87), width, color, side)
+    result = bytes(round(sum(pixels[(2 * y + dy) * size + 2 * x + dx]
+                             for dx in (0, 1) for dy in (0, 1)) / 4)
+                   for y in range(TEXTURE_SIZE) for x in range(TEXTURE_SIZE))
+    assert 1000 < sum(p != 255 for p in result) < TEXTURE_SIZE**2 // 2
+    for offset in (0, len(result) - TEXTURE_SIZE):
+        assert all(p == 255 for p in result[offset:offset + TEXTURE_SIZE])
+    return result
 
-        if style == "C01":
-            badge([(-.66, -.1), (-.56, .1), (-.27, .08), (-.13, -.07), (-.44, -.025)])
-            badge([(.18, .02), (.35, .105), (.68, .045), (.45, -.08)], 1)
-            polyline([(-.95, .32), (-.85, .21), (-.97, .08)], .021, side=side)
-        elif style == "C02":
-            for x in (-.35, 0, .35):
-                badge([(x - .19, -.106), (x + .14, .103), (x + .2, .115), (x - .12, -.095)], 1)
-                badge([(x - .17, -.11), (x + .2, .115), (x + .095, .005), (x - .09, -.1)])
-        elif style == "C03":
-            stroke((-.43, -.096), (.27, .041), .052)
-            badge([(.12, -.035), (.09, .068), (.44, .13), (.49, .026)])
-            badge([(.09, .068), (.44, .13), (.45, .105), (.11, .045)], 1)
-            badge([(-.81, -.08), (-.72, .095), (-.59, .065), (-.66, -.075)], 1)
-        elif style == "C04":
-            for y in (-.065, .065):
-                badge([(-.61, y - .035), (.38, y + .013), (.36, y + .06),
-                       (.64, y + .025), (.39, y - .05), (.4, y - .008)])
-        elif style == "C05":
-            ring = [(.088 * cos(i * pi / 8), .088 * sin(i * pi / 8)) for i in range(16)]
-            for i, point in enumerate(ring):
-                stroke(point, ring[(i + 1) % 16], .018)
-            badge([(x * .018, y * .018) for x, y in radial(4, 1, 1)])
-            for x, y in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-                stroke((x * .10, y * .10), (x * .146, y * .131), .018)
-            for x in (-1, 1):
-                for y in (-1, 1):
-                    stroke((x * .31, y * .115), (x * .53, y * .115), .025)
-                    stroke((x * .53, y * .115), (x * .53, y * .049), .025)
-        elif style == "C06":
-            for i in range(6):
-                angle = i * pi / 3
-                x, y = cos(angle), sin(angle)
-                stroke((0, 0), (.14 * x, .14 * y), .025)
-                for turn in (-1, 1):
-                    stroke((.083 * x, .083 * y), (.107 * x - .045 * turn * y, .107 * y + .045 * turn * x), .018)
-            for x, y, scale in ((-.69, -.86, 1.0), (-.51, -.92, .72), (.71, -.9, .68)):
-                points = [(x - .105 * scale, y - .07 * scale), (x + .11 * scale, y - .065 * scale),
-                          (x + .02 * scale, y + .125 * scale)]
-                tip = base._pt(side, x, y, -.065)
-                verts = [mesh.v(base._pt(side, u, v, .015)) for u, v in points]
-                raised = mesh.v(tip)
-                for j in range(3):
-                    mesh.f([verts[j], verts[(j + 1) % 3], raised], side).material_index = 1 if j != 1 else 0
-        elif style == "C07":
-            badge([(-.1, .135), (.15, .135), (.04, .02), (.18, .02),
-                   (-.14, -.13), (-.062, -.018), (-.21, -.018)])
-            badge([(-.1, .135), (.15, .135), (.113, .108), (-.08, .108)], 1)
-            for sign in (-1, 1):
-                for y in (-.064, .07):
-                    badge([(sign * .26, y * .5), (sign * .54, y), (sign * .43, y * .55)])
+
+def texture_packet(mask):
+    packed = bytearray()
+    for shade, pixels in groupby(mask):
+        count = sum(1 for _ in pixels)
+        while count:
+            run = min(count, 256)
+            packed.extend((run - 1, shade))
+            count -= run
+    assert sum(n + 1 for n in packed[::2]) == len(mask)
+    return base64.b64encode(packed).decode()
+
+
+def painted_material(source, name, body, mask):
+    mat = material(source, name, body)
+    image = bpy.data.images.new(name, TEXTURE_SIZE, TEXTURE_SIZE, alpha=False)
+    rgb = base._rgb(body)
+    rgba = []
+    for row in range(TEXTURE_SIZE - 1, -1, -1):  # Blender stores the bottom row first.
+        for shade in mask[row * TEXTURE_SIZE:(row + 1) * TEXTURE_SIZE]:
+            rgba.extend((*(c * shade / 65025 for c in rgb), 1))
+    image.pixels.foreach_set(rgba)
+    image.update()
+    image.pack()
+    shader = next(n for n in mat.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
+    tex = mat.node_tree.nodes.new("ShaderNodeTexImage")
+    tex.image = image
+    tex.extension = "EXTEND"
+    mat.node_tree.nodes.active = tex
+    mat.node_tree.links.new(tex.outputs["Color"], shader.inputs["Base Color"])
+    return mat
+
+
+def ice_accents():
+    mesh = base._Mesh()
+    for x, y, scale in ((-.69, -.86, 1.0), (-.51, -.92, .72), (.71, -.9, .68)):
+        points = [(x - .105 * scale, y - .07 * scale), (x + .11 * scale, y - .065 * scale),
+                  (x + .02 * scale, y + .125 * scale)]
+        verts = [mesh.v(base._pt("right", u, v, .015)) for u, v in points]
+        tip = mesh.v(base._pt("right", x, y, -.065))
+        for j in range(3):
+            mesh.f([verts[j], verts[(j + 1) % 3], tip], "right").material_index = int(j != 1)
     return mesh
 
 
@@ -222,10 +277,11 @@ def packet(obj):
     return base64.b64encode(out).decode()
 
 
-def write_game_data(shells, marks, details):
+def write_game_data(shells, marks, masks, ice):
     path = ROOT / "src/client/Controllers/Dice/ModelData.luau"
     path.parent.mkdir(parents=True, exist_ok=True)
-    rows = ["-- Generated by tools/build_common_variants.py.", "-- stylua: ignore", "return {", "\tLayouts = {"]
+    rows = ["-- Generated by tools/build_common_variants.py.", "-- stylua: ignore", "return {",
+            f"\tTextureSize = {TEXTURE_SIZE},", f'\tIce = "{packet(ice)}",', "\tLayouts = {"]
     for slots in LAYOUTS.values():
         rows.append("\t\t{ " + ", ".join(f"{{ {x:g}, {y:g} }}" for x, y in slots) + " }," if slots else "\t\t{},")
     rows.extend(["\t},", "\tBodies = {"])
@@ -233,10 +289,9 @@ def write_game_data(shells, marks, details):
     rows.extend(["\t},", "\tMarks = {"])
     rows.extend(f'\t\t"{packet(obj)}",' for obj in marks)
     rows.extend(["\t},", "\tStyles = {"])
-    for (name, (body, face, dark, light, fallback)), obj in zip(STYLES.items(), details):
+    for (name, (body, fallback)), mask in zip(STYLES.items(), masks):
         rows.extend([f'\t\t{name[:3]} = {{', f'\t\t\tBody = "{body}",',
-                     f'\t\t\tFace = "{face.title()}",', f'\t\t\tMark = "{fallback}",',
-                     f'\t\t\tColors = {{ "{dark}", "{light}" }},', f'\t\t\tMesh = "{packet(obj)}",', "\t\t},"])
+                     f'\t\t\tMark = "{fallback}",', f'\t\t\tTexture = "{texture_packet(mask)}",', "\t\t},"])
     rows.extend(["\t},", "}", ""])
     path.write_text("\n".join(rows), encoding="utf-8")
 
@@ -279,9 +334,10 @@ def export(scene, folder, name, objects):
     assert result["magic_ok"]
     assert sum(m["tris"] for m in result["meshes"]) == sum(len(o.data.loop_triangles) for o in objects)
     body = [m for m in result["meshes"] if m["node"].endswith("_Body")]
-    assert len(body) == 3 and all("TEXCOORD_0" in m["attributes"] for m in body)
+    assert len(body) == 4 and all("TEXCOORD_0" in m["attributes"] for m in body)
     assert [min(m["min"][i] for m in body) for i in range(3)] == [-1.25] * 3
     assert [max(m["max"][i] for m in body) for i in range(3)] == [1.25] * 3
+    assert b'"baseColorTexture"' in glb.read_bytes()
 
 
 def render(scene, path, direction, size=300):
@@ -303,30 +359,34 @@ def main(full=False):
     body_source = original_body.data.materials[0]
     pip_source = original_pips.data.materials[0]
     shade = [material(body_source, f"Body shade {i}", tint("#C0C0C0", f))
-             for i, f in enumerate((1.0, .79, 1.13))]
+             for i, f in enumerate((1.0, .79, 1.13, 1.13))]
     dark = material(pip_source, "Dark inserts", "#16171B")
     star = [material(pip_source, "Star rim", "#32201A"), material(pip_source, "Star gold", "#FFD65C", .48)]
-    shells, marks, details = [], [], []
+    shells, marks = [], []
     for tier in range(1, 8):
         body, face_marks = shell(original_body, tier)
         shells.append(finish(body, f"Tier {tier} Body", shade))
         marks.append(finish(face_marks, f"Tier {tier} Marks", star if tier == 7 else [dark]))
         verify_body(shells[-1], marks[-1], tier)
-    for name, (_, face, ink, highlight, _) in STYLES.items():
-        paint = [material(body_source, f"{name} ornament {i}", color) for i, color in enumerate((ink, highlight))]
-        details.append(finish(ornaments(name[:3], face), f"{name}_Ornaments", paint))
+    masks = [top_texture(name[:3]) for name in STYLES]
+    painted = [painted_material(body_source, f"{name}_TopDesign", tint(body, 1.13), mask)
+               for (name, (body, _)), mask in zip(STYLES.items(), masks)]
+    ice = finish(ice_accents(), "C06_IceChips", [
+        material(body_source, "Ice facet blue", "#245C8C"),
+        material(body_source, "Ice facet cyan", "#58C9F1"),
+    ])
     if not full:
         scene = bpy.data.scenes.new("Common Variant Review")
         bpy.context.window.scene = scene
-        for i, (name, (body, face, _, _, _)) in enumerate(STYLES.items()):
+        for i, (name, (body, _)) in enumerate(STYLES.items()):
             for row, tier in enumerate((0, 5, 6)):
-                for obj in variant_objects(name, body, shells[tier], marks[tier], details[i], body_source):
+                for obj in variant_objects(name, body, shells[tier], marks[tier], painted[i], ice, body_source):
                     scene.collection.objects.link(obj)
                     obj.location = (i * 3.2, row * 3.2, 0)
         return
-    write_game_data(shells, marks, details)
+    write_game_data(shells, marks, masks, ice)
     prior = bpy.context.window.scene
-    for i, (name, (body, face, _, _, _)) in enumerate(STYLES.items()):
+    for i, (name, (body, _)) in enumerate(STYLES.items()):
         folder = OUTPUT / name
         exports, previews = folder / "exports", folder / "previews"
         exports.mkdir(parents=True, exist_ok=True)
@@ -340,7 +400,7 @@ def main(full=False):
         camera.data.ortho_scale = 4.28
         scene.render.engine = "BLENDER_WORKBENCH"
         scene.display.shading.light = "STUDIO"
-        scene.display.shading.color_type = "MATERIAL"
+        scene.display.shading.color_type = "TEXTURE"
         scene.display.shading.show_shadows = False
         scene.display.shading.show_cavity = True
         scene.display.shading.cavity_type = "BOTH"
@@ -350,12 +410,13 @@ def main(full=False):
         scene.view_settings.view_transform = "Standard"
         scene.render.image_settings.file_format = "PNG"
         scene.render.resolution_percentage = 100
-        report = {"source": "Common.blend", "base_triangles": 2134, "budget": 2400, "tiers": {}}
+        report = {"source": "Common.blend", "base_triangles": 2134, "budget": 2400,
+                  "top_texture_pixels": [TEXTURE_SIZE, TEXTURE_SIZE], "tiers": {}}
         for tier, (shell_obj, mark_obj) in enumerate(zip(shells, marks), 1):
             variant = f"{name}_T{tier}"
             group = bpy.data.collections.new(f"Tier {tier}" if tier < 7 else "Tier 7 - Star")
             scene.collection.children.link(group)
-            objs = variant_objects(variant, body, shell_obj, mark_obj, details[i], body_source)
+            objs = variant_objects(variant, body, shell_obj, mark_obj, painted[i], ice, body_source)
             for obj in objs:
                 group.objects.link(obj)
             counts = {o.name: len(o.data.loop_triangles) for o in objs}
@@ -364,17 +425,14 @@ def main(full=False):
             report["tiers"][tier] = {"pips_per_face": tier if tier < 7 else 0, "stars_per_face": int(tier == 7),
                                       "triangles": total, "difference_from_base": total - 2134, "parts": counts}
             export(scene, exports, variant, objs)
-            beauty = list(VIEWS["three_quarter"])
-            if face == "left":
-                beauty[0] *= -1
-            render(scene, previews / f"T{tier}_three_quarter.png", beauty, 360 if tier == 1 else 180)
+            render(scene, previews / f"T{tier}_three_quarter.png", VIEWS["three_quarter"], 360 if tier == 1 else 180)
             if tier == 1:
                 for label, direction in list(VIEWS.items())[1:]:
                     render(scene, previews / f"T1_{label}.png", direction)
             group.hide_viewport = group.hide_render = True
         first = scene.collection.children[0]
         first.hide_viewport = first.hide_render = False
-        beauty = Vector((-.98 if face == "left" else .98, -1.5, 1.33))
+        beauty = Vector(VIEWS["three_quarter"])
         camera.location = beauty.normalized() * 9
         camera.rotation_euler = (-beauty).to_track_quat("-Z", "Y").to_euler()
         scene.render.resolution_x = scene.render.resolution_y = 720
@@ -385,18 +443,21 @@ def main(full=False):
     bpy.context.window.scene = prior
 
 
-def variant_objects(name, body, shell_obj, mark_obj, ornament_obj, source):
+def variant_objects(name, body, shell_obj, mark_obj, painted, ice, source):
     body_obj = shell_obj.copy()
     body_obj.data = shell_obj.data.copy()
     body_obj.name = f"{name}_Body"
     for i, factor in enumerate((1.0, .79, 1.13)):
         body_obj.data.materials[i] = material(source, f"{name}_Body_{i}", tint(body, factor),
                                              metallic=.22 if name.startswith("C02") else 0)
+    body_obj.data.materials[3] = painted
     marks_obj = mark_obj.copy()
     marks_obj.name = f"{name}_{'Stars' if name.endswith('T7') else 'Pips'}"
-    details_obj = ornament_obj.copy()
-    details_obj.name = f"{name}_Ornaments"
-    return body_obj, marks_obj, details_obj
+    if name.startswith("C06"):
+        chips = ice.copy()
+        chips.name = f"{name}_IceChips"
+        return body_obj, marks_obj, chips
+    return body_obj, marks_obj
 
 
 if __name__ == "__main__":
