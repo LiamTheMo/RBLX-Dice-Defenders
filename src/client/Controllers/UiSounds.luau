@@ -1,4 +1,3 @@
-local ContentProvider = game:GetService("ContentProvider")
 local GuiService = game:GetService("GuiService")
 local Players = game:GetService("Players")
 local SoundService = game:GetService("SoundService")
@@ -10,28 +9,36 @@ local UiSounds = {}
 local HOVER_ID = 79731766423271
 local CLICK_ID = 101198440331061
 
-local function createSound(name: string, id: number): Sound
-	local sound = Instance.new("Sound")
+local function createSound(name: string, id: number, output: AudioDeviceOutput): AudioPlayer
+	local sound = Instance.new("AudioPlayer")
 	sound.Name = name
-	sound.SoundId = "rbxassetid://" .. id
-	sound.Parent = SoundService
+	sound.AutoLoad = true
+	sound.AudioContent = Content.fromUri("rbxassetid://" .. id)
+	sound.Parent = output
+
+	local wire = Instance.new("Wire")
+	wire.SourceInstance = sound
+	wire.TargetInstance = output
+	wire.Parent = sound
 	return sound
 end
 
-local function play(sound: Sound)
+local function play(sound: AudioPlayer, startTime: number)
 	local volume = SettingsLogic.get("masterVolume") * SettingsLogic.get("interfaceVolume") / 10000
-	if volume > 0 and sound.IsLoaded then
+	if volume > 0 and sound.IsReady then
 		sound.Volume = volume
+		sound.TimePosition = startTime
 		sound:Play()
 	end
 end
 
 function UiSounds.Start()
-	local hover = createSound("ButtonHover", HOVER_ID)
-	local click = createSound("UiClick", CLICK_ID)
-	task.spawn(function()
-		ContentProvider:PreloadAsync({ hover, click })
-	end)
+	local output = Instance.new("AudioDeviceOutput")
+	output.Name = "UiAudio"
+	output.Player = Players.LocalPlayer
+	output.Parent = SoundService
+	local hover = createSound("ButtonHover", HOVER_ID, output)
+	local click = createSound("UiClick", CLICK_ID, output)
 
 	local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui") :: PlayerGui
 	local connections: { [Instance]: { RBXScriptConnection } } = {}
@@ -65,22 +72,13 @@ function UiSounds.Start()
 				if UserInputService.PreferredInput == Enum.PreferredInput.KeyboardAndMouse then
 					local inset = GuiService:GetGuiInset()
 					if canPlayAt(button, x - inset.X, y - inset.Y) then
-						play(hover)
+						play(hover, 0)
 					end
 				end
 			end),
-			button.InputBegan:Connect(function(input)
-				if
-					input.UserInputType == Enum.UserInputType.MouseButton1
-					and canPlayAt(button, input.Position.X, input.Position.Y)
-				then
-					play(click)
-				end
-			end),
-			button.Activated:Connect(function(input)
-				if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
-					play(click)
-				end
+			button.Activated:Connect(function()
+				-- The click recording has eight milliseconds of quiet before its attack.
+				play(click, 0.008)
 			end),
 		}
 	end
