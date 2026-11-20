@@ -178,7 +178,7 @@ local function release(shot)
 	else
 		shot.flash.Parent = nil
 	end
-	shot.parent, shot.target = nil, nil
+	shot.parent, shot.target, shot.onImpact = nil, nil, nil
 end
 
 local function borrow(style)
@@ -250,10 +250,10 @@ local function borrow(style)
 	return shot
 end
 
-local function fire(parent, enemy, attack, reducedMotion, style, visualLane)
+local function fire(parent, enemy, attack, reducedMotion, style, visualLane, onImpact: (() -> ())?)
 	local shot = borrow(style)
 	if not shot then
-		return not style.impactOnly
+		return not style.impactOnly, false
 	end
 	local distance = attack.Distance or enemy.speed * (workspace:GetServerTimeNow() - enemy.spawnAt)
 	local center = Layout.PositionAt(distance, enemy.seat, enemy.playerCount) + Vector3.yAxis * enemy.lift
@@ -277,6 +277,7 @@ local function fire(parent, enemy, attack, reducedMotion, style, visualLane)
 	shot.flight = if reducedMotion or style.impactOnly then 0 else (center - from).Magnitude / style.speed
 	shot.elapsed = 0
 	shot.impact = nil
+	shot.onImpact = onImpact
 	local arrival = workspace:GetServerTimeNow() + shot.flight
 	if shot.visuals then
 		shot.enemySeat, shot.playerCount = enemy.seat, enemy.playerCount
@@ -321,20 +322,26 @@ local function fire(parent, enemy, attack, reducedMotion, style, visualLane)
 		end
 	end
 	-- EnemyView still supplies the tracer for impact-only styles.
-	return not style.impactOnly, shot.flight
+	return not style.impactOnly, true
 end
 
-function CommonProjectiles.Fire(parent: Folder, enemy, attack, reducedMotion: boolean): (boolean, number?)
+function CommonProjectiles.Fire(
+	parent: Folder,
+	enemy,
+	attack,
+	reducedMotion: boolean,
+	onImpact: () -> ()
+): (boolean, boolean)
 	local style = styles[attack.Type]
 	if not style or (attack.Distance == nil and not style.impactOnly) then
-		return false, nil
+		return false, false
 	end
-	local handled, flight = fire(parent, enemy, attack, reducedMotion, style, 0)
+	local handled, hasImpact = fire(parent, enemy, attack, reducedMotion, style, 0, onImpact)
 	if attack.Type == "R03" then
-		fire(parent, enemy, attack, reducedMotion, style, -1)
-		fire(parent, enemy, attack, reducedMotion, style, 1)
+		fire(parent, enemy, attack, reducedMotion, style, -1, nil)
+		fire(parent, enemy, attack, reducedMotion, style, 1, nil)
 	end
-	return handled, flight
+	return handled, hasImpact
 end
 
 local function startSlowMarker(target: BasePart, expiresAt: number?)
@@ -368,6 +375,10 @@ local function advance(shot, dt: number, camera: Camera)
 		shot.impact = if shot.visuals
 			then CFrame.lookAt(surface, camera.CFrame.Position)
 			else camera.CFrame.Rotation + surface
+		if shot.onImpact then
+			shot.onImpact()
+			shot.onImpact = nil
+		end
 		stopTrail(shot)
 		if shot.dot then
 			shot.dot.Parent = nil

@@ -144,13 +144,12 @@ local function fire(record)
 		return
 	end
 	local effectsEnabled = SettingsLogic.get("projectileEffects")
-	local handled, flight
+	local handled, hasImpact
 	if effectsEnabled then
-		handled, flight = CommonProjectiles.Fire(tracerFolder, e, record, SettingsLogic.get("reducedMotion"))
+		handled, hasImpact =
+			CommonProjectiles.Fire(tracerFolder, e, record, SettingsLogic.get("reducedMotion"), playHitSound)
 	end
-	if flight and flight > 0 then
-		task.delay(flight, playHitSound)
-	else
+	if not hasImpact then
 		playHitSound()
 	end
 	if handled or not effectsEnabled then
