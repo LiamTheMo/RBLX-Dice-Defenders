@@ -1,8 +1,11 @@
 -- Client-only enemy parts. Position is a pure function of the server's SpawnAt and
 -- Speed; HP, hits and deaths come from the Enemies batches. Presentation only.
 
+local ContentProvider = game:GetService("ContentProvider")
+local Debris = game:GetService("Debris")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local SoundService = game:GetService("SoundService")
 
 local Display = require(ReplicatedStorage.Shared.Display)
 local Layout = require(ReplicatedStorage.Shared.Layout)
@@ -16,6 +19,15 @@ local EnemyView = {}
 local SIZES = { Grunt = 2.4, Runner = 1.8, Brute = 3.4, Boss = 7 }
 local TRACER_MAX = 40
 local TRACER_SECONDS = 0.12
+
+local HIT_SOUND_IDS = {
+	137311773217221,
+	133795882687598,
+	102620085358378,
+	140713736704839,
+	123601195410256,
+}
+local hitSounds: { Sound } = {}
 
 local enemies = {} -- id -> { part, fill, spawnAt, speed, maxHp, lift }
 local folder: Folder
@@ -111,12 +123,37 @@ local function tracer()
 	return t
 end
 
-local function fire(record)
-	local e = enemies[record.Id]
-	if e == nil or not SettingsLogic.get("projectileEffects") then
+local function playHitSound()
+	local volume = SettingsLogic.get("masterVolume") * SettingsLogic.get("sfxVolume") / 10000
+	if volume == 0 then
 		return
 	end
-	if CommonProjectiles.Fire(tracerFolder, e, record, SettingsLogic.get("reducedMotion")) then
+	local sound = hitSounds[math.random(#hitSounds)]:Clone()
+	sound.Volume = volume
+	sound.Parent = SoundService
+	sound.Ended:Once(function()
+		sound:Destroy()
+	end)
+	Debris:AddItem(sound, 5)
+	sound:Play()
+end
+
+local function fire(record)
+	local e = enemies[record.Id]
+	if e == nil then
+		return
+	end
+	local effectsEnabled = SettingsLogic.get("projectileEffects")
+	local handled, flight
+	if effectsEnabled then
+		handled, flight = CommonProjectiles.Fire(tracerFolder, e, record, SettingsLogic.get("reducedMotion"))
+	end
+	if flight and flight > 0 then
+		task.delay(flight, playHitSound)
+	else
+		playHitSound()
+	end
+	if handled or not effectsEnabled then
 		return
 	end
 	local from = Layout.CellPosition(record.Cell, record.Seat, record.PlayerCount) + Vector3.new(0, 3, 0)
@@ -185,6 +222,16 @@ local function clearEffects()
 end
 
 function EnemyView.Start()
+	for _, id in HIT_SOUND_IDS do
+		local sound = Instance.new("Sound")
+		sound.Name = "DiceHit"
+		sound.SoundId = "rbxassetid://" .. id
+		table.insert(hitSounds, sound)
+	end
+	task.spawn(function()
+		ContentProvider:PreloadAsync(hitSounds)
+	end)
+
 	local root = workspace:FindFirstChild("ClientWorld")
 	if root == nil then
 		root = Instance.new("Folder")

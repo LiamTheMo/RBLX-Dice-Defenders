@@ -20,7 +20,15 @@ test("registry", function()
 		expectEq(perTab[tab], n, tab)
 	end
 	expectEq(table.concat(SettingsLogic.TABS, ","), "GAMEPLAY,GRAPHICS,AUDIO,MISC", "tab order")
-	local want = { shadows = true, uiScale = true, reducedMotion = true, showFps = true, projectileEffects = true }
+	local want = {
+		shadows = true,
+		uiScale = true,
+		reducedMotion = true,
+		showFps = true,
+		projectileEffects = true,
+		masterVolume = true,
+		sfxVolume = true,
+	}
 	for id in want do
 		expect(real[id], "real " .. id)
 	end

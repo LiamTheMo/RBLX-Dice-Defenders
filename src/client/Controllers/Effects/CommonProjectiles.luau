@@ -321,20 +321,20 @@ local function fire(parent, enemy, attack, reducedMotion, style, visualLane)
 		end
 	end
 	-- EnemyView still supplies the tracer for impact-only styles.
-	return not style.impactOnly
+	return not style.impactOnly, shot.flight
 end
 
-function CommonProjectiles.Fire(parent: Folder, enemy, attack, reducedMotion: boolean): boolean
+function CommonProjectiles.Fire(parent: Folder, enemy, attack, reducedMotion: boolean): (boolean, number?)
 	local style = styles[attack.Type]
 	if not style or (attack.Distance == nil and not style.impactOnly) then
-		return false
+		return false, nil
 	end
-	local handled = fire(parent, enemy, attack, reducedMotion, style, 0)
+	local handled, flight = fire(parent, enemy, attack, reducedMotion, style, 0)
 	if attack.Type == "R03" then
 		fire(parent, enemy, attack, reducedMotion, style, -1)
 		fire(parent, enemy, attack, reducedMotion, style, 1)
 	end
-	return handled
+	return handled, flight
 end
 
 local function startSlowMarker(target: BasePart, expiresAt: number?)
