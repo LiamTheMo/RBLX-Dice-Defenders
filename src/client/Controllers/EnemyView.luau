@@ -2,7 +2,6 @@
 -- Speed; HP, hits and deaths come from the Enemies batches. Presentation only.
 
 local ContentProvider = game:GetService("ContentProvider")
-local Debris = game:GetService("Debris")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
@@ -27,7 +26,8 @@ local HIT_SOUND_IDS = {
 	95245854884813,
 	105804138468545,
 }
-local hitSounds: { Sound } = {}
+local HIT_VOICES_PER_CLIP = 4
+local hitSounds: { { Sound } } = {}
 
 local enemies = {} -- id -> { part, fill, spawnAt, speed, maxHp, lift }
 local folder: Folder
@@ -128,14 +128,24 @@ local function playHitSound()
 	if volume == 0 then
 		return
 	end
-	local sound = hitSounds[math.random(#hitSounds)]:Clone()
-	sound.Volume = volume
-	sound.Parent = SoundService
-	sound.Ended:Once(function()
-		sound:Destroy()
-	end)
-	Debris:AddItem(sound, 5)
-	sound:Play()
+	local sounds = hitSounds[math.random(#hitSounds)]
+	local voice
+	for _, sound in sounds do
+		if sound.IsLoaded then
+			if not sound.IsPlaying then
+				voice = sound
+				break
+			end
+			if not voice or sound.TimePosition > voice.TimePosition then
+				voice = sound
+			end
+		end
+	end
+	-- shortcut: restart the oldest voice if all four overlap, increase the count if bursts cut off clips.
+	if voice then
+		voice.Volume = volume
+		voice:Play()
+	end
 end
 
 local function fire(record)
@@ -221,14 +231,21 @@ local function clearEffects()
 end
 
 function EnemyView.Start()
-	for _, id in HIT_SOUND_IDS do
-		local sound = Instance.new("Sound")
-		sound.Name = "DiceHit"
-		sound.SoundId = "rbxassetid://" .. id
-		table.insert(hitSounds, sound)
+	local soundsToPreload = {}
+	for index, id in HIT_SOUND_IDS do
+		local voices = {}
+		hitSounds[index] = voices
+		for _ = 1, HIT_VOICES_PER_CLIP do
+			local sound = Instance.new("Sound")
+			sound.Name = "DiceHit"
+			sound.SoundId = "rbxassetid://" .. id
+			sound.Parent = SoundService
+			table.insert(voices, sound)
+			table.insert(soundsToPreload, sound)
+		end
 	end
 	task.spawn(function()
-		ContentProvider:PreloadAsync(hitSounds)
+		ContentProvider:PreloadAsync(soundsToPreload)
 	end)
 
 	local root = workspace:FindFirstChild("ClientWorld")
