@@ -28,6 +28,7 @@ test("registry", function()
 		projectileEffects = true,
 		masterVolume = true,
 		sfxVolume = true,
+		interfaceVolume = true,
 	}
 	for id in want do
 		expect(real[id], "real " .. id)
