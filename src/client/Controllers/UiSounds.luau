@@ -35,6 +35,22 @@ function UiSounds.Start()
 
 	local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui") :: PlayerGui
 	local connections: { [Instance]: { RBXScriptConnection } } = {}
+
+	local function canPlayAt(button: GuiButton, x: number, y: number): boolean
+		if not (button.Active and button.Interactable) then
+			return false
+		end
+		-- GUI pointer events can also fire on buttons underneath other controls.
+		for _, target in playerGui:GetGuiObjectsAtPosition(x, y) do
+			if target == button then
+				return true
+			end
+			if target.Active and (not target:IsA("GuiButton") or target.Interactable) then
+				break
+			end
+		end
+		return false
+	end
 	local function bind(button: Instance)
 		if not button:IsA("GuiButton") or connections[button] then
 			return
@@ -46,26 +62,25 @@ function UiSounds.Start()
 
 		connections[button] = {
 			button.MouseEnter:Connect(function(x, y)
-				if
-					not (button.Active and button.Interactable)
-					or UserInputService.PreferredInput ~= Enum.PreferredInput.KeyboardAndMouse
-				then
-					return
-				end
-				local inset = GuiService:GetGuiInset()
-				-- MouseEnter also fires on buttons underneath other controls.
-				for _, target in playerGui:GetGuiObjectsAtPosition(x - inset.X, y - inset.Y) do
-					if target == button then
+				if UserInputService.PreferredInput == Enum.PreferredInput.KeyboardAndMouse then
+					local inset = GuiService:GetGuiInset()
+					if canPlayAt(button, x - inset.X, y - inset.Y) then
 						play(hover)
-						break
-					end
-					if target.Active and (not target:IsA("GuiButton") or target.Interactable) then
-						break
 					end
 				end
 			end),
-			button.Activated:Connect(function()
-				play(click)
+			button.InputBegan:Connect(function(input)
+				if
+					input.UserInputType == Enum.UserInputType.MouseButton1
+					and canPlayAt(button, input.Position.X, input.Position.Y)
+				then
+					play(click)
+				end
+			end),
+			button.Activated:Connect(function(input)
+				if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+					play(click)
+				end
 			end),
 		}
 	end
