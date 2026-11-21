@@ -15,7 +15,7 @@ local SIZE_SCALE = ProjectileScale.Flight
 local IMPACT_SCALE = ProjectileScale.Impact
 local IMPACT_BASE = ProjectileScale.FlightLegacy
 local OUTLINE_SCALE = IMPACT_BASE * IMPACT_SCALE * 0.65
-local FADE_SECONDS = 0.30
+local FADE_SECONDS = 0.40
 local WHITE = Color3.new(1, 1, 1)
 local styles = {
 	C01 = {
@@ -71,7 +71,7 @@ local styles = {
 		halo = 0.25,
 		trail = true,
 		outline = CommonImpactMeshes.Twinshot,
-		outlineScale = 0.85,
+		outlineScale = 1.1,
 		pool = {},
 	},
 	C05 = {

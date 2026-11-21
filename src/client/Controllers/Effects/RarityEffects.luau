@@ -395,7 +395,9 @@ local function showRing(rim, position, diameter, opacity, thickness)
 	rim.stroke.Parent.Size = size
 	rim.glow.Parent.Size = size
 	rim.stroke.Transparency = 1 - opacity
-	rim.stroke.Thickness = if thickness then thickness * ProjectileScale.RingWeight else 5 * ProjectileScale.RingWeight / ProjectileScale.ImpactWeight
+	rim.stroke.Thickness = if thickness
+		then thickness * ProjectileScale.RingWeight
+		else 5 * ProjectileScale.RingWeight / ProjectileScale.ImpactWeight
 	rim.glow.Transparency = 1 - opacity * 0.24
 	rim.glow.Thickness = rim.stroke.Thickness + 6
 	rim.canvas.Enabled = true
