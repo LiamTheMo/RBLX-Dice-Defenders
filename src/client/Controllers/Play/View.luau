@@ -152,6 +152,9 @@ end
 
 -- The big green button (Play_Start art, live label): normal / hover / pressed (Parts.interact) and disabled (dim).
 local function bigButton(parent, text: string, w: number, h: number, cx: number, cy: number, z: number)
+	-- The art keeps its aspect, so its real box is the largest START_ASP rectangle inside w x h; the label is laid out in that box.
+	local aw = math.min(w, h * START_ASP)
+	w, h = aw, aw / START_ASP
 	local btn = make("ImageButton", {
 		Name = "Start",
 		BackgroundTransparency = 1,
