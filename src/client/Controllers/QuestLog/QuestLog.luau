@@ -23,7 +23,7 @@ local Mastery = require(script.Parent.Tabs.Mastery)
 local ACTION = "QuestLogClose"
 local DAY = 86400
 
-local PLACEHOLDERS = { "Search quests...", "Search dice mastery...", "Search achievements..." } -- tab order: QUESTS, MASTERY, ACHIEVEMENTS
+local PLACEHOLDERS = { "Search", "Search", "Search" } -- tab order: QUESTS, MASTERY, ACHIEVEMENTS
 local OPTIONS = {
 	{ Id = "All", Label = "All Quests" },
 	{ Id = "Daily", Label = "Daily" },

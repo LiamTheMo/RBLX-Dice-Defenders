@@ -10,7 +10,7 @@ Cosmetics.Label = "COSMETICS"
 Cosmetics.Icon = "IconCrown"
 Cosmetics.Fallback = "IconCrown"
 Cosmetics.Grid = "Cosmetics"
-Cosmetics.Placeholder = "Search cosmetics..."
+Cosmetics.Placeholder = "Search"
 Cosmetics.SortOptions = {
 	{ Id = "Rarity", Label = "Rarity (High to Low)" },
 	{ Id = "Name", Label = "Name" },

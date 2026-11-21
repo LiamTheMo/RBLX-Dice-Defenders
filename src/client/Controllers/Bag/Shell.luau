@@ -14,6 +14,7 @@ local Parts = require(script.Parent.Parts)
 local Chrome = require(script.Parent.Chrome)
 local SettingsLogic = require(script.Parent.Parent.Settings.SettingsLogic)
 local Shared = require(script.Parent.Parent.SharedSprites)
+local UiSounds = require(script.Parent.Parent.UiSounds)
 
 local make = UiKit.make
 local Z = 20 -- root; Sibling ZIndex (descendants always >= their parent)
@@ -262,11 +263,11 @@ function Shell.new(parent, deps)
 			grid:SetAttribute("FooterInset", FOOTER_H + GAP - LEFT_PANEL_BOTTOM_INSET) -- Cosmetics sizes its cards as if the Dice footer were shown
 			local fx = if compact then 0 else 7 -- mockup: grid x 313, strip x 309 (panel x 302)
 			local footerY = contentH - FOOTER_H + (if compact then 0 else 2)
-			grid.Position = UDim2.fromOffset(if compact then 3 else 11, TOOLBAR_H)
+			grid.Position = UDim2.fromOffset(if compact then 3 else fx, TOOLBAR_H) -- Full: same left/right edges as the loadout strip
 			grid.Size = if compact
 				then UDim2.fromOffset(leftW - 6, leftH - TOOLBAR_H - (if self._footerOn then minD + 12 else GRID_INSET))
 				else UDim2.fromOffset(
-					leftW - 17,
+					leftW - 15,
 					(if self._footerOn then footerY - GRID_INSET else contentH - 26) - TOOLBAR_H
 				)
 			footer.Position = UDim2.fromOffset(fx, footerY) -- compact: an overlay on the panel bottom
@@ -495,6 +496,7 @@ function Shell:Open()
 	if self.Bag.Visible then
 		return
 	end
+	UiSounds.MenuOpened()
 	self.Bag.Visible = true -- before Fit (same frame, no flash): only a visible menu places the shared bag row
 	self:Fit()
 	if SettingsLogic.get("reducedMotion") then
@@ -519,6 +521,7 @@ function Shell:Close()
 		focused:ReleaseFocus()
 	end
 	self.Bag.Visible = false
+	UiSounds.MenuClosed()
 	self.CloseButton:SetAttribute("DebugState", nil) -- a hidden Hit may miss MouseLeave: never reopen with the X stuck in Hover / Pressed
 	for _, cb in self._onClose do
 		cb()

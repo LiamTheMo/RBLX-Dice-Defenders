@@ -47,8 +47,9 @@ local PILL_END = 148 -- visible bar starts here: fill = under-pill part + fracti
 local FILL_H = 30
 
 -- Closed / menu open: coin row centre and slot centre as distance above the bottom edge, slot width, slot pitch.
-local CLOSED = { row = 194, deck = 98, slot = 112, pitch = 133 }
-local OPEN = { row = 154.5, deck = 71, slot = 104, pitch = 131 }
+-- Closed uses the menu-open look too, so the bottom row never shifts when a menu opens.
+local OPEN = { row = 154.5, deck = 71, slot = 104, pitch = 112 }
+local CLOSED = OPEN
 -- The Shell window (1112x666) sits at y 86..752 at 941 tall: its region ends 103 design px above the bottom.
 local WINDOW_BOTTOM_GAP, WINDOW_LEFT = 103, 274
 
@@ -89,7 +90,7 @@ local function size(name: string, k: number): UDim2
 	return UDim2.fromOffset(n[1] * k, n[2] * k)
 end
 
--- Tile / gear button: a transparent hit box with the whole art inside. Normal, hover (scale + sheen), pressed (scale + dim), disabled (grey).
+-- Tile / gear button: a transparent hit box with the whole art inside. Normal, hover (scale), pressed (scale + dim), disabled (grey).
 local function artButton(parent, o)
 	local btn = make("ImageButton", {
 		Name = o.Name,
@@ -111,25 +112,8 @@ local function artButton(parent, o)
 		ZIndex = 3,
 	}, btn)
 	local scale = make("UIScale", {}, art)
-	local sheen = make("Frame", {
-		Name = "Sheen",
-		BackgroundColor3 = WHITE,
-		BackgroundTransparency = 0.87,
-		BorderSizePixel = 0,
-		Size = UDim2.fromScale(1, 1),
-		ZIndex = 4,
-	}, art)
-	corner(sheen, UDim.new(0, o.Radius))
 	UiKit.wire(btn, function(state)
-		local on = btn.Interactable
-		art.ImageColor3 = if not on
-			then Color3.fromRGB(150, 150, 160)
-			elseif state == "Pressed" then Color3.fromRGB(205, 205, 205)
-			else WHITE
-		art.ImageTransparency = if on then 0 else 0.35
-		sheen.Visible = on and state ~= "Pressed" -- constant light wash lifts the tile ~25 RGB to the mockup; hover adds more
-		sheen.BackgroundTransparency = if state == "Hover" then 0.78 else 0.87
-		scale.Scale = if not on then 1 elseif state == "Pressed" then 0.93 elseif state == "Hover" then 1.07 else 1
+		UiKit.feel(art, scale, state, btn.Interactable)
 	end)
 	btn.Activated:Connect(o.OnClick)
 	return btn
@@ -393,17 +377,6 @@ function LobbyHud.build(parent, cb)
 			ZIndex = 3,
 		}, slot)
 		local bodyScale = make("UIScale", {}, body)
-		local glow = make("ImageLabel", {
-			Name = "Glow",
-			BackgroundTransparency = 1,
-			Image = Sprites.Hud.SlotGlow,
-			ScaleType = Enum.ScaleType.Fit,
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.fromScale(0.5, 0.5),
-			Size = UDim2.fromScale(NATIVE.SlotGlow[1] / NATIVE.Slot[1], NATIVE.SlotGlow[2] / NATIVE.Slot[2]),
-			Visible = false,
-			ZIndex = 3,
-		}, body)
 		local frame = make("ImageLabel", {
 			Name = "Frame",
 			BackgroundTransparency = 1,
@@ -438,9 +411,10 @@ function LobbyHud.build(parent, cb)
 		local refresh = UiKit.wire(slot, function(state)
 			local loading = slot:GetAttribute("Loading")
 			frame.Image = if loading then Sprites.Hud.SlotGrey else Sprites.Hud.Slot
-			frame.ImageColor3 = if state == "Pressed" then Color3.fromRGB(200, 200, 200) else WHITE
-			glow.Visible = state == "Hover" and not loading
-			bodyScale.Scale = if state == "Pressed" then 0.94 else 1
+			UiKit.feel(frame, bodyScale, state, true)
+			if loading then -- the grey frame is the loading look: no tint, no hover
+				frame.ImageColor3, bodyScale.Scale = WHITE, 1
+			end
 			plus.Visible = not loading and slot:GetAttribute("Empty") == true
 		end)
 		slot:GetAttributeChangedSignal("Empty"):Connect(refresh)

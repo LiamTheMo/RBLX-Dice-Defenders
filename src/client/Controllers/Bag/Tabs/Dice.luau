@@ -12,7 +12,7 @@ Dice.Label = "DICE"
 Dice.Icon = "IconDice"
 Dice.Fallback = Sprites.Icon.Roll -- tinted glyph for dice without art
 Dice.Grid = "Dice"
-Dice.Placeholder = "Search dice..."
+Dice.Placeholder = "Search"
 Dice.SortOptions = {
 	{ Id = "Rarity", Label = "Rarity" },
 	{ Id = "Level", Label = "Level" },

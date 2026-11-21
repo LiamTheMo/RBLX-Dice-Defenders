@@ -10,7 +10,7 @@ Materials.Label = "MATERIALS"
 Materials.Icon = "IconCrystals"
 Materials.Fallback = "IconCrystals"
 Materials.Grid = "Materials"
-Materials.Placeholder = "Search materials..."
+Materials.Placeholder = "Search"
 Materials.SortOptions = {
 	{ Id = "Rarity", Label = "Rarity" },
 	{ Id = "Quantity", Label = "Quantity (High to Low)" },

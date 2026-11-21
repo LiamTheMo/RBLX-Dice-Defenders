@@ -198,6 +198,7 @@ function Quests.new(parent)
 			claimButton(btn, row, claimX, cy, claimW, claimH, if narrow then 17 else 21)
 		elseif state == "Claimed" then
 			local pill = Parts.Pill(btn, "Equipped", "CLAIMED", {
+				Check = true,
 				Name = "Claimed",
 				InkW = claimW,
 				InkH = if narrow then 26 else 30,

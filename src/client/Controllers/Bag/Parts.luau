@@ -183,7 +183,7 @@ function Parts.Pill(parent, style: string, str: string, o)
 	o = o or {}
 	local size = o.TextSize or 15
 	local h = o.InkH or o.H or 22
-	local equipped = style == "Equipped"
+	local equipped = style == "Equipped" and o.Check == true -- the white tick is opt-in (CLAIMED keeps it, EQUIPPED tags do not)
 	local deco = equipped or o.Icon ~= nil
 	local left = o.CheckLeft or o.Icon ~= nil
 	local markS = if deco then math.floor(h * (if equipped then (o.MarkK or 0.5) + 0.1 else 0.6)) else 0
@@ -355,7 +355,7 @@ end
 -- Toolbar -----------------------------------------------------------------------------------------------
 
 -- Search/sort: visible ink 40 px tall as in the reference, so the box is 40 / ink fraction (54); menu rows stay touch-size.
-local PLACEHOLDER_FONT = Font.new("rbxasset://fonts/families/Nunito.json", Enum.FontWeight.SemiBold)
+local PLACEHOLDER_FONT = Font.fromEnum(FONT) -- the usual game font, same as the typed text
 local CONTROL_H, SORT_ROW = 42, 56 -- mockup search / sort boxes are 42 tall
 local SORT_W, SEARCH_W = 226, 413 -- mockup box widths (Sort grows with its label)
 local COUNT_W = 84 -- the "24 / 60" counter right of the sort field (Cosmetics)
@@ -395,7 +395,7 @@ function Parts.Toolbar(parent)
 		Font = FONT,
 		TextSize = 32,
 		TextColor3 = WHITE,
-		PlaceholderColor3 = Color3.fromRGB(196, 169, 180), -- light mauve (reference #C4A9B4)
+		PlaceholderColor3 = Color3.fromRGB(160, 160, 168), -- neutral gray (same as the quest log search)
 		Text = "",
 		PlaceholderText = "Search",
 		TextXAlignment = Enum.TextXAlignment.Left,
@@ -648,8 +648,8 @@ local GRIDS = {
 	},
 }
 local CARD_M = 5 -- card sprite transparent margin (both sides) at SliceScale 0.5: box = visible card + 5
-local GLOW_X, GLOW_Y = 8, 4 -- the CanvasGroup/scroll window extends this far past the cards so the selected glow is never clipped
-local FULL_L, FULL_R = 4, 4 -- Full grid: card ink area inside the panel; the scrollbar ink sits at W - 19
+local GLOW_X, GLOW_Y = 16, 4-- the CanvasGroup/scroll window extends this far past the cards so the selected glow is never clipped
+local FULL_L, FULL_R = 0, 14 -- Full grid: the slot matches the loadout strip, so card ink starts at its left rim; the right 14 px hold the 6 px scrollbar
 local BOT, TOP = 4, 10 -- Full: first row starts TOP below the toolbar; visible rows end BOT above the slot bottom
 -- Concentric stroke ring: sits grow px outside the parent frame's edge, drawn thick px wide.
 local function glowRing(parent, grow: number, thick: number, color: Color3, transparency: number, radius: number)
@@ -1013,7 +1013,7 @@ function Parts.Grid(parent)
 		layout.CellPadding = UDim2.fromOffset(gx - m, gy - m)
 		-- Rows are left-aligned (a lone result sits in column 1); the whole column block is centred by padding.
 		local pad = (if compact then side + lead else FULL_L - math.floor(m / 2))
-			+ math.floor((inner - (cols * cardW + (cols - 1) * gx)) / 2)
+			+ (if compact then math.floor((inner - (cols * cardW + (cols - 1) * gx)) / 2) else 0) -- Full: always flush left
 		gridPad.PaddingLeft = UDim.new(0, pad + GLOW_X)
 		gridPad.PaddingRight = UDim.new(0, GLOW_X) -- the cells need the full width: only the glow margin is kept on the right
 		local barW = if compact then 8 else 6 -- Full: a thin thumb at the grid edge

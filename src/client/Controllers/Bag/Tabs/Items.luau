@@ -10,7 +10,7 @@ Items.Label = "ITEMS"
 Items.Icon = "IconPotion"
 Items.Fallback = "IconPotion"
 Items.Grid = "Items"
-Items.Placeholder = "Search items..."
+Items.Placeholder = "Search"
 Items.SortOptions = {
 	{ Id = "Rarity", Label = "Rarity" },
 	{ Id = "Quantity", Label = "Quantity (High to Low)" },
