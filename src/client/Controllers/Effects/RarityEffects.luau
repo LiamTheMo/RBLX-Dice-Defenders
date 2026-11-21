@@ -227,7 +227,7 @@ function RarityEffects.Create(style, dot)
 		local edge = profile[6] or style.streak
 		local near = edge:Lerp(style.burstColor, if i == 1 then 0.75 else 0.26)
 		local ribbon =
-			beam(ribbonAnchor, ColorSequence.new(near, edge), profile[2] * FLIGHT_SCALE, 0.06, profile[5] or 0)
+			beam(ribbonAnchor, ColorSequence.new(near, edge), profile[2] * FLIGHT_SCALE * 1.8, 0.06, profile[5] or 0)
 		fadeRibbon(ribbon, if i == 1 then 0.94 else 0.69, 0)
 		visuals.ribbons[i] = ribbon
 	end
@@ -336,14 +336,14 @@ function RarityEffects.Travel(shot, position, progress)
 		poseMesh(visuals.core, Meshes[shape], pose, FLIGHT_SCALE, 1)
 	end
 	if visuals.flightGlow then
-		Textures.Show(visuals.flightGlow, position, (if shape == "Star" then 2.6 else 2.15) * FLIGHT_SCALE, 0.75)
+		Textures.Show(visuals.flightGlow, position, (if shape == "Star" then 3.4 else 2.85) * FLIGHT_SCALE, 0.75)
 	else
 		show(visuals.halo, frame, Vector3.one * (0.97 * FLIGHT_SCALE), if shape == "Orb" then 0.27 else 0.12)
 	end
-	local reach = math.min(progress * (shot.surface - shot.from).Magnitude, 4) * FLIGHT_SCALE
+	local reach = math.min(progress * (shot.surface - shot.from).Magnitude, 6) * FLIGHT_SCALE
 	for i, ribbon in visuals.ribbons do
 		local profile = TAILS[style.name][i]
-		local length = math.min(reach, profile[1] * FLIGHT_SCALE)
+		local length = math.min(reach, profile[1] * FLIGHT_SCALE * 1.5)
 		local side = profile[3] * FLIGHT_SCALE
 		local height = profile[4] * FLIGHT_SCALE
 		ribbon.near.WorldCFrame = frame.Rotation
@@ -395,7 +395,7 @@ local function showRing(rim, position, diameter, opacity, thickness)
 	rim.stroke.Parent.Size = size
 	rim.glow.Parent.Size = size
 	rim.stroke.Transparency = 1 - opacity
-	rim.stroke.Thickness = if thickness then thickness * ProjectileScale.ImpactWeight else 5
+	rim.stroke.Thickness = if thickness then thickness * ProjectileScale.RingWeight else 5 * ProjectileScale.RingWeight / ProjectileScale.ImpactWeight
 	rim.glow.Transparency = 1 - opacity * 0.24
 	rim.glow.Thickness = rim.stroke.Thickness + 6
 	rim.canvas.Enabled = true

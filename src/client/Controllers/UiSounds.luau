@@ -6,8 +6,9 @@ local UserInputService = game:GetService("UserInputService")
 local SettingsLogic = require(script.Parent.Settings.SettingsLogic)
 
 local UiSounds = {}
-local HOVER_ID = 79731766423271
-local CLICK_ID = 101198440331061
+local HOVER_ID = 112701955250844
+local DOWN_ID = 100773009428944
+local UP_ID = 113165255820936
 
 local function createSound(name: string, id: number, output: AudioDeviceOutput): AudioPlayer
 	local sound = Instance.new("AudioPlayer")
@@ -38,7 +39,8 @@ function UiSounds.Start()
 	output.Player = Players.LocalPlayer
 	output.Parent = SoundService
 	local hover = createSound("ButtonHover", HOVER_ID, output)
-	local click = createSound("UiClick", CLICK_ID, output)
+	local down = createSound("UiDown", DOWN_ID, output)
+	local up = createSound("UiUp", UP_ID, output)
 
 	local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui") :: PlayerGui
 	local connections: { [Instance]: { RBXScriptConnection } } = {}
@@ -76,9 +78,11 @@ function UiSounds.Start()
 					end
 				end
 			end),
-			button.Activated:Connect(function()
-				-- The click recording has eight milliseconds of quiet before its attack.
-				play(click, 0.008)
+			button.MouseButton1Down:Connect(function()
+				play(down, 0)
+			end),
+			button.MouseButton1Up:Connect(function()
+				play(up, 0)
 			end),
 		}
 	end

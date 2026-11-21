@@ -13,7 +13,8 @@ local CommonProjectiles = {}
 local MAX_SHOTS = 40
 local SIZE_SCALE = ProjectileScale.Flight
 local IMPACT_SCALE = ProjectileScale.Impact
-local OUTLINE_SCALE = SIZE_SCALE * IMPACT_SCALE * 0.65
+local IMPACT_BASE = ProjectileScale.FlightLegacy
+local OUTLINE_SCALE = IMPACT_BASE * IMPACT_SCALE * 0.65
 local FADE_SECONDS = 0.30
 local WHITE = Color3.new(1, 1, 1)
 local styles = {
@@ -24,7 +25,10 @@ local styles = {
 		size = 0.20,
 		flash = 0.055,
 		core = 1.18,
+		halo = 0.25,
 		flashColor = Color3.fromHex("#D9D9D9"),
+		trail = true,
+		trailColor = Color3.fromHex("#BEBEBE"),
 		ring = Color3.fromHex("#8F8F8F"),
 		pool = {},
 	},
@@ -226,7 +230,7 @@ local function borrow(style)
 		elseif style.detail == "Crystal" or style.name == "Arc" then 2
 		else 1
 	for i = 1, count do
-		local width = Vector3.yAxis * SIZE_SCALE * (if style.detail then 0.023 else 0.028)
+		local width = Vector3.yAxis * SIZE_SCALE * (if style.detail then 0.045 else 0.055)
 		local offset = Vector3.xAxis * ((i - (count + 1) / 2) * 0.24)
 		local top, bottom = Instance.new("Attachment"), Instance.new("Attachment")
 		top.Position, bottom.Position = offset + width, offset - width
@@ -234,13 +238,13 @@ local function borrow(style)
 		local trail = Instance.new("Trail")
 		trail.Attachment0, trail.Attachment1 = top, bottom
 		trail.FaceCamera = true
-		trail.Lifetime = 0.055
-		trail.MaxLength = SIZE_SCALE * (if style.detail then 0.9 elseif style.name == "Hammer" then 0.61 else 0.42)
-		trail.LightEmission = 0.2
+		trail.Lifetime = 0.12
+		trail.MaxLength = SIZE_SCALE * (if style.detail then 1.8 elseif style.name == "Hammer" then 1.2 else 0.9)
+		trail.LightEmission = 0.6
 		trail.Color = if style.streak
 			then ColorSequence.new(style.streak:Lerp(style.burstColor, 0.32), style.streak:Lerp(style.accent, 0.35))
 			else ColorSequence.new(style.trailColor or style.color)
-		trail.Transparency = NumberSequence.new(if style.detail then 0.38 else 0.48, 1)
+		trail.Transparency = NumberSequence.new(if style.detail then 0.1 else 0.12, 1)
 		trail.WidthScale = NumberSequence.new(1, 0)
 		trail.Enabled = false
 		trail.Parent = dot
@@ -312,7 +316,7 @@ local function fire(parent, enemy, attack, reducedMotion, style, visualLane, onI
 		shot.dot.CFrame = if shot.visuals then shot.travelFrame + shot.from else CFrame.new(shot.from)
 		shot.dot.Parent = parent
 		if shot.travelGlow then
-			Textures.Show(shot.travelGlow, shot.from, shot.dot.Size.X * 2.4, style.halo)
+			Textures.Show(shot.travelGlow, shot.from, shot.dot.Size.X * 3.2, style.halo)
 		end
 		for _, trail in shot.trails do
 			trail.Enabled = true
@@ -405,7 +409,7 @@ local function advance(shot, dt: number, camera: Camera)
 	local coreScale = if shot.reducedMotion then 1 else 1.12 - coreProgress * 0.36
 	local color = style.flashColor or style.color
 	shot.flash.CFrame = shot.impact
-	shot.flash.Size = Vector3.one * (style.size * SIZE_SCALE * IMPACT_SCALE * coreScale * (style.core or 1))
+	shot.flash.Size = Vector3.one * (style.size * IMPACT_BASE * IMPACT_SCALE * coreScale * (style.core or 1))
 	shot.flash.Color = color
 	local coreOpacity = strength * (1 - coreProgress) ^ (if shot.reducedMotion then 1.65 else 1.25)
 	shot.flash.Transparency = 1 - coreOpacity
@@ -416,7 +420,7 @@ local function advance(shot, dt: number, camera: Camera)
 		local ringProgress = if shot.reducedMotion then 0.5 else age / FADE_SECONDS
 		local radius = IMPACT_SCALE * (0.27 + 0.83 * (1 - (1 - ringProgress) ^ 2))
 		local intensity = if style.name == "Spark" then 0.70 else 1
-		showRing(shot.ring, radius, intensity * strength * (1 - age / FADE_SECONDS) ^ 1.4, ProjectileScale.ImpactWeight)
+		showRing(shot.ring, radius, intensity * strength * (1 - age / FADE_SECONDS) ^ 1.4, ProjectileScale.RingWeight)
 	end
 	if style.outline then
 		local progress = math.min(age / style.flash, 1)

@@ -20,10 +20,10 @@ local TRACER_MAX = 40
 local TRACER_SECONDS = 0.12
 
 local HIT_SOUND_IDS = {
-	95665417835577,
-	127429190113881,
-	92917005148394,
-	71323578616457,
+	137084730581181,
+	79178142430899,
+	123542209920769,
+	114424909471898,
 }
 local HIT_VOICES_PER_CLIP = 4
 local hitSounds: { { Sound } } = {}
@@ -122,7 +122,13 @@ local function tracer()
 	return t
 end
 
-local function playHitSound()
+local HIT_SOUND_GAP_MIN, HIT_SOUND_GAP_MAX = 0.025, 0.05 -- random space between hit sounds
+local hitSoundGap = HIT_SOUND_GAP_MAX
+local lastHitSoundAt = 0
+
+local function playHitSoundNow()
+	lastHitSoundAt = os.clock()
+	hitSoundGap = HIT_SOUND_GAP_MIN + math.random() * (HIT_SOUND_GAP_MAX - HIT_SOUND_GAP_MIN)
 	local volume = SettingsLogic.get("masterVolume") * SettingsLogic.get("sfxVolume") / 10000
 	if volume == 0 then
 		return
@@ -144,6 +150,14 @@ local function playHitSound()
 	if voice then
 		voice.Volume = volume
 		voice:Play()
+	end
+end
+
+-- Debounce: a hit sound plays only if a random 0.025-0.05s has passed since the last one.
+-- Hits inside the gap are skipped, never delayed, so every sound lines up with its impact.
+local function playHitSound()
+	if os.clock() - lastHitSoundAt >= hitSoundGap then
+		playHitSoundNow()
 	end
 end
 
