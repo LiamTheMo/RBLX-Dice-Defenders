@@ -272,7 +272,9 @@ function View:_drawRarity(L, z: number)
 	heading(panel, L, "RARITY CHANCES", Pw / 2, plateTop, plateH, z + 1)
 	local top = plateTop + plateH + round(11 * f)
 	local avail = Ph - top - round(12 * f)
-	local rowH = math.min(round(38 * f), (avail - 5 * round(2 * f)) / 6)
+	-- each 2 design px rim spills outside its row (and scales with K): rim + rim + 1 real px of clear gap
+	local gap = math.max(round(5 * f), 4 + math.ceil(1 / K))
+	local rowH = math.min(round(38 * f), (avail - 5 * gap) / 6)
 	local pitch = (avail - rowH) / 5
 	local rowW = Pw - round(34 * L.w)
 	local rowX = (Pw - rowW) / 2
