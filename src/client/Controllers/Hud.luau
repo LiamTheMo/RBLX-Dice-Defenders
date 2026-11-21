@@ -13,6 +13,7 @@ local Preload = require(script.Parent.Preload)
 local Chrome = require(script.Parent.Bag.Chrome)
 local HudLogic = require(script.Parent.HudLogic)
 local SharedSprites = require(script.Parent.SharedSprites)
+local SettingsLogic = require(script.Parent.Settings.SettingsLogic)
 local Sprites = require(script.Parent.Sprites)
 local UiKit = require(script.Parent.UiKit)
 local Display = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Display"))
@@ -39,13 +40,14 @@ local MESSAGES = {
 
 -- Layout (design px). Positions are the mockup's pixel-scanned boxes.
 local DESIGN = Vector2.new(1672, 941)
-local PHONE_FLOOR = 0.55 -- phones: slots stay >= 44 real px and text legible (667x375 still fits the bottom group)
+local PHONE_FLOOR = 0.5 -- same floor as the lobby HUD
 local MAX_SCALE = 1.5
 local BAR_K = 717 / 660 -- status bar art (660x74) scaled uniformly
 local SLOT_K = 158 / 140 -- upgrade tile art (128x140) scaled uniformly
 local SLOT_W, SLOT_H, SLOT_GAP = 128 * SLOT_K, 158, 12
 local SUMMON_W, SUMMON_H = 347, 122
-local GEAR = 68
+local GROUP_K = 0.8 -- bar, slots and summon sit 10-20% over the lobby equivalents (hotbar slot 104x106 -> 115x126); owner: unify with the lobby
+local GEAR_ART, GEAR_HIT, GEAR_RIGHT, GEAR_Y = 52, 88, 64.5, 51 -- the lobby gear exactly
 local PRESS_NUDGE = 3 -- sheet scale: the pressed row's text sits 3 px lower
 
 local CYAN = Color3.fromRGB(80, 240, 244) -- sampled from the mockup MP text
@@ -117,19 +119,26 @@ local function dieIcon(id: string)
 	return Sprites.Icon.Roll, info and info.Color or WHITE
 end
 
--- Hover overlay: a lighter wash and a bright rim (ImageColor3 can only darken).
-local function glow(parent: Instance, radius: number, inset: number)
+-- Light wash of UiKit.feel, rounded like the art it covers.
+local function sheen(parent: Instance, radius: number)
 	local f = make("Frame", {
 		BackgroundColor3 = WHITE,
-		BackgroundTransparency = 1,
+		BackgroundTransparency = 0.87,
 		BorderSizePixel = 0,
-		Position = UDim2.fromOffset(inset, inset),
-		Size = UDim2.new(1, -2 * inset, 1, -2 * inset),
+		Size = UDim2.fromScale(1, 1),
 	}, parent)
 	make("UICorner", { CornerRadius = UDim.new(0, radius) }, f)
-	local s = make("UIStroke", { Color = WHITE, Thickness = 3, Transparency = 1 }, f)
-	s:SetAttribute("Rim", 3)
-	return f, s
+	return f
+end
+
+-- Scalable art body: grows from its centre (hover 1.07, pressed 0.93).
+local function body(parent: Instance, class: string, props: { [string]: any })
+	props.BackgroundTransparency = 1
+	props.AnchorPoint = Vector2.new(0.5, 0.5)
+	props.Position = UDim2.fromScale(0.5, 0.5)
+	props.Size = UDim2.fromScale(1, 1)
+	local f = make(class, props, parent)
+	return f, make("UIScale", {}, f)
 end
 
 -- Power-up strip: one tile per deck die, rebuilt only when the deck ids change. Legality is the server's;
@@ -137,9 +146,11 @@ end
 local function paintSlot(slot)
 	local state = slot.State
 	local mode = if state == "idle" then slot.Mode else "Normal"
-	slot.Tile.ImageColor3 = if mode == "Pressed" then Color3.fromRGB(170, 170, 180) else WHITE
-	slot.Glow.BackgroundTransparency = if mode == "Hover" then 0.88 else 1
-	slot.GlowStroke.Transparency = if mode == "Hover" then 0 else 1
+	if state == "idle" then
+		UiKit.feel(slot.Tile, slot.Scale, slot.Sheen, mode, true)
+	else -- insufficient / maxed: no hover or sheen, the tile stays plain
+		slot.Tile.ImageColor3, slot.Sheen.Visible, slot.Scale.Scale = WHITE, false, 1
+	end
 	slot.Content.Position = UDim2.fromOffset(0, if mode == "Pressed" then PRESS_NUDGE * SLOT_K else 0)
 	slot.Icon.ImageColor3 = if state == "insufficient" then shade(slot.IconColor, 0.55) else slot.IconColor
 	slot.Level.Visible = state ~= "maxed"
@@ -158,14 +169,15 @@ local function buildSlot(i: number, id: string)
 		Text = "",
 		AutoButtonColor = false,
 	}, ui.Slots)
+	local art, scale = body(hit, "Frame", { Name = "Art" })
 	local tile = make("ImageLabel", {
 		Name = "Tile",
 		BackgroundTransparency = 1,
 		Image = Sprites.Hud.UpgradeBlank,
 		Size = UDim2.fromScale(1, 1),
-	}, hit)
-	local glowFrame, glowStroke = glow(hit, 30, 4)
-	local content = make("Frame", { Name = "Content", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) }, hit)
+	}, art)
+	local wash = sheen(art, 30)
+	local content = make("Frame", { Name = "Content", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) }, art)
 	local image, color = dieIcon(id)
 	local icon = make("ImageLabel", {
 		Name = "Icon",
@@ -177,14 +189,14 @@ local function buildSlot(i: number, id: string)
 		ImageColor3 = color,
 		ScaleType = Enum.ScaleType.Fit,
 	}, content)
-	local level = text(content, { Position = UDim2.fromOffset(SLOT_W / 2, 87 * SLOT_K) }, 32, SLOT_W - 16)
-	local cost = text(content, { Position = UDim2.fromOffset(SLOT_W / 2, 110 * SLOT_K) }, 29, SLOT_W - 30)
+	local level = text(content, { Position = UDim2.fromOffset(SLOT_W / 2, 87 * SLOT_K) }, 34, SLOT_W - 16)
+	local cost = text(content, { Position = UDim2.fromOffset(SLOT_W / 2, 110 * SLOT_K) }, 31, SLOT_W - 30)
 	local underline = bar(content, 53, 5, SLOT_W / 2, 124 * SLOT_K)
 	local slot = {
 		Hit = hit,
 		Tile = tile,
-		Glow = glowFrame,
-		GlowStroke = glowStroke,
+		Scale = scale,
+		Sheen = wash,
 		Content = content,
 		Icon = icon,
 		IconColor = color,
@@ -235,23 +247,15 @@ local function paintSummon()
 	local s = ui.Summon
 	local insufficient = s.State == "insufficient"
 	local mode = s.Mode
-	ui.SummonButton.ImageColor3 = if mode == "Pressed"
-		then Color3.fromRGB(205, 190, 225)
-		elseif insufficient then Color3.fromRGB(150, 125, 150)
-		else WHITE
-	s.Glow.BackgroundTransparency = if mode == "Hover" then 0.88 else 1
-	s.GlowStroke.Transparency = if mode == "Hover" then 0.3 else 1
+	UiKit.feel(s.Art, s.Scale, s.Sheen, mode, true)
+	if insufficient then -- greyed purple, still pressable (the server answers with a toast)
+		s.Art.ImageColor3 = if mode == "Pressed" then Color3.fromRGB(110, 95, 110) else Color3.fromRGB(150, 125, 150)
+	end
 	s.Content.Position = UDim2.fromOffset(0, if mode == "Pressed" then PRESS_NUDGE * 1.15 else 0)
 	s.Icon.ImageColor3 = if insufficient then Color3.fromRGB(200, 195, 205) else WHITE
 	s.Cost.TextColor3 = if insufficient then SALMON else CYAN
 	s.Bar.Visible = insufficient
 	s.Bar.BackgroundColor3 = Color3.fromRGB(225, 120, 120)
-end
-
-local function paintGear()
-	local g = ui.Gear
-	g.Scale.Scale = if g.Mode == "Pressed" then 0.94 elseif g.Mode == "Hover" then 1.08 else 1
-	g.Image.ImageColor3 = if g.Mode == "Pressed" then Color3.fromRGB(200, 200, 210) else WHITE
 end
 
 local function setHearts(full: number, empty: number)
@@ -338,6 +342,7 @@ local function build()
 		Size = UDim2.fromOffset(717, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 	}, ui.Root)
+	make("UIScale", { Scale = GROUP_K }, top)
 	make("UIListLayout", {
 		SortOrder = Enum.SortOrder.LayoutOrder,
 		Padding = UDim.new(0, 8),
@@ -351,11 +356,11 @@ local function build()
 		Size = UDim2.fromOffset(660 * BAR_K, 74 * BAR_K),
 		LayoutOrder = 1,
 	}, top)
-	ui.Wave = text(ui.Bar, { Position = UDim2.fromOffset(120 * BAR_K, 36 * BAR_K) }, 44, 190 * BAR_K)
+	ui.Wave = text(ui.Bar, { Position = UDim2.fromOffset(120 * BAR_K, 36 * BAR_K) }, 48, 190 * BAR_K)
 	ui.MP = text(ui.Bar, {
 		Position = UDim2.fromOffset(548 * BAR_K, 36 * BAR_K),
 		TextColor3 = CYAN,
-	}, 44, 190 * BAR_K)
+	}, 48, 190 * BAR_K)
 	make("ImageLabel", {
 		Name = "Divider",
 		BackgroundTransparency = 1,
@@ -389,9 +394,9 @@ local function build()
 		BackgroundTransparency = 1,
 		Text = "",
 		AutoButtonColor = false,
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -26, 0, 20),
-		Size = UDim2.fromOffset(GEAR, GEAR),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(1, -GEAR_RIGHT, 0, GEAR_Y),
+		Size = UDim2.fromOffset(GEAR_HIT, GEAR_HIT),
 	}, ui.Root)
 	local gearImage = make("ImageLabel", {
 		BackgroundTransparency = 1,
@@ -399,13 +404,13 @@ local function build()
 		ScaleType = Enum.ScaleType.Fit,
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromOffset(GEAR, GEAR),
+		Size = UDim2.fromOffset(GEAR_ART, GEAR_ART),
 	}, gearHit)
 	make("UIAspectRatioConstraint", { AspectRatio = 166 / 162 }, gearImage)
-	ui.Gear = { Hit = gearHit, Image = gearImage, Scale = make("UIScale", {}, gearImage), Mode = "Normal" }
+	local gearScale, gearSheen = make("UIScale", {}, gearImage), sheen(gearImage, 12)
+	ui.Gear = { Hit = gearHit }
 	UiKit.wire(gearHit, function(mode)
-		ui.Gear.Mode = mode
-		paintGear()
+		UiKit.feel(gearImage, gearScale, gearSheen, mode, true)
 	end)
 
 	-- Bottom: upgrade tiles on the left, Summon on the right, one group centred on the screen.
@@ -416,6 +421,7 @@ local function build()
 		Position = UDim2.new(0.5, 12, 1, -28), -- mockup centre sits 12 px right of the screen centre
 		Size = UDim2.fromOffset(1152, SLOT_H),
 	}, ui.Root)
+	make("UIScale", { Scale = GROUP_K }, ui.Bottom)
 	ui.Slots = make("Frame", {
 		Name = "PowerUps",
 		BackgroundTransparency = 1,
@@ -429,22 +435,25 @@ local function build()
 		VerticalAlignment = Enum.VerticalAlignment.Bottom,
 	}, ui.Slots)
 
-	local summon = make("ImageButton", {
+	local summon = make("TextButton", {
 		Name = "Summon",
 		BackgroundTransparency = 1,
-		Image = PILL.Image,
-		ScaleType = Enum.ScaleType.Slice,
-		SliceCenter = PILL.Slice,
-		SliceScale = SUMMON_H / PILL.Size.Y,
+		Text = "",
 		AutoButtonColor = false,
 		AnchorPoint = Vector2.new(1, 1),
 		Position = UDim2.new(1, 0, 1, -2),
 		Size = UDim2.fromOffset(SUMMON_W, SUMMON_H),
 	}, ui.Bottom)
 	ui.SummonButton = summon
-	local glowFrame, glowStroke = glow(summon, SUMMON_H / 2, 3)
-	local content =
-		make("Frame", { Name = "Content", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) }, summon)
+	local art, scale = body(summon, "ImageLabel", {
+		Name = "Art",
+		Image = PILL.Image,
+		ScaleType = Enum.ScaleType.Slice,
+		SliceCenter = PILL.Slice,
+		SliceScale = SUMMON_H / PILL.Size.Y,
+	})
+	local wash = sheen(art, SUMMON_H / 2)
+	local content = make("Frame", { Name = "Content", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) }, art)
 	local icon = make("ImageLabel", {
 		BackgroundTransparency = 1,
 		AnchorPoint = Vector2.new(0.5, 0.5),
@@ -453,7 +462,7 @@ local function build()
 		Image = Sprites.Icon.Roll,
 		ScaleType = Enum.ScaleType.Fit,
 	}, content)
-	text(content, { Position = UDim2.fromOffset(214, 36), Text = HudLogic.SUMMON_TEXT }, 46, 190)
+	text(content, { Position = UDim2.fromOffset(214, 36), Text = HudLogic.SUMMON_TEXT }, 48, 190)
 	local recess = make("Frame", { -- faint dark recess behind the cost line, as in the mockup
 		BackgroundColor3 = Color3.new(0, 0, 0),
 		BackgroundTransparency = 0.82,
@@ -463,12 +472,13 @@ local function build()
 		Size = UDim2.fromOffset(177, 36),
 	}, content)
 	make("UICorner", { CornerRadius = UDim.new(0, 18) }, recess)
-	local cost = text(content, { Position = UDim2.fromOffset(214, 77), TextColor3 = CYAN }, 40, 190)
+	local cost = text(content, { Position = UDim2.fromOffset(214, 77), TextColor3 = CYAN }, 42, 190)
 	ui.Summon = {
 		State = "idle",
 		Mode = "Normal",
-		Glow = glowFrame,
-		GlowStroke = glowStroke,
+		Art = art,
+		Scale = scale,
+		Sheen = wash,
 		Content = content,
 		Icon = icon,
 		Cost = cost,
@@ -483,7 +493,7 @@ local function build()
 	end)
 
 	-- Above the bottom group: toast over the hint.
-	local aboveBottom = SLOT_H + 28 + 14
+	local aboveBottom = SLOT_H * GROUP_K + 28 + 14
 	ui.HintBox = line(ui.Root, {
 		Name = "Hint",
 		AnchorPoint = Vector2.new(0.5, 1),
@@ -528,11 +538,14 @@ local function rescale()
 		s = math.max(s, PHONE_FLOOR)
 	end
 	s = math.min(s, MAX_SCALE)
+	if screen.Y >= UiKit.PHONE_H then
+		s *= SettingsLogic.get("uiScale") / 100 -- Settings UI Scale: desktop only, like the lobby HUD
+	end
 	ui.Scale.Scale = s
 	ui.Root.Size = UDim2.fromOffset(screen.X / s, screen.Y / s) -- the emulated screen when EmulateSize is set
-	local hit = math.max(GEAR, math.ceil(44 / s)) -- touch target >= 44 real px
+	local hit = math.max(GEAR_HIT, math.ceil(44 / s)) -- touch target >= 44 real px
 	ui.Gear.Hit.Size = UDim2.fromOffset(hit, hit)
-	Chrome.restroke(ui.Root, s)
+	Chrome.restroke(ui.Root, s * GROUP_K)
 end
 
 local function updateCountdowns()

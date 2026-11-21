@@ -125,4 +125,17 @@ function UiKit.wire(btn, apply)
 	return refresh
 end
 
+-- The HUD button feel (lobby menu buttons, hotbar, in-game tiles): hover = art scale 1.07 + stronger sheen, pressed = 0.93 +
+-- dim, disabled = grey. art: the image to tint; scale: its UIScale; sheen: the light wash Frame; state: wire's state.
+function UiKit.feel(art: any, scale: UIScale, sheen: Frame, state: string, on: boolean)
+	art.ImageColor3 = if not on
+		then Color3.fromRGB(150, 150, 160)
+		elseif state == "Pressed" then Color3.fromRGB(205, 205, 205)
+		else WHITE
+	art.ImageTransparency = if on then 0 else 0.35
+	sheen.Visible = on and state ~= "Pressed" -- constant light wash lifts the tile ~25 RGB to the mockup; hover adds more
+	sheen.BackgroundTransparency = if state == "Hover" then 0.78 else 0.87
+	scale.Scale = if not on then 1 elseif state == "Pressed" then 0.93 elseif state == "Hover" then 1.07 else 1
+end
+
 return UiKit
