@@ -29,6 +29,12 @@ return {
 		SlotGrey = "rbxassetid://86679428947492", -- HUD_SlotGrey.png (lighter grey: loading)
 		Plus = "rbxassetid://107677699351348", -- HUD_Plus.png (empty slot)
 		Gear = "rbxassetid://121271384774331", -- HUD_Gear.png
+		-- In-match HUD (text-free sheet, native px, whole art, no slicing; keep aspect when scaling).
+		GameBar = "rbxassetid://72468083657559", -- Game_StatusBar.png 660x74
+		GameDivider = "rbxassetid://105844333790925", -- Game_StatusDivider.png 8x40
+		HeartFull = "rbxassetid://81382167662841", -- Game_HeartFull.png 76x76
+		HeartEmpty = "rbxassetid://133273395255758", -- Game_HeartEmpty.png 76x76
+		UpgradeBlank = "rbxassetid://118016473787372", -- Game_UpgradeBlank.png 128x140
 	},
 	-- Dice without a thumbnail use the Roll icon tinted with their Display colour.
 	Dice = {

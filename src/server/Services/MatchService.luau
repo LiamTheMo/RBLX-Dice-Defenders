@@ -71,6 +71,7 @@ local function snapshot(player: Player)
 		SummonCost = Formulas.SummonCost(0),
 		Wave = 0,
 		Lives = 0,
+		MaxLives = Balance.StartLives,
 		Board = {},
 		CanSolo = isOwner(player),
 		CanCoop = order[2] ~= nil and (order[1] == player or order[2] == player),

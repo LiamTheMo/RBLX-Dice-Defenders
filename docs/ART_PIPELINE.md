@@ -22,6 +22,7 @@ Per each stable ID C01–C07, R01–R05, E01, E02, E03, L01, L02, M01, S01:
 ## UI generated asset checklist
 - Lobby home, world selection, stage card (Wave 100 goal), matchmaking solo/duo/experimental squad, Infinite access/season leaderboard.
 - HUD wave/boss/progress, 15-cell board, spawn button and MP meter, dice detail tooltip, in-match upgrade strip, shared lives/team portraits, pause/reconnect.
+- Match HUD art (status bar, divider, hearts, blank upgrade tile) is cut from `Assets/UI/new/game hud/game-hud-without-text.png` by `tools/slice_game_hud.py`; the summon pill and gear reuse `SharedSprites.PillPurple` and `Sprites.Hud.Gear`; dice and text are drawn in code.
 - Collection rarity filters, dice cards, locked state, detail/compare, level/copies, crafting.
 - Gold/Gem wallets, rotating store cards, purchase confirmation, chests, exact pre-open odds, duplicate conversion, pity tracker, Robux offer disclosures and receipt failure state.
 - Daily/weekly quest, profile upgrades, achievements, world clear, rewards, loss, tutorial and settings.
