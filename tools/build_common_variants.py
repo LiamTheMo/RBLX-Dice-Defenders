@@ -33,6 +33,7 @@ STYLES = {
     "C07_Spark": ("#F6C438", "ϟ"),
 }
 TEXTURE_SIZE = 128
+STAR_RADIUS, STAR_INNER_RADIUS = .42, .19
 LAYOUTS = {**base.LAYOUTS, 7: []}
 VIEWS = {
     "three_quarter": (0.78, -1.1, 1.8),
@@ -61,7 +62,7 @@ def tint(hex_color, factor):
     return "#%02X%02X%02X" % tuple(min(255, round(c * factor)) for c in base._rgb(hex_color))
 
 
-def shell(source, tier, layouts=LAYOUTS, *, inset_star=False, mark_depth=.046):
+def shell(source, tier, layouts=LAYOUTS, *, inset_star=False, mark_depth=.046, mark_rim=False, star_size=(.57, .26), pip_segments=12):
     body = base._Mesh()
     marks = base._Mesh()
     hull = base._hull_faces()
@@ -82,7 +83,7 @@ def shell(source, tier, layouts=LAYOUTS, *, inset_star=False, mark_depth=.046):
         slots = [(0, 0)] if star_socket else layouts[tier]
         for u, v in slots:
             start = len(coords)
-            coords.extend(radial(10, .57, .26) if star_socket else base._ring(u, v, .222, 12))
+            coords.extend(radial(10, *star_size) if star_socket else base._ring(u, v, .222, pip_segments))
             rings.append(list(range(start, len(coords))))
         boundary = [list(range(8))] + [r[::-1] for r in rings]
         out, _, triangles, original, _, _ = geometry.delaunay_2d_cdt(coords, [], boundary, 3, 1e-8)
@@ -100,17 +101,26 @@ def shell(source, tier, layouts=LAYOUTS, *, inset_star=False, mark_depth=.046):
                     x, y, _ = loop.vert.co
                     loop[body.uv].uv = (0.5 + x / 2.5, 0.5 + y / 2.5)
         for (u, v), ring in zip(slots, rings):
-            floor_coords = radial(10, .568, .258) if star_socket else base._ring(u, v, .208, 12)
+            floor_coords = radial(10, *(radius - .002 for radius in star_size)) if star_socket else base._ring(u, v, .208, pip_segments)
             floor = [body.v(base._pt(face, x, y, .048)) for x, y in floor_coords]
             for i in range(len(ring)):
                 j = (i + 1) % len(ring)
                 body.f([verts[ring[i]], verts[ring[j]], floor[j], floor[i]], face).material_index = 1
             body.f(floor, face).material_index = 1
             # A shallower insert follows the taper at its depth, leaving a hairline around the rim.
-            insert = floor_coords if mark_depth == .046 or star_socket else base._ring(u, v, .219, 12)
-            marks.f([marks.v(base._pt(face, x, y, mark_depth)) for x, y in insert], face)
+            insert = floor_coords if mark_depth == .046 or star_socket else base._ring(u, v, .219, pip_segments)
+            if mark_rim:
+                outer = [marks.v(base._pt(face, x, y, mark_depth)) for x, y in insert]
+                inner = [marks.v(base._pt(face, u + (x - u) * .86, v + (y - v) * .86, mark_depth))
+                         for x, y in insert]
+                for i in range(len(outer)):
+                    j = (i + 1) % len(outer)
+                    marks.f([outer[i], outer[j], inner[j], inner[i]], face).material_index = 1
+                marks.f(inner, face)
+            else:
+                marks.f([marks.v(base._pt(face, x, y, mark_depth)) for x, y in insert], face)
         if tier == 7 and not inset_star:
-            points = radial(10, .42, .19)
+            points = radial(10, STAR_RADIUS, STAR_INNER_RADIUS)
             outer = [marks.v(base._pt(face, x, y, -.001)) for x, y in points]
             inner = [marks.v(base._pt(face, x * .78, y * .78, -.013)) for x, y in points]
             center = marks.v(base._pt(face, 0, 0, -.013))
@@ -126,7 +136,7 @@ def radial(count, outer, inner):
             for i in range(count) for radius in [inner if i % 2 else outer]]
 
 
-def top_texture(style, draw_art=None):
+def top_texture(style, draw_art=None, *, palette=None):
     """Rasterize original face artwork in the same top view used by both exporters."""
     size = TEXTURE_SIZE * 2
     pixels = bytearray([255]) * size**2
@@ -205,6 +215,13 @@ def top_texture(style, draw_art=None):
         polygon([(-.19, .84), (.58, .84), (.45, .67), (-.28, .67)], 183)
         for points in [[(-.85, .35), (-.73, .66), (-.6, .42)], [(.63, -.41), (.86, -.18), (.79, -.48)]]:
             polygon(points, 195)
+
+    if palette is not None:
+        return bytes(
+            round(sum(palette[pixels[(2 * y + dy) * size + 2 * x + dx]][channel]
+                      for dx in (0, 1) for dy in (0, 1)) / 4)
+            for y in range(TEXTURE_SIZE) for x in range(TEXTURE_SIZE) for channel in range(3)
+        )
 
     result = bytes(round(sum(pixels[(2 * y + dy) * size + 2 * x + dx]
                              for dx in (0, 1) for dy in (0, 1)) / 4)
