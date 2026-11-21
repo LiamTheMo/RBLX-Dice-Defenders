@@ -46,19 +46,23 @@ test("filter: no results and pattern characters are literal", function()
 end)
 
 test("sort: Rarity high to low, ties by Name", function()
-	expectEq(ids(BagLogic.sort(ITEMS, "Rarity")), "M01,L01,E01,R01,U01,C01", "rarity")
+	expectEq(ids(BagLogic.sort(ITEMS, "Rarity")), "L01,E01,M01,R01,U01,C01", "rarity, equipped (L01, E01) first")
 end)
 
 test("sort: Level desc with Name then Id tie-break; input untouched", function()
 	local before = ids(ITEMS)
-	expectEq(ids(BagLogic.sort(ITEMS, "Level")), "E01,L01,R01,C01,U01,M01", "level (3s: Chrono, Frost, Pebble)")
+	expectEq(
+		ids(BagLogic.sort(ITEMS, "Level")),
+		"E01,L01,R01,C01,U01,M01",
+		"level (equipped first, then 3s: Chrono, Frost, Pebble)"
+	)
 	expectEq(ids(ITEMS), before, "no mutation")
 	local twins = { { Id = "B", Name = "Same", Level = 1 }, { Id = "A", Name = "Same", Level = 1 } }
 	expectEq(ids(BagLogic.sort(twins, "Level")), "A,B", "Id breaks full ties")
 end)
 
 test("sort: Name ascending, Equipped first, Quantity desc", function()
-	expectEq(ids(BagLogic.sort(ITEMS, "Name")), "M01,L01,E01,U01,R01,C01", "name")
+	expectEq(ids(BagLogic.sort(ITEMS, "Name")), "L01,E01,M01,U01,R01,C01", "name, equipped first")
 	expectEq(ids(BagLogic.sort(ITEMS, "Equipped")):sub(1, 7), "L01,E01", "equipped first, by name")
 	local q =
 		{ { Id = "a", Name = "A", Quantity = 5 }, { Id = "b", Name = "B", Quantity = 1248 }, { Id = "c", Name = "C" } }
@@ -239,47 +243,62 @@ test("inventory: every entry the server catalogue sends maps to a full row", fun
 	end
 end)
 
-test("dice detail: Damage, Attack Speed and Aura from the Catalog, ability note on non-Common dice", function()
-	local D = "\u{2013}"
-	local catalog = {
-		Dice = {
-			{ Id = "C02", Damage = 9, Rate = 1.75, AttackSpeed = 0.57 },
-			{ Id = "R01", Damage = 19, Rate = 1.0, AttackSpeed = 1 },
-			{ Id = "R02", Damage = 21, Rate = 0.55, AttackSpeed = 1.82 },
-			{ Id = "R05", Damage = 5, Rate = 0.8, AttackSpeed = 1.25, Aura = 6 },
-		},
-	}
-	local meta = { Dice = { { Id = "C02", Level = 1 }, { Id = "R01", Level = 2 } }, Deck = {} }
-	local function detail(c, id)
-		for _, it in DiceTab.GetItems(meta, c) do
-			if it.Id == id then
-				return DiceTab.Detail(it)
+test(
+	"dice detail: Damage, Attack Speed and Targeting from the Catalog, extra ability stats, default description",
+	function()
+		local D = "\u{2013}"
+		local catalog = {
+			Dice = {
+				{ Id = "C02", Damage = 9, Rate = 1.75, AttackSpeed = 0.57 },
+				{ Id = "R01", Damage = 19, Rate = 1.0, AttackSpeed = 1 },
+				{ Id = "R02", Damage = 21, Rate = 0.55, AttackSpeed = 1.82 },
+				{
+					Id = "R05",
+					Damage = 5,
+					Rate = 0.8,
+					AttackSpeed = 1.25,
+					Aura = 6, -- no longer shown
+					Stats = {
+						{ Label = "Crit Chance", Value = 12.5, Suffix = "%" },
+						{ Label = "Poison", Value = "3 / s" },
+						{ Value = 1 },
+					},
+				},
+			},
+		}
+		local meta = { Dice = { { Id = "C02", Level = 1 }, { Id = "R01", Level = 2 } }, Deck = {} }
+		local function detail(c, id)
+			for _, it in DiceTab.GetItems(meta, c) do
+				if it.Id == id then
+					return DiceTab.Detail(it)
+				end
 			end
+			error("no die " .. id)
 		end
-		error("no die " .. id)
-	end
-	local function values(d)
-		local out = {}
-		for i, st in d.Stats do
-			out[i] = st.Value
+		local function values(d)
+			local out = {}
+			for i, st in d.Stats do
+				out[i] = st.Value
+			end
+			return table.concat(out, ",")
 		end
-		return table.concat(out, ",")
+		local needle = detail(catalog, "C02")
+		expectEq(values(needle), "9,0.57s,Front", "Damage, Attack Speed (s), Targeting (Front by default)")
+		expectEq(needle.Description, "placeholder desc", "owned Common: the default description")
+		local frost = detail(catalog, "R01")
+		expectEq(values(frost), "19,1s,Front", "1.0 shows as 1")
+		expectEq(frost.Description, "placeholder desc", "owned Rare: the default description")
+		expectEq(detail(nil, "C02").Stats[1].Value, D, "no Catalog yet: dash")
+		meta = { Dice = { { Id = "R05", Level = 1 } }, Deck = {} }
+		local rows = detail(catalog, "R05").Stats
+		expectEq(
+			values(detail(catalog, "R05")),
+			"5,1.25s,Front,12.5%,3 / s",
+			"extra stats follow in order; Aura is not a row; a row without a label is skipped"
+		)
+		expectEq(rows[4].Label, "Crit Chance", "label kept")
 	end
-	local needle = detail(catalog, "C02")
-	expectEq(values(needle), `9,0.57s,{D}`, "Damage, Attack Speed (s), no aura: dash")
-	expectEq(needle.Description, "", "owned Common: no ability note")
-	local frost = detail(catalog, "R01")
-	expectEq(values(frost), `19,1s,{D}`, "1.0 shows as 1")
-	expectEq(frost.Description, "", "owned Rare: no placeholder note")
-	local arc = detail(catalog, "R02")
-	expectEq(values(arc), `21,1.82s,{D}`, "unowned playable die shows its stats")
-	expectEq(arc.Description, "Not owned", "unowned Rare")
-	expectEq(detail(nil, "C02").Stats[1].Value, D, "no Catalog yet: dash")
-	expectEq(values(detail(catalog, "R05")), "5,1.25s,+6%", "aura die: Aura row")
-	local astral = detail(catalog, "M01")
-	expectEq(values(astral), `{D},{D},{D}`, "unowned die without catalog stats: all dashes")
-	expectEq(astral.Description, "Not owned", "unowned Astral is still in the roster")
-end)
+)
 
 test("cosmetics counter: owned / total from the Catalog", function()
 	local cat = {
@@ -402,9 +421,9 @@ end)
 test("dice: UNEQUIP ALL can clear any equipped loadout and the selected die has the matching action", function()
 	local starter = { "C01", "C02", "C03", "C04", "C05" }
 	local catalog = { StarterDeck = starter, Dice = {} }
-	expect(DiceTab.Footer({ Deck = starter }).Button.Enabled, "clear the starter deck")
-	expect(DiceTab.Footer({ Deck = { "C01" } }).Button.Enabled, "clear a partial deck")
-	expect(not DiceTab.Footer({ Deck = {} }).Button.Enabled, "empty deck: off")
+	expect(DiceTab.TopBar({ Deck = starter }).UnequipAll.Enabled, "clear the starter deck")
+	expect(DiceTab.TopBar({ Deck = { "C01" } }).UnequipAll.Enabled, "clear a partial deck")
+	expect(not DiceTab.TopBar({ Deck = {} }).UnequipAll.Enabled, "empty deck: off")
 	local meta = { Dice = { { Id = "C01", Level = 1 } }, Deck = starter }
 	for _, it in DiceTab.GetItems(meta, catalog) do
 		if it.Id == "C01" then
@@ -419,10 +438,16 @@ test("dice: UNEQUIP ALL can clear any equipped loadout and the selected die has 
 end)
 
 test("dice upgrade: UPGRADE gates on copies, cap and Catalog; copies show on card and detail", function()
-	local DL = { Max = 7, Copies = { 1, 1, 1, 2, 2, 3 } }
+	local DL = {
+		Max = 7,
+		Copies = { 1, 1, 1, 2, 2, 3 },
+		Gold = { 5, 10, 25, 50, 100, 200, 400, 800 },
+		Crit = { 1, 2, 2, 3, 3, 3, 4, 4 },
+		Offset = { Common = 0, Rare = 2 },
+	}
 	local catalog = { DieLevel = DL, Dice = {} }
-	local function die(level, copies, c, id)
-		local meta = { Dice = { { Id = id or "C01", Level = level, Copies = copies } }, Deck = {} }
+	local function die(level, copies, c, id, gold)
+		local meta = { Dice = { { Id = id or "C01", Level = level, Copies = copies } }, Deck = {}, Gold = gold or 1000 }
 		for _, it in DiceTab.GetItems(meta, c) do
 			if it.Id == (id or "C01") then
 				return it, DiceTab.Detail(it)
@@ -434,6 +459,13 @@ test("dice upgrade: UPGRADE gates on copies, cap and Catalog; copies show on car
 	expect(button(d, "Upgrade").Enabled, "UPGRADE on exactly at the cost")
 	expectEq(d.Subline.Copies, "Copies 2 / 2", "detail copies line")
 	expectEq(d.Subline.Max, 7, "Max from the Catalog")
+	local _, dg = die(4, 2, catalog, nil, 49) -- level 4 costs 50 gold
+	expect(not button(dg, "Upgrade").Enabled and button(dg, "Upgrade").Hint == "Need 50 gold", "gold - 1 off")
+	expectEq(dg.UpgradeCost.Amount, 50, "gold price on the tag")
+	expectEq(dg.UpgradeCost.Crit, 3, "crit the level adds on the tag")
+	expect(not dg.UpgradeCost.Afford, "unaffordable price flagged")
+	local _, dr = die(2, 9, catalog, "R01") -- a Rare starts at class 3
+	expectEq(dr.UpgradeCost.Amount, 50, "Rare level 2 is class 4: its gold")
 	local item, d1 = die(4, 1, catalog)
 	expect(not button(d1, "Upgrade").Enabled, "cost - 1 off")
 	expectEq(button(d1, "Upgrade").Hint, "Need 2 copies", "cost hint")
@@ -465,20 +497,11 @@ test("dice upgrade: UPGRADE gates on copies, cap and Catalog; copies show on car
 			"malformed DieLevel #" .. i .. " acts as no Catalog"
 		)
 	end
-	for _, it in DiceTab.GetItems({ Dice = {}, Deck = {} }, catalog) do
-		if it.Id == "C02" then
-			local lk = DiceTab.Detail(it)
-			expect(
-				not button(lk, "Upgrade").Enabled and button(lk, "Upgrade").Hint == "Not owned",
-				"unowned: locked footer"
-			)
-			expect(lk.Subline == nil and it.Count == nil, "unowned: no level line or count")
-		end
-	end
-	expect(button(d, "Lock") == nil and button(d, "Upgrade").Style == "Grey", "UPGRADE replaces LOCK")
+	expect(#DiceTab.GetItems({ Dice = {}, Deck = {} }, catalog) == 0, "unowned dice are not listed")
+	expect(button(d, "Lock") == nil and button(d, "Upgrade").Style == "Yellow", "UPGRADE replaces LOCK")
 end)
 
-test("every Config die is listed, owned or not; removed ids are not", function()
+test("only owned Config dice are listed; removed ids are not", function()
 	local catalog = Catalog.Build()
 	local function find(meta, id)
 		for _, item in DiceTab.GetItems(meta, catalog) do
@@ -487,10 +510,10 @@ test("every Config die is listed, owned or not; removed ids are not", function()
 			end
 		end
 	end
-	expect(find({ Dice = {} }, "E03") ~= nil, "unowned die listed")
+	expect(find({ Dice = {} }, "E03") == nil, "unowned die not listed")
 	expect(find({ Dice = { { Id = "E03", Level = 3 } } }, "E03") ~= nil, "owned die listed")
 	expect(find({ Dice = {} }, "E05") == nil, "retired Gravity ID never listed")
-	local chill = find({ Dice = {} }, "C06")
+	local chill = find({ Dice = { { Id = "C06", Level = 1 } } }, "C06")
 	expect(
 		chill ~= nil and DiceTab.Detail(chill).Description == "Hits slow enemies by 15% for 1.5 seconds.",
 		"Chill ability visible"

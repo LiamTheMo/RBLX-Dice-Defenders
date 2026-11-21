@@ -55,6 +55,9 @@ function BagLogic.sort(items, key: string)
 		if (a.Locked == true) ~= (b.Locked == true) then
 			return b.Locked == true -- unowned items always sort after owned ones
 		end
+		if (a.Equipped == true) ~= (b.Equipped == true) then
+			return a.Equipped == true -- equipped items always come first
+		end
 		local ka, desc = get(a)
 		local kb = get(b)
 		if ka ~= kb then

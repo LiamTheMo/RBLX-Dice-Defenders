@@ -32,8 +32,11 @@ local CREAM = Color3.fromRGB(242, 226, 205)
 local TEXT_STROKE = Color3.fromRGB(9, 14, 24)
 
 local ROW = 48 -- touch row / button height in px (>= 44)
-local TOAST_NAMES = { Start = true, EquipDeck = true, ClaimQuest = true, CoopReady = true }
+local TOAST_NAMES = { Start = true, EquipDeck = true, TeamAction = true, ClaimQuest = true, CoopReady = true }
 local TOASTS = {
+	EmptyDeck = "Equip a die first, then save the team.",
+	EmptyTeam = "That team slot is empty.",
+	BadTeam = "Unknown team slot",
 	WrongPhase = "Not available right now",
 	BadDeck = "Equip five dice in your Bag to play.",
 	PartnerDeck = "Both players need five equipped dice to play Co-op.",
@@ -307,6 +310,23 @@ local function build()
 	ui.Root =
 		make("Frame", { Name = "Root", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Visible = false }, gui)
 	ui.LobbyHud = LobbyHud.build(ui.Root, { open = showPanel, toast = toast })
+	-- Dragging a hotbar die onto another slot swaps them (the server stays the authority; a refusal puts the hotbar back).
+	ui.LobbyHud:OnSwap(function(from: number, to: number)
+		local meta = NetClient.LastMeta
+		local deck = meta and meta.Deck
+		if not deck or not deck[from] or not deck[to] then
+			return
+		end
+		local ids = table.clone(deck)
+		ids[from], ids[to] = ids[to], ids[from]
+		ui.LobbyHud:SetDeck(ids)
+		task.spawn(function()
+			local ok = NetClient.Request("EquipDeck", ids)
+			if not ok then
+				renderMeta()
+			end
+		end)
+	end)
 	ui.Hud = ui.LobbyHud.Hud
 	-- Sibling of Hud (so Hud.Visible never hides it); Toast lives on the gui and stays above.
 	ui.Bag = Bag.new(ui.Root, { hud = ui.LobbyHud, toast = toast })

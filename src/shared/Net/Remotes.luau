@@ -11,6 +11,7 @@ Remotes.Kinds = table.freeze({
 	Summon = "Function", -- (seq)
 	Merge = "Function", -- (seq, from, to)
 	EquipDeck = "Function", -- (seq, ids): up to 5 distinct owned die ids
+	TeamAction = "Function", -- (seq, "Save"|"Load", slot 1..5): team presets (Rules/Teams); the saved ids stay on the server
 	ClaimQuest = "Function", -- (seq, questId)
 	RedeemCode = "Function", -- (seq, code)
 	SaveSettings = "Function", -- (seq, patch): {[settingId] = value}, cleaned against Shared/SettingsDefs

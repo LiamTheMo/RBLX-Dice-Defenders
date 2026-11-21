@@ -63,6 +63,8 @@ local TIER = {
 local GAP = 10 -- vertical gap left panel to footer
 local TOOLBAR_H, FOOTER_H = 63, 83 -- mockup: grid top y 288 (content y 63), loadout strip 682x83 at y 651
 local GRID_INSET = 13
+local LINE_Y = -2 -- Full: the search / sort / action row sits this far from the content top (was 4)
+local FRAME_TOP, GRID_PAD = 50, 10 -- framed card grid: top below the search row; cards sit GRID_PAD inside the frame's sides
 local DETAIL_MAX, DETAIL_MIN = 368, 310 -- mockup detail panel 368 wide
 local LEFT_PANEL_BOTTOM_INSET = 41 -- left panel inset on desktop tabs without a footer
 local MIN_SCALE, MAX_SCALE = 0.8, 1.5
@@ -114,13 +116,16 @@ function Shell.new(parent, deps)
 		leftPanel = frame("LeftPanel", left, Z + 2) -- the Bag mockup draws no frame around the grid column
 		leftPanel.Size = UDim2.fromScale(1, 1)
 		toolbar = frame("Toolbar", left, Z + 5)
+		self.GridFrame = Chrome.panel(left, { Name = "GridFrame", ZIndex = Z + 2 })
 		grid = frame("Grid", left, Z + 3)
 		footer = frame("Footer", left, Z + 14) -- above grid and detail (Global ZIndex gui); below popups (45)
 		detail = Chrome.panel(content, { Name = "Detail", ZIndex = Z + 2 })
 		detailSlot = frame("Slot", detail, Z + 3)
 		detailSlot.Size = UDim2.fromScale(1, 1)
+		local topBar = frame("TopBar", content, Z + 5) -- action row above the detail panel (tabs that ask for it: SetTopBar)
+		topBar.Visible = false
 		self.LeftPanel, self.Left = leftPanel, left
-		self.Slots = { Toolbar = toolbar, Grid = grid, Footer = footer, Detail = detailSlot }
+		self.Slots = { Toolbar = toolbar, Grid = grid, Footer = footer, Detail = detailSlot, TopBar = topBar }
 		self._detail = detail
 	end
 
@@ -260,21 +265,36 @@ function Shell.new(parent, deps)
 			left.Size = UDim2.fromOffset(leftW, contentH)
 			leftPanel.Size = UDim2.fromOffset(leftW, leftH)
 			toolbar.Size = UDim2.fromOffset(leftW, TOOLBAR_H)
+			toolbar.Position = UDim2.fromOffset(0, if compact then 0 else LINE_Y - 4) -- the toolbar pads 4 px above its controls
 			grid:SetAttribute("FooterInset", FOOTER_H + GAP - LEFT_PANEL_BOTTOM_INSET) -- Cosmetics sizes its cards as if the Dice footer were shown
 			local fx = if compact then 0 else 7 -- mockup: grid x 313, strip x 309 (panel x 302)
 			local footerY = contentH - FOOTER_H + (if compact then 0 else 2)
-			grid.Position = UDim2.fromOffset(if compact then 3 else fx, TOOLBAR_H) -- Full: same left/right edges as the loadout strip
+			-- Full: the card grid sits inside a framed panel under the search row (same top and bottom as the detail panel).
+			local frameY = FRAME_TOP
+			local frameH = contentH - frameY
+			local gridFrame = self.GridFrame
+			gridFrame.Visible = not compact
+			gridFrame.Position = UDim2.fromOffset(fx, frameY)
+			gridFrame.Size = UDim2.fromOffset(leftW - 15, frameH)
+			grid.Position = if compact
+				then UDim2.fromOffset(3, TOOLBAR_H)
+				else UDim2.fromOffset(fx + GRID_PAD, frameY + 2)
 			grid.Size = if compact
 				then UDim2.fromOffset(leftW - 6, leftH - TOOLBAR_H - (if self._footerOn then minD + 12 else GRID_INSET))
-				else UDim2.fromOffset(
-					leftW - 15,
-					(if self._footerOn then footerY - GRID_INSET else contentH - 26) - TOOLBAR_H
-				)
+				else UDim2.fromOffset(leftW - 15 - 2 * GRID_PAD, frameH - 6)
 			footer.Position = UDim2.fromOffset(fx, footerY) -- compact: an overlay on the panel bottom
 			footer.Size = UDim2.fromOffset(if compact then leftW else leftW - 15, FOOTER_H)
-			detail.Position = UDim2.fromOffset(leftW + gap, 0)
-			detail.Size = UDim2.fromOffset(detailW, contentH)
-			detailSlot.Size = UDim2.fromOffset(detailW, contentH - 8) -- offsets: Parts read slot widths in design px
+			local topOn = self._topOn == true and not compact
+			local topBar = self.Slots.TopBar
+			topBar.Visible = topOn
+			-- With a top bar the detail panel drops below it and ends where the card grid ends (same height as the inventory).
+			local detailY = if topOn then FRAME_TOP else 0
+			local detailH = contentH - detailY
+			topBar.Position = UDim2.fromOffset(leftW + gap, LINE_Y)
+			topBar.Size = UDim2.fromOffset(detailW, 42)
+			detail.Position = UDim2.fromOffset(leftW + gap, detailY)
+			detail.Size = UDim2.fromOffset(detailW, detailH)
+			detailSlot.Size = UDim2.fromOffset(detailW, detailH - 8) -- offsets: Parts read slot widths in design px
 		end
 		for _, slotFrame in self.Slots do
 			slotFrame:SetAttribute("Compact", compact)
@@ -362,6 +382,14 @@ end
 function Shell:SetFooter(on: boolean)
 	if self._footerOn ~= on then
 		self._footerOn = on
+		self:Fit()
+	end
+end
+
+-- The action row above the detail panel shows/hides (Full tier only; phones keep the full-height panel).
+function Shell:SetTopBar(on: boolean)
+	if self._topOn ~= on then
+		self._topOn = on
 		self:Fit()
 	end
 end

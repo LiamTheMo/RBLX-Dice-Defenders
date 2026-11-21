@@ -31,12 +31,58 @@ Progression.Mastery = table.freeze({
 	}),
 })
 
--- Copies[l] = spare copies of the SAME die spent to go from level l to l + 1 (Max - 1
--- entries, the same for every rarity).
+-- Die levels follow Random Dice's class-up rules (copies AND gold per step, crit damage per step):
+--   Copies[l]  spare copies of the SAME die spent to go from level l to l + 1 (Max - 1 entries, every rarity).
+--   Gold[c]    gold for the step at "class" c, Crit[c] the crit damage percent that step adds to the whole account.
+--              c = level + Offset[rarity]: a rarer die starts further up the same Gold / Crit curves, as in Random Dice
+--              (Rare starts at class 3, Unique 5, Legendary 7) - it pays the class's gold and earns the class's crit.
+-- Crit and Gold are the wiki's curves (Crit exactly; Gold scaled down to this game's income) *tune*
 Progression.DieLevel = table.freeze({
-	Max = 7, -- *tune*
-	Copies = table.freeze({ 1, 1, 1, 2, 2, 3 }), -- *tune*
+	Max = 12,
+	Copies = table.freeze({ 1, 2, 4, 8, 15, 25, 40, 60, 90, 130, 200 }), -- *tune*
+	Gold = table.freeze({
+		5,
+		10,
+		25,
+		50,
+		100,
+		200,
+		400,
+		800,
+		1500,
+		3000,
+		6000,
+		10000,
+		15000,
+		25000,
+		40000,
+		60000,
+		80000,
+	}),
+	Crit = table.freeze({ 1, 2, 2, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5 }),
+	Offset = table.freeze({ Common = 0, Rare = 2, Epic = 4, Legendary = 6, Mythic = 6, Secret = 6 }),
 })
+
+-- Gold the step from `level` to level + 1 costs a die of `rarity` (nil past the table / at Max).
+function Progression.GoldCost(rarity: string, level: number): number?
+	local d = Progression.DieLevel
+	return d.Gold[level + (d.Offset[rarity] or 0)]
+end
+
+-- Crit damage percent that same step adds to the account.
+function Progression.CritGain(rarity: string, level: number): number
+	local d = Progression.DieLevel
+	return d.Crit[level + (d.Offset[rarity] or 0)] or 0
+end
+
+-- Crit damage percent a die of `rarity` at `level` contributes: the sum of its steps so far.
+function Progression.CritOf(rarity: string, level: number): number
+	local total = 0
+	for l = 1, level - 1 do
+		total += Progression.CritGain(rarity, l)
+	end
+	return total
+end
 
 -- (level, into, need) for a running total on `curve`: level starts at 1; at Max
 -- into and need are 0. A non-int or negative total reads as 0.

@@ -52,6 +52,7 @@ local ROW_ICON = { -- { sprite, box w, box h } at f = 1
 local BUTTON = {
 	{ rgb(217, 144, 23), rgb(143, 75, 11), rgb(255, 217, 133), rgb(66, 36, 2) },
 	{ rgb(127, 68, 217), rgb(70, 34, 130), rgb(206, 158, 255), rgb(36, 9, 72) },
+	{ rgb(220, 20, 60), rgb(139, 0, 30), rgb(255, 130, 150), rgb(66, 0, 14) }, -- ROLL MAX: crimson
 }
 local DISABLED = { rgb(91, 90, 104), rgb(54, 52, 63), rgb(151, 150, 167), rgb(30, 30, 34) }
 local GEM_YELLOW = Color3.fromRGB(254, 229, 1)
@@ -79,7 +80,7 @@ View.__index = View
 
 -- Layout ----------------------------------------------------------------------------------------------------
 
-local function compute(W: number, H: number)
+local function compute(W: number, H: number, vip: boolean)
 	W -= 14 -- inset panel rims and reserve the scrollbar lane
 	local f = math.clamp(H / 507, 0.5, 1)
 	local w = math.clamp(W / 1068, 0.4, 1.3)
@@ -88,18 +89,19 @@ local function compute(W: number, H: number)
 	L.gap = round(10 * w)
 	L.pityH = math.max(round(80 * f), math.ceil(44 / K) + 8, 3 * L.tmin + 18)
 	L.btnH = math.max(round(87 * f), math.ceil(44 / K)) -- hit area >= 44 real px
-	L.btnW = math.min(math.max(L.btnH * 3.48, 235 * w), (W - 2 * L.gap) / 2)
+	L.btnW = math.min(math.max(L.btnH * 3.48, 235 * w), (W - 2 * L.gap) / 3)
 	L.btnGap = round(11 * f)
 	-- the panel never gets shorter than six rows of the 14 real px text under the heading: below that the stack scrolls
 	local panelMin = round(61 * f) + 6 * (L.tmin + 4) + 5 * round(2 * f) + round(12 * f)
 	local stacked = W * K < 530
-	L.panelH = math.max(panelMin, H - L.pityH - L.btnH - 2 * L.btnGap - 8)
+	L.vipH = if vip then math.max(round(40 * f), math.ceil(44 / K)) + L.btnGap else 0 -- the VIP offer row under the buttons
+	L.panelH = math.max(panelMin, H - L.pityH - L.btnH - 2 * L.btnGap - 8 - L.vipH)
 	L.fw = if stacked then W else round(W * 0.64)
 	L.featureH = if stacked then math.max(round(198 * f), 4 * L.tmin + 70) else L.panelH
 	L.rx = if stacked then 0 else L.fw + L.gap
 	L.ry = if stacked then L.featureH + L.btnGap else 0
 	L.rw = W - L.rx
-	L.total = L.ry + L.panelH + L.pityH + L.btnH + 2 * L.btnGap + 8
+	L.total = L.ry + L.panelH + L.pityH + L.btnH + 2 * L.btnGap + 8 + L.vipH
 	return L
 end
 
@@ -417,18 +419,20 @@ end
 
 function View:_drawButtons(L, z: number, y: number)
 	local bh, f = L.btnH, L.f
-	local defs = { RollSprites.Die1, RollSprites.Dice3 }
+	local defs = { RollSprites.Die1, RollSprites.Dice3, RollSprites.Dice3 }
 	local rolling = self._rolling
 	local s = bh / 87 -- sizes below are at the 87 design px button height
 	for i, d in defs do
-		local st = self._buttonState[i] or { Count = if i == 1 then 1 else 10, Price = 0, Enabled = false }
+		local st = self._buttonState[i]
+			or { Count = if i == 1 then 1 elseif i == 2 then 10 else 0, Price = 0, Enabled = false, Max = i == 3 }
+		local isMax = st.Max == true
 		local on = st.Enabled and not rolling -- rolling: every button reads disabled
 		local colors = if on then BUTTON[i] else DISABLED
 		local bwi = L.btnW
 		local gap = math.max(L.gap, 8)
-		local startX = (L.W - 2 * bwi - gap) / 2
+		local startX = (L.W - 3 * bwi - 2 * gap) / 2
 		local btn = make("TextButton", {
-			Name = "Roll" .. st.Count,
+			Name = if isMax then "RollMax" else "Roll" .. st.Count,
 			Position = UDim2.fromOffset(round(startX + (i - 1) * (bwi + gap)), y),
 			Size = UDim2.fromOffset(round(bwi), bh),
 			Text = "",
@@ -446,11 +450,15 @@ function View:_drawButtons(L, z: number, y: number)
 		Draw.icon(die, d, bwi * 0.18, bh / 2, dw, dh)
 		die.ImageColor3 = if on then Color3.new(1, 1, 1) else rgb(190, 190, 203)
 		local cx = bwi * 0.64
-		local busy = rolling and rolling.Count == st.Count
+		local busy = rolling and (if isMax then rolling.Max == true else rolling.Max ~= true and rolling.Count == st.Count)
+		local text = if busy
+			then ROLLING
+			elseif isMax then (if st.Count > 1 then `ROLL MAX x{st.Count}` else "ROLL MAX")
+			else `ROLL {st.Count}`
 		label(btn, L, {
 			Name = "Label",
-			Text = if busy then ROLLING else `ROLL {st.Count}`,
-			Size = textSize(L, 33 * s / f, if busy then ROLLING else `ROLL {st.Count}`, bwi * 0.62),
+			Text = text,
+			Size = textSize(L, 33 * s / f, text, bwi * 0.62),
 			X = cx,
 			Y = bh * 0.28,
 			W = bwi * 0.62,
@@ -513,11 +521,49 @@ function View:_drawButtons(L, z: number, y: number)
 			self._connsBuild,
 			btn.Activated:Connect(function()
 				if self._onRoll then
-					self._onRoll(st.Count)
+					self._onRoll(st.Count, isMax)
 				end
 			end)
 		)
 	end
+end
+
+-- The VIP offer: a gold bar under the roll buttons, "VIP: 10% off every roll - R$ 299"; pressing it prompts the pass.
+function View:_drawVip(L, z: number, y: number)
+	local vip = self._vip
+	local h = L.vipH - L.btnGap
+	local w = math.min(L.W, math.max(L.btnW * 3 + 2 * math.max(L.gap, 8), 300))
+	local btn = make("TextButton", {
+		Name = "VipOffer",
+		Position = UDim2.fromOffset(round((L.W - w) / 2), y),
+		Size = UDim2.fromOffset(round(w), h),
+		Text = "",
+		AutoButtonColor = false,
+		BackgroundTransparency = 1,
+		ZIndex = z + 1,
+	}, self._canvas)
+	local body = Chrome.panel(btn, { Name = "Body", Size = UDim2.fromScale(1, 1), Radius = 13, Rim = 2, ZIndex = z })
+	body.UIGradient.Color = ColorSequence.new(rgb(255, 196, 38), rgb(200, 120, 8))
+	body.UIStroke.Color = rgb(255, 235, 150)
+	Parts.interact(btn)
+	local text = `VIP: {vip.Pct}% off every roll  -  R$ {vip.Robux}`
+	label(btn, L, {
+		Name = "Label",
+		Text = text,
+		Size = textSize(L, 30, text, w - 24),
+		X = w / 2,
+		Y = h / 2,
+		W = w - 24,
+		Z = z + 2,
+	})
+	table.insert(
+		self._connsBuild,
+		btn.Activated:Connect(function()
+			if self._onVip then
+				self._onVip()
+			end
+		end)
+	)
 end
 
 function View:_build()
@@ -553,6 +599,9 @@ function View:_build()
 	local y = L.ry + L.panelH + L.btnGap
 	self:_drawPity(L, z, y)
 	self:_drawButtons(L, z, y + L.pityH + L.btnGap)
+	if self._vip then
+		self:_drawVip(L, z, y + L.pityH + L.btnGap + L.btnH + L.btnGap)
+	end
 	self._scroll.CanvasSize = UDim2.fromOffset(0, math.max(L.H, L.total))
 end
 
@@ -615,7 +664,7 @@ function View.new(slot)
 				a = a.Parent
 			end
 			K = k
-			local L = compute(w, h)
+			local L = compute(w, h, self._vip ~= nil and self._pool == "Standard")
 			canvas.Size = UDim2.fromOffset(w, math.max(h, L.total))
 			self._L = L
 			self:_build()
@@ -654,6 +703,16 @@ function View:SetButtons(list)
 end
 
 -- Why a disabled button is disabled ("gems" | "region" | nil), shown in its price chip.
+-- The VIP pass offer { Pct, Robux } shown under the buttons, or nil (owned / no pass).
+function View:SetVip(offer)
+	self._vip = offer
+	self._rebuild()
+end
+
+function View:OnVip(cb)
+	self._onVip = cb
+end
+
 function View:SetNotice(kind: string?)
 	self._notice = kind
 	self._rebuild()

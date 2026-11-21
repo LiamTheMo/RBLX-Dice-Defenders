@@ -44,6 +44,11 @@ return {
 		Size = Vector2.new(212, 123),
 		Slice = Rect.new(124, 60, 128, 61),
 	}, -- Shared_PillRed.png
+	PillYellow = {
+		Image = "rbxassetid://138194144949885",
+		Size = Vector2.new(217, 123),
+		Slice = Rect.new(128, 60, 132, 61),
+	}, -- Shared_PillYellow.png (the green pill, hue-shifted)
 	PillPurple = {
 		Image = "rbxassetid://70994617713469",
 		Size = Vector2.new(210, 123),

@@ -12,6 +12,9 @@ local Dice = {}
 
 Dice.Deck = table.freeze({ "C01", "C02", "C03", "C04", "C05" })
 
+-- Bag display: how a die picks its target unless its entry sets `targeting`. Every die is "Front" for now.
+Dice.DefaultTargeting = "Front"
+
 Dice.Types = table.freeze({
 	C01 = table.freeze({
 		name = "Pebble",

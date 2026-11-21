@@ -53,7 +53,7 @@ local function refused(p, poolId, count, allowed, code, label)
 end
 
 test(
-	"Standard: 1 roll 100 Gems, 10 rolls 900; weights sum 10000, Mythic and Secret have positive odds; pity 80; Featured",
+	"Standard: 1 roll 100 Gems, 10 rolls 1000; weights sum 10000, Mythic and Secret have positive odds; pity 80; Featured",
 	function()
 		expectEq(#RollConfig.Pools, 1, "one pool")
 		expect(STANDARD ~= nil and RollConfig.Pools[1] == STANDARD and STANDARD.Id == "Standard", "Standard by id")
@@ -61,7 +61,7 @@ test(
 		for _, p in STANDARD.Prices do
 			prices[p.Count] = p.Gems
 		end
-		expect(prices[1] == 100 and prices[10] == 900 and #STANDARD.Prices == 2, "prices")
+		expect(prices[1] == 100 and prices[10] == 1000 and #STANDARD.Prices == 2, "prices")
 		local sum, bp = 0, {}
 		for _, o in STANDARD.Odds do
 			sum += o.Bp
@@ -207,18 +207,36 @@ test("ROLL 10 with seed S equals ten single draws with seed S", function()
 	end
 end)
 
-test("Buy: one roll costs exactly 100 Gems, ten cost 900; Stats.Rolls and RollPity follow; RollResult shape", function()
-	local p = profile(1000)
+test("Price: 100 per roll, VIP 10% off; ROLL MAX buys up to 50 at once", function()
+	expectEq(Roll.Price(STANDARD, 1), 100, "one")
+	expectEq(Roll.Price(STANDARD, 10), 1000, "ten")
+	expectEq(Roll.Price(STANDARD, 50), 5000, "fifty")
+	expectEq(Roll.Price(STANDARD, 1, 10), 90, "VIP one")
+	expectEq(Roll.Price(STANDARD, 10, 10), 900, "VIP ten")
+	expectEq(Roll.Price(STANDARD, 50, 10), 4500, "VIP fifty")
+	local p = profile(5000)
+	local ok, _, result = Roll.Buy(p, "Standard", 50, true, Random.new(7))
+	expect(ok and #result.Results == 50, "fifty results")
+	expectEq(p.Gems, 0, "5000 Gems")
+	expectEq(p.Stats.Rolls, 50, "fifty rolls counted")
+	local v = profile(4500)
+	expect(Roll.Buy(v, "Standard", 50, true, Random.new(8), 10), "VIP pays 4500 for fifty")
+	expectEq(v.Gems, 0, "VIP 4500 Gems")
+	refused(profile(4499), "Standard", 50, true, "Insufficient", "VIP still short by one")
+end)
+
+test("Buy: one roll costs exactly 100 Gems, ten cost 1000; Stats.Rolls and RollPity follow; RollResult shape", function()
+	local p = profile(1100)
 	local ok, code, result = Roll.Buy(p, "Standard", 1, true, Random.new(3))
 	expect(ok and code == nil, "ok " .. tostring(code))
-	expectEq(p.Gems, 900, "100 Gems once")
+	expectEq(p.Gems, 1000, "100 Gems once")
 	expectEq(p.Stats.Rolls, 1, "one roll counted")
 	expect(result.Pool == "Standard" and #result.Results == 1 and result.Pity == p.RollPity.Standard, "payload")
 	local r = result.Results[1]
 	expect(type(r.Id) == "string" and r.Rarity == Dice.Types[r.Id].rarity and type(r.New) == "boolean", "row")
 	local ok10, _, ten = Roll.Buy(p, "Standard", 10, true, Random.new(4))
 	expect(ok10 and #ten.Results == 10, "ten results")
-	expectEq(p.Gems, 0, "900 Gems once")
+	expectEq(p.Gems, 0, "1000 Gems once")
 	expectEq(p.Stats.Rolls, 11, "eleven rolls counted")
 	local copies = 0
 	for _, die in p.Dice do
@@ -234,7 +252,7 @@ test("Buy rejections in order leave Gems, dice, pity and stats deep-equal", func
 	for _, id in { "Event", "standard", "", "Standard ", "__index" } do
 		refused(rich, id, 1, true, "UnknownPool", "pool " .. id)
 	end
-	for _, count in { 5, 2, 9, 0, 11 } do
+	for _, count in { 0, 51, -1 } do
 		refused(rich, "Standard", count, true, "UnknownPrice", "count " .. count)
 	end
 	for _, allowed in { false, "true", 1 } do
@@ -242,14 +260,15 @@ test("Buy rejections in order leave Gems, dice, pity and stats deep-equal", func
 	end
 	refused(rich, "Standard", 10, nil, "Restricted", "unknown policy (nil) fails closed")
 	refused(profile(99), "Standard", 1, true, "Insufficient", "99 Gems for one")
-	refused(profile(899), "Standard", 10, true, "Insufficient", "899 Gems for ten")
+	refused(profile(999), "Standard", 10, true, "Insufficient", "999 Gems for ten")
+		refused(profile(4999), "Standard", 50, true, "Insufficient", "4999 Gems for fifty")
 	refused(profile(0), "Nope", 5, false, "UnknownPool", "pool checked first")
-	refused(profile(0), "Standard", 5, false, "UnknownPrice", "then the price")
+	refused(profile(0), "Standard", 51, false, "UnknownPrice", "then the price")
 	refused(profile(0), "Standard", 1, false, "Restricted", "then the policy")
 end)
 
 test("Buy: duplicates become copies; a new die arrives at Level 1 and only its first copy is New", function()
-	local p = profile(2000)
+	local p = profile(2200)
 	local ok, _, owned = Roll.Buy(p, "Standard", 10, true, fixed(1)) -- ten C01 (a starter)
 	expect(ok, "ok")
 	expect(p.Dice.C01.Level == 1 and p.Dice.C01.Copies == 10, "ten copies of an owned die")
@@ -262,7 +281,7 @@ test("Buy: duplicates become copies; a new die arrives at Level 1 and only its f
 	for i = 2, 10 do
 		expectEq(fresh.Results[i].New, false, "R01 " .. i .. " already unlocked by this roll")
 	end
-	expectEq(p.Gems, 200, "1800 spent")
+	expectEq(p.Gems, 200, "2000 spent")
 end)
 
 test("Buy: Overflow leaves the profile deep-equal; the 80th roll pays a Legendary and resets RollPity", function()
@@ -288,8 +307,8 @@ test("Buy: Overflow leaves the profile deep-equal; the 80th roll pays a Legendar
 	expectEq(capped.Stats.Rolls, Economy.MAX, "Stats.Rolls stays at the cap")
 end)
 
-test("Shape: pool a string of 1..16 bytes, count an integer in 1..10", function()
-	for _, good in { { "Standard", 1 }, { "Standard", 10 }, { "x", 5 }, { ("x"):rep(16), 1 } } do
+test("Shape: pool a string of 1..16 bytes, count an integer in 1..50", function()
+	for _, good in { { "Standard", 1 }, { "Standard", 10 }, { "Standard", 50 }, { "x", 5 }, { ("x"):rep(16), 1 } } do
 		expect(Roll.Shape(good[1], good[2]) == true, "well formed " .. good[1] .. " " .. good[2])
 	end
 	for i, bad in
@@ -298,7 +317,7 @@ test("Shape: pool a string of 1..16 bytes, count an integer in 1..10", function(
 			{ ("x"):rep(17), 1 },
 			{ 5, 1 },
 			{ "Standard", 0 },
-			{ "Standard", 11 },
+			{ "Standard", 51 },
 			{ "Standard", 1.5 },
 			{ "Standard", 0 / 0 },
 			{ "Standard", math.huge },

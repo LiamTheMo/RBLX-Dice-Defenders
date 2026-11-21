@@ -82,6 +82,19 @@ test("malformed argument matrix: BadArgs, never reaches the handler, seq not con
 			P(1, nil),
 			P(1, { "C01", "C02", "C03", "C04", "C05" }, 1),
 		},
+		TeamAction = {
+			P(),
+			P(1),
+			P(1, "Save"),
+			P(1, "Save", 0),
+			P(1, "Save", 6),
+			P(1, "Save", 1.5),
+			P(1, "Wipe", 1),
+			P(1, 5, 1),
+			P(1, "Load", "1"),
+			P(1, "Load", NAN),
+			P(1, "Load", 1, 1),
+		},
 		ClaimQuest = {
 			P(),
 			P(1),
@@ -193,7 +206,7 @@ test("malformed argument matrix: BadArgs, never reaches the handler, seq not con
 			P(1, "", 1),
 			P(1, ("x"):rep(17), 1), -- 17-byte pool
 			P(1, "Standard", 0),
-			P(1, "Standard", 11),
+			P(1, "Standard", 51),
 			P(1, "Standard", -1),
 			P(1, "Standard", 1.5),
 			P(1, "Standard", NAN),
@@ -284,6 +297,7 @@ test("malformed argument matrix: BadArgs, never reaches the handler, seq not con
 		Summon = P(1),
 		Merge = P(1, 1, 2),
 		EquipDeck = P(1, { "C01", "C02", "C03", "C04", "C05" }),
+		TeamAction = P(1, "Save", 1),
 		ClaimQuest = P(1, "S1"),
 		RedeemCode = P(1, "WELCOME"),
 		SaveSettings = P(1, { shadows = false }),
@@ -773,15 +787,15 @@ test("BagAction bucket is burst 6 at 3/s; soft codes are not counted; NetClient'
 	expectEq(honest.guard:Violations(sent), 0, "honest client never limited")
 end)
 
-test("Roll passes pool and count through; 1/16-byte pools and counts 1..10 are well formed", function()
+test("Roll passes pool and count through; 1/16-byte pools and counts 1..50 are well formed", function()
 	local env, owner = make(), {}
 	local got
 	env.handler = function(_, ...)
 		got = table.pack(...)
 		return true
 	end
-	expect(env.call(owner, "Roll", 1, "Standard", 10), "ok")
-	expect(got.n == 2 and got[1] == "Standard" and got[2] == 10, "args passed")
+	expect(env.call(owner, "Roll", 1, "Standard", 50), "ok")
+	expect(got.n == 2 and got[1] == "Standard" and got[2] == 50, "args passed")
 	expect(env.call(owner, "Roll", 2, "x", 1), "1-byte pool")
 	expect(
 		env.call(owner, "Roll", 3, ("x"):rep(16), 5),

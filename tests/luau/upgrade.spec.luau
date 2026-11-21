@@ -30,9 +30,10 @@ local function snap(value)
 	return "{" .. table.concat(parts, ",") .. "}"
 end
 
-local function profile(level, copies)
+local function profile(level, copies, gold)
 	local p = ProfileSchema.Default()
 	p.Dice.C01 = { Level = level, Copies = copies }
+	p.Gold = gold or 10000000
 	return p
 end
 
@@ -43,12 +44,31 @@ local function refused(p, id, code, label)
 	expectEq(snap(p), before, label .. " leaves the profile deep-equal")
 end
 
-test("the cost table: Max 7, Max - 1 whole costs of at least 1", function()
-	expectEq(DL.Max, 7, "Max")
+test("the cost table: Max 12, Max - 1 whole copy costs and gold / crit for every class a rarity reaches", function()
+	expectEq(DL.Max, 12, "Max")
 	expectEq(#DL.Copies, DL.Max - 1, "one cost per level-up")
 	for level, cost in DL.Copies do
 		expect(cost % 1 == 0 and cost >= 1, "cost " .. level)
 	end
+	local top = 0
+	for _, offset in DL.Offset do
+		top = math.max(top, offset)
+	end
+	expect(#DL.Gold >= DL.Max - 1 + top and #DL.Crit >= DL.Max - 1 + top, "curves cover the highest-offset rarity")
+	for class = 1, #DL.Gold do
+		expect(DL.Gold[class] >= 1 and DL.Gold[class] % 1 == 0, "gold " .. class)
+		expect(DL.Crit[class] > 0, "crit " .. class)
+		expect(class == 1 or DL.Gold[class] >= DL.Gold[class - 1], "gold never falls " .. class)
+	end
+end)
+
+test("rarer dice start further up the gold and crit curves", function()
+	expectEq(Progression.GoldCost("Common", 1), DL.Gold[1], "Common first step")
+	expectEq(Progression.GoldCost("Rare", 1), DL.Gold[3], "Rare first step is class 3")
+	expectEq(Progression.GoldCost("Legendary", 1), DL.Gold[7], "Legendary first step is class 7")
+	expectEq(Progression.CritGain("Rare", 1), DL.Crit[3], "Rare crit gain")
+	expectEq(Progression.CritOf("Common", 1), 0, "level 1 earns nothing")
+	expectEq(Progression.CritOf("Common", 4), DL.Crit[1] + DL.Crit[2] + DL.Crit[3], "sum of the steps so far")
 end)
 
 test("Shape: strings of 1..8 bytes only", function()
@@ -61,7 +81,7 @@ end)
 
 test("UnknownDie, NotOwned, MaxLevel leave the profile deep-equal", function()
 	local p = profile(2, 9)
-	for _, id in { "Z99", "S01", "__index", "", 5, true } do
+	for _, id in { "Z99", "Z98", "__index", "", 5, true } do
 		refused(p, id, "UnknownDie", "id " .. tostring(id))
 	end
 	refused(p, nil, "UnknownDie", "nil id")
@@ -73,10 +93,15 @@ end)
 test("copies exactly at the cost level up; one below is Insufficient", function()
 	for level = 1, DL.Max - 1 do
 		local cost = DL.Copies[level]
-		local p = profile(level, cost)
-		local ok, code = Upgrade.Die(p, "C01")
+		local gold = Progression.GoldCost("Common", level)
+		local p2 = profile(level, cost, gold)
+		local ok, code = Upgrade.Die(p2, "C01")
 		expect(ok and code == nil, "level " .. level .. " at cost")
-		expect(p.Dice.C01.Copies == 0 and p.Dice.C01.Level == level + 1, "spent the cost, +1 level")
+		expect(
+			p2.Dice.C01.Copies == 0 and p2.Dice.C01.Level == level + 1 and p2.Gold == 0,
+			"spent copies and gold, +1 level"
+		)
+		refused(profile(level, cost, gold - 1), "C01", "NoGold", "level " .. level .. " one gold short")
 		refused(profile(level, cost - 1), "C01", "Insufficient", "level " .. level .. " one below")
 	end
 end)
@@ -86,12 +111,28 @@ test("a full climb 1 -> Max spends exactly the table total, then MaxLevel", func
 	for _, cost in DL.Copies do
 		total += cost
 	end
-	local p = profile(1, total + 4)
+	local goldTotal = 0
+	for level = 1, DL.Max - 1 do
+		goldTotal += Progression.GoldCost("Common", level)
+	end
+	local p = profile(1, total + 4, goldTotal + 9)
 	for level = 1, DL.Max - 1 do
 		expect(Upgrade.Die(p, "C01"), "climb " .. level)
 	end
 	expect(p.Dice.C01.Level == DL.Max and p.Dice.C01.Copies == 4, "spent exactly the total")
+	expectEq(p.Gold, 9, "spent exactly the gold total")
+	expectEq(Upgrade.CritBonus(p), Progression.CritOf("Common", DL.Max), "a maxed die earns its full crit")
 	refused(p, "C01", "MaxLevel", "after the climb")
+end)
+
+test("CritBonus sums every owned die; junk entries count for nothing", function()
+	local p = ProfileSchema.Default()
+	p.Dice = { C01 = { Level = 4, Copies = 0 }, R01 = { Level = 3, Copies = 0 }, Z99 = { Level = 9, Copies = 0 } }
+	local want = Progression.CritOf("Common", 4) + Progression.CritOf("Rare", 3)
+	expectEq(Upgrade.CritBonus(p), want, "Common Lv4 + Rare Lv3, unknown die ignored")
+	p.Dice.C01.Level = NAN
+	expectEq(Upgrade.CritBonus(p), Progression.CritOf("Rare", 3), "a corrupt level counts for nothing")
+	expectEq(Upgrade.CritBonus({}), 0, "no dice table")
 end)
 
 test("corrupt entries are BadAmount and untouched", function()
@@ -128,6 +169,7 @@ test("interleaving Roll.Buy and Upgrade.Die keeps Copies >= 0, Level <= Max and 
 	end
 	local p = ProfileSchema.Default()
 	p.Gems = 100000
+	p.Gold = 1000000000
 	local rng = Random.new(7)
 	local function held() -- per die: copies still held plus copies sunk into levels
 		local out = {}

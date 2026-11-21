@@ -47,9 +47,10 @@ local function tiersFor(deck: { string })
 	return tiers
 end
 
-local function newSeat(deck: { string })
+local function newSeat(deck: { string }, critBonus: number?)
 	return {
 		deck = table.clone(deck),
+		critBonus = critBonus or 0, -- crit damage percent from this player's die levels
 		tiers = tiersFor(deck),
 		mp = Balance.StartMP,
 		summons = 0,
@@ -58,7 +59,15 @@ local function newSeat(deck: { string })
 	}
 end
 
-function Match.New(runId: number, rng: any, now: number, deck: { string }, partnerDeck: { string }?)
+function Match.New(
+	runId: number,
+	rng: any,
+	now: number,
+	deck: { string },
+	partnerDeck: { string }?,
+	critBonus: number?,
+	partnerCritBonus: number?
+)
 	-- Keep the primary seat on the original state for solo callers.
 	local state = {
 		kills = 0,
@@ -68,7 +77,7 @@ function Match.New(runId: number, rng: any, now: number, deck: { string }, partn
 		result = nil,
 		lives = Balance.StartLives,
 		playerCount = if partnerDeck then 2 else 1,
-		partner = if partnerDeck then newSeat(partnerDeck) else nil,
+		partner = if partnerDeck then newSeat(partnerDeck, partnerCritBonus) else nil,
 		wave = 0,
 		wavesCompleted = 0,
 		waveState = "Prep",
@@ -85,7 +94,7 @@ function Match.New(runId: number, rng: any, now: number, deck: { string }, partn
 		rewardGranted = false,
 		out = newOut(),
 	}
-	for key, value in newSeat(deck) do
+	for key, value in newSeat(deck, critBonus) do
 		state[key] = value
 	end
 	return state
@@ -392,7 +401,8 @@ local function attack(state, seat, index: number, now: number)
 							if shot == 1 then flat else 0,
 							tier,
 							singularity,
-							critical
+							critical,
+							seat.critBonus
 						)
 					)
 					if cfg.slow and target.hp > 0 then

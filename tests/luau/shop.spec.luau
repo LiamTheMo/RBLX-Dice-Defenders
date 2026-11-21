@@ -150,3 +150,36 @@ test("guard", function()
 	g.finish()
 	expectEq(g.begin(), true, "after finish")
 end)
+
+test("GAMEPASSES: the VIP card shows its Robux price, then Owned; no offer and not owned keeps Coming soon", function()
+	local function gamepasses(meta)
+		local d = ShopLogic.data(Catalog.Build(), meta, { Gold = 0 })
+		for _, sec in ShopLogic.sections(d) do
+			if sec.Heading == "GAMEPASSES" then
+				return sec, d
+			end
+		end
+		error("no GAMEPASSES section")
+	end
+	local soon = gamepasses({ Gems = 0, Purchases = {} })
+	expectEq(soon.Kind, "Soon", "no pass configured")
+	local sale, d = gamepasses({
+		Gems = 0,
+		Purchases = {},
+		RollDiscountPct = 0,
+		VipOffer = { PassId = 7, Robux = 299, Pct = 10 },
+	})
+	local card = sale.Items[1]
+	expect(sale.Kind == "Cards" and card.Id == ShopLogic.VIP_ID and card.Name == "VIP", "a VIP card")
+	expect(card.Price == 299 and card.Currency == "Robux" and card.Enabled and card.Label == nil, "299 Robux, buyable")
+	expectEq(card.Desc, "10% off every\nroll, forever", "perk text")
+	expectEq(d.Vip.Offer.PassId, 7, "the press reads the pass id")
+	local owned = gamepasses({ Gems = 0, Purchases = {}, RollDiscountPct = 10 })
+	local o = owned.Items[1]
+	expect(o.Label == "Owned" and not o.Enabled, "Owned once the discount is held")
+	expect(
+		ShopLogic.key(ShopLogic.data(Catalog.Build(), { Purchases = {}, RollDiscountPct = 10 }, {}))
+			~= ShopLogic.key(ShopLogic.data(Catalog.Build(), { Purchases = {}, RollDiscountPct = 0 }, {})),
+		"the key changes when VIP is bought"
+	)
+end)

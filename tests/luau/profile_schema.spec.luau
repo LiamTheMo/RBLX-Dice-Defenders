@@ -972,7 +972,7 @@ test("newer version is NewerVersion and never repaired", function()
 	expect(p == nil and problem == "NewerVersion", "newer version refused")
 end)
 
-test("v9 -> v10 clamps die levels above the cap, no refund; corrupt v10 levels reset", function()
+test("v9 -> v10 keeps die levels within the cap (the cap now sits above the old 10), resets those above it", function()
 	local max = require(Server.Config.Progression).DieLevel.Max
 	local stored = {
 		Version = 9,
@@ -985,10 +985,10 @@ test("v9 -> v10 clamps die levels above the cap, no refund; corrupt v10 levels r
 	}
 	local before = snap(stored)
 	local p = ProfileSchema.Migrate(stored)
-	expectEq(p.Dice.C01.Level, max, "10 -> cap")
-	expectEq(p.Dice.C02.Level, max, "cap + 1 -> cap")
+	expectEq(p.Dice.C01.Level, 10, "10 is within the cap: kept")
+	expectEq(p.Dice.C02.Level, 1, "cap + 1 is corrupt -> 1")
 	expectEq(p.Dice.C03.Level, max, "cap kept")
-	expectEq(p.Dice.C04.Level, 1, "11 was already corrupt -> 1")
+	expectEq(p.Dice.C04.Level, 11, "11 is within the cap: kept")
 	expect(p.Dice.C01.Copies == 5 and p.Dice.C02.Copies == 6 and p.Dice.C03.Copies == 7, "Copies unchanged")
 	expect(p.Dice.C04.Copies == 8, "Copies of a corrupt level kept")
 	expectEq(snap(stored), before, "stored is not mutated")
@@ -1009,7 +1009,7 @@ test("v9 -> v10 with a huge junk Dice table is cheap", function()
 	local started = os.clock()
 	local p = ProfileSchema.Migrate({ Version = 9, Dice = junk })
 	expect(os.clock() - started < 0.5, "20,000 junk entries load in under 0.5 s")
-	expect(p.Dice.C01.Level == require(Server.Config.Progression).DieLevel.Max and p.Dice.junk1 == nil, "junk dropped")
+	expect(p.Dice.C01.Level == 9 and p.Dice.junk1 == nil, "junk dropped")
 end)
 
 local function v10(extra)

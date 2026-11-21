@@ -43,6 +43,7 @@ local ROLL = { Image = Sprites.Icon.Roll, Size = Vector2.new(256, 185), Ink = Re
 local Q = QuestSprites
 local ART = { -- product art per ShopLogic ART key
 	HeroArt = ShopSprites.HeroArt,
+	VipPass = ShopSprites.VipPass,
 	Potion = Q.Potion,
 	Clover = ShopSprites.Clover,
 	GemBag = ShopSprites.GemBag,
@@ -426,7 +427,8 @@ function View:_build()
 		elseif sec.Kind == "Cards" and sec.Heading == "GEMS" then
 			packs = sec.Items
 		elseif sec.Kind == "Cards" then
-			offers = sec.Items
+			offers = table.clone(offers)
+			table.move(sec.Items, 1, #sec.Items, #offers + 1, offers) -- OFFERS and GAMEPASSES share the card role sizes
 		end
 	end
 	local fx = L.fx

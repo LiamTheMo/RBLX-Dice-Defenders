@@ -64,6 +64,7 @@ Balance.Remotes = table.freeze({
 	Summon = table.freeze({ rate = 10, burst = 8 }),
 	Merge = table.freeze({ rate = 5, burst = 8 }),
 	EquipDeck = table.freeze({ rate = 1, burst = 3 }),
+	TeamAction = table.freeze({ rate = 1, burst = 3 }),
 	ClaimQuest = table.freeze({ rate = 2, burst = 4 }),
 	RedeemCode = table.freeze({ rate = 1, burst = 3 }),
 	SaveSettings = table.freeze({ rate = 0.5, burst = 3 }), -- *tune*

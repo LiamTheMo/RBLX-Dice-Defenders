@@ -2,7 +2,8 @@
 -- Shop.new(parent, { hud = LobbyHud, toast = (string) -> () }) -> :Open() :Close() :Toggle() :IsOpen() :Destroy()
 -- Renders the server's Catalog.Shop offers with the Gems (Meta) and Gold (State) balances. A Gold or Gems offer sends Buy(id);
 -- an available Robux offer only prompts the developer product (the server grants it from the Marketplace receipt); an
--- offer without a ProductId shows "Not available yet". GAMEPASSES and SHARDS show the "Coming soon" card.
+-- offer without a ProductId shows "Not available yet". GAMEPASSES shows the VIP pass card (PromptGamePassPurchase; "Coming soon" while the
+-- server offers no pass); SHARDS shows the "Coming soon" card.
 
 local ContextActionService = game:GetService("ContextActionService")
 local GuiService = game:GetService("GuiService")
@@ -68,6 +69,16 @@ function Shop.new(parent, deps)
 			return
 		end
 		local d = data()
+		if offerId == ShopLogic.VIP_ID then -- the VIP game pass: the server learns of the purchase from PromptGamePassPurchaseFinished
+			task.delay(PRESS_COOLDOWN, flight.finish)
+			local vip = d and d.Vip
+			if vip and vip.Offer then
+				pcall(MarketplaceService.PromptGamePassPurchase, MarketplaceService, Players.LocalPlayer, vip.Offer.PassId)
+			else
+				deps.toast("Already owned")
+			end
+			return
+		end
 		local offer = ShopLogic.offer(d, offerId)
 		local action, arg = ShopLogic.press(offer, d)
 		if action == "Buy" then

@@ -8,6 +8,7 @@ local GuiService = game:GetService("GuiService")
 local NetClient = require(script.Parent.Parent.NetClient)
 local Shell = require(script.Parent.Shell)
 local Parts = require(script.Parent.Parts)
+local TeamsPopup = require(script.Parent.TeamsPopup)
 local Sprites = require(script.Parent.BagSprites)
 local BagLogic = require(script.Parent.BagLogic)
 local Dice = require(script.Parent.Tabs.Dice)
@@ -41,6 +42,7 @@ local UPGRADE_REPLIES = { -- UpgradeDie refusals; anything unlisted reads "Somet
 	WrongPhase = "Not during a match",
 	RateLimited = "Slow down",
 	Insufficient = "Not enough copies",
+	NoGold = "Not enough gold",
 	NotLoaded = "Still loading",
 	NotOwner = "This server is in use",
 	Throttled = "Slow down",
@@ -73,7 +75,33 @@ function Bag.new(parent, deps)
 		},
 	})
 	local toolbar, grid = Parts.Toolbar(shell.Slots.Toolbar), Parts.Grid(shell.Slots.Grid)
-	local footer, detail = Parts.Footer(shell.Slots.Footer), Parts.Detail(shell.Slots.Detail)
+	local detail = Parts.Detail(shell.Slots.Detail)
+	detail:OnPreview(function(gain: string?)
+		toolbar:SetGain(gain)
+	end)
+	-- Action row above the detail panel (Dice tab): UNEQUIP ALL. The loadout itself lives on the lobby hotbar.
+	local TOP_BTN_W = 180 -- two buttons side by side over the 368 px detail panel
+	local TOP_TEXT = Parts.fitSize("UNEQUIP ALL", TOP_BTN_W - 22, 34, 12) -- one label size for the row, as on the detail action row
+	local unequipAll = Parts.button(shell.Slots.TopBar, {
+		Name = "UnequipAll",
+		Style = "Red",
+		Label = "UNEQUIP ALL",
+		TextSize = 34,
+		Size = UDim2.fromOffset(TOP_BTN_W, 42),
+	})
+	unequipAll:SetAttribute("TextFixed", TOP_TEXT)
+	local teamsButton = Parts.button(shell.Slots.TopBar, {
+		Name = "Teams",
+		Style = "Purple",
+		Label = "TEAMS",
+		TextSize = 34,
+		Size = UDim2.fromOffset(TOP_BTN_W, 42),
+	})
+	unequipAll.Position = UDim2.fromOffset(TOP_BTN_W + 8, 0) -- TEAMS left, UNEQUIP ALL right
+	teamsButton:SetAttribute("TextFixed", TOP_TEXT)
+	Parts.setButton(unequipAll, { Label = "UNEQUIP ALL" })
+	Parts.setButton(teamsButton, { Label = "TEAMS" })
+	local teamsPopup = TeamsPopup.new(shell.Window, 60)
 
 	local meta -- latest Meta payload (NetClient.LastMeta)
 	local catalog -- display catalogue (NetClient.LastCatalog)
@@ -81,10 +109,10 @@ function Bag.new(parent, deps)
 	local cur = 1 -- tab index being shown
 	local view = {} -- visible items (filtered + sorted)
 	local model -- current detail model
-	local footerButton -- current footer button model (DICE: UNEQUIP ALL)
-	local pending -- die id waiting for a loadout slot
+	local topButton -- current UNEQUIP ALL model (DICE tab)
+	local pending -- die id waiting for a hotbar slot to replace
 	local lastSend, inFlight = -math.huge, false
-	local slotButtons = {}
+	local pickSlot
 
 	local function resetState()
 		for i, tab in TABS do
@@ -102,25 +130,21 @@ function Bag.new(parent, deps)
 		return ok
 	end
 
+	-- Top action row (tabs with HasTopBar) + the hotbar's replace-a-slot mode while a die waits in `pending`.
 	local function renderFooter()
 		local tab = TABS[cur]
-		footer:SetVisible(tab.Footer ~= nil)
-		shell:SetFooter(tab.Footer ~= nil)
-		if not tab.Footer then
+		local has = tab.HasTopBar == true
+		shell:SetTopBar(has)
+		if not has then
+			hud:SetPickMode(nil)
+			teamsPopup:Hide()
 			return
 		end
-		local f = tab.Footer(meta)
-		footerButton = f.Button
-		footer:SetLabel(if pending then "PICK A SLOT TO REPLACE" else f.Label)
-		footer:SetSlots(f.Slots)
-		for i, s in slotButtons do
-			local icon = s:FindFirstChild("Icon")
-			if icon and f.Tints and f.Tints[i] then
-				icon.ImageColor3 = f.Tints[i]
-			end
-		end
-		footer:SetSlotHighlight(pending ~= nil)
-		footer:SetButton(f.Button)
+		teamsPopup:Set(meta)
+		local t = tab.TopBar(meta)
+		topButton = t.UnequipAll
+		Parts.setButton(unequipAll, { Label = t.UnequipAll.Label, Enabled = t.UnequipAll.Enabled })
+		hud:SetPickMode(if pending then pickSlot else nil)
 	end
 
 	local function renderDetail()
@@ -162,7 +186,7 @@ function Bag.new(parent, deps)
 			toolbar:SetQuery(st.query)
 			toolbar:SetSortOptions(tab.SortOptions, st.sort)
 			if toolbar.SetCount then -- Parts.Toolbar shows it once it has the slot (open request in notes)
-				toolbar:SetCount(if tab.Count then tab.Count(meta, catalog) else nil)
+				toolbar:SetCount(if tab.Count then tab.Count(meta, catalog) else nil, tab.CountGain == true)
 			end
 			grid:SetEmptyText(if st.query ~= "" then "No results" else tab.EmptyText)
 			grid:SetItems(view)
@@ -231,7 +255,7 @@ function Bag.new(parent, deps)
 		end)
 	end
 
-	local function pickSlot(i: number)
+	function pickSlot(i: number)
 		if not pending then
 			return
 		end
@@ -248,21 +272,6 @@ function Bag.new(parent, deps)
 		renderFooter()
 		sendDeck(ids)
 	end
-
-	for i = 1, 5 do
-		slotButtons[i] = shell.Slots.Footer:FindFirstChild("Slot" .. i, true)
-	end
-	footer:OnSlot(function(i)
-		safe("slot", pickSlot, i)
-	end)
-	table.insert(
-		conns,
-		shell.Slots.Footer:GetAttributeChangedSignal("Compact"):Connect(function()
-			if shell:IsOpen() then
-				safe("footer", renderFooter)
-			end
-		end)
-	)
 
 	-- Callbacks -----------------------------------------------------------------------------------------
 	toolbar:OnSearch(function(q)
@@ -305,25 +314,19 @@ function Bag.new(parent, deps)
 				sendBag(id, st.selected, if id == "Sell" or id == "Use" then st.qty else 1)
 			elseif id == "Upgrade" then
 				sendUpgrade(st.selected)
-			elseif id == "ConvertShard" then
-				task.spawn(function()
-					local ok, code = NetClient.Request("TutorialAction", "Convert", st.selected)
-					toast(
-						if ok
-							then "Converted a Dice Shard into one spare copy"
-							elseif code == "Locked" then "Unlock your Dice Shards first"
-							else "Could not use a Dice Shard"
-					)
-				end)
 			elseif id == "Equip" then
 				local deck = meta and meta.Deck
 				if deck and #deck < 5 then
 					pending = st.selected
 					pickSlot(#deck + 1)
 				elseif deck then
-					pending = st.selected
-					renderFooter()
-					toast("Pick a loadout slot")
+					if hud.DeckBar.Visible then
+						pending = st.selected
+						renderFooter()
+						toast("Pick a hotbar slot to replace")
+					else
+						toast("Unequip a die first") -- phones hide the hotbar while a menu is open
+					end
 				end
 			elseif id == "Unequip" and meta and meta.Deck then
 				local slot = table.find(meta.Deck, st.selected)
@@ -351,14 +354,27 @@ function Bag.new(parent, deps)
 			renderDetail()
 		end)
 	end)
-	footer:OnButton(function(hint)
-		safe("footer", function()
-			if footerButton and footerButton.Enabled then
+	teamsButton.Activated:Connect(function()
+		teamsPopup:Set(meta)
+		teamsPopup:Show()
+	end)
+	teamsPopup:OnAction(function(action: string, slot: number)
+		task.spawn(function()
+			-- A refusal is toasted by Lobby's NetClient.Rejected handler; the rows redraw from the next Meta.
+			local ok = NetClient.Request("TeamAction", action, slot)
+			if ok then
+				toast(if action == "Save" then ("Saved to Team %d"):format(slot) else ("Equipped Team %d"):format(slot))
+			end
+		end)
+	end)
+	unequipAll.Activated:Connect(function()
+		safe("unequipAll", function()
+			if topButton and topButton.Enabled then
 				pending = nil
 				renderFooter()
 				sendDeck({})
 			else
-				toast(hint or "Not available")
+				toast(topButton and topButton.Hint or "Not available")
 			end
 		end)
 	end)
@@ -384,6 +400,8 @@ function Bag.new(parent, deps)
 		ContextActionService:UnbindAction(ACTION)
 		resetState()
 		grid:ResetScroll()
+		hud:SetPickMode(nil)
+		teamsPopup:Hide()
 		hud:SetBagMode(false)
 	end)
 
@@ -424,7 +442,7 @@ function Bag.new(parent, deps)
 	)
 
 	self._shell, self._hud, self._conns = shell, hud, conns
-	self._parts = { toolbar, grid, footer, detail }
+	self._parts = { toolbar, grid, detail }
 	self._open = function(tab)
 		local idx = tab or 1
 		meta, catalog = NetClient.LastMeta, NetClient.LastCatalog

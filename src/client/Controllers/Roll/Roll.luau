@@ -7,6 +7,8 @@
 
 local ContextActionService = game:GetService("ContextActionService")
 local GuiService = game:GetService("GuiService")
+local MarketplaceService = game:GetService("MarketplaceService")
+local Players = game:GetService("Players")
 
 local NetClient = require(script.Parent.Parent.NetClient)
 local RollFlow = require(script.Parent.RollFlow)
@@ -46,6 +48,20 @@ function Roll.new(parent, deps)
 		local tutorial = meta and meta.Tutorial
 		return if tutorial and tutorial.Stage == "Roll" then tutorial else nil
 	end
+	local function discount() -- the server's VIP roll discount percent (0 when none)
+		local meta = NetClient.LastMeta
+		return if meta and type(meta.RollDiscountPct) == "number" then meta.RollDiscountPct else 0
+	end
+	local function vipOffer() -- the VIP pass for sale { PassId, Robux, Pct }, or nil (owned / not created)
+		local meta = NetClient.LastMeta
+		local o = meta and meta.VipOffer
+		return if type(o) == "table" and type(o.PassId) == "number" and type(o.Robux) == "number" then o else nil
+	end
+	local function maxCap() -- most rolls one ROLL MAX buys (server Catalog)
+		local catalog = NetClient.LastCatalog
+		local roll = type(catalog) == "table" and catalog.Roll
+		return if type(roll) == "table" and type(roll.MaxCount) == "number" then roll.MaxCount else 50
+	end
 	-- (pool, gems, allowed, pity count, key of those) from the latest Catalog and Meta
 	local function inputs()
 		local pool = RollLogic.pool(NetClient.LastCatalog, POOL)
@@ -54,7 +70,11 @@ function Roll.new(parent, deps)
 		local allowed = meta ~= nil and meta.RollAllowed == true
 		local pity = RollLogic.pityCount(meta, POOL)
 		local starter = starterRoll(meta)
-		return pool, gems, allowed, pity, `{pool ~= nil}|{gems}|{allowed}|{pity}|{starter and starter.Rolls}`
+		return pool,
+			gems,
+			allowed,
+			pity,
+			`{pool ~= nil}|{gems}|{allowed}|{pity}|{starter and starter.Rolls}|{discount()}|{vipOffer() ~= nil}`
 	end
 	local function render()
 		local pool, gems, allowed, pity, key = inputs()
@@ -70,7 +90,9 @@ function Roll.new(parent, deps)
 			view:SetButtons({
 				{ Count = 1, Price = starter.RollCost, Enabled = true },
 				{ Count = 10, Price = "-", Enabled = false },
+					{ Count = 0, Price = "-", Enabled = false, Max = true },
 			})
+			view:SetVip(nil)
 			view:SetNotice("starter")
 			return
 		end
@@ -81,15 +103,17 @@ function Roll.new(parent, deps)
 		end
 		view:SetOdds(RollLogic.oddsRows(pool))
 		view:SetPity(if pool then { Count = pity, Max = pool.Pity.Max, Rarity = pool.Pity.Rarity } else nil)
-		view:SetButtons(RollLogic.buttons(pool, gems, allowed))
-		view:SetNotice(if not allowed then "region" elseif gems ~= nil then "gems" else nil) -- why a disabled button is off (its chip says so)
+		view:SetButtons(RollLogic.buttons(pool, gems, allowed, discount(), maxCap()))
+		local offer = vipOffer()
+		view:SetVip(if offer and allowed then { Pct = offer.Pct, Robux = offer.Robux } else nil)
+		view:SetNotice(if not allowed then "region" else nil) -- region lock shows in the chip; too few gems still shows the price (the click toasts why)
 	end
 
 	-- ROLL 1 / ROLL 10: RollFlow gates (one request, 0.6 s spin, 10 s timeout); the server checks everything again.
 	-- shortcut: placeholder roll animation, replace with real VFX later
 	local flow = RollFlow.new()
 	local cooling = false -- short press cooldown (UX only)
-	local pressed = 1
+	local pressed, pressedMax = 1, false
 	local wake -- the pending flow tick
 	local apply
 	local function schedule()
@@ -117,7 +141,7 @@ function Roll.new(parent, deps)
 					render()
 				end
 			elseif a.show == "rolling" then
-				view:SetRolling({ Count = pressed, Still = SettingsLogic.get("reducedMotion") == true })
+				view:SetRolling({ Count = pressed, Max = pressedMax, Still = SettingsLogic.get("reducedMotion") == true })
 			elseif a.show == "reveal" then
 				deps.toast(RollLogic.resultToast(a.result.Results))
 				result = a.result
@@ -132,7 +156,7 @@ function Roll.new(parent, deps)
 		end
 		schedule()
 	end
-	view:OnRoll(function(count)
+	view:OnRoll(function(count, isMax)
 		local blocked = flow:Blocked()
 		if blocked then
 			apply(blocked)
@@ -143,16 +167,19 @@ function Roll.new(parent, deps)
 		local meta = NetClient.LastMeta
 		local starter = starterRoll(meta)
 		local pool = RollLogic.pool(NetClient.LastCatalog, POOL)
+		if isMax and meta and pool then -- ROLL MAX: every roll the Gems cover right now (the server re-prices it)
+			count = RollLogic.maxCount(pool, meta.Gems, discount(), maxCap())
+		end
 		if meta == nil or pool == nil then
 			deps.toast(REPLIES.NotLoaded)
 			return
-		elseif starter and count ~= 1 then
+		elseif starter and (count ~= 1 or isMax) then
 			deps.toast("Roll one die at a time for your starter deck.")
 			return
 		elseif not starter and meta.RollAllowed ~= true then
 			deps.toast(REPLIES.Restricted)
 			return
-		elseif not starter and not RollLogic.canAfford(meta.Gems, RollLogic.price(pool, count)) then
+		elseif not starter and not RollLogic.canAfford(meta.Gems, RollLogic.price(pool, count, discount())) then
 			deps.toast(REPLIES.Insufficient)
 			return
 		end
@@ -160,7 +187,7 @@ function Roll.new(parent, deps)
 		task.delay(PRESS_COOLDOWN, function()
 			cooling = false
 		end)
-		pressed = count
+		pressed, pressedMax = count, isMax == true
 		local a = flow:Press(os.clock(), SettingsLogic.get("reducedMotion") == true)
 		apply(a)
 		task.spawn(function()
@@ -172,6 +199,12 @@ function Roll.new(parent, deps)
 			end
 			apply(flow:Reply(a.gen, ok, code, os.clock()))
 		end)
+	end)
+	view:OnVip(function()
+		local offer = vipOffer()
+		if offer then -- the server learns of the purchase from PromptGamePassPurchaseFinished and pushes the discount
+			pcall(MarketplaceService.PromptGamePassPurchase, MarketplaceService, Players.LocalPlayer, offer.PassId)
+		end
 	end)
 	view:OnInfo(function()
 		if starterRoll(NetClient.LastMeta) then

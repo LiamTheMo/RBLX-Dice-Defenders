@@ -152,7 +152,8 @@ function Formulas.HitDamage(
 	procFlat: number?,
 	tier: number?,
 	singularity: boolean?,
-	critical: boolean?
+	critical: boolean?,
+	critBonus: number? -- account crit damage percent from die levels (Upgrade.CritBonus), added to the crit multiplier
 ): number
 	local cfg = Dice.Types[typeId]
 	local enemy = Enemies.Kinds[kind]
@@ -164,7 +165,7 @@ function Formulas.HitDamage(
 		perk *= cfg.vsArmored
 	end
 	if singularity and cfg.singularity then
-		perk *= cfg.singularity.damage * (if critical then cfg.singularity.critDamage else 1)
+		perk *= cfg.singularity.damage * (if critical then cfg.singularity.critDamage + (critBonus or 0) / 100 else 1)
 	end
 	-- 1e-9 keeps an exact product such as 10 x 1.3 from flooring one short on float noise.
 	return math.max(1, math.floor(cfg.base * perk * Formulas.TierMul(tier or 1) + 1e-9)) + (procFlat or 0)

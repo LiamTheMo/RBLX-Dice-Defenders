@@ -4,6 +4,8 @@
 
 local ShopLogic = {}
 
+ShopLogic.VIP_ID = "VipPass" -- View item id of the VIP game pass card (not a Catalog.Shop offer)
+
 export type Section = { Kind: string, Heading: string, Items: { any }? }
 
 -- Product art per offer (View ART keys); an offer not listed shows the gem bag.
@@ -43,7 +45,9 @@ function ShopLogic.data(catalog: any, meta: any, snap: any): any?
 			bought[row.Id] = row.Count
 		end
 	end
+	local owned = type(meta) == "table" and type(meta.RollDiscountPct) == "number" and meta.RollDiscountPct > 0
 	return {
+		Vip = { Owned = owned, Offer = if type(meta) == "table" then meta.VipOffer else nil }, -- the VIP game pass (Meta)
 		Catalog = catalog,
 		Offers = catalog.Shop.Offers,
 		Bought = bought,
@@ -144,6 +148,22 @@ local function item(offer: any, data: any, withBullets: boolean?): any
 	}
 end
 
+-- The VIP game pass card (Id "VipPass"): Robux price, or "Owned" once the pass is held.
+function ShopLogic.vipItem(data: any): any
+	local vip = data.Vip
+	local offer = vip.Offer
+	return {
+		Id = ShopLogic.VIP_ID,
+		Name = "VIP",
+		Price = if offer then offer.Robux else 0,
+		Currency = "Robux",
+		Art = "VipPass",
+		Desc = `{if offer then offer.Pct else 10}% off every\nroll, forever`,
+		Label = if vip.Owned then LABEL.Owned else nil,
+		Enabled = not vip.Owned,
+	}
+end
+
 function ShopLogic.sections(data: any): { Section }
 	if data == nil then
 		return { { Kind = "Loading", Heading = "Loading shop…" } }
@@ -168,9 +188,18 @@ function ShopLogic.sections(data: any): { Section }
 	if #gems > 0 then
 		table.insert(sections, { Kind = "Cards", Heading = "GEMS", Items = gems })
 	end
-	table.insert(sections, { Kind = "Soon", Heading = "GAMEPASSES" })
+	local vip = data.Vip
+	if vip.Owned or vip.Offer then
+		table.insert(sections, { Kind = "Cards", Heading = "GAMEPASSES", Items = { ShopLogic.vipItem(data) } })
+	else
+		table.insert(sections, { Kind = "Soon", Heading = "GAMEPASSES" })
+	end
 	table.insert(sections, { Kind = "Soon", Heading = "SHARDS" })
 	return sections
+end
+
+local function data_vip(data: any): string
+	return `{data.Vip.Owned}:{data.Vip.Offer ~= nil}`
 end
 
 -- Changes whenever a render would look different (offers' states and their prices): the controller redraws only then.
@@ -182,6 +211,7 @@ function ShopLogic.key(data: any?): string
 	for _, offer in data.Offers do
 		table.insert(parts, `{offer.Id}:{ShopLogic.status(offer, data)}`)
 	end
+	table.insert(parts, `vip:{data_vip(data)}`)
 	return table.concat(parts, "|")
 end
 

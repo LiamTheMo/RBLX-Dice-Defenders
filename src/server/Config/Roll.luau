@@ -48,7 +48,7 @@ Roll.Pools = freeze({
 	pool({
 		Id = "Standard",
 		Name = "Standard",
-		Prices = { { Count = 1, Gems = 100 }, { Count = 10, Gems = 900 } },
+		Prices = { { Count = 1, Gems = 100 }, { Count = 10, Gems = 1000 } }, -- ROLL MAX is the Count 1 price x its count
 		Odds = { -- draw order; Rules/Roll walks it against one roll of 1..10000
 			{ Rarity = "Common", Bp = 5889 },
 			{ Rarity = "Rare", Bp = 3000 },
@@ -61,6 +61,9 @@ Roll.Pools = freeze({
 		Featured = { "L01", "M01", "L02" },
 	}),
 })
+
+Roll.MaxCount = 50 -- most rolls one ROLL MAX buys
+Roll.VipDiscountPct = 10 -- VIP game pass perk: percent off every roll price
 
 local byId = {}
 for _, p in Roll.Pools do

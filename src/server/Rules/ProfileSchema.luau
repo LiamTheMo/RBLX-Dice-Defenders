@@ -13,6 +13,7 @@ local RollConfig = require(script.Parent.Parent.Config.Roll)
 local ShopConfig = require(script.Parent.Parent.Config.Shop)
 local SettingsDefs = require(game:GetService("ReplicatedStorage").Shared.SettingsDefs)
 local Deck = require(script.Parent.Deck)
+local Teams = require(script.Parent.Teams)
 local Tutorial = require(script.Parent.Tutorial)
 local Validate = require(script.Parent.Validate)
 
@@ -96,6 +97,7 @@ function ProfileSchema.Default()
 		profileRevision = 0,
 		Dice = starterDice(),
 		Deck = table.clone(Dice.Deck),
+		Teams = {},
 		Claimed = {},
 		Daily = { Day = 0, Kills = 0, Claimed = {} },
 		Redeemed = {},
@@ -511,6 +513,7 @@ function ProfileSchema.Migrate(stored: any)
 		adminEditId = if type(data.adminEditId) == "string" and #data.adminEditId == 36 then data.adminEditId else nil,
 		Dice = dice,
 		Deck = deck,
+		Teams = Teams.Clean(data.Teams, dice),
 		Tutorial = tutorial,
 		Claimed = cleanFlags(data.Claimed, Quests.List, function(quest)
 			return quest.Daily ~= true and quest.Weekly == nil

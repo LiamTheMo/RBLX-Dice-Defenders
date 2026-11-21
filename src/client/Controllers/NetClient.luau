@@ -31,6 +31,7 @@ local MIN_INTERVAL = {
 	Summon = 0.125,
 	Merge = 0.25,
 	EquipDeck = 1.0,
+	TeamAction = 1.0, -- server bucket 1/s, burst 3
 	ClaimQuest = 0.5,
 	RedeemCode = 1.0,
 	SaveSettings = 2.0,
@@ -86,6 +87,7 @@ function NetClient.Start()
 				"Summon",
 				"Merge",
 				"EquipDeck",
+				"TeamAction",
 				"ClaimQuest",
 				"RedeemCode",
 				"SaveSettings",

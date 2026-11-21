@@ -12,6 +12,7 @@ local Bag = require(script.Parent.Parent.Rules.Bag)
 local Deck = require(script.Parent.Parent.Rules.Deck)
 local Roll = require(script.Parent.Parent.Rules.Roll)
 local Shop = require(script.Parent.Parent.Rules.Shop)
+local Teams = require(script.Parent.Parent.Rules.Teams)
 local Upgrade = require(script.Parent.Parent.Rules.Upgrade)
 local Validate = require(script.Parent.Parent.Rules.Validate)
 local SettingsDefs = require(game:GetService("ReplicatedStorage").Shared.SettingsDefs)
@@ -34,6 +35,7 @@ RemoteGuard.Specs = table.freeze({
 	TutorialAction = table.freeze({ argc = 3, check = Tutorial.Shape }),
 	Summon = table.freeze({ argc = 1 }),
 	EquipDeck = table.freeze({ argc = 2, check = Deck.Shape }),
+	TeamAction = table.freeze({ argc = 3, check = Teams.Shape }),
 	ClaimQuest = table.freeze({
 		argc = 2,
 		check = function(id)

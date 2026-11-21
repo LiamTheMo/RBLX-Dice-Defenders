@@ -53,31 +53,52 @@ function RollLogic.oddsRows(pool: any): { { Rarity: string, Pct: number, Text: s
 	return rows
 end
 
--- Gems for `count` rolls of the pool, or nil.
-function RollLogic.price(pool: any, count: number): number?
+-- Gems for `count` rolls of the pool (the single-roll price x count, less the VIP `discountPct`, rounded up), or nil.
+-- Mirrors the server's Rules/Roll.Price; the server charges what it computes.
+function RollLogic.price(pool: any, count: number, discountPct: number?): number?
 	for _, p in if pool then pool.Prices else {} do
-		if p.Count == count then
-			return p.Gems
+		if p.Count == 1 then
+			return math.ceil(p.Gems * count * (100 - (discountPct or 0)) / 100)
 		end
 	end
 	return nil
+end
+
+-- Rolls ROLL MAX buys: every one the Gems cover, at most `cap` (Catalog.Roll.MaxCount, default 50); 0 when none.
+function RollLogic.maxCount(pool: any, gems: number?, discountPct: number?, cap: number?): number
+	local one = RollLogic.price(pool, 1, discountPct)
+	if gems == nil or one == nil or one <= 0 then
+		return 0
+	end
+	local n = math.min(cap or 50, math.floor(gems / one))
+	while n > 0 and RollLogic.price(pool, n, discountPct) > gems do -- rounding up can leave n one too many
+		n -= 1
+	end
+	return n
 end
 
 function RollLogic.canAfford(gems: number?, price: number?): boolean
 	return gems ~= nil and price ~= nil and gems >= price
 end
 
--- The two ROLL buttons: { Count, Price (Gems, or "-" before the Catalog), Enabled = allowed and affordable }.
+-- The ROLL 1, ROLL 10 and ROLL MAX buttons: { Count, Price (Gems, or "-" before the Catalog), Enabled = allowed and
+-- affordable, Max = true on ROLL MAX }. ROLL MAX's Count is what it would buy now (0 when broke: it then shows the
+-- price of one roll, disabled).
 function RollLogic.buttons(
 	pool: any,
 	gems: number?,
-	allowed: boolean
-): { { Count: number, Price: any, Enabled: boolean } }
+	allowed: boolean,
+	discountPct: number?,
+	cap: number?
+): { { Count: number, Price: any, Enabled: boolean, Max: boolean? } }
 	local list = {}
 	for i, count in RollLogic.COUNTS do
-		local price = RollLogic.price(pool, count)
+		local price = RollLogic.price(pool, count, discountPct)
 		list[i] = { Count = count, Price = price or "-", Enabled = allowed and RollLogic.canAfford(gems, price) }
 	end
+	local n = RollLogic.maxCount(pool, gems, discountPct, cap)
+	local price = RollLogic.price(pool, math.max(n, 1), discountPct)
+	list[#list + 1] = { Count = n, Price = price or "-", Enabled = allowed and n > 0, Max = true }
 	return list
 end
 

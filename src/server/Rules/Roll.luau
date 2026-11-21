@@ -9,7 +9,24 @@ local Validate = require(script.Parent.Validate)
 local Roll = {}
 
 Roll.TOTAL_BP = 10_000 -- one roll draws 1..TOTAL_BP against the pool's Odds
-Roll.MAX_COUNT = 10
+Roll.MAX_COUNT = RollConfig.MaxCount
+
+-- Gems for `count` rolls: the pool's single-roll price x count, less `discountPct` (VIP), rounded up. nil = no such pool price.
+function Roll.Price(pool, count: number, discountPct: number?): number?
+	if not Validate.IsInt(count, 1, Roll.MAX_COUNT) then
+		return nil
+	end
+	local unit = nil
+	for _, p in pool.Prices do
+		if p.Count == 1 then
+			unit = p.Gems
+		end
+	end
+	if unit == nil then
+		return nil
+	end
+	return math.ceil(unit * count * (100 - (discountPct or 0)) / 100)
+end
 
 -- RemoteGuard validator for (pool, count): pool a string of 1..16 bytes, count an integer in 1..MAX_COUNT.
 function Roll.Shape(pool: any, count: any): boolean
@@ -52,17 +69,19 @@ end
 -- paid-random-item policy). Codes, in order: UnknownPool, UnknownPrice, Restricted, Insufficient, then a Rewards.Apply
 -- code (Overflow). Returns (true, nil, {Pool, Results = {{Id, Rarity, New}}, Pity}); New = that die was not owned before
 -- this roll (so only its first copy in a ROLL 10).
-function Roll.Buy(profile: any, poolId: string, count: number, allowed: any, rng): (boolean, string?, any)
+function Roll.Buy(
+	profile: any,
+	poolId: string,
+	count: number,
+	allowed: any,
+	rng,
+	discountPct: number?
+): (boolean, string?, any)
 	local pool = RollConfig.ById[poolId]
 	if pool == nil then
 		return false, "UnknownPool", nil
 	end
-	local price = nil
-	for _, p in pool.Prices do
-		if p.Count == count then
-			price = p.Gems
-		end
-	end
+	local price = Roll.Price(pool, count, discountPct)
 	if price == nil then
 		return false, "UnknownPrice", nil
 	elseif allowed ~= true then

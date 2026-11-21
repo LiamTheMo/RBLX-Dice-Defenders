@@ -6,6 +6,7 @@ local RunService = game:GetService("RunService")
 
 local Balance = require(script.Parent.Parent.Config.Balance)
 local Progression = require(script.Parent.Parent.Config.Progression)
+local Passes = require(script.Parent.Parent.Config.Passes)
 local RollConfig = require(script.Parent.Parent.Config.Roll)
 local ShopConfig = require(script.Parent.Parent.Config.Shop)
 local Net = require(script.Parent.Parent.Infrastructure.Net)
@@ -14,6 +15,7 @@ local Bag = require(script.Parent.Parent.Rules.Bag)
 local Catalog = require(script.Parent.Parent.Rules.Catalog)
 local Claims = require(script.Parent.Parent.Rules.Claims)
 local Deck = require(script.Parent.Parent.Rules.Deck)
+local Teams = require(script.Parent.Parent.Rules.Teams)
 local Economy = require(script.Parent.Parent.Rules.Economy)
 local Formulas = require(script.Parent.Parent.Rules.Formulas)
 local Match = require(script.Parent.Parent.Rules.Match)
@@ -25,6 +27,7 @@ local Tutorial = require(script.Parent.Parent.Rules.Tutorial)
 local Upgrade = require(script.Parent.Parent.Rules.Upgrade)
 local PlayerPolicy = require(script.Parent.PlayerPolicy)
 local ProfileService = require(script.Parent.ProfileService)
+local VipService = require(script.Parent.VipService)
 
 local MatchService = {}
 
@@ -133,6 +136,15 @@ local function quantities(map)
 end
 
 -- Lobby data for one player, sent to that player only. Arrays only (no sparse keys).
+-- Saved team presets as {["1"] = {ids}, ...} (string keys: a sparse number-keyed table does not survive a remote).
+local function teamsView(profile)
+	local out = {}
+	for key, ids in profile.Teams do
+		out[key] = table.clone(ids)
+	end
+	return out
+end
+
 local function meta(player: Player, profile)
 	local dice = {}
 	for id, die in profile.Dice do
@@ -169,6 +181,7 @@ local function meta(player: Player, profile)
 	return {
 		Dice = dice,
 		Deck = table.clone(profile.Deck),
+		Teams = teamsView(profile), -- {[slot 1..5] = {dieIds}} for the saved presets only
 		Quests = view.Quests,
 		DailyResetAt = view.DailyResetAt,
 		WeeklyResetAt = view.WeeklyResetAt,
@@ -177,6 +190,8 @@ local function meta(player: Player, profile)
 		Achievements = claims.Achievements,
 		Mastery = claims.Mastery,
 		Gems = profile.Gems,
+		Gold = profile.Gold, -- die level-ups spend it
+		CritBonus = Upgrade.CritBonus(profile), -- account crit damage percent earned from die levels
 		Xp = profile.Xp,
 		Level = level,
 		XpInto = xpInto,
@@ -187,6 +202,10 @@ local function meta(player: Player, profile)
 		Locked = locked, -- sorted locked Material and Item ids
 		Settings = table.clone(profile.Settings), -- {[settingId] = value}; a missing id is its default
 		RollAllowed = PlayerPolicy.RollAllowed(player), -- false until the policy answer arrives (fail closed)
+		RollDiscountPct = if VipService.IsVip(player) then RollConfig.VipDiscountPct else 0, -- VIP pass perk
+		VipOffer = if Passes.Vip.Id ~= 0 and not VipService.IsVip(player) -- the pass for sale: nil once owned or not created
+			then { PassId = Passes.Vip.Id, Robux = Passes.Vip.Robux, Pct = RollConfig.VipDiscountPct }
+			else nil,
 		Tutorial = Tutorial.View(profile),
 		Pity = pity, -- {{Pool, Count}}: rolls toward each pool's guarantee, in Config/Roll order
 		Purchases = purchases, -- {{Id, Count}}: purchases of each limited Shop offer, in Config/Shop order
@@ -338,7 +357,9 @@ local function startMatch(player, partner): (boolean, string?)
 		Random.new(),
 		workspace:GetServerTimeNow(),
 		profile.Deck,
-		otherProfile and otherProfile.Deck
+		otherProfile and otherProfile.Deck,
+		Upgrade.CritBonus(profile),
+		otherProfile and Upgrade.CritBonus(otherProfile)
 	)
 	flush(true)
 	return true, nil
@@ -433,6 +454,26 @@ local function handleEquipDeck(player: Player, ids: any): (boolean, string?)
 	return ok, code
 end
 
+-- Save the equipped deck into a team slot, or equip a saved team (same rules as EquipDeck).
+local function handleTeamAction(player: Player, action: string, slot: number): (boolean, string?)
+	if match and match.phase == "Playing" and seatFor(player) then
+		return false, "WrongPhase"
+	end
+	local profile = ProfileService.Get(player)
+	if profile == nil then
+		return false, "NotLoaded"
+	end
+	local ok, code = Teams.Run(profile, action, slot)
+	if ok then
+		ProfileService.MarkChanged(player) -- Changed pushes Meta
+		if readyForCoop[player] and #profile.Deck < Deck.SIZE then
+			readyForCoop[player] = nil
+			push(player)
+		end
+	end
+	return ok, code
+end
+
 local function handleUpgradeDie(player: Player, id: string): (boolean, string?)
 	if match and match.phase == "Playing" then
 		return false, "WrongPhase"
@@ -492,7 +533,8 @@ local function handleRoll(player: Player, poolId: string, count: number): (boole
 	if not Tutorial.CanStart(profile) then
 		return false, "FinishStarterRolls"
 	end
-	local ok, code, result = Roll.Buy(profile, poolId, count, PlayerPolicy.RollAllowed(player), rollRng)
+	local discount = if VipService.IsVip(player) then RollConfig.VipDiscountPct else 0
+	local ok, code, result = Roll.Buy(profile, poolId, count, PlayerPolicy.RollAllowed(player), rollRng, discount)
 	if ok then
 		ProfileService.MarkChanged(player) -- Changed pushes Meta (Gems, dice, pity)
 		Net.Fire("RollResult", player, result)
@@ -602,6 +644,7 @@ function MatchService.Init()
 	Net.Handle("Merge", handleMerge)
 	Net.Handle("PowerUp", handlePowerUp)
 	Net.Handle("EquipDeck", handleEquipDeck)
+	Net.Handle("TeamAction", handleTeamAction)
 	Net.Handle("ClaimQuest", handleClaimQuest)
 	Net.Handle("SaveSettings", handleSaveSettings)
 	Net.Handle("BagAction", handleBagAction)
@@ -631,6 +674,7 @@ function MatchService.Start()
 		pushMeta(player)
 	end)
 	PlayerPolicy.Changed:Connect(pushMeta) -- RollAllowed arrived (no-op before the profile loads)
+	VipService.Changed:Connect(pushMeta) -- the VIP discount arrived or was just bought
 	RunService.Heartbeat:Connect(tick)
 end
 

@@ -3,6 +3,8 @@
 -- LobbyHud.build(parent, { open = (panel, tab?) -> (), toast = (text) -> () }) -> hud; hud:SetGold(n), hud:SetGems(n), hud:SetXp(level, into, need),
 -- hud:SetDeck(ids), hud:SetBagMode(on, menu), hud:GetBagInsets().
 
+local UserInputService = game:GetService("UserInputService")
+
 local Sprites = require(script.Parent.Sprites)
 local SettingsLogic = require(script.Parent.Settings.SettingsLogic)
 local UiKit = require(script.Parent.UiKit)
@@ -362,6 +364,7 @@ function LobbyHud.build(parent, cb)
 	}, hud)
 	self.DeckBar = deck
 	self.Slots, self.SlotParts = {}, {}
+	self._dragEnd, self._pick, self._ghost, self._onSwap = -math.huge, nil, nil, nil
 	for i = 1, 5 do
 		local slot = make("ImageButton", {
 			Name = "Slot" .. i,
@@ -419,13 +422,177 @@ function LobbyHud.build(parent, cb)
 		end)
 		slot:GetAttributeChangedSignal("Empty"):Connect(refresh)
 		slot:GetAttributeChangedSignal("Loading"):Connect(refresh)
+		-- Replace-a-slot mode (the Bag asks for it): a gold ring on every slot.
+		local ring = make("Frame", {
+			Name = "PickRing",
+			BackgroundTransparency = 1,
+			Size = UDim2.fromScale(1, 1),
+			Visible = false,
+			ZIndex = 6,
+		}, body)
+		make("UICorner", { CornerRadius = UDim.new(0, 14) }, ring)
+		make("UIStroke", { Color = Color3.fromRGB(252, 205, 10), Thickness = 4 }, ring)
 		slot.Activated:Connect(function()
-			open("Bag", 1)
+			if os.clock() - self._dragEnd < 0.3 then -- the release that dropped a dragged die is not a click
+				return
+			end
+			if self._pick then
+				self._pick(i)
+			else
+				open("Bag", 1)
+			end
+		end)
+		-- Hold (or drag) a filled slot to pick its die up as a ghost; drop it on another slot to swap them.
+		slot.InputBegan:Connect(function(input)
+			local t = input.UserInputType
+			if t ~= Enum.UserInputType.MouseButton1 and t ~= Enum.UserInputType.Touch then
+				return
+			end
+			if slot:GetAttribute("Empty") or slot:GetAttribute("Loading") or self._ghost then
+				return
+			end
+			self:_armDrag(i, input)
 		end)
 		self.Slots[i], self.SlotParts[i] = icon, slot
 	end
 	self:_layoutBottom(CLOSED)
 	return self
+end
+
+local HOLD_TIME, DRAG_PX = 0.25, 10 -- hold this long, or move this far, with the button down to lift a die
+
+-- A press on filled slot `from`: after HOLD_TIME or DRAG_PX of travel the die lifts as a ghost that follows the pointer.
+function LobbyHud:_armDrag(from: number, input: InputObject)
+	local startPos = input.Position
+	local armed = true
+	local conns = {}
+	local function stop()
+		armed = false
+		for _, c in conns do
+			c:Disconnect()
+		end
+	end
+	local function lift()
+		if not armed then
+			return
+		end
+		stop()
+		self:_lift(from, startPos)
+	end
+	table.insert(
+		conns,
+		UserInputService.InputChanged:Connect(function(changed)
+			local t = changed.UserInputType
+			if
+				(t == Enum.UserInputType.MouseMovement or t == Enum.UserInputType.Touch)
+				and (changed.Position - startPos).Magnitude >= DRAG_PX
+			then
+				lift()
+			end
+		end)
+	)
+	table.insert(
+		conns,
+		UserInputService.InputEnded:Connect(function(ended)
+			local t = ended.UserInputType
+			if t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch then
+				stop()
+			end
+		end)
+	)
+	task.delay(HOLD_TIME, lift)
+end
+
+function LobbyHud:_lift(from: number, startPos: Vector3)
+	local slot, icon = self.SlotParts[from], self.Slots[from]
+	if not icon.Visible then
+		return
+	end
+	local root = self.Hud.Parent
+	local box = slot.AbsoluteSize
+	local origin = slot.AbsolutePosition + box / 2
+	local ghost = make("ImageLabel", {
+		Name = "DragGhost",
+		BackgroundTransparency = 1,
+		Image = icon.Image,
+		ImageColor3 = icon.ImageColor3,
+		ImageTransparency = 0.15,
+		ScaleType = Enum.ScaleType.Fit,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Size = UDim2.fromOffset(box.X * 0.8, box.Y * 0.8),
+		ZIndex = 200,
+		Active = false,
+	}, root)
+	icon.ImageTransparency = 0.65 -- the slot the die left shows it faded
+	self._ghost = ghost
+	local center = origin
+	local function place(pos: Vector3)
+		center = origin + Vector2.new(pos.X - startPos.X, pos.Y - startPos.Y)
+		ghost.Position = UDim2.fromOffset(center.X - root.AbsolutePosition.X, center.Y - root.AbsolutePosition.Y)
+	end
+	place(startPos)
+	local conns = {}
+	local function finish(drop: boolean)
+		for _, c in conns do
+			c:Disconnect()
+		end
+		ghost:Destroy()
+		self._ghost = nil
+		icon.ImageTransparency = 0
+		self._dragEnd = os.clock()
+		if not drop then
+			return
+		end
+		for j, other in self.SlotParts do
+			local p, s = other.AbsolutePosition, other.AbsoluteSize
+			if
+				j ~= from
+				and center.X >= p.X
+				and center.X <= p.X + s.X
+				and center.Y >= p.Y
+				and center.Y <= p.Y + s.Y
+			then
+				if self._onSwap then
+					self._onSwap(from, j)
+				end
+				return
+			end
+		end
+	end
+	table.insert(
+		conns,
+		UserInputService.InputChanged:Connect(function(changed)
+			local t = changed.UserInputType
+			if t == Enum.UserInputType.MouseMovement or t == Enum.UserInputType.Touch then
+				place(changed.Position)
+			end
+		end)
+	)
+	table.insert(
+		conns,
+		UserInputService.InputEnded:Connect(function(ended)
+			local t = ended.UserInputType
+			if t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch then
+				finish(true)
+			end
+		end)
+	)
+end
+
+-- cb(from, to) when a die is dropped from one filled slot onto another.
+function LobbyHud:OnSwap(cb)
+	self._onSwap = cb
+end
+
+-- cb(slotIndex) takes over slot clicks (the Bag's replace-a-slot flow) and rings the slots; nil restores "click opens the Bag".
+function LobbyHud:SetPickMode(cb)
+	self._pick = cb
+	for _, slot in self.SlotParts do
+		local ring = slot:FindFirstChild("PickRing", true)
+		if ring then
+			ring.Visible = cb ~= nil
+		end
+	end
 end
 
 -- Coin row, deck anchor and the 5 slots for the closed (CLOSED) or menu-open (OPEN) look.
