@@ -119,18 +119,6 @@ local function dieIcon(id: string)
 	return Sprites.Icon.Roll, info and info.Color or WHITE
 end
 
--- Light wash of UiKit.feel, rounded like the art it covers.
-local function sheen(parent: Instance, radius: number)
-	local f = make("Frame", {
-		BackgroundColor3 = WHITE,
-		BackgroundTransparency = 0.87,
-		BorderSizePixel = 0,
-		Size = UDim2.fromScale(1, 1),
-	}, parent)
-	make("UICorner", { CornerRadius = UDim.new(0, radius) }, f)
-	return f
-end
-
 -- Scalable art body: grows from its centre (hover 1.07, pressed 0.93).
 local function body(parent: Instance, class: string, props: { [string]: any })
 	props.BackgroundTransparency = 1
@@ -147,9 +135,9 @@ local function paintSlot(slot)
 	local state = slot.State
 	local mode = if state == "idle" then slot.Mode else "Normal"
 	if state == "idle" then
-		UiKit.feel(slot.Tile, slot.Scale, slot.Sheen, mode, true)
-	else -- insufficient / maxed: no hover or sheen, the tile stays plain
-		slot.Tile.ImageColor3, slot.Sheen.Visible, slot.Scale.Scale = WHITE, false, 1
+		UiKit.feel(slot.Tile, slot.Scale, mode, true)
+	else -- insufficient / maxed: no hover, the tile stays plain
+		slot.Tile.ImageColor3, slot.Scale.Scale = WHITE, 1
 	end
 	slot.Content.Position = UDim2.fromOffset(0, if mode == "Pressed" then PRESS_NUDGE * SLOT_K else 0)
 	slot.Icon.ImageColor3 = if state == "insufficient" then shade(slot.IconColor, 0.55) else slot.IconColor
@@ -176,7 +164,6 @@ local function buildSlot(i: number, id: string)
 		Image = Sprites.Hud.UpgradeBlank,
 		Size = UDim2.fromScale(1, 1),
 	}, art)
-	local wash = sheen(art, 30)
 	local content = make("Frame", { Name = "Content", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) }, art)
 	local image, color = dieIcon(id)
 	local icon = make("ImageLabel", {
@@ -196,7 +183,6 @@ local function buildSlot(i: number, id: string)
 		Hit = hit,
 		Tile = tile,
 		Scale = scale,
-		Sheen = wash,
 		Content = content,
 		Icon = icon,
 		IconColor = color,
@@ -247,7 +233,7 @@ local function paintSummon()
 	local s = ui.Summon
 	local insufficient = s.State == "insufficient"
 	local mode = s.Mode
-	UiKit.feel(s.Art, s.Scale, s.Sheen, mode, true)
+	UiKit.feel(s.Art, s.Scale, mode, true)
 	if insufficient then -- greyed purple, still pressable (the server answers with a toast)
 		s.Art.ImageColor3 = if mode == "Pressed" then Color3.fromRGB(110, 95, 110) else Color3.fromRGB(150, 125, 150)
 	end
@@ -407,10 +393,10 @@ local function build()
 		Size = UDim2.fromOffset(GEAR_ART, GEAR_ART),
 	}, gearHit)
 	make("UIAspectRatioConstraint", { AspectRatio = 166 / 162 }, gearImage)
-	local gearScale, gearSheen = make("UIScale", {}, gearImage), sheen(gearImage, 12)
+	local gearScale = make("UIScale", {}, gearImage)
 	ui.Gear = { Hit = gearHit }
 	UiKit.wire(gearHit, function(mode)
-		UiKit.feel(gearImage, gearScale, gearSheen, mode, true)
+		UiKit.feel(gearImage, gearScale, mode, true)
 	end)
 
 	-- Bottom: upgrade tiles on the left, Summon on the right, one group centred on the screen.
@@ -452,7 +438,6 @@ local function build()
 		SliceCenter = PILL.Slice,
 		SliceScale = SUMMON_H / PILL.Size.Y,
 	})
-	local wash = sheen(art, SUMMON_H / 2)
 	local content = make("Frame", { Name = "Content", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) }, art)
 	local icon = make("ImageLabel", {
 		BackgroundTransparency = 1,
@@ -478,7 +463,6 @@ local function build()
 		Mode = "Normal",
 		Art = art,
 		Scale = scale,
-		Sheen = wash,
 		Content = content,
 		Icon = icon,
 		Cost = cost,
