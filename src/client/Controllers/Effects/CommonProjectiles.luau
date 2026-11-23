@@ -234,9 +234,8 @@ local function fire(parent, enemy, attack, reducedMotion, style, visualLane, onI
 	-- The die stands on a 0.4-stud pad, with a quarter stud between its top and the launch.
 	local from = if style.impactOnly
 		then center
-		else Layout.CellPosition(attack.Cell, attack.Seat, attack.PlayerCount) + Vector3.yAxis * (DiceVisuals.Size(
-			attack.Type
-		) + 0.65 - Layout.Y)
+		else Layout.CellPosition(attack.Cell, attack.Seat, attack.Arena or attack.PlayerCount)
+			+ Vector3.yAxis * (DiceVisuals.Size(attack.Type) + 0.25 + Layout.PadTop - Layout.Y)
 	local camera = workspace.CurrentCamera
 	local up = if camera then camera.CFrame.UpVector else Vector3.yAxis
 	local lane = up * ((attack.Lane or visualLane) * 0.22 * SIZE_SCALE)
@@ -263,7 +262,7 @@ local function fire(parent, enemy, attack, reducedMotion, style, visualLane, onI
 		shot.effectCell = shot.copiedCell or shot.transformedCell
 		shot.supportCells, shot.links = attack.SupportCells, attack.ChainDistances
 		if shot.effectCell then
-			local cell = Layout.CellPosition(shot.effectCell, attack.Seat, attack.PlayerCount)
+			local cell = Layout.CellPosition(shot.effectCell, attack.Seat, attack.Arena or attack.PlayerCount)
 			shot.center = cell + Vector3.yAxis * 2
 			shot.halfSize = DiceVisuals.Size(attack.Type) / 2
 			shot.flight = if reducedMotion then 0 else (shot.center - from).Magnitude / style.speed
@@ -337,8 +336,8 @@ local function fireCommon(
 	local distance = attack.Distance
 	local center = Layout.PositionAt(distance, enemy.seat, enemy.playerCount) + Vector3.yAxis * enemy.lift
 	-- The die stands on a 0.4-stud pad, with a quarter stud between its top and the launch.
-	local from = Layout.CellPosition(attack.Cell, attack.Seat, attack.PlayerCount)
-		+ Vector3.yAxis * (DiceVisuals.Size(attack.Type) + 0.65 - Layout.Y)
+	local from = Layout.CellPosition(attack.Cell, attack.Seat, attack.Arena or attack.PlayerCount)
+		+ Vector3.yAxis * (DiceVisuals.Size(attack.Type) + 0.25 + Layout.PadTop - Layout.Y)
 	local camera = workspace.CurrentCamera
 	local up = if camera then camera.CFrame.UpVector else Vector3.yAxis
 	local lane = up * ((attack.Lane or 0) * LANE_OFFSET * scale)

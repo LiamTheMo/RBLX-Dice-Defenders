@@ -20,7 +20,7 @@ local Layout = require(game:GetService("ReplicatedStorage").Shared.Layout)
 
 local Match = {}
 
-local RESULTS = { Lost = true, Aborted = true, Error = true }
+local RESULTS = { Lost = true, Aborted = true, Error = true, Duel = true }
 local FEATURED_VFX = {
 	R01 = true,
 	R02 = true,
@@ -53,6 +53,7 @@ local function newSeat(deck: { string }, critBonus: number?)
 		critBonus = critBonus or 0, -- crit damage percent from this player's die levels
 		tiers = tiersFor(deck),
 		mp = Balance.StartMP,
+		kills = 0, -- enemies killed on this seat's lane (state.kills is seat one's, and the lane total in Co-op)
 		summons = 0,
 		board = Board.New(),
 		nextDieId = 1,
@@ -71,6 +72,7 @@ function Match.New(
 	-- Keep the primary seat on the original state for solo callers.
 	local state = {
 		kills = 0,
+		mode = if partnerDeck then "Coop" else "Solo",
 		runId = runId,
 		rng = rng,
 		phase = "Playing",
@@ -100,6 +102,15 @@ function Match.New(
 	return state
 end
 
+-- 1v1 Duel (docs/DICE_RATING.md section 4): two seats, the same waves on both lanes, own lives, own MP, no crit bonus.
+-- Seat two lives on state.partner like Co-op; each seat carries its own `lives`.
+function Match.NewDuel(runId: number, rng: any, now: number, deckA: { string }, deckB: { string })
+	local state = Match.New(runId, rng, now, deckA, deckB, 0, 0)
+	state.mode = "Duel"
+	state.partner.lives = Balance.StartLives
+	return state
+end
+
 function Match.Seat(state, index: number?)
 	return if index == 2 then state.partner else state
 end
@@ -108,15 +119,43 @@ function Match.SummonCost(state): number
 	return Formulas.SummonCost(state.summons)
 end
 
--- Ends the match once. `result` is Lost, Aborted or Error (a run is endless).
+-- Ends the match once. `result` is Lost, Aborted or Error (a run is endless); "Duel" only via endDuel/Forfeit.
 function Match.Finish(state, result: string): boolean
-	if state.phase ~= "Playing" or not RESULTS[result] then
+	if state.phase ~= "Playing" or not RESULTS[result] or (result == "Duel") ~= (state.duel ~= nil) then
 		return false
 	end
 	state.phase = "Ended"
 	state.result = result
 	state.out.dirty = true
 	return true
+end
+
+local function endDuel(state, winner: number, why: string)
+	state.duel = {
+		Winner = winner,
+		Why = why,
+		Lives = { state.lives, state.partner.lives },
+		Kills = { state.kills, state.partner.kills },
+	}
+	Match.Finish(state, "Duel")
+end
+
+local function concede(state, seatIndex: number, why: string): boolean
+	if state.mode ~= "Duel" or state.phase ~= "Playing" or (seatIndex ~= 1 and seatIndex ~= 2) then
+		return false
+	end
+	endDuel(state, if seatIndex == 1 then 2 else 1, why)
+	return true
+end
+
+-- A seat leaves: it loses, the opponent wins. No effect outside a Duel in progress.
+function Match.Forfeit(state, seatIndex: number): boolean
+	return concede(state, seatIndex, "Forfeit")
+end
+
+-- A seat surrenders on purpose (same effect as Forfeit, Why = "Surrender"). Only while Playing in a Duel.
+function Match.Surrender(state, seatIndex: number): boolean
+	return concede(state, seatIndex, "Surrender")
 end
 
 function Match.TakeOut(state)
@@ -307,6 +346,7 @@ local function spawn(state, now: number)
 				Hp = enemy.hp,
 				Seat = index,
 				PlayerCount = state.playerCount,
+				Arena = state.mode,
 			})
 		end
 		state.qi += 1
@@ -343,6 +383,12 @@ local function attack(state, seat, index: number, now: number)
 	local auras = Match.Auras(seat)
 	local singularity = Formulas.HasSingularity(seat.board)
 	local restrictLane = state.partner ~= nil
+	local duel = state.mode == "Duel"
+	-- A Duel die only sees its own lane; Co-op also shares the stretch past the junction.
+	local function reachable(enemy): boolean
+		return enemy.hp > 0
+			and (not restrictLane or enemy.seat == index or (not duel and enemy.dist >= Layout.CoopJunction))
+	end
 	for cell = 1, Balance.BoardCells do
 		local die = seat.board[cell]
 		if die then
@@ -356,9 +402,7 @@ local function attack(state, seat, index: number, now: number)
 				local first
 				local alive = 0
 				for _, enemy in enemies do
-					if
-						enemy.hp > 0 and (not restrictLane or enemy.seat == index or enemy.dist >= Layout.CoopJunction)
-					then
+					if reachable(enemy) then
 						alive += 1
 						if first == nil or enemy.dist > first.dist then
 							first = enemy
@@ -372,14 +416,11 @@ local function attack(state, seat, index: number, now: number)
 				-- Both targets are chosen before either shot deals damage.
 				local second = first
 				if twinshot and alive > 1 then
-					local index = state.rng:NextInteger(1, alive)
+					local pick = state.rng:NextInteger(1, alive)
 					for _, enemy in enemies do
-						if
-							enemy.hp > 0
-							and (not restrictLane or enemy.seat == index or enemy.dist >= Layout.CoopJunction)
-						then
-							index -= 1
-							if index == 0 then
+						if reachable(enemy) then
+							pick -= 1
+							if pick == 0 then
 								second = enemy
 								break
 							end
@@ -392,19 +433,16 @@ local function attack(state, seat, index: number, now: number)
 				for shot = 1, cfg.shots or 1 do
 					local target = if shot == 1 then first else second
 					local critical = Formulas.SingularityCrit(die.type, singularity, state.rng)
-					damage(
-						state,
-						target,
-						Formulas.HitDamage(
-							die.type,
-							target.kind,
-							if shot == 1 then flat else 0,
-							tier,
-							singularity,
-							critical,
-							seat.critBonus
-						)
+					local amount = Formulas.HitDamage(
+						die.type,
+						target.kind,
+						if shot == 1 then flat else 0,
+						tier,
+						singularity,
+						critical,
+						seat.critBonus
 					)
+					damage(state, target, amount)
 					if cfg.slow and target.hp > 0 then
 						if not target.slowUntil then
 							target.baseSpeed = target.speed
@@ -416,11 +454,13 @@ local function attack(state, seat, index: number, now: number)
 						Cell = cell,
 						Seat = index,
 						PlayerCount = state.playerCount,
+						Arena = state.mode,
 						Id = target.id,
 						Type = die.type,
 						Distance = if showProjectile then target.dist else nil,
 						Boosted = if showProjectile and flat > 0 then true else nil,
 						Critical = if critical then true else nil,
+						Damage = amount, -- floating damage number (display only)
 						Slowed = if showProjectile and cfg.slow and target.hp > 0 then true else nil,
 						SlowUntil = if cfg.slow and target.hp > 0 then target.slowUntil else nil,
 						SupportCells = supportCells,
@@ -455,23 +495,39 @@ function Match.Step(state, now: number)
 
 	-- Move + breach. dist is a pure function of time so clients can reproduce it.
 	local survivors = {}
+	local duel = state.mode == "Duel"
 	for _, enemy in state.enemies do
 		if enemy.slowUntil and now >= enemy.slowUntil then
 			setSpeed(state, enemy, enemy.baseSpeed, enemy.slowUntil)
 			enemy.slowUntil = nil
 		end
 		enemy.dist = math.max(0, enemy.speed * (now - enemy.spawnAt))
+		-- Duel lanes are the same 124-stud balance length as Co-op (docs/DICE_RATING.md section 5).
 		local pathLength = if state.playerCount == 2 then Layout.CoopPathLength else Layout.PathLength
 		if enemy.dist >= pathLength then
-			state.lives -= Enemies.Kinds[enemy.kind].lives
-			table.insert(state.out.R, { Id = enemy.id, Why = "Breach" })
+			local owner = if duel then Match.Seat(state, enemy.seat) else state
+			owner.lives -= Enemies.Kinds[enemy.kind].lives
+			table.insert(state.out.R, { Id = enemy.id, Why = "Breach", Arena = state.mode, Seat = enemy.seat })
 			state.out.dirty = true
 		else
 			table.insert(survivors, enemy)
 		end
 	end
 	state.enemies = survivors
-	if state.lives <= 0 then
+	if duel then
+		local a, b = state.lives <= 0, state.partner.lives <= 0
+		if a or b then
+			state.lives, state.partner.lives = math.max(0, state.lives), math.max(0, state.partner.lives)
+			if not (a and b) then
+				endDuel(state, if a then 2 else 1, "Lives")
+			elseif state.kills ~= state.partner.kills then
+				endDuel(state, if state.kills > state.partner.kills then 1 else 2, "Lives")
+			else
+				endDuel(state, state.rng:NextInteger(1, 2), "Tiebreak") -- seeded coin flip: never a draw
+			end
+			return
+		end
+	elseif state.lives <= 0 then
 		state.lives = 0
 		Match.Finish(state, "Lost")
 		return
@@ -488,12 +544,18 @@ function Match.Step(state, now: number)
 	for _, enemy in survivors do
 		if enemy.hp <= 0 then
 			local gain = Formulas.KillMp(enemy.kind, state.wave)
-			Economy.TryChange(state, "mp", gain)
-			if state.partner then
-				Economy.TryChange(state.partner, "mp", gain)
+			if duel then
+				local owner = Match.Seat(state, enemy.seat)
+				Economy.TryChange(owner, "mp", gain)
+				owner.kills += 1
+			else
+				Economy.TryChange(state, "mp", gain)
+				if state.partner then
+					Economy.TryChange(state.partner, "mp", gain)
+				end
+				state.kills += 1
 			end
-			state.kills += 1
-			table.insert(state.out.R, { Id = enemy.id, Why = "Kill" })
+			table.insert(state.out.R, { Id = enemy.id, Why = "Kill", Arena = state.mode, Seat = enemy.seat })
 			state.out.dirty = true
 		else
 			table.insert(alive, enemy)

@@ -30,7 +30,8 @@ function VipService.Fetch(player: Player)
 	end
 	local delay = 1
 	for attempt = 1, VipService.ATTEMPTS do
-		local ok, has = pcall(MarketplaceService.UserOwnsGamePassAsync, MarketplaceService, player.UserId, Passes.Vip.Id)
+		local ok, has =
+			pcall(MarketplaceService.UserOwnsGamePassAsync, MarketplaceService, player.UserId, Passes.Vip.Id)
 		if player.Parent == nil then
 			return
 		end

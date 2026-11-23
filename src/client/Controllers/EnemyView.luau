@@ -11,6 +11,7 @@ local Layout = require(ReplicatedStorage.Shared.Layout)
 local NetClient = require(script.Parent.NetClient)
 local CommonProjectiles = require(script.Parent.Effects.CommonProjectiles)
 local RarityEffects = require(script.Parent.Effects.RarityEffects)
+local DamageText = require(script.Parent.Effects.DamageText)
 local SettingsLogic = require(script.Parent.Settings.SettingsLogic)
 
 local EnemyView = {}
@@ -67,16 +68,17 @@ local function spawn(record)
 	p.Position = Layout.PositionAt(
 		record.Speed * (workspace:GetServerTimeNow() - record.SpawnAt),
 		record.Seat,
-		record.PlayerCount
+		record.Arena or record.PlayerCount
 	) + Vector3.yAxis * (size / 2)
 
 	local gui = Instance.new("BillboardGui")
-	gui.Size = UDim2.fromOffset(if record.Kind == "Boss" then 120 else 48, 7)
+	gui.Size = UDim2.fromOffset(if record.Kind == "Boss" then 120 else 64, 22)
 	gui.StudsOffset = Vector3.new(0, size / 2 + 1.5, 0)
 	gui.AlwaysOnTop = true
 	gui.Parent = p
 	local back = Instance.new("Frame")
-	back.Size = UDim2.fromScale(1, 1)
+	back.Size = UDim2.new(1, 0, 0, 7)
+	back.Position = UDim2.new(0, 0, 1, -7)
 	back.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 	back.BorderSizePixel = 0
 	back.Parent = gui
@@ -85,18 +87,29 @@ local function spawn(record)
 	fill.BackgroundColor3 = Color3.fromRGB(90, 220, 90)
 	fill.BorderSizePixel = 0
 	fill.Parent = back
+	local hpText = Instance.new("TextLabel") -- current total HP only, no max
+	hpText.Size = UDim2.new(1, 0, 0, 15)
+	hpText.BackgroundTransparency = 1
+	hpText.Font = Enum.Font.GothamBold
+	hpText.TextSize = 14
+	hpText.TextColor3 = Color3.new(1, 1, 1)
+	hpText.TextStrokeColor3 = Color3.new(0, 0, 0)
+	hpText.TextStrokeTransparency = 0
+	hpText.Text = DamageText.Format(math.ceil(record.Hp))
+	hpText.Parent = gui
 
 	p.Parent = folder
 	enemies[record.Id] = {
 		part = p,
 		fill = fill,
+		hpText = hpText,
 		spawnAt = record.SpawnAt,
 		speed = record.Speed,
 		maxHp = record.MaxHp,
 		hp = record.Hp,
 		lift = size / 2,
 		seat = record.Seat,
-		playerCount = record.PlayerCount,
+		playerCount = record.Arena or record.PlayerCount, -- the layout arena key
 	}
 end
 
@@ -166,6 +179,9 @@ local function fire(record)
 	if e == nil then
 		return
 	end
+	if record.Damage then
+		DamageText.Add(record.Id, e.part.Position, record.Damage, record.Critical)
+	end
 	local effectsEnabled = SettingsLogic.get("projectileEffects")
 	local handled, hasImpact
 	if effectsEnabled then
@@ -178,7 +194,8 @@ local function fire(record)
 	if handled or not effectsEnabled then
 		return
 	end
-	local from = Layout.CellPosition(record.Cell, record.Seat, record.PlayerCount) + Vector3.new(0, 3, 0)
+	local from = Layout.CellPosition(record.Cell, record.Seat, record.Arena or record.PlayerCount)
+		+ Vector3.new(0, 3, 0)
 	local t = tracer()
 	if t == nil then
 		return
@@ -201,6 +218,7 @@ local function onBatch(batch)
 		if e then
 			e.hp = record.Hp
 			e.fill.Size = UDim2.fromScale(math.clamp(record.Hp / e.maxHp, 0, 1), 1)
+			e.hpText.Text = DamageText.Format(math.ceil(record.Hp))
 			if record.Speed and record.SpawnAt then
 				e.speed, e.spawnAt = record.Speed, record.SpawnAt
 			end
@@ -229,6 +247,7 @@ local function onFrame(dt: number)
 	local reducedMotion = SettingsLogic.get("reducedMotion")
 	CommonProjectiles.Step(dt, reducedMotion)
 	RarityEffects.StepStatus(now, reducedMotion)
+	DamageText.Step(dt, reducedMotion)
 	if chronoCells then
 		RarityEffects.StepChrono(reducedMotion)
 	end
@@ -237,6 +256,7 @@ end
 local function clearEffects()
 	CommonProjectiles.Clear()
 	RarityEffects.ClearStatus()
+	DamageText.Clear()
 	for _, t in tracers do
 		t.part.Parent = nil
 		t.untilTime = 0
@@ -274,10 +294,11 @@ function EnemyView.Start()
 	tracerFolder.Name = "Tracers"
 	tracerFolder.Parent = root
 
+	DamageText.Start(root)
 	NetClient.Enemies:Connect(onBatch)
 	NetClient.State:Connect(function(snapshot)
 		chronoCells = if snapshot.Phase == "Playing" then snapshot.ChronoCells else nil
-		chronoSeat, chronoPlayerCount = snapshot.Seat, snapshot.PlayerCount
+		chronoSeat, chronoPlayerCount = snapshot.Seat, snapshot.Mode or snapshot.PlayerCount
 		if SettingsLogic.get("projectileEffects") then
 			RarityEffects.SetChronoAllies(tracerFolder, chronoCells, chronoSeat, chronoPlayerCount)
 		end

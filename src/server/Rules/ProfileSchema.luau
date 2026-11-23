@@ -6,6 +6,7 @@ local Achievements = require(script.Parent.Parent.Config.Achievements)
 local Codes = require(script.Parent.Parent.Config.Codes)
 local Dice = require(script.Parent.Parent.Config.Dice)
 local Inventory = require(script.Parent.Parent.Config.Inventory)
+local Matchmaking = require(script.Parent.Parent.Config.Matchmaking)
 local Milestones = require(script.Parent.Parent.Config.Milestones)
 local Progression = require(script.Parent.Parent.Config.Progression)
 local Quests = require(script.Parent.Parent.Config.Quests)
@@ -19,7 +20,7 @@ local Validate = require(script.Parent.Validate)
 
 local ProfileSchema = {}
 
-ProfileSchema.VERSION = 13
+ProfileSchema.VERSION = 15
 
 local LEGACY_STARTER_GEMS = 50 -- old profiles migrating from v3 once (v3 -> v4)
 
@@ -117,6 +118,7 @@ function ProfileSchema.Default()
 		RollPity = cleanRollPity(nil),
 		Purchases = {},
 		Receipts = {},
+		Rating = { DR = 0, Streak = 0, BestStreak = 0, Wins = 0, Losses = 0, Draws = 0, LastDuelRunId = 0, Recent = {} },
 	}
 end
 
@@ -313,6 +315,18 @@ local MIGRATIONS: { [number]: (any) -> any } = {
 		end
 		return data
 	end,
+	-- v13 -> v14: Rating (Dice Rating) starts empty (any stray value is dropped).
+	[13] = function(data)
+		data.Rating = nil
+		return data
+	end,
+	-- v14 -> v15: Rating.Recent (per-opponent cooldown list) starts empty.
+	[14] = function(data)
+		if type(data.Rating) == "table" then
+			data.Rating.Recent = {}
+		end
+		return data
+	end,
 }
 
 local function count(value: any): number
@@ -455,6 +469,40 @@ local function cleanMastery(stored: any)
 	return mastery
 end
 
+-- Dice Rating record: counters are integers 0..MAX_INT (anything else resets to 0); the last duel run id is 31-bit.
+-- Streak may not exceed BestStreak.
+local function cleanRecent(stored: any)
+	local recent = {}
+	if type(stored) == "table" then
+		for _, entry in stored do
+			if
+				#recent < Matchmaking.RecentMax
+				and type(entry) == "table"
+				and Validate.IsInt(entry.UserId, 1, 2 ^ 53)
+				and Validate.IsInt(entry.At, 0, 2 ^ 40)
+			then
+				table.insert(recent, { UserId = entry.UserId, At = entry.At })
+			end
+		end
+	end
+	return recent
+end
+
+local function cleanRating(stored: any)
+	local rating = if type(stored) == "table" then stored else {}
+	local best = count(rating.BestStreak)
+	return {
+		DR = count(rating.DR),
+		Streak = math.min(count(rating.Streak), best),
+		BestStreak = best,
+		Wins = count(rating.Wins),
+		Losses = count(rating.Losses),
+		Draws = count(rating.Draws),
+		LastDuelRunId = clampInt(rating.LastDuelRunId, 0, 2 ^ 31 - 1, 0),
+		Recent = cleanRecent(rating.Recent),
+	}
+end
+
 -- Saved client settings: the cleaned value of each registry key that has one (a missing key
 -- reads as its default on the client). Walks the registry, so a huge stored table costs nothing.
 local function cleanSettings(stored: any)
@@ -539,6 +587,7 @@ function ProfileSchema.Migrate(stored: any)
 		RollPity = cleanRollPity(data.RollPity),
 		Purchases = cleanPurchases(data.Purchases),
 		Receipts = cleanReceipts(data.Receipts),
+		Rating = cleanRating(data.Rating),
 	}
 
 	-- Store metadata: keep a well-formed lease so a held lease is honoured.

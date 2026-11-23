@@ -140,7 +140,22 @@ test("layout: path length, clamped PositionAt, constant Y, camera, cell grid", f
 		expectEq(Layout.PositionAt(d).Y, Layout.Y, "constant Y at " .. d)
 	end
 	local a, b = Layout.PositionAt(40), Layout.PositionAt(41)
-	expectNear((b - a).Magnitude, 1, 1e-6, "unit speed along a segment")
+	local real = 0
+	for i = 2, #Layout.Waypoints do
+		real += (Layout.Waypoints[i] - Layout.Waypoints[i - 1]).Magnitude
+	end
+	expectNear(
+		(b - a).Magnitude,
+		real / Layout.PathLength,
+		1e-6,
+		"constant speed along a segment (real route onto balance studs)"
+	)
+	expectEq(
+		Layout.PositionAt(Layout.CoopJunction, 1, 2),
+		Layout.PositionAt(Layout.CoopJunction, 2, 2),
+		"co-op lanes meet at the junction"
+	)
+	expect(Layout.PositionAt(0, 1, 2) ~= Layout.PositionAt(0, 2, 2), "co-op lanes start apart")
 	expect(Layout.Camera.Position ~= nil and Layout.Camera.LookAt ~= nil, "camera")
 	expectEq(Balance.BoardCells, Layout.COLS * Layout.ROWS, "board size matches layout")
 	expect(Layout.CellPosition(1).X < Layout.CellPosition(5).X, "row-major columns")
@@ -150,6 +165,51 @@ test("layout: path length, clamped PositionAt, constant Y, camera, cell grid", f
 	for _, point in Layout.Waypoints do
 		expect(point.X >= 500, "arena clear of the lobby map")
 	end
+end)
+
+test("layout: duel arena (two boards, two U routes, 124-stud scaling, pads match the model)", function()
+	local O = Layout.DUEL_ORIGIN
+	expectEq(Layout.ArenaOf(1), "Solo", "legacy 1")
+	expectEq(Layout.ArenaOf(2), "Coop", "legacy 2")
+	expectEq(Layout.ArenaOf("Duel"), "Duel", "duel key")
+	expect(Layout.PositionAt(0, 1, "Duel") ~= Layout.PositionAt(0, 2, "Duel"), "duel seats start apart")
+	expect(
+		Layout.PositionAt(Layout.PathLength, 1, "Duel") ~= Layout.PositionAt(Layout.PathLength, 2, "Duel"),
+		"duel seats end apart"
+	)
+	for seat = 1, 2 do
+		local points = Layout.Path(seat, "Duel")
+		expectEq(Layout.PositionAt(-5, seat, "Duel"), points[1], "clamped below")
+		expectEq(Layout.PositionAt(1e9, seat, "Duel"), points[#points], "clamped above")
+		expectEq(Layout.PositionAt(Layout.PathLength, seat, "Duel"), points[#points], "end")
+		for d = 0, Layout.PathLength, 3 do
+			expectEq(Layout.PositionAt(d, seat, "Duel").Y, Layout.Y, "constant Y at " .. d)
+		end
+		local real = 0
+		for i = 2, #points do
+			real += (points[i] - points[i - 1]).Magnitude
+		end
+		local a, b = Layout.PositionAt(40, seat, "Duel"), Layout.PositionAt(41, seat, "Duel")
+		expectNear((b - a).Magnitude, real / Layout.PathLength, 1e-6, "constant speed on the first leg")
+	end
+	-- Numbers measured from ReplicatedStorage.Maps.Duel (centre x 5400): route corners and pad centres.
+	expectNear((Layout.Path(1, "Duel")[1] - O).X, -18.65, 1e-6, "seat 1 start x")
+	expectNear((Layout.Path(1, "Duel")[1] - O).Z, -20.55, 1e-6, "seat 1 start z")
+	expectNear((Layout.Path(1, "Duel")[2] - O).Z, -2.9, 1e-6, "seat 1 bottom z")
+	expectNear((Layout.Path(2, "Duel")[4] - O).X, 18.65, 1e-6, "seat 2 end x")
+	expectNear((Layout.Path(2, "Duel")[4] - O).Z, 20.55, 1e-6, "seat 2 end z")
+	local padRows = { { -20.5, -14.5, -8.5 }, { 8.5, 14.5, 20.5 } }
+	for seat = 1, 2 do
+		for cell = 1, 15 do
+			local c = Layout.CellPosition(cell, seat, "Duel") - O
+			expectNear(c.X, (((cell - 1) % 5) - 2) * 6, 1e-6, "pad x seat " .. seat .. " cell " .. cell)
+			expectNear(c.Z, padRows[seat][(cell - 1) // 5 + 1], 1e-6, "pad z seat " .. seat .. " cell " .. cell)
+			expectEq(c.Y, Layout.Y, "pad Y")
+		end
+	end
+	expectEq(Layout.CellPosition(1, 1, 2), Layout.CellPosition(1, 1, "Coop"), "numeric key = name")
+	expect(Layout.DuelCamera(1).Position.Z < Layout.DuelCamera(1).LookAt.Z, "seat 1 camera on -z looks toward +z")
+	expect(Layout.DuelCamera(2).Position.Z > Layout.DuelCamera(2).LookAt.Z, "seat 2 camera on +z looks toward -z")
 end)
 
 test("display data covers every die and enemy; pip 7 shows as 7 star", function()

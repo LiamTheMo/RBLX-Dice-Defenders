@@ -15,11 +15,11 @@ PlayLogic.LOCKED_WORLDS = table.freeze({
 	table.freeze({ Id = "ShadowRealm", Name = "SHADOW REALM", Art = "WorldShadow" }),
 })
 
--- 1v1 rank ladder (names only: no PvP backend yet, so no trophy ranges or rewards); only Bronze is open.
+-- 1v1 rank ladder (names and art; the server owns DR ranges). Colours live in RatingLogic.
 PlayLogic.RANKS = table.freeze({
 	table.freeze({ Id = "Bronze", Name = "BRONZE", Art = "RankBronze", Locked = false }),
-	table.freeze({ Id = "Silver", Name = "SILVER", Art = "RankSilver", Locked = true }),
-	table.freeze({ Id = "Gold", Name = "GOLD", Art = "RankGold", Locked = true }),
+	table.freeze({ Id = "Silver", Name = "SILVER", Art = "RankSilver", Locked = false }),
+	table.freeze({ Id = "Gold", Name = "GOLD", Art = "RankGold", Locked = false }),
 })
 
 -- Repeat-reward tiles. Only materials drop from a run (Verdant Fragments); the rest are placeholders marked Soon.

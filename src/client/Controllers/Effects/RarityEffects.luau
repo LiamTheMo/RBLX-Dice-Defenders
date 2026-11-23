@@ -415,7 +415,8 @@ local function addItems(v, shot)
 			if part == nil then
 				break
 			end
-			local center = Layout.CellPosition(cell, shot.attack.Seat, shot.attack.PlayerCount) - UP * 0.53
+			local center = Layout.CellPosition(cell, shot.attack.Seat, shot.attack.Arena or shot.attack.PlayerCount)
+				- UP * 0.53
 			table.insert(v.items, { part = part, L = profile.neighbor, i = i, origin = center })
 		end
 	end

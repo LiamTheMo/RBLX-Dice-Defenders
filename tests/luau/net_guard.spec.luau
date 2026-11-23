@@ -267,6 +267,9 @@ test("malformed argument matrix: BadArgs, never reaches the handler, seq not con
 			P(1, "Reset", 123, "", "", 0),
 		},
 		CoopReady = { P(1), P(1, "true"), P(1, true, 2) },
+		QueueDuel = { P(1), P(1, "true"), P(1, true, 2), P(1, 1), P(1, nil), P(1, {}) },
+		Surrender = { P(), P(1, true), P(1, 1) },
+		LeaveDuel = { P(), P(1, true), P(1, 1) },
 		TutorialAction = { P(1, "Claim"), P(1, "Other", ""), P(1, "Convert", ""), P(1, "End", "R01") },
 		Merge = {
 			P(),
@@ -308,6 +311,9 @@ test("malformed argument matrix: BadArgs, never reaches the handler, seq not con
 		PowerUp = P(1, "C01"),
 		AdminAction = P(1, "Give", 123, "Gold", "", 1),
 		CoopReady = P(1, true),
+		QueueDuel = P(1, true),
+		Surrender = P(1),
+		LeaveDuel = P(1),
 		TutorialAction = P(1, "Roll", ""),
 	}
 	for name in RemoteGuard.Specs do

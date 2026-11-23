@@ -278,6 +278,11 @@ function ProfileService.Start()
 	end)
 end
 
+-- True once the server started closing (BindToClose): Removing then fires for every player.
+function ProfileService.IsShuttingDown(): boolean
+	return shuttingDown
+end
+
 -- The live profile, or nil while loading, after a failed load or lost lease.
 function ProfileService.Get(player: Player)
 	local state = states[player]

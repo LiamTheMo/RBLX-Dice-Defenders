@@ -19,6 +19,7 @@ local Shop = require(script.Parent.Shop.Shop)
 local Settings = require(script.Parent.Settings.Settings)
 local Codes = require(script.Parent.Codes.Codes)
 local TutorialView = require(script.Parent.TutorialView)
+local RatingLogic = require(script.Parent.RatingLogic)
 
 local make, panel, label, button = UiKit.make, UiKit.panel, UiKit.label, UiKit.button
 local NAVY, WHITE, GREEN = UiKit.NAVY, UiKit.WHITE, UiKit.GREEN
@@ -32,7 +33,16 @@ local CREAM = Color3.fromRGB(242, 226, 205)
 local TEXT_STROKE = Color3.fromRGB(9, 14, 24)
 
 local ROW = 48 -- touch row / button height in px (>= 44)
-local TOAST_NAMES = { Start = true, EquipDeck = true, TeamAction = true, ClaimQuest = true, CoopReady = true }
+local TOAST_NAMES = {
+	Start = true,
+	EquipDeck = true,
+	TeamAction = true,
+	ClaimQuest = true,
+	CoopReady = true,
+	QueueDuel = true,
+	Surrender = true,
+	LeaveDuel = true,
+}
 local TOASTS = {
 	EmptyDeck = "Equip a die first, then save the team.",
 	EmptyTeam = "That team slot is empty.",
@@ -53,6 +63,8 @@ local TOASTS = {
 	Throttled = "Slow down",
 	Network = "Connection problem",
 }
+-- QueueDuel / Surrender / LeaveDuel refusals read from RatingLogic.duelCodeText (they differ from the Co-op wording above).
+local DUEL_REMOTES = { QueueDuel = true, Surrender = true, LeaveDuel = true }
 local RESULT_TITLES = { Lost = "Defeat", Aborted = "Run Ended", Error = "Something went wrong" }
 
 local Lobby = {}
@@ -254,6 +266,40 @@ local function renderResult(snap)
 	local show = snap.Phase == "Ended" and not dismissed
 	ui.ResultBackdrop.Visible = show
 	if show then
+		local duel = RatingLogic.result(snap) -- nil for Solo / Co-op: their card is unchanged
+		for _, name in { "ResultDelta", "ResultRank", "ResultBonus", "ResultStreak" } do
+			ui[name].Visible = duel ~= nil
+		end
+		local inDuelServer = duel ~= nil and snap.InDuelServer == true
+		ui.ResultReturn.Visible = inDuelServer
+		ui.ResultAutoNote.Visible = inDuelServer
+		ui.Continue.Size = if inDuelServer then UDim2.new(0.38, -4, 1, 0) else UDim2.fromOffset(160, ROW)
+		ui.ResultSub.Visible = false
+		ui.ResultBot.Visible = false
+		if duel then
+			ui.ResultSub.Text = if duel.NoDR then "Quit too early: no DR was awarded" else duel.Subtitle or ""
+			ui.ResultSub.Visible = ui.ResultSub.Text ~= ""
+			ui.ResultBot.Text = duel.BotText or ""
+			ui.ResultBot.Visible = duel.BotText ~= nil
+			ui.ResultTitle.Text = duel.Title
+			ui.ResultTitle.TextColor3 = Color3.fromRGB(duel.Color[1], duel.Color[2], duel.Color[3])
+			ui.ResultWave.Visible = false
+			ui.ResultDelta.Text = if duel.NoDR
+				then `No DR change  ({duel.DRText})`
+				else `{duel.DeltaText}  ({duel.DRText})`
+			local rc = duel.RankColor
+			ui.ResultRank.Text = duel.RankChangeText or `{duel.RankText} RANK`
+			ui.ResultRank.TextColor3 = if duel.RankChanged then GOLD else Color3.fromRGB(rc[1], rc[2], rc[3])
+			ui.ResultBonus.Text = duel.BonusText or ""
+			ui.ResultBonus.Visible = duel.BonusText ~= nil
+			ui.ResultStreak.Text = duel.StreakText
+			ui.ResultBonus.Visible = duel.BonusText ~= nil and not duel.NoDR
+			ui.ResultReward.Text = duel.GoldText or ""
+			ui.ResultReward.Visible = duel.GoldText ~= nil
+			return
+		end
+		ui.ResultTitle.TextColor3 = WHITE
+		ui.ResultWave.Visible = true
 		ui.ResultTitle.Text = RESULT_TITLES[snap.Result] or "Run Ended"
 		ui.ResultWave.Text = "Wave " .. tostring(snap.Wave or 0)
 		ui.ResultReward.Text = ("+%d Gold   +%d XP   +%d Gems"):format(
@@ -355,10 +401,10 @@ local function build()
 	local card = skin(panel({
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromScale(0.5, 0.8),
+		Size = UDim2.fromScale(0.5, 0.96),
 		ZIndex = 21,
 	}, ui.ResultBackdrop))
-	make("UISizeConstraint", { MinSize = Vector2.new(280, 240), MaxSize = Vector2.new(400, 300) }, card)
+	make("UISizeConstraint", { MinSize = Vector2.new(280, 240), MaxSize = Vector2.new(400, 372) }, card)
 	make("UIPadding", {
 		PaddingLeft = UDim.new(0, 10),
 		PaddingRight = UDim.new(0, 10),
@@ -370,23 +416,101 @@ local function build()
 		Padding = UDim.new(0, 6),
 		HorizontalAlignment = Enum.HorizontalAlignment.Center,
 	}, card)
-	ui.ResultTitle = label({ Size = UDim2.new(1, 0, 0, 56), LayoutOrder = 1, ZIndex = 22 }, card, 40)
+	ui.ResultTitle = label({ Size = UDim2.new(1, 0, 0, 44), LayoutOrder = 1, ZIndex = 22 }, card, 40)
 	ui.ResultWave = label({ Size = UDim2.new(1, 0, 0, 36), LayoutOrder = 2, ZIndex = 22 }, card, 26)
+	-- Duel variant: why it ended, and the practice-match line (hidden for Solo / Co-op).
+	ui.ResultSub = label({ Size = UDim2.new(1, 0, 0, 22), LayoutOrder = 2, ZIndex = 22, Visible = false }, card, 20)
+	ui.ResultBot = label({
+		Size = UDim2.new(1, 0, 0, 20),
+		LayoutOrder = 3,
+		ZIndex = 22,
+		Visible = false,
+		TextColor3 = Color3.fromRGB(190, 200, 230),
+	}, card, 18)
+	-- Duel variant rows (hidden for Solo / Co-op): DR change, rank line, streak bonus, win streak.
+	ui.ResultDelta = label({ Size = UDim2.new(1, 0, 0, 30), LayoutOrder = 4, ZIndex = 22, Visible = false }, card, 30)
+	ui.ResultRank = label({ Size = UDim2.new(1, 0, 0, 24), LayoutOrder = 5, ZIndex = 22, Visible = false }, card, 22)
+	ui.ResultBonus = label({
+		Size = UDim2.new(1, 0, 0, 20),
+		LayoutOrder = 6,
+		ZIndex = 22,
+		Visible = false,
+		TextColor3 = Color3.fromRGB(248, 130, 20),
+	}, card, 20)
+	ui.ResultStreak = label({ Size = UDim2.new(1, 0, 0, 20), LayoutOrder = 7, ZIndex = 22, Visible = false }, card, 20)
 	ui.ResultReward =
-		label({ Size = UDim2.new(1, 0, 0, 36), LayoutOrder = 3, ZIndex = 22, TextColor3 = GOLD }, card, 26)
-	outline(ui.ResultTitle)
-	outline(ui.ResultWave)
-	outline(ui.ResultReward)
-	local continue = button(
-		{ Size = UDim2.fromOffset(160, ROW), LayoutOrder = 4, ZIndex = 22, Text = "Continue" },
-		card,
+		label({ Size = UDim2.new(1, 0, 0, 32), LayoutOrder = 8, ZIndex = 22, TextColor3 = GOLD }, card, 26)
+	for _, name in
+		{
+			"ResultTitle",
+			"ResultWave",
+			"ResultSub",
+			"ResultBot",
+			"ResultDelta",
+			"ResultRank",
+			"ResultBonus",
+			"ResultStreak",
+			"ResultReward",
+		}
+	do
+		outline(ui[name])
+	end
+	local buttons = make("Frame", {
+		Name = "ResultButtons",
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, ROW),
+		LayoutOrder = 9,
+		ZIndex = 22,
+	}, card)
+	make("UIListLayout", {
+		FillDirection = Enum.FillDirection.Horizontal,
+		HorizontalAlignment = Enum.HorizontalAlignment.Center,
+		VerticalAlignment = Enum.VerticalAlignment.Center,
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Padding = UDim.new(0, 8),
+	}, buttons)
+	ui.Continue = button(
+		{ Size = UDim2.fromOffset(160, ROW), LayoutOrder = 1, ZIndex = 22, Text = "Continue" },
+		buttons,
 		GREEN,
 		function()
 			dismissed = true
 			ui.ResultBackdrop.Visible = false
 		end
 	)
-	continue.Name = "Continue"
+	ui.Continue.Name = "Continue"
+	local returning = false
+	ui.ResultReturn = button(
+		{ Size = UDim2.new(0.62, -4, 1, 0), LayoutOrder = 2, ZIndex = 22, Text = "RETURN TO LOBBY", Visible = false },
+		buttons,
+		GOLD,
+		function()
+			if returning then
+				return
+			end
+			returning = true
+			ui.ResultReturn.Active = false
+			ui.ResultReturn.Text = "RETURNING..."
+			task.spawn(function()
+				local ok = NetClient.Request("LeaveDuel") -- a refusal toast comes from the Rejected handler
+				if not ok then
+					returning = false
+					ui.ResultReturn.Active = true
+					ui.ResultReturn.Text = "RETURN TO LOBBY"
+				end
+			end)
+		end
+	)
+	ui.ResultReturn.Name = "ReturnToLobby"
+	ui.ResultAutoNote = label({
+		Size = UDim2.new(1, 0, 0, 18),
+		LayoutOrder = 10,
+		ZIndex = 22,
+		Visible = false,
+		Text = "You return to the lobby automatically after 30 s.",
+		TextColor3 = Color3.fromRGB(190, 200, 230),
+	}, card, 16)
+	outline(ui.ResultAutoNote)
 
 	-- Top-centre: the bottom of the screen holds the HUD's deck bar.
 	ui.ToastFrame = Chrome.panel(gui, {
@@ -426,7 +550,7 @@ function Lobby.Start()
 		connections,
 		NetClient.Rejected:Connect(function(name, code)
 			if TOAST_NAMES[name] then
-				toast(TOASTS[code] or tostring(code))
+				toast((DUEL_REMOTES[name] and RatingLogic.duelCodeText(code)) or TOASTS[code] or tostring(code))
 			end
 		end)
 	)

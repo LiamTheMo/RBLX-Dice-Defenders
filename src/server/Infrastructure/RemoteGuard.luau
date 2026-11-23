@@ -32,6 +32,14 @@ RemoteGuard.Specs = table.freeze({
 			return type(ready) == "boolean"
 		end,
 	}),
+	QueueDuel = table.freeze({
+		argc = 2,
+		check = function(on)
+			return type(on) == "boolean"
+		end,
+	}),
+	Surrender = table.freeze({ argc = 1 }),
+	LeaveDuel = table.freeze({ argc = 1 }),
 	TutorialAction = table.freeze({ argc = 3, check = Tutorial.Shape }),
 	Summon = table.freeze({ argc = 1 }),
 	EquipDeck = table.freeze({ argc = 2, check = Deck.Shape }),

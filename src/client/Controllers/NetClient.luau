@@ -42,6 +42,9 @@ local MIN_INTERVAL = {
 	PowerUp = 0.5, -- server bucket 2/s, burst 4
 	AdminAction = 1.0,
 	CoopReady = 0.5,
+	QueueDuel = 0.5, -- server bucket 1/s, burst 3
+	Surrender = 1.0, -- server bucket 1/s, burst 2
+	LeaveDuel = 1.0, -- server bucket 1/s, burst 2
 	TutorialAction = 0.5,
 }
 local pending = {}
@@ -98,6 +101,9 @@ function NetClient.Start()
 				"PowerUp",
 				"AdminAction",
 				"CoopReady",
+				"QueueDuel",
+				"Surrender",
+				"LeaveDuel",
 				"TutorialAction",
 			}
 		do

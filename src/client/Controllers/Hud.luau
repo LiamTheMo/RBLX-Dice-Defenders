@@ -4,6 +4,7 @@
 -- edges, so the centre of the screen (the board) stays clear. State looks (hover, pressed, insufficient, maxed) are
 -- drawn in code on the blank tile / pill; no baked state art.
 
+local GuiService = game:GetService("GuiService")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local TextService = game:GetService("TextService")
@@ -12,6 +13,7 @@ local NetClient = require(script.Parent.NetClient)
 local Preload = require(script.Parent.Preload)
 local Chrome = require(script.Parent.Bag.Chrome)
 local HudLogic = require(script.Parent.HudLogic)
+local RatingLogic = require(script.Parent.RatingLogic)
 local SharedSprites = require(script.Parent.SharedSprites)
 local SettingsLogic = require(script.Parent.Settings.SettingsLogic)
 local Sprites = require(script.Parent.Sprites)
@@ -25,6 +27,7 @@ local PILL = SharedSprites.PillPurple
 
 local TOASTS = {
 	NoMP = "Not enough MP",
+	Unavailable = "Not available right now",
 	BoardFull = "Board is full",
 	IllegalMerge = "Those dice can't merge",
 	MaxTier = "Already at max level",
@@ -48,6 +51,8 @@ local SLOT_W, SLOT_H, SLOT_GAP = 128 * SLOT_K, 158, 12
 local SUMMON_W, SUMMON_H = 347, 122
 local GROUP_K = 0.8 -- bar, slots and summon sit 10-20% over the lobby equivalents (hotbar slot 104x106 -> 115x126); owner: unify with the lobby
 local GEAR_ART, GEAR_HIT, GEAR_RIGHT, GEAR_Y = 52, 88, 64.5, 51 -- the lobby gear exactly
+local SURRENDER_W, SURRENDER_H, SURRENDER_Y = 176, 56, 150 -- under the gear (its hit box ends at y 95)
+local CONFIRM_W, CONFIRM_H, CONFIRM_BTN_W, CONFIRM_BTN_H = 600, 300, 250, 92
 local PRESS_NUDGE = 3 -- sheet scale: the pressed row's text sits 3 px lower
 
 local CYAN = Color3.fromRGB(80, 240, 244) -- sampled from the mockup MP text
@@ -369,9 +374,47 @@ local function build()
 		VerticalAlignment = Enum.VerticalAlignment.Center,
 	}, ui.Hearts)
 
-	ui.NextWaveBox, ui.NextWave = line(top, { Name = "NextWave", LayoutOrder = 2, Visible = false }, "", 26)
+	-- Duel only: the opponent's name, rank and lives under the status bar (hidden in Solo / Co-op).
+	ui.OpponentBox, ui.Opponent = line(top, { Name = "Opponent", LayoutOrder = 2, Visible = false }, "", 22)
+	ui.Opponent.LayoutOrder = 1
+	make("UIListLayout", {
+		FillDirection = Enum.FillDirection.Horizontal,
+		VerticalAlignment = Enum.VerticalAlignment.Center,
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Padding = UDim.new(0, 10),
+	}, ui.OpponentBox)
+	-- Small BOT tag beside the name (bot opponents only).
+	ui.BotTag = make("Frame", {
+		Name = "BotTag",
+		BackgroundColor3 = Color3.fromRGB(70, 110, 190),
+		BorderSizePixel = 0,
+		AutomaticSize = Enum.AutomaticSize.XY,
+		LayoutOrder = 2,
+		Visible = false,
+		ZIndex = 3,
+	}, ui.OpponentBox)
+	make("UICorner", { CornerRadius = UDim.new(0, 8) }, ui.BotTag)
+	make("UIPadding", {
+		PaddingLeft = UDim.new(0, 8),
+		PaddingRight = UDim.new(0, 8),
+		PaddingTop = UDim.new(0, 2),
+		PaddingBottom = UDim.new(0, 2),
+	}, ui.BotTag)
+	local botText = make("TextLabel", {
+		BackgroundTransparency = 1,
+		Font = FONT,
+		Text = "BOT",
+		TextSize = 20,
+		TextColor3 = WHITE,
+		AutomaticSize = Enum.AutomaticSize.XY,
+		ZIndex = 4,
+	}, ui.BotTag)
+	make("UIStroke", { Color = INK, Thickness = 2 }, botText):SetAttribute("Rim", 2)
+	ui.WaitBox, ui.Wait =
+		line(top, { Name = "DuelWait", LayoutOrder = 3, Visible = false }, RatingLogic.WAITING_TEXT, 24)
+	ui.NextWaveBox, ui.NextWave = line(top, { Name = "NextWave", LayoutOrder = 4, Visible = false }, "", 26)
 	ui.BossBox, ui.Boss =
-		line(top, { Name = "Boss", LayoutOrder = 3, Visible = false }, "", 28, Color3.fromRGB(255, 150, 120))
+		line(top, { Name = "Boss", LayoutOrder = 5, Visible = false }, "", 28, Color3.fromRGB(255, 150, 120))
 
 	-- Top right: gear. Draws idle / hover / pressed and does nothing: Settings only exists in the lobby and
 	-- closes itself mid-match. The hit box grows to 44 real px on phones (see rescale).
@@ -398,6 +441,101 @@ local function build()
 	UiKit.wire(gearHit, function(mode)
 		UiKit.feel(gearImage, gearScale, mode, true)
 	end)
+
+	-- Duel only: SURRENDER under the gear (top right: clear of the board, the dice hand and the Summon pill). Opens a
+	-- confirm dialog; the server decides (Match.Forfeit). The strip is the look, the transparent hit box is >= 46 real px tall.
+	ui.Surrender = Chrome.strip(ui.Root, {
+		Name = "Surrender",
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(1, -GEAR_RIGHT, 0, SURRENDER_Y),
+		Size = UDim2.fromOffset(SURRENDER_W, SURRENDER_H),
+		BackgroundColor3 = Color3.fromRGB(96, 36, 40),
+		Visible = false,
+		ZIndex = 2,
+		Radius = 14,
+	})
+	ui.SurrenderText = text(ui.Surrender, {
+		Position = UDim2.fromScale(0.5, 0.5),
+		Text = "SURRENDER",
+		ZIndex = 3,
+	}, 24, SURRENDER_W - 16)
+	ui.SurrenderHit = make("TextButton", {
+		Name = "Hit",
+		BackgroundTransparency = 1,
+		Text = "",
+		AutoButtonColor = false,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.new(1, 0, 0, SURRENDER_H),
+		ZIndex = 4,
+	}, ui.Surrender)
+	UiKit.wire(ui.SurrenderHit, function(mode)
+		ui.Surrender.BackgroundColor3 = if mode == "Pressed"
+			then Color3.fromRGB(70, 24, 28)
+			elseif mode == "Hover" then Color3.fromRGB(128, 48, 52)
+			else Color3.fromRGB(96, 36, 40)
+	end)
+
+	-- Confirm dialog: backdrop (tap = cancel) over the whole HUD; Cancel holds the default focus.
+	ui.Confirm = make("TextButton", {
+		Name = "SurrenderConfirm",
+		BackgroundColor3 = NAVY,
+		BackgroundTransparency = 0.45,
+		BorderSizePixel = 0,
+		AutoButtonColor = false,
+		Text = "",
+		Size = UDim2.fromScale(1, 1),
+		Visible = false,
+		ZIndex = 20,
+		Selectable = false,
+	}, ui.Root)
+	local card = Chrome.panel(ui.Confirm, {
+		Name = "Card",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(CONFIRM_W, CONFIRM_H),
+		Active = true, -- sinks taps so they do not reach the backdrop
+		ZIndex = 21,
+		Radius = 20,
+	})
+	local prompt = text(card, {
+		Name = "Prompt",
+		Position = UDim2.fromOffset(CONFIRM_W / 2, 90),
+		ZIndex = 22,
+	}, 36, CONFIRM_W - 48)
+	setText(prompt, RatingLogic.SURRENDER_PROMPT)
+	local function choice(name: string, str: string, x: number, color: Color3)
+		local b = Chrome.strip(card, {
+			Name = name,
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromOffset(x, CONFIRM_H - 70),
+			Size = UDim2.fromOffset(CONFIRM_BTN_W, CONFIRM_BTN_H),
+			BackgroundColor3 = color,
+			ZIndex = 22,
+			Radius = 14,
+		})
+		text(b, { Position = UDim2.fromScale(0.5, 0.5), Text = str, ZIndex = 23 }, 30, CONFIRM_BTN_W - 16)
+		local hit = make("TextButton", {
+			Name = "Hit",
+			BackgroundTransparency = 1,
+			Text = "",
+			AutoButtonColor = false,
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromOffset(CONFIRM_BTN_W, CONFIRM_BTN_H),
+			ZIndex = 24,
+			Selectable = true,
+		}, b)
+		UiKit.wire(hit, function(mode)
+			b.BackgroundColor3 = if mode == "Pressed"
+				then shade(color, 0.7)
+				elseif mode == "Hover" then shade(color, 1.2)
+				else color
+		end)
+		return hit
+	end
+	ui.ConfirmCancel = choice("Cancel", "CANCEL", CONFIRM_W * 0.27, Color3.fromRGB(58, 64, 96))
+	ui.ConfirmOk = choice("Surrender", "SURRENDER", CONFIRM_W * 0.73, Color3.fromRGB(150, 48, 52))
 
 	-- Bottom: upgrade tiles on the left, Summon on the right, one group centred on the screen.
 	ui.Bottom = make("Frame", {
@@ -529,7 +667,32 @@ local function rescale()
 	ui.Root.Size = UDim2.fromOffset(screen.X / s, screen.Y / s) -- the emulated screen when EmulateSize is set
 	local hit = math.max(GEAR_HIT, math.ceil(44 / s)) -- touch target >= 44 real px
 	ui.Gear.Hit.Size = UDim2.fromOffset(hit, hit)
+	ui.SurrenderHit.Size = UDim2.new(1, 0, 0, math.max(SURRENDER_H, math.ceil(46 / s))) -- touch targets >= 46 real px
+	local choiceH = math.max(CONFIRM_BTN_H, math.ceil(46 / s))
+	for _, choiceHit in { ui.ConfirmCancel, ui.ConfirmOk } do
+		choiceHit.Size = UDim2.fromOffset(CONFIRM_BTN_W, choiceH)
+	end
 	Chrome.restroke(ui.Root, s * GROUP_K)
+end
+
+local surrendering = false -- a Surrender request is in flight or accepted: the button stays off until the match changes
+local function closeConfirm()
+	local sel = GuiService.SelectedObject
+	if sel and sel:IsDescendantOf(ui.Confirm) then
+		GuiService.SelectedObject = nil
+	end
+	ui.Confirm.Visible = false
+end
+local function openConfirm()
+	if surrendering then
+		return
+	end
+	ui.Confirm.Visible = true
+	GuiService.SelectedObject = ui.ConfirmCancel -- default focus is the safe choice
+end
+local function paintSurrender()
+	ui.SurrenderHit.Active = not surrendering
+	ui.SurrenderText.TextTransparency = if surrendering then 0.5 else 0
 end
 
 local function updateCountdowns()
@@ -564,6 +727,22 @@ local function render(snap)
 	setText(ui.Wave, HudLogic.waveText(snap.Wave))
 	setText(ui.MP, HudLogic.mpText(snap.MP))
 	setHearts(HudLogic.hearts(snap.Lives, snap.MaxLives))
+	local duel = RatingLogic.hud(snap)
+	ui.OpponentBox.Visible = vis.Bar and duel.Show
+	local sur = RatingLogic.surrender(snap)
+	ui.Surrender.Visible = vis.Bar and sur.Show
+	ui.WaitBox.Visible = vis.Bar and sur.Waiting
+	ui.BotTag.Visible = duel.Show and duel.IsBot
+	if not (vis.Bar and sur.Show) then
+		surrendering = false -- the match ended or changed: re-arm for the next one
+		closeConfirm()
+	end
+	paintSurrender()
+	if duel.Show then
+		ui.Opponent.Text = duel.Text
+		local c = RatingLogic.rankColor(snap.Opponent and snap.Opponent.Rank)
+		ui.Opponent.TextColor3 = Color3.fromRGB(c[1], c[2], c[3])
+	end
 
 	ui.SummonButton.Visible = vis.Summon
 	ui.Summon.State = HudLogic.summonState(snap.SummonCost, snap.MP)
@@ -595,6 +774,32 @@ function Hud.Start()
 			if TOASTS[code] then
 				showToast(TOASTS[code])
 			end
+		end)
+	)
+	table.insert(
+		connections,
+		ui.SurrenderHit.Activated:Connect(function()
+			openConfirm()
+		end)
+	)
+	table.insert(connections, ui.ConfirmCancel.Activated:Connect(closeConfirm))
+	table.insert(connections, ui.Confirm.Activated:Connect(closeConfirm))
+	table.insert(
+		connections,
+		ui.ConfirmOk.Activated:Connect(function()
+			if surrendering then
+				return
+			end
+			surrendering = true
+			closeConfirm()
+			paintSurrender()
+			task.spawn(function()
+				local ok = NetClient.Request("Surrender")
+				if not ok then
+					surrendering = false -- refused (toasted): the button comes back
+					paintSurrender()
+				end
+			end)
 		end)
 	)
 	table.insert(connections, RunService.Heartbeat:Connect(updateCountdowns))

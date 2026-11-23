@@ -17,7 +17,6 @@ local PortalFx = require(script.Parent.Effects.PortalFx)
 local BoardView = {}
 
 local CELLS = Layout.COLS * Layout.ROWS
-local PAD_COLOR = Color3.fromRGB(70, 74, 84)
 local SELECT_COLOR = Color3.fromRGB(255, 220, 60)
 local PARTNER_COLOR = Color3.fromRGB(80, 220, 230)
 local PARTNER_OUTLINE = Color3.new(1, 1, 1) -- distinct from every type colour
@@ -30,19 +29,21 @@ local EXPAND_TIME = 0.25
 -- end gets which palette, swap these two constants.
 local START_ROLE = "spawn"
 local END_ROLE = "exit"
-local PORTAL_HEIGHT = 2.25 -- rim leaned 65 deg: lowest rim point ~1.7 below centre, so ~0.35 above the strip top (0.2)
+-- Route points are at Layout.Y (0.8 above the route top). The rim leans 65 deg: its lowest point is ~1.7 below
+-- the portal centre, so a centre 1.25 above that height keeps it ~0.35 above the strip.
+local PORTAL_LIFT = 1.25
 
-local pads = {} -- cell -> Part
+local pads = {} -- cell -> the pad's glow quad (Neon, transparent until selected)
 local portals = {} -- live PortalFx handles of the current arena
 local dice = {} -- cell -> { model, part, pad, highlight, lifted, key }
 local allyDice = {}
-local seat, playerCount = 1, 1
+local seat, arenaKey = 1, "Solo" -- arenaKey: "Solo" | "Coop" | "Duel" (Layout.ArenaOf)
 local animations = {} -- die -> current transition
 local board = {} -- latest Board from State
 local playing = false
 local selected: number? = nil
 local boardKey = ""
-local padsFolder: Folder, diceFolder: Folder
+local diceFolder: Folder
 local root: Folder, arena: Folder
 local rayParams = RaycastParams.new()
 
@@ -90,72 +91,71 @@ local function buildWorld()
 	root = world()
 	arena = Instance.new("Folder") -- parented by render() only while playing
 	arena.Name = "Arena"
-	local center = Layout.Camera.LookAt
-	part(
-		arena,
-		"Ground",
-		Vector3.new(170, 1, 120),
-		CFrame.new(center.X, -0.5, Layout.ORIGIN.Z),
-		Color3.fromRGB(88, 122, 78)
-	)
 
+	-- The World 1 map for this mode (ReplicatedStorage.Maps, built by hand in Studio): island, route, pads.
+	local maps = ReplicatedStorage:WaitForChild("Maps", 10)
+	local source = maps and maps:FindFirstChild(arenaKey)
+	if source == nil then
+		warn("BoardView: ReplicatedStorage.Maps is missing the map " .. arenaKey)
+	end
+	local map = if source then source:Clone() else Instance.new("Model")
+	map.Name = "Map"
+	if source then
+		local shift = if arenaKey == "Duel"
+			then Layout.DUEL_ORIGIN.X - Layout.DUEL_MAP_X
+			elseif arenaKey == "Coop" then Layout.COOP_ORIGIN.X - Layout.COOP_MAP_X
+			else Layout.ORIGIN.X - Layout.SOLO_MAP_X
+		map:PivotTo(map:GetPivot() + Vector3.new(shift, 0, 0))
+	end
+	map.Parent = arena
+
+	-- Portals sit on the ends of the route and face the board camera (coop camera when two players share the arena, this seat's camera in a duel).
 	local portalsFolder = Instance.new("Folder")
 	portalsFolder.Name = "Portals"
 	portalsFolder.Parent = arena
-	local strips = Instance.new("Folder")
-	strips.Name = "Path"
-	strips.Parent = arena
-	for lane = 1, playerCount do
-		local points = Layout.Path(lane, playerCount)
-		for i = 1, #points - 1 do
-			if lane == 2 and i == #points - 1 then
-				break -- shared exit stretch already built by lane one
-			end
-			local a, b = points[i], points[i + 1]
-			local length = (b - a).Magnitude
-			part(
-				strips,
-				"Strip",
-				Vector3.new(7, 0.2, length + 7),
-				CFrame.lookAt(Vector3.new((a.X + b.X) / 2, 0.1, (a.Z + b.Z) / 2), Vector3.new(b.X, 0.1, b.Z)),
-				Color3.fromRGB(150, 120, 80)
-			)
-		end
-		-- Portals face the board camera (coop camera when two players share the arena), see PortalFx.
-		local cameraPos = (if playerCount == 2 then Layout.CoopCamera else Layout.Camera).Position
-		local function addPortal(point: Vector3, role)
-			table.insert(
-				portals,
-				PortalFx.Spawn(portalsFolder, Vector3.new(point.X, PORTAL_HEIGHT, point.Z), cameraPos, role, function()
-					return SettingsLogic.get("reducedMotion") == true
-				end)
-			)
-		end
+	local cameraPos = (if arenaKey == "Duel"
+		then Layout.DuelCamera(seat)
+		elseif arenaKey == "Coop" then Layout.CoopCamera
+		else Layout.Camera).Position
+	local function addPortal(point: Vector3, role)
+		table.insert(
+			portals,
+			PortalFx.Spawn(portalsFolder, point + Vector3.yAxis * PORTAL_LIFT, cameraPos, role, function()
+				return SettingsLogic.get("reducedMotion") == true
+			end)
+		)
+	end
+	for lane = 1, if arenaKey == "Solo" then 1 else 2 do
+		local points = Layout.Path(lane, arenaKey)
 		addPortal(points[1], START_ROLE)
-		if lane == 1 then
+		if lane == 1 or arenaKey == "Duel" then
 			addPortal(points[#points], END_ROLE)
 		end
 	end
 
-	padsFolder = Instance.new("Folder")
-	padsFolder.Name = "Pads"
-	padsFolder.Parent = arena
+	-- This seat's pads: tap targets (Cell attribute) and a glow quad for the selection state.
+	local padsRoot = map:FindFirstChild("Pads")
+	local rayTargets = {}
+	for i = 1, CELLS do
+		local model = padsRoot and padsRoot:FindFirstChild(string.format("Pad_%03d", i + (seat - 1) * CELLS))
+		local glow = model and model:FindFirstChild("Pad_GlowActive")
+		if model then
+			for _, name in { "Pad_Base", "Pad_Ring", "Pad_Inset" } do
+				local piece = model:FindFirstChild(name)
+				if piece then
+					piece:SetAttribute("Cell", i)
+				end
+			end
+			table.insert(rayTargets, model)
+		end
+		pads[i] = glow
+	end
 	diceFolder = Instance.new("Folder")
 	diceFolder.Name = "Dice"
 	diceFolder.Parent = arena
-	for side = 1, playerCount do
-		for i = 1, CELLS do
-			local c = Layout.CellPosition(i, side, playerCount)
-			local color = if side == seat then PAD_COLOR else Color3.fromRGB(63, 87, 98)
-			local pad = part(padsFolder, "Pad" .. i, Vector3.new(5.4, 0.4, 5.4), CFrame.new(c.X, 0.2, c.Z), color)
-			if side == seat then
-				pad:SetAttribute("Cell", i)
-				pads[i] = pad
-			end
-		end
-	end
+	table.insert(rayTargets, diceFolder)
 	rayParams.FilterType = Enum.RaycastFilterType.Include
-	rayParams.FilterDescendantsInstances = { padsFolder, diceFolder }
+	rayParams.FilterDescendantsInstances = rayTargets
 end
 
 local function positionDie(die)
@@ -225,7 +225,7 @@ local function stepAnimations()
 end
 
 local function makeDie(cell: number, side: number)
-	local c = Layout.CellPosition(cell, side, playerCount)
+	local c = Layout.CellPosition(cell, side, arenaKey)
 	local model = Instance.new("Model")
 	model.Name = "Die" .. cell
 	local body = part(model, "Body", Vector3.one, CFrame.identity, Color3.new(1, 1, 1))
@@ -244,7 +244,7 @@ local function makeDie(cell: number, side: number)
 	return {
 		model = model,
 		part = body,
-		pad = CFrame.new(c.X, 0.4, c.Z),
+		pad = CFrame.new(c.X, Layout.PadTop, c.Z),
 		highlight = highlight,
 		lifted = false,
 		key = "",
@@ -258,13 +258,16 @@ end
 
 local function refreshPads()
 	for i = 1, CELLS do
-		local color = PAD_COLOR
-		if selected == i then
-			color = SELECT_COLOR
-		elseif selected and canMerge(selected, i) then
-			color = PARTNER_COLOR
+		local glow = pads[i]
+		if glow then
+			if selected == i then
+				glow.Color, glow.Transparency = SELECT_COLOR, 0.1
+			elseif selected and canMerge(selected, i) then
+				glow.Color, glow.Transparency = PARTNER_COLOR, 0.1
+			else
+				glow.Transparency = 1
+			end
 		end
-		pads[i].Color = color
 		local die = dice[i]
 		if die and board[i] then
 			local isSelected = selected == i
@@ -282,8 +285,9 @@ end
 local function render(snapshot)
 	local previous = board
 	playing = snapshot.Phase == "Playing"
-	if playing and ((snapshot.Seat or 1) ~= seat or (snapshot.PlayerCount or 1) ~= playerCount) then
-		seat, playerCount = snapshot.Seat or 1, snapshot.PlayerCount or 1
+	local nextArena = Layout.ArenaOf(snapshot.Mode or snapshot.PlayerCount)
+	if playing and ((snapshot.Seat or 1) ~= seat or nextArena ~= arenaKey) then
+		seat, arenaKey = snapshot.Seat or 1, nextArena
 		previous, selected, boardKey = {}, nil, ""
 		buildWorld()
 	end

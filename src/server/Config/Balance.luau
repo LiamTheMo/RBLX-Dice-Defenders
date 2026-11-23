@@ -56,10 +56,16 @@ Balance.KillMp = table.freeze({
 Balance.BruteMpMul = 5
 Balance.BossMpMul = 10
 
+-- 1v1 Duel (docs/DICE_RATING.md sections 4 and 9): no wave cap and no draws; it ends at 0 lives or a surrender/forfeit.
+Balance.Duel = table.freeze({ MinWavesForRewards = 3 }) -- a forfeit or surrender before this many cleared waves pays the winner nothing (win-trading guard, *tune*)
+
 -- Net: token buckets per player and remote, and the hard-violation kick.
 Balance.Remotes = table.freeze({
 	Start = table.freeze({ rate = 1, burst = 2 }),
 	CoopReady = table.freeze({ rate = 2, burst = 3 }),
+	QueueDuel = table.freeze({ rate = 1, burst = 3 }), -- *tune*
+	Surrender = table.freeze({ rate = 1, burst = 2 }), -- *tune*
+	LeaveDuel = table.freeze({ rate = 1, burst = 2 }), -- *tune*
 	TutorialAction = table.freeze({ rate = 2, burst = 3 }),
 	Summon = table.freeze({ rate = 10, burst = 8 }),
 	Merge = table.freeze({ rate = 5, burst = 8 }),
