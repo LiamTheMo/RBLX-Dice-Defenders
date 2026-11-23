@@ -1,482 +1,823 @@
-local Layout = require(game:GetService("ReplicatedStorage").Shared.Layout)
-local ProjectileScale = require(script.Parent.ProjectileScale)
-local Meshes = require(script.Parent.RarityMeshes)
-local Textures = require(script.Parent.RarityTextures)
+-- Rare / Epic / Legendary / Mythic dice effects, built from pooled MeshParts, Trails and Beams (FxLib).
+-- No textures, SurfaceGui, Decal or ParticleEmitter. Layer data lives in RarityStyles (sizes at D = 5,
+-- scaled here by k = dieSize / 5). CommonProjectiles drives the per-frame poses (Travel / Impact) and
+-- EnemyView the status loops; parts are borrowed lazily on the first call and every one of them goes back
+-- to its pool in Release (or when the shared loop cancels the effect).
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Layout = require(ReplicatedStorage.Shared.Layout)
+local DiceVisuals = require(script.Parent.Parent.Dice.Visuals)
+local Fx = require(script.Parent.FxLib)
+local RarityStyles = require(script.Parent.RarityStyles)
 
 local RarityEffects = {}
-local IMPACT_SCALE = ProjectileScale.Impact
-local IMPACT_WEIGHT = 1.5 * ProjectileScale.ImpactWeight
-local CORE_SIZE = ProjectileScale.Flight * 0.19
-local FLIGHT_SCALE = CORE_SIZE / 0.665
+RarityEffects.Styles = RarityStyles.Styles
+
+local MAX_SHOTS = 40 -- per style (CommonProjectiles pools the same number of shots)
+local LOOP_CAP = 8 -- status loops + support auras alive at once
+local NEON = Enum.Material.Neon
 local TAU = math.pi * 2
-local DURATION = 0.30
-local HIDDEN = 1
+local FLIP = CFrame.Angles(0, math.pi, 0) -- meshes whose tip is +Z (Blender +Y): lookAt points -Z
+local UP = Vector3.yAxis
+
+-- Hook fields on the server's attack record. Missing fields simply mean the event did not happen, so the
+-- matching layer stays off (rulings: effects only play from confirmed events):
+--   SlowUntil (R01), PoisonUntil (R04), PullUntil (E03), ChainDistances (R02), CopiedCell (E02),
+--   TransformedCell (L02), Detonated + BlastRadius (E01), Critical (M01), SupportCells (R05).
+local STATUS_FIELD = { Frost = "SlowUntil", Venom = "PoisonUntil", Gravity = "PullUntil" }
+local conditions = {
+	laneZero = function(shot)
+		return shot.visualLane == 0
+	end,
+	detonated = function(shot)
+		return shot.attack.Detonated == true
+	end,
+	forged = function(shot)
+		return shot.transformedCell ~= nil
+	end,
+	copied = function(shot)
+		return shot.copiedCell ~= nil
+	end,
+}
+
+local CHAIN_OPACITY = RarityStyles.curve({ 0, 0 }, { 0.035, 1 }, { 0.2, 0, "quadOut" })
+local LINK_OPACITY = RarityStyles.curve({ 0, 0.8 }, { 0.1, 0.8 }, { 0.3, 0 })
+
+local rng = Random.new()
+local limiters = {}
+for _, style in RarityStyles.Styles do
+	limiters[style.name] = Fx.Limiter(MAX_SHOTS)
+end
+local loopLimiter = Fx.Limiter(LOOP_CAP)
+local statuses = { Frost = {}, Venom = {}, Gravity = {} }
 local chronoAuras = {}
-local statuses = { Frost = {}, Venom = {} }
-local WHITE = Color3.new(1, 1, 1)
-local CYAN = Color3.fromHex("82E9FF")
-local VIOLET = Color3.fromHex("B967FF")
-local LEAF = Color3.fromHex("B7FF3A")
-local FLAME = Color3.fromHex("FFD33A")
+local auraReducedMotion = false
 
--- Length, width, sideways offset, height, curve and optional highlight.
-local TAILS = {
-	Frost = { { 2.9, 0.13, 0, 0 }, { 2.2, 0.07, 0.13, 0.19 }, { 1.8, 0.07, -0.16, -0.16 } },
-	Arc = { { 2.8, 0.15, 0, 0 }, { 1.9, 0.06, 0.12, 0.13 }, { 2.2, 0.06, -0.13, -0.11 } },
-	Volley = { { 2.8, 0.12, 0, 0 }, { 1.9, 0.06, 0.08, 0.13 }, { 1.6, 0.06, -0.06, -0.11 } },
-	Venom = { { 2.2, 0.24, 0, 0, 0.42, LEAF }, { 1.8, 0.14, -0.08, -0.1, -0.38 } },
-	Beacon = { { 2.2, 0.13, 0, 0, 0, FLAME }, { 1.8, 0.055, 0.12, 0.13 } },
-	Emberstorm = {
-		{ 3.0, 0.31, -0.10, 0.11, 0.60, FLAME },
-		{ 2.6, 0.25, 0.12, -0.11, -0.56 },
-		{ 2.2, 0.15, 0.08, 0.1, 0.35 },
-	},
-	Mirror = { { 2.0, 0.13, 0, 0, 0.14 }, { 1.6, 0.072, 0.12, 0.1, -0.17 } },
-	Gravity = { { 2.7, 0.12, 0, 0 }, { 2.0, 0.055, 0.12, 0.11 }, { 1.8, 0.055, -0.11, -0.12 } },
-	Chrono = { { 2.5, 0.14, 0, 0 }, { 2.0, 0.07, 0.13, 0.17 }, { 1.7, 0.065, -0.12, -0.14 } },
-	Forge = { { 2.7, 0.13, 0, 0, 0, FLAME }, { 2.2, 0.065, 0.16, 0.14 }, { 1.8, 0.06, -0.10, -0.13 } },
-	Astral = { { 3.5, 0.23, 0, 0, 0, CYAN }, { 2.6, 0.07, -0.09, 0.14, -0.13, VIOLET } },
-}
+-- Helpers ------------------------------------------------------------------------------------------------------
 
-local function style(name, shape, rays, color, streak, ring, accent, flash)
-	return {
-		name = name,
-		detail = shape,
-		rays = rays,
-		color = Color3.fromHex(color),
-		streak = Color3.fromHex(streak),
-		glow = Color3.fromHex(ring),
-		accent = Color3.fromHex(accent),
-		burstColor = Color3.fromHex(flash),
-		pool = {},
-		speed = 150,
-		size = 0.19,
-	}
-end
-
-RarityEffects.Styles = {
-	R01 = style("Frost", "Crystal", 6, "7FEFFF", "00D9FF", "00D9FF", "0A6FBF", "EFFFFF"),
-	R02 = style("Arc", "Orb", 8, "D77BFF", "D77BFF", "9A40FF", "4A0FB9", "F8E6FF"),
-	R03 = style("Volley", "Bolt", 3, "FF7A7A", "FF3B3B", "FF3B3B", "B7192A", "FFF6F6"),
-	R04 = style("Venom", "Orb", 5, "55D20A", "B7FF3A", "55D20A", "2B6E00", "E8FFB4"),
-	R05 = style("Beacon", "Orb", 5, "FFC400", "FF9A00", "FFC400", "6B4A00", "FFF08A"),
-	E01 = style("Emberstorm", "Ember", 7, "FFD33A", "FF8A00", "FF8A00", "FF4A00", "FFF7A3"),
-	E02 = style("Mirror", "Orb", 8, "00FFE6", "E6FFFF", "00BDAA", "007D75", "AFFFFF"),
-	E03 = style("Gravity", "Orb", 5, "7A3BFF", "C67AFF", "C67AFF", "3A0C7A", "F5E8FF"),
-	L01 = style("Chrono", "Diamond", 8, "00FFF6", "00C4BD", "00C4BD", "007F7A", "E6FFFF"),
-	L02 = style("Forge", "Diamond", 6, "FFD34D", "FF8A00", "FF8A00", "C24B00", "FFF7B2"),
-	M01 = style("Astral", "Star", 8, "F7B6FF", "5E6BFF", "B967FF", "1B0D4A", "FFFFFF"),
-}
-
-local function piece(parent, name, color, shape)
-	local part = Instance.new(if shape == "Wedge" then "WedgePart" else "Part")
-	if shape == "Ball" then
-		part.Shape = Enum.PartType.Ball
+local function colorAt(colors, u: number): Color3
+	local n = #colors
+	if n == 1 then
+		return colors[1]
 	end
-	part.Name = name
-	part.Color = color
-	part.Material = Enum.Material.Neon
-	part.Anchored = true
-	part.CastShadow = false
-	part.CanCollide = false
-	part.CanQuery = false
-	part.CanTouch = false
-	part.Transparency = HIDDEN
-	part.Parent = parent
-	return part
+	local at = math.clamp(u, 0, 1) * (n - 1)
+	local i = math.min(math.floor(at), n - 2)
+	return colors[i + 1]:Lerp(colors[i + 2], at - i)
 end
 
-local function pieces(count, parent, name, color, shape)
-	local items = table.create(count)
-	for i = 1, count do
-		items[i] = piece(parent, name, color, shape)
-	end
-	return items
+local function meshSize(key: string): Vector3
+	return Fx.Meshes[key].Size
 end
 
-local function ring(parent, color, secondary)
-	local part = piece(parent, "GroundRing", color)
-	local canvas = Instance.new("SurfaceGui")
-	canvas.Face = Enum.NormalId.Top
-	canvas.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
-	canvas.PixelsPerStud = 48
-	canvas.LightInfluence = 0
-	canvas.Enabled = false
-	canvas.Parent = part
-	local rim = Instance.new("Frame")
-	rim.AnchorPoint = Vector2.new(0.5, 0.5)
-	rim.Position = UDim2.fromScale(0.5, 0.5)
-	rim.Size = UDim2.fromScale(0.93, 0.93)
-	rim.BackgroundTransparency = 1
-	rim.Parent = canvas
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0.5, 0)
-	corner.Parent = rim
-	local feather = rim:Clone()
-	feather.Parent = canvas
-	local function rimStroke(frame, front)
-		local stroke = Instance.new("UIStroke")
-		stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-		stroke.Color = front
-		stroke.Parent = frame
-		if secondary then
-			local gradient = Instance.new("UIGradient")
-			gradient.Color = ColorSequence.new(front, secondary)
-			stroke.Color = WHITE
-			gradient.Parent = stroke
-		end
-		return stroke
-	end
-	local stroke = rimStroke(rim, color:Lerp(WHITE, 0.38))
-	local glow = rimStroke(feather, color)
-	rim.ZIndex = feather.ZIndex + 1
-	return { part = part, canvas = canvas, stroke = stroke, glow = glow }
+local function toVector(size): Vector3
+	return if typeof(size) == "number" then Vector3.one * size else size
 end
 
-local function beam(parent, color, width, falloff, bend)
-	local near, far = Instance.new("Attachment"), Instance.new("Attachment")
-	near.Parent, far.Parent = parent, parent
-	local ribbon = Instance.new("Beam")
-	ribbon.Attachment0, ribbon.Attachment1 = near, far
-	ribbon.Enabled = false
-	ribbon.FaceCamera = true
-	ribbon.LightEmission = 0.83
-	ribbon.LightInfluence = 0
-	ribbon.Color = color
-	ribbon.Width0, ribbon.Width1 = width, width * falloff
-	ribbon.CurveSize0, ribbon.CurveSize1 = bend, -bend * 0.66
-	ribbon.Segments = if bend == 0 then 1 else 8
-	ribbon.Parent = parent
-	return { near = near, far = far, part = ribbon }
-end
-
-local function fadeRibbon(ribbon, alpha, tail)
-	ribbon.part.Transparency = NumberSequence.new({
-		NumberSequenceKeypoint.new(0, 1 - alpha),
-		NumberSequenceKeypoint.new(0.58, 1 - alpha * 0.62),
-		NumberSequenceKeypoint.new(1, 1 - alpha * tail),
+local function borrow(key: string, parent: Instance, color: Color3, cf: CFrame?, size: Vector3?): MeshPart?
+	return Fx.Part(key, {
+		Parent = parent,
+		Color = color,
+		Material = NEON,
+		Transparency = 1,
+		CFrame = cf,
+		Size = size,
 	})
 end
 
-local function show(part, frame, size, opacity)
-	part.CFrame, part.Size, part.Transparency = frame, size, 1 - math.clamp(opacity, 0, 1)
+local function releaseTrail(handle)
+	handle.trail.MaxLength = 0 -- FxLib's pooled trails never set it: leave none behind
+	Fx.ReleaseTrail(handle)
 end
 
-local function line(part, from, to, width, opacity)
-	local delta = to - from
-	local length = delta.Magnitude
-	if length < 0.01 then
-		part.Transparency = HIDDEN
-		return
-	end
-	local up = if math.abs(delta.Y) > 0.98 * length then Vector3.zAxis else Vector3.yAxis
-	show(part, CFrame.lookAt((from + to) / 2, to, up), Vector3.new(width, width, length), opacity)
-end
-
-local function polar(angle, radius, height)
-	return Vector3.new(math.cos(angle) * radius, height, math.sin(angle) * radius)
-end
-
-local function poseMesh(parts, mesh, frame, scale, opacity)
-	for i, wedge in mesh do
-		local origin = wedge[1]
-		show(parts[i], frame * (origin.Rotation + origin.Position * scale), wedge[2] * scale, opacity)
+local function releaseParts(list)
+	for i = #list, 1, -1 do
+		Fx.Release(list[i])
+		list[i] = nil
 	end
 end
+
+local function releaseItems(list)
+	for i = #list, 1, -1 do
+		Fx.Release(list[i].part)
+		list[i] = nil
+	end
+end
+
+-- Teardown ------------------------------------------------------------------------------------------------------
+
+local function dropFlight(v)
+	for i = #v.trails, 1, -1 do
+		releaseTrail(v.trails[i])
+		v.trails[i] = nil
+	end
+	releaseParts(v.followers)
+	releaseParts(v.dots)
+	if v.core then
+		Fx.Release(v.core)
+		v.core = nil
+	end
+end
+
+local function teardown(v)
+	dropFlight(v)
+	releaseItems(v.items)
+	for i = #v.beams, 1, -1 do
+		Fx.ReleaseBeam(v.beams[i].handle)
+		v.beams[i] = nil
+	end
+	if v.coreBeam then
+		Fx.ReleaseBeam(v.coreBeam)
+		v.coreBeam = nil
+	end
+end
+
+-- Create / begin ------------------------------------------------------------------------------------------------
 
 function RarityEffects.Create(style, dot)
-	local root = Instance.new("Folder")
-	root.Name = style.name .. "VFX"
-	local travel = Instance.new("Folder")
-	travel.Name = "Flight"
-	local burst = Instance.new("Folder")
-	burst.Name = "ImpactFlash"
-	local shape = style.detail
-	local mesh = Meshes[shape]
-	local visuals = {
-		root = root,
-		travel = travel,
-		burst = burst,
-		core = pieces(
-			if mesh then #mesh else 1,
-			travel,
-			shape,
-			style.color,
-			if shape == "Orb" then "Ball" else "Wedge"
-		),
-		ring = ring(root, style.glow, if style.name == "Astral" then Color3.fromHex("82E9FF") else nil),
+	dot.Transparency = 1
+	return {
+		style = style,
+		profile = style.profile,
+		dot = dot,
+		trails = {},
+		followers = {},
+		dots = {},
+		items = {},
+		beams = {},
+		began = false,
+		impacting = false,
+		skip = false,
+		finished = false,
+		handle = nil,
+		core = nil,
+		coreBeam = nil,
+		k = 1,
+		tier = "High",
 	}
-	if shape == "Crystal" or shape == "Diamond" or shape == "Ember" then
-		for i, wedge in mesh do
-			visuals.core[i].Color = if wedge[3] % 4 == 3
-				then style.color:Lerp(style.accent, 0.52)
-				elseif wedge[3] % 2 == 0 then style.color:Lerp(style.burstColor, 0.54)
-				else style.color
-		end
-	elseif shape == "Star" or shape == "Bolt" then
-		for _, part in visuals.core do
-			part.Color = if shape == "Star" then style.burstColor else style.color:Lerp(style.burstColor, 0.65)
-		end
+end
+
+-- Registers the shot with the shared loop (per-style MAX_SHOTS + global cap). False = flourish dropped.
+local function begin(v, shot): boolean
+	v.began = true
+	v.tier = Fx.Tier(shot.reducedMotion)
+	v.k = Fx.Scale(DiceVisuals.Size(shot.attack.Type))
+	v.handle = Fx.Run(function()
+		return v.finished
+	end, function()
+		teardown(v)
+	end, limiters[v.style.name])
+	if v.handle == nil then
+		v.skip = true
+		return false
+	end
+	return true
+end
+
+local function usable(v): boolean
+	return not v.skip and not v.finished and v.handle ~= nil and not v.handle.isDone()
+end
+
+local function allowed(v, role: string): boolean
+	return Fx.LayerAllowed(v.tier, role)
+end
+
+-- Flight ---------------------------------------------------------------------------------------------------------
+
+local function corePose(v, shot, position: Vector3, t: number, progress: number)
+	local cfg = v.profile.core
+	local dir = shot.travelFrame.LookVector
+	local f = 1
+	if cfg.scale then
+		f = Fx.Sample(cfg.scale, if cfg.scaleByProgress then progress else t)
+	end
+	local remaining = shot.flight - t
+	if cfg.shrink and remaining < cfg.shrink then
+		f *= math.max(remaining, 0) / cfg.shrink
+	end
+	if cfg.twinkle then
+		f *= 1 + cfg.twinkle * math.sin(t * TAU * 3)
+	end
+	local opacity = 1
+	if cfg.fadeIn then
+		opacity = math.min(progress / cfg.fadeIn, 1)
+	end
+	if cfg.fadeOut and progress > cfg.fadeOut then
+		opacity = math.max(1 - (progress - cfg.fadeOut) / (1 - cfg.fadeOut), 0)
+	end
+	local spin = if shot.reducedMotion then 0 else (cfg.spin or 0) * t
+	local aim = cfg.aim
+	local cf
+	if aim == "orb" then
+		cf = CFrame.new(position)
+	elseif aim == "z" then
+		cf = CFrame.lookAt(position, position + dir) * CFrame.Angles(0, 0, spin) * FLIP
+	elseif aim == "y" then
+		cf = CFrame.lookAt(position, position + dir) * CFrame.Angles(-math.pi / 2, 0, 0) * CFrame.Angles(0, spin, 0)
+	elseif aim == "flat" then
+		local base = Fx.FaceCamera(CFrame.new(position))
+		local local_ = base:VectorToObjectSpace(dir)
+		cf = Fx.FaceCamera(CFrame.new(position), math.atan2(local_.X, local_.Z))
 	else
-		visuals.highlight = piece(travel, "OrbHighlight", style.burstColor, "Ball")
+		cf = Fx.FaceCamera(CFrame.new(position), spin)
 	end
-	local name = style.name
-	local ribbonAnchor = piece(travel, "TrailAnchor", style.streak)
-	visuals.ribbons = {}
-	for i, profile in TAILS[name] do
-		local edge = profile[6] or style.streak
-		local near = edge:Lerp(style.burstColor, if i == 1 then 0.75 else 0.26)
-		local ribbon =
-			beam(ribbonAnchor, ColorSequence.new(near, edge), profile[2] * FLIGHT_SCALE * 1.8, 0.06, profile[5] or 0)
-		fadeRibbon(ribbon, if i == 1 then 0.94 else 0.69, 0)
-		visuals.ribbons[i] = ribbon
+	return cf, toVector(cfg.size) * (f * v.k), 1 - opacity
+end
+
+local function addTrails(v)
+	local cfg = v.profile.core
+	local across = if cfg.xTrail then Vector3.yAxis else Vector3.xAxis
+	local wide = if cfg.xTrail then Vector3.xAxis else Vector3.yAxis
+	for _, def in v.profile.trails do
+		local width = def.width * v.k
+		local handle = Fx.Trail(v.core, {
+			Color = def.c0,
+			Lifetime = def.life,
+			Width = width,
+			LightEmission = def.light,
+			Transparency = def.transparency or 0.1,
+		})
+		if handle == nil then
+			break
+		end
+		handle.trail.Color = ColorSequence.new(def.c0, def.c1)
+		handle.trail.MaxLength = def.length * v.k
+		local offset = across * ((def.offset or 0) * v.k)
+		handle.a0.Position = offset + wide * (width / 2)
+		handle.a1.Position = offset - wide * (width / 2)
+		table.insert(v.trails, handle)
 	end
+end
+
+local function addFlightExtras(v, shot)
+	local profile = v.profile
+	if profile.followers then
+		for _ = 1, profile.followers.count do
+			local part = borrow(profile.followers.mesh, shot.parent, profile.followers.color)
+			if part == nil then
+				break
+			end
+			table.insert(v.followers, part)
+		end
+	end
+	if profile.dots then
+		for i = 1, profile.dots.count do
+			local part = borrow(profile.dots.mesh, shot.parent, profile.dots.colors[(i - 1) % #profile.dots.colors + 1])
+			if part == nil then
+				break
+			end
+			table.insert(v.dots, part)
+		end
+	end
+	local beam = profile.coreBeam
+	if beam then
+		local handle = Fx.Beam(workspace.Terrain, workspace.Terrain, {
+			Width0 = beam.width0 * v.k,
+			Width1 = beam.width1 * v.k,
+			LightEmission = 1,
+			Transparency = 0.2,
+		})
+		if handle then
+			handle.beam.Color = ColorSequence.new(beam.c0, beam.c1)
+			v.coreBeam = handle
+		end
+	end
+end
+
+local function updateFollowers(v, shot, position: Vector3, t: number)
+	local cfg = v.profile.followers
+	local dir = shot.travelFrame.LookVector
+	local right, up = shot.travelFrame.RightVector, shot.travelFrame.UpVector
+	local count = #v.followers
+	for i, part in v.followers do
+		local cycle = t / cfg.cycle + (i - 1) / count
+		local index = math.floor(cycle)
+		local phase = cycle - index
+		local angle = index * 2.4 + i
+		local drift = (0.15 + 0.35 * phase) * v.k
+		local p = position
+			- dir * ((0.4 + phase * 0.9) * v.k)
+			+ (right * math.cos(angle) + up * math.sin(angle)) * drift
+		part.CFrame = CFrame.lookAt(p, p - dir) * CFrame.Angles(-math.pi / 2, 0, 0)
+		part.Size = meshSize(cfg.mesh) * (cfg.scale * v.k * math.max(1 - phase, 0.01))
+		part.Transparency = 0
+	end
+end
+
+local function updateDots(v, shot, progress: number)
+	local cfg = v.profile.dots
+	local length = (shot.surface - shot.from).Magnitude
+	local travelled = progress * length
+	local newest = math.floor(travelled / cfg.spacing)
+	local dir = shot.travelFrame.LookVector
+	local right, up = shot.travelFrame.RightVector, shot.travelFrame.UpVector
+	for j, part in v.dots do
+		local index = newest - ((newest - (j - 1)) % cfg.count)
+		local age = if index >= 0 then (travelled - index * cfg.spacing) / shot.style.speed else -1
+		local f = 0
+		if age >= 0 then
+			f = if age < 0.05 then age / 0.05 else math.max(1 - (age - 0.05) / 0.25, 0)
+		end
+		if f <= 0.01 then
+			part.Transparency = 1
+		else
+			local p = shot.from
+				+ dir * (index * cfg.spacing)
+				+ (right * math.sin(index * 2.1) + up * math.cos(index * 1.7)) * (0.35 * v.k)
+			part.CFrame = CFrame.new(p)
+			part.Size = meshSize(cfg.mesh) * (cfg.size * f * v.k)
+			part.Transparency = 0
+		end
+	end
+end
+
+function RarityEffects.Travel(shot, position: Vector3, progress: number)
+	local v = shot.visuals
+	if v.finished or v.skip then
+		return
+	end
+	if not v.began and not begin(v, shot) then
+		v.dot.Transparency = 0 -- over the cap: the plain projectile still shows, only the flourish is dropped
+		return
+	end
+	if not usable(v) then
+		return
+	end
+	local t = progress * shot.flight
+	local cf, size, transparency = corePose(v, shot, position, t, progress)
+	if v.core == nil then
+		if v.coreTried then
+			return
+		end
+		v.coreTried = true
+		v.core = borrow(v.profile.core.mesh, shot.parent, v.profile.core.color, cf, size)
+		if v.core == nil then
+			v.dot.Transparency = 0 -- mesh still loading: fall back to the caller's plain projectile
+			return
+		end
+		if allowed(v, "trail") then
+			addTrails(v)
+			addFlightExtras(v, shot)
+		end
+	end
+	local core = v.core
+	core.CFrame, core.Size, core.Transparency = cf, size, transparency
+	if v.profile.followers and #v.followers > 0 then
+		updateFollowers(v, shot, position, t)
+	end
+	if v.profile.dots and #v.dots > 0 then
+		updateDots(v, shot, progress)
+	end
+	if v.coreBeam then
+		v.coreBeam.a0.Position = shot.from
+		v.coreBeam.a1.Position = position
+	end
+end
+
+-- Impact ---------------------------------------------------------------------------------------------------------
+
+local function jitter(): number
+	return (rng:NextNumber() * 2 - 1) * 0.6
+end
+
+local function addBeam(v, props, a0: Vector3, a1: Vector3, extra)
+	local handle = Fx.Beam(workspace.Terrain, workspace.Terrain, props)
+	if handle == nil then
+		return
+	end
+	handle.a0.Position, handle.a1.Position = a0, a1
+	local entry = { handle = handle, from = a0, to = a1 }
+	for key, value in extra or {} do
+		entry[key] = value
+	end
+	table.insert(v.beams, entry)
+end
+
+local function addItems(v, shot)
+	local profile = v.profile
+	for _, layer in profile.impact do
+		local loaded = layer.role == "support"
+			and profile.supportLoad ~= nil
+			and Fx.Live() >= profile.supportLoad * Fx.GLOBAL_CAP
+		if allowed(v, layer.role) and not loaded and (not layer.when or conditions[layer.when](shot)) then
+			for i = 1, layer.count or 1 do
+				local color = if layer.alternate then layer.colors[(i - 1) % #layer.colors + 1] else layer.colors[1]
+				local part = borrow(layer.mesh, shot.parent, color)
+				if part == nil then
+					break
+				end
+				table.insert(v.items, { part = part, L = layer, i = i })
+			end
+		end
+	end
+	if profile.neighbor and allowed(v, "support") then
+		for i, cell in shot.supportCells or {} do
+			local part = borrow(profile.neighbor.mesh, shot.parent, profile.neighbor.colors[1])
+			if part == nil then
+				break
+			end
+			local center = Layout.CellPosition(cell, shot.attack.Seat, shot.attack.PlayerCount) - UP * 0.53
+			table.insert(v.items, { part = part, L = profile.neighbor, i = i, origin = center })
+		end
+	end
+	local low = not allowed(v, "support")
+	local chain = profile.chain
+	if chain and shot.links then
+		for i, distance in shot.links do
+			if i > chain.max or (low and i > 1) then
+				break -- Low tier keeps ONE thin link (no core beam)
+			end
+			local finish = Layout.PositionAt(distance, shot.enemySeat, shot.playerCount) + UP * shot.lift
+			local width = if low then chain.width * 0.5 else chain.width
+			local props = { Color = chain.color, Width0 = width * v.k, Segments = 7, LightEmission = 1 }
+			addBeam(v, props, shot.center, finish, { kind = "chain", c = jitter(), rerolled = false })
+			if not low then
+				props = { Color = chain.core, Width0 = chain.coreWidth * v.k, Segments = 7, LightEmission = 1 }
+				addBeam(v, props, shot.center, finish, { kind = "chain", c = jitter(), rerolled = false })
+			end
+		end
+	end
+	if low then
+		return
+	end
+	local link = profile.link
+	if link and shot.copiedCell then
+		local source = shot.from + UP * 0.3
+		addBeam(v, {
+			Color = link.color,
+			Width0 = link.width * v.k,
+			Segments = 8,
+			CurveSize0 = link.curve * v.k,
+			CurveSize1 = -link.curve * v.k,
+			LightEmission = 0.7,
+		}, source, source, { kind = "link", target = shot.center })
+	end
+end
+
+local function startImpact(v, shot, facing: CFrame)
+	v.impacting = true
+	if not v.began and not begin(v, shot) then
+		return
+	end
+	local holdCore = v.core ~= nil and v.profile.core.hold ~= nil
+	if holdCore then
+		for i = #v.trails, 1, -1 do
+			releaseTrail(v.trails[i])
+			v.trails[i] = nil
+		end
+		releaseParts(v.followers)
+		releaseParts(v.dots)
+	else
+		dropFlight(v)
+	end
+	local hit = facing.Position
+	local ground = shot.ground
+	local radius = shot.attack.BlastRadius
+	local ctx = {
+		k = v.k,
+		shot = shot,
+		ground = ground,
+		hit = hit,
+		seed = rng:NextNumber() * TAU,
+		roll = rng:NextNumber() * TAU,
+		roll2 = rng:NextNumber() * TAU,
+		critical = shot.attack.Critical == true and not shot.reducedMotion,
+		blast = if radius then math.clamp(radius / 1.75, 0.5, 3) else 1,
+	}
+	ctx.hitCtx = { k = v.k, shot = shot, ground = hit, seed = ctx.seed }
+	v.ctx = ctx
+	addItems(v, shot)
+end
+
+-- Draws one impact layer; returns false once it has finished (the caller releases the part).
+local function drawItem(item, age: number, ctx, reduced: boolean): boolean
+	local layer, part = item.L, item.part
+	local t = age - (layer.delay or 0)
+	if t < 0 then
+		part.Transparency = 1
+		return true
+	end
+	if t >= layer.dur then
+		return false
+	end
+	local f = Fx.Sample(layer.scale, t)
+	local fy = if layer.scaleY then Fx.Sample(layer.scaleY, t) else f
+	if f <= 0.003 and fy <= 0.003 then
+		part.Transparency = 1
+		return true
+	end
+	local mul = ctx.k
+	if layer.critical and ctx.critical then
+		mul *= layer.critical
+	end
+	if layer.blast then
+		mul *= ctx.blast
+	end
+	local full = toVector(layer.full)
+	part.Size = meshSize(layer.mesh) * Vector3.new(full.X * f, full.Y * fy, full.Z * f) * mul
+	local opacity = if layer.opacity then Fx.Sample(layer.opacity, t) else 1
+	if layer.role == "flash" then
+		opacity = Fx.FlashOpacity(reduced, opacity)
+	end
+	part.Transparency = 1 - opacity
+	if #layer.colors > 1 and not layer.alternate then
+		part.Color = colorAt(layer.colors, t / layer.dur)
+	end
+	local spin = if reduced then 0 else (layer.spin or 0) * t
+	local origin = item.origin or ctx.ground
+	local cf
+	if layer.motion then
+		local c = if layer.at == "hit" then ctx.hitCtx else ctx
+		local u = t / layer.dur
+		local pos = layer.motion(item.i, u, c, layer.count)
+		if layer.align then
+			local ahead = layer.motion(item.i, math.min(u + 0.06, 1), c, layer.count)
+			local dir = if u < 0.94 then ahead - pos else pos - layer.motion(item.i, u - 0.06, c, layer.count)
+			if dir.Magnitude < 1e-3 then
+				dir = UP
+			end
+			cf = CFrame.lookAt(pos, pos + dir)
+				* (if layer.align == "y" then CFrame.Angles(-math.pi / 2, 0, 0) else FLIP)
+		elseif layer.tumble and not reduced then
+			cf = CFrame.new(pos) * CFrame.Angles(u * 5 + item.i, u * 7 + item.i * 2, item.i)
+		else
+			cf = CFrame.new(pos)
+		end
+	elseif layer.orient == "ground" then
+		cf = CFrame.new(origin + UP * 0.05)
+	elseif layer.orient == "upright" then
+		local yaw = (if layer.roll then ctx.roll else 0) + spin
+		cf = CFrame.new(origin + UP * (layer.pivotUp * fy * mul)) * CFrame.Angles(0, yaw, 0)
+	elseif layer.orient == "yaw" then
+		local pos = ctx.hit + UP * (layer.pivotUp * fy * mul)
+		local camera = workspace.CurrentCamera
+		cf = if camera
+			then CFrame.lookAt(pos, Vector3.new(camera.CFrame.Position.X, pos.Y, camera.CFrame.Position.Z))
+			else CFrame.new(pos)
+	else -- "camera"
+		local roll = spin
+		if layer.roll == "random" then
+			roll += if layer.reroll and t >= layer.reroll then ctx.roll2 else ctx.roll
+		end
+		cf = Fx.FaceCamera(CFrame.new(ctx.hit), roll)
+		if layer.startPivot then
+			cf *= CFrame.new(layer.startPivot * full.X * f * mul, 0, 0)
+		end
+	end
+	part.CFrame = cf
+	return true
+end
+
+local function drawBeams(v, shot, age: number)
+	for i = #v.beams, 1, -1 do
+		local entry = v.beams[i]
+		local beam = entry.handle.beam
+		local opacity, done
+		if entry.kind == "chain" then
+			opacity = Fx.Sample(CHAIN_OPACITY, age)
+			if shot.reducedMotion then
+				opacity = math.min(opacity, 0.7)
+			end
+			done = age >= v.profile.chain.dur
+			if not entry.rerolled and age >= 0.1 then
+				entry.rerolled = true
+				entry.c = jitter()
+			end
+			beam.CurveSize0, beam.CurveSize1 = entry.c * v.k, -entry.c * v.k
+		else
+			local link = v.profile.link
+			opacity = Fx.Sample(LINK_OPACITY, age)
+			done = age >= link.dur or not shot.target.Parent
+			entry.handle.a1.Position = entry.from:Lerp(entry.target, math.min(age / link.draw, 1))
+		end
+		if done then
+			Fx.ReleaseBeam(entry.handle)
+			table.remove(v.beams, i)
+		else
+			beam.Transparency = NumberSequence.new(1 - opacity)
+		end
+	end
+end
+
+function RarityEffects.Impact(shot, age: number, facing: CFrame)
+	local v = shot.visuals
+	if v.finished or v.skip then
+		return
+	end
+	if not v.impacting then
+		startImpact(v, shot, facing)
+	end
+	if not usable(v) then
+		return
+	end
+	local reduced = shot.reducedMotion
+	local ctx = v.ctx
+	local cfg = v.profile.core
+	if v.core then -- E02: the core shrinks away over the first 50 ms
+		local f = 1 - age / cfg.hold
+		if f > 0.02 then
+			v.core.CFrame = CFrame.new(shot.surface)
+			v.core.Size = toVector(cfg.size) * (f * v.k)
+			v.core.Transparency = 0
+		else
+			Fx.Release(v.core)
+			v.core = nil
+		end
+	end
+	if v.coreBeam then -- M01: the core beam fades over 80 ms after the hit
+		local tail = v.profile.coreBeam.tail
+		if age >= tail then
+			Fx.ReleaseBeam(v.coreBeam)
+			v.coreBeam = nil
+		else
+			v.coreBeam.beam.Transparency = NumberSequence.new(0.2 + 0.8 * age / tail)
+		end
+	end
+	local items = v.items
+	for i = #items, 1, -1 do
+		local item = items[i]
+		if not drawItem(item, age, ctx, reduced) then
+			Fx.Release(item.part)
+			table.remove(items, i)
+		end
+	end
+	if #v.beams > 0 then
+		drawBeams(v, shot, age)
+	end
+end
+
+function RarityEffects.Release(v)
+	v.finished = true
+	if v.handle then
+		v.handle.cancel() -- runs teardown through the loop
+	end
+	teardown(v)
+	v.handle, v.ctx = nil, nil
+	v.began, v.impacting, v.skip, v.finished, v.coreTried = false, false, false, false, nil
+	v.dot.Transparency = 1
+end
+
+-- Status loops -----------------------------------------------------------------------------------------------------
+
+local function statusParts(name: string, profile, parent: Instance)
+	local parts = {}
+	local function add(key: string, color: Color3): boolean
+		local part = borrow(key, parent, color)
+		if part == nil then
+			return false
+		end
+		table.insert(parts, part)
+		return true
+	end
+	local cfg = profile.status
 	if name == "Frost" then
-		visuals.flakes = {}
-		for i = 1, 3 do
-			visuals.flakes[i] =
-				Textures.Create(ribbonAnchor, "Snowflake", if i == 1 then style.burstColor else style.glow)
+		if not (add(cfg.flake.mesh, cfg.flake.color) and add(cfg.ring.mesh, cfg.ring.color)) then
+			releaseParts(parts)
+			return nil
 		end
-		if not visuals.flakes[1] then
-			visuals.snow = pieces(9, travel, "TrailSnow", style.burstColor)
-		end
-		visuals.shards = table.create(style.rays)
-		for i = 1, style.rays do
-			visuals.shards[i] =
-				pieces(#Meshes.Shard, burst, "IceShard", if i % 2 == 0 then style.color else style.burstColor, "Wedge")
-		end
-	elseif name == "Arc" then
-		visuals.links = pieces(15, root, "LightningGlow", style.glow)
-		visuals.linkCores = pieces(15, root, "LightningCore", style.burstColor)
-	elseif name == "Volley" then
-		visuals.chips = pieces(4, root, "VolleyChip", style.streak, "Wedge")
 	elseif name == "Venom" then
-		visuals.poolRing = ring(root, style.accent)
-		visuals.splash = pieces(style.rays, burst, "Splash", style.streak, "Ball")
-		visuals.dust = pieces(3, travel, "SlimeDrop", style.color, "Ball")
-	elseif name == "Beacon" then
-		visuals.supportRing = ring(root, style.accent)
-		visuals.supportRing.part.Name = "SupportPulse"
-		visuals.neighbors = {}
-		visuals.supportLinks = pieces(4, root, "SupportLink", style.glow)
-		for i = 1, 4 do
-			visuals.neighbors[i] = ring(root, style.accent:Lerp(style.glow, 0.65))
-		end
-	elseif name == "Emberstorm" or name == "Forge" then
-		visuals.sparks = pieces(if name == "Forge" then 5 else 4, root, "RisingSpark", style.color, "Ball")
-		visuals.flame = pieces(if name == "Forge" then 0 else 9, root, "FlameArc", style.accent)
-		if name == "Forge" then
-			visuals.anvil = pieces(#Meshes.Anvil, root, "AnvilSilhouette", style.color, "Wedge")
-		end
-		visuals.dust = pieces(3, travel, "TravelSpark", style.burstColor, "Ball")
-	elseif name == "Mirror" then
-		visuals.poolRing = ring(root, style.glow)
-		local glassAnchor = piece(root, "GlassAnchor", style.color)
-		visuals.glass = {
-			beam(glassAnchor, ColorSequence.new(style.glow, style.color), 0.21, 0.70, 1.3),
-			beam(glassAnchor, ColorSequence.new(style.color, style.burstColor), 0.12, 0.81, -1),
-		}
-	elseif name == "Gravity" then
-		visuals.spiral = pieces(20, root, "Vortex", style.color)
-		for i, segment in visuals.spiral do
-			segment.Color = style.streak:Lerp(style.color, ((i - 1) % 10) * 0.054)
-		end
-		visuals.fragments = pieces(3, root, "VortexFragment", style.streak, "Wedge")
-		visuals.dust = pieces(3, travel, "TravelLight", style.burstColor, "Ball")
-	elseif name == "Chrono" then
-		visuals.ticks = pieces(12, root, "ClockTick", style.burstColor)
-	elseif name == "Astral" then
-		visuals.dust = pieces(5, travel, "TrailStar", CYAN, "Ball")
-		visuals.trailLinks = pieces(4, travel, "TrailLink", style.streak)
-		visuals.stars = pieces(5, root, "ConstellationStar", style.burstColor, "Ball")
-		visuals.lines = pieces(5, root, "ConstellationLink", VIOLET)
-		visuals.pillars = pieces(5, root, "LightPillar", CYAN)
-	end
-	local haloColor = if shape == "Star" then VIOLET else style.streak
-	visuals.halo = piece(travel, "ProjectileGlow", haloColor, "Ball")
-	visuals.flightGlow = Textures.Create(visuals.halo, "Glow", haloColor)
-	local flashAnchor = piece(burst, "FlashBloom", style.glow)
-	visuals.hitGlow = Textures.Create(flashAnchor, "Glow", style.glow)
-	if name == "Venom" then
-		visuals.flash = piece(burst, "FlashCore", style.burstColor, "Ball")
-	elseif name ~= "Frost" then
-		visuals.flashMesh = Meshes.Flash(style.rays, name == "Beacon" or name == "Emberstorm" or name == "Forge")
-		visuals.flash = pieces(
-			#visuals.flashMesh,
-			burst,
-			"RadialFlash",
-			style.burstColor:Lerp(style.color, if name == "Astral" then 0.06 else 0.23),
-			"Wedge"
-		)
-	end
-	dot.Transparency = HIDDEN
-	return visuals
-end
-
-function RarityEffects.Travel(shot, position, progress)
-	local visuals, style = shot.visuals, shot.style
-	local frame = shot.travelFrame.Rotation + position
-	local shape = style.detail
-	local camera = workspace.CurrentCamera
-	if shape == "Orb" then
-		local diameter = CORE_SIZE * (if style.name == "Beacon" or style.name == "Venom" then 0.9 else 1)
-		show(visuals.core[1], frame, Vector3.one * diameter, 1)
-		local eye = if camera then camera.CFrame.Rotation else frame.Rotation
-		local shine = position + (eye.LookVector * -0.80 + eye.UpVector * 0.37 - eye.RightVector * 0.31) * diameter / 2
-		show(visuals.highlight, CFrame.new(shine), Vector3.one * (diameter * 0.31), 0.90)
-	else
-		local pose = frame
-		if camera and (shape == "Star" or shape == "Bolt") then
-			pose = camera.CFrame.Rotation + position
-			if shape == "Bolt" then
-				local forward = pose:VectorToObjectSpace(frame.LookVector)
-				pose *= CFrame.Angles(0, 0, math.atan2(forward.Y, forward.X))
+		for _ = 1, cfg.bubbles.count do
+			if not add(cfg.bubbles.mesh, cfg.bubbles.color) then
+				releaseParts(parts)
+				return nil
 			end
 		end
-		poseMesh(visuals.core, Meshes[shape], pose, FLIGHT_SCALE, 1)
+	elseif not add(cfg.vortex.mesh, cfg.vortex.color) then
+		return nil
 	end
-	if visuals.flightGlow then
-		Textures.Show(visuals.flightGlow, position, (if shape == "Star" then 3.4 else 2.85) * FLIGHT_SCALE, 0.75)
-	else
-		show(visuals.halo, frame, Vector3.one * (0.97 * FLIGHT_SCALE), if shape == "Orb" then 0.27 else 0.12)
-	end
-	local reach = math.min(progress * (shot.surface - shot.from).Magnitude, 6) * FLIGHT_SCALE
-	for i, ribbon in visuals.ribbons do
-		local profile = TAILS[style.name][i]
-		local length = math.min(reach, profile[1] * FLIGHT_SCALE * 1.5)
-		local side = profile[3] * FLIGHT_SCALE
-		local height = profile[4] * FLIGHT_SCALE
-		ribbon.near.WorldCFrame = frame.Rotation
-			+ (frame * Vector3.new(side * 0.65, height * 0.65, 0.08 * FLIGHT_SCALE))
-		ribbon.far.WorldCFrame = frame.Rotation + (frame * Vector3.new(side, height, length))
-		ribbon.part.Enabled = reach > 0.18
-	end
-	if visuals.dust then
-		local last
-		for i, part in visuals.dust do
-			local p = frame
-				* Vector3.new(math.sin(i * 4) * reach * 0.14, math.cos(i * 3) * reach * 0.11, reach * i / #visuals.dust)
-			local sparkle = if style.name == "Astral" then (0.22 - i * 0.022) else (0.22 - i * 0.029)
-			if visuals.trailLinks then
-				part.Color = if i == 1 then style.burstColor else CYAN:Lerp(VIOLET, (i - 1) * 0.15)
-			end
-			show(part, CFrame.new(p), Vector3.one * sparkle, if reach > 0.2 then 0.88 - i * 0.12 else 0)
-			if last and visuals.trailLinks then
-				line(visuals.trailLinks[i - 1], last, p, 0.045, 0.68 - i * 0.11)
-			end
-			last = p
-		end
-	end
-	for i, flake in visuals.flakes or {} do
-		local p = frame * Vector3.new(math.sin(i * 7) * 0.43, math.cos(i * 4) * 0.35, reach * i / 3)
-		Textures.Show(flake, p, (0.41 - 0.048 * i) * FLIGHT_SCALE, if reach > 0.3 then 0.86 - i * 0.15 else 0)
-	end
-	if visuals.snow then
-		for i, bar in visuals.snow do
-			local flake = (i - 1) // 3 + 1
-			local p = frame * Vector3.new(math.sin(flake * 7) * 0.43, math.cos(flake * 4) * 0.35, reach * flake / 3)
-			show(
-				bar,
-				CFrame.new(p) * frame.Rotation * CFrame.Angles(0, 0, i * math.pi / 3),
-				Vector3.new(0.036, 0.22 - 0.023 * flake, 0.036),
-				if reach > 0.3 then 0.70 - flake * 0.14 else 0
-			)
-		end
-	end
-	visuals.travel.Parent = shot.parent
-end
-
-local function showRing(rim, position, diameter, opacity, thickness)
-	local canvasDiameter = diameter + 0.32
-	local ratio = 0.93 * diameter / canvasDiameter
-	local size = UDim2.fromScale(ratio, ratio)
-	rim.part.CFrame = CFrame.new(position)
-	rim.part.Size = Vector3.new(canvasDiameter, 0.06, canvasDiameter)
-	rim.stroke.Parent.Size = size
-	rim.glow.Parent.Size = size
-	rim.stroke.Transparency = 1 - opacity
-	rim.stroke.Thickness = if thickness
-		then thickness * ProjectileScale.RingWeight
-		else 5 * ProjectileScale.RingWeight / ProjectileScale.ImpactWeight
-	rim.glow.Transparency = 1 - opacity * 0.24
-	rim.glow.Thickness = rim.stroke.Thickness + 6
-	rim.canvas.Enabled = true
+	return parts
 end
 
 function RarityEffects.StartStatus(shot)
 	local name = shot.style.name
-	local expires = if name == "Frost"
-		then shot.attack.SlowUntil
-		elseif name == "Venom" then shot.attack.PoisonUntil
-		else nil
+	local field = STATUS_FIELD[name]
 	local target = shot.target
-	if not expires or not target.Parent or expires <= workspace:GetServerTimeNow() then
+	if not field or not target or not target.Parent then
+		return
+	end
+	local expires = shot.attack[field]
+	if not expires or expires <= workspace:GetServerTimeNow() then
 		return
 	end
 	local active = statuses[name]
-	local marker = active[target]
-	if marker then
-		marker.expires = math.max(marker.expires, expires)
+	local entry = active[target]
+	if entry then
+		entry.expires = math.max(entry.expires, expires) -- a refresh extends the one marker
 		return
 	end
-	local folder = Instance.new("Folder")
-	folder.Name = name .. "Status"
-	folder.Parent = shot.parent
-	local frost = name == "Frost"
-	local icon
-	if frost then
-		local anchor = piece(folder, "SlowMarker", shot.style.burstColor)
-		icon = Textures.Create(anchor, "Snowflake", shot.style.burstColor)
+	local k = Fx.Scale(DiceVisuals.Size(shot.attack.Type))
+	local parts = statusParts(name, shot.style.profile, shot.parent)
+	if parts == nil then
+		return
 	end
-	active[target] = {
+	entry = {
+		name = name,
+		profile = shot.style.profile,
+		parts = parts,
+		parent = shot.parent,
 		expires = expires,
-		folder = folder,
-		icon = icon,
-		parts = pieces(
-			if icon then 0 else 3,
-			folder,
-			if frost then "Snowflake" else "Bubble",
-			shot.style.streak,
-			if frost then nil else "Ball"
-		),
-		rim = if frost then ring(folder, shot.style.glow) else nil,
+		start = workspace:GetServerTimeNow(),
+		tail = if name == "Venom" then shot.style.profile.status.bubbles.cycle else 0,
+		groundY = shot.ground.Y,
+		k = k,
+		shown = true,
+		done = false,
 	}
+	entry.handle = Fx.Run(function()
+		return entry.done
+	end, function()
+		releaseParts(entry.parts)
+		if active[target] == entry then
+			active[target] = nil
+		end
+	end, loopLimiter)
+	if entry.handle == nil then
+		releaseParts(entry.parts)
+		return
+	end
+	active[target] = entry
 end
 
-function RarityEffects.StepStatus(now, reducedMotion)
-	for _, active in statuses do
-		for target, marker in active do
-			local opacity = math.clamp(1 - (now - marker.expires) / 0.12, 0, 1) * (if reducedMotion then 0.36 else 0.67)
-			if not target.Parent or opacity <= 0 then
-				marker.folder:Destroy()
-				active[target] = nil
-			elseif marker.rim then
-				local top = target.Position + Vector3.yAxis * (target.Size.Y / 2 + 0.38)
-				if marker.icon then
-					Textures.Show(marker.icon, top, 0.8, opacity)
-				else
-					local camera = workspace.CurrentCamera
-					local facing = if camera then CFrame.lookAt(top, camera.CFrame.Position) else CFrame.new(top)
-					for i, part in marker.parts do
-						show(
-							part,
-							facing * CFrame.Angles(0, 0, i * math.pi / 3),
-							Vector3.new(0.065, 0.58, 0.065),
-							opacity
-						)
+local function drawFrost(e, target: BasePart, now: number, low: boolean)
+	local cfg = e.profile.status
+	local age, remaining = now - e.start, e.expires - now
+	local fade = math.clamp(remaining / 0.15, 0, 1)
+	local pop = if low then 1 else 0.6 + 0.4 * math.clamp(age / 0.1, 0, 1)
+	local f = math.max(pop * fade, 0.01)
+	local flake, ring = e.parts[1], e.parts[2]
+	local top = target.Position + UP * (target.Size.Y / 2 + cfg.flake.above)
+	flake.CFrame = Fx.FaceCamera(CFrame.new(top), if low then 0 else cfg.flake.spin * age)
+	flake.Size = meshSize(cfg.flake.mesh) * f
+	flake.Transparency = 0
+	local diameter = math.max(cfg.ring.diameter, target.Size.X * 1.3)
+	ring.CFrame = CFrame.new(target.Position - UP * (target.Size.Y / 2 - 0.06))
+	ring.Size = meshSize(cfg.ring.mesh) * (diameter * f)
+	ring.Transparency = cfg.ring.transparency
+end
+
+local function drawVenom(e, target: BasePart, now: number, low: boolean)
+	local cfg = e.profile.status.bubbles
+	local count = #e.parts
+	for i, part in e.parts do
+		local cycle = now / cfg.cycle + (i - 1) / count
+		local index = math.floor(cycle)
+		local u = if low then 0.45 else cycle - index
+		local startedAt = (index - (i - 1) / count) * cfg.cycle
+		if not low and startedAt > e.expires then
+			part.Transparency = 1 -- poison ended: no new bubbles, live ones already finished
+		else
+			local f = math.min(0.5 + 0.5 * u / 0.33, 1) * (if u > 0.33 then 1 - (u - 0.33) / 0.67 else 1)
+			local angle = (if low then 0 else index * 2.4) + i * 2.1
+			local p = target.Position
+				+ Vector3.new(math.cos(angle), 0, math.sin(angle)) * (target.Size.X * 0.45)
+				- UP * (target.Size.Y * 0.3)
+				+ UP * (u * cfg.rise)
+			part.CFrame = CFrame.new(p)
+			part.Size = meshSize(cfg.mesh) * (cfg.sizes[i] * math.max(f, 0.01) * e.k)
+			part.Transparency = 0.65
+		end
+	end
+end
+
+local function drawVortex(e, target: BasePart, now: number, low: boolean)
+	local cfg = e.profile.status.vortex
+	local age, remaining = now - e.start, e.expires - now
+	local grow = Fx.Easing.quadOut(age / 0.1)
+	local shrink = Fx.Easing.quadIn(math.clamp(remaining / 0.2, 0, 1))
+	local f = math.max(grow * shrink, 0.01)
+	local part = e.parts[1]
+	-- eases in (quadIn) through 720 degrees over spinEase seconds, then keeps the final speed while the pull lasts
+	local u = age / cfg.spinEase
+	local spin = 0
+	if not low then
+		spin = if u < 1
+			then cfg.spinTurn * Fx.Easing.quadIn(u)
+			else cfg.spinTurn + 2 * cfg.spinTurn / cfg.spinEase * (age - cfg.spinEase)
+	end
+	part.CFrame = CFrame.new(target.Position.X, e.groundY + 0.1, target.Position.Z) * CFrame.Angles(0, spin, 0)
+	part.Size = meshSize(cfg.mesh) * (f * e.k)
+	part.Transparency = 0
+end
+
+local drawers = { Frost = drawFrost, Venom = drawVenom, Gravity = drawVortex }
+
+function RarityEffects.StepStatus(now: number, reducedMotion: boolean)
+	local camera = workspace.CurrentCamera
+	local low = Fx.Tier(reducedMotion) == "Low"
+	for name, active in statuses do
+		for target, e in active do
+			if not target.Parent or now >= e.expires + e.tail then
+				e.done = true
+				e.handle.cancel() -- parts back to the pool, entry removed
+			else
+				local visible = camera == nil or select(2, camera:WorldToViewportPoint(target.Position))
+				if visible ~= e.shown then
+					e.shown = visible
+					for _, part in e.parts do
+						part.Parent = if visible then e.parent else nil
 					end
 				end
-				showRing(
-					marker.rim,
-					target.Position - Vector3.yAxis * (target.Size.Y / 2 - 0.06),
-					target.Size.X * 1.38,
-					opacity * 0.62
-				)
-			else
-				for i, part in marker.parts do
-					local height = if reducedMotion then 0.48 else ((now * 0.6 + i / 3) % 1)
-					local point = target.Position + polar(i * 2.4, target.Size.X * 0.59, (height - 0.4) * target.Size.Y)
-					show(part, CFrame.new(point), Vector3.one * (0.17 + 0.04 * i), opacity * (1 - 0.65 * height))
+				if visible then
+					drawers[name](e, target, now, low)
 				end
 			end
 		end
@@ -485,262 +826,81 @@ end
 
 function RarityEffects.ClearStatus()
 	for _, active in statuses do
-		for _, marker in active do
-			marker.folder:Destroy()
+		local entries = {}
+		for _, e in active do
+			table.insert(entries, e)
 		end
-		table.clear(active)
+		for _, e in entries do
+			e.done = true
+			e.handle.cancel()
+		end
 	end
 end
 
-local function clockTicks(ticks, ground, diameter, opacity, scale)
-	for i, tick in ticks do
-		local angle = (i - 1) * TAU / 12
-		local point = ground + polar(angle, diameter / 2 - 0.14, 0.015)
-		show(
-			tick,
-			CFrame.new(point) * CFrame.Angles(0, -angle, 0),
-			Vector3.new(if i % 3 == 1 then 0.37 else 0.23, 0.07, 0.075) * scale,
-			opacity
-		)
+-- Chrono support auras: one ring per real supported ally ------------------------------------------------------------
+
+local function removeAura(cell: number, aura)
+	chronoAuras[cell] = nil
+	if Fx.Tier(auraReducedMotion) == "Low" then
+		aura.handle.cancel()
+	else
+		aura.leaving = os.clock() -- the loop shrinks it away over 200 ms, then releases it
 	end
 end
 
-function RarityEffects.SetChronoAllies(parent, cells, seat, playerCount)
+local function newAura(cell: number, parent: Instance, center: Vector3)
+	local cfg = RarityStyles.Profiles.L01.aura
+	local part = borrow(cfg.mesh, parent, cfg.color, CFrame.new(center))
+	if part == nil then
+		return nil
+	end
+	local base = meshSize(cfg.mesh)
+	local aura = { part = part, leaving = nil }
+	aura.handle = Fx.Run(function()
+		local low = Fx.Tier(auraReducedMotion) == "Low"
+		if aura.leaving then
+			local p = (os.clock() - aura.leaving) / cfg.exit
+			if p >= 1 then
+				return true
+			end
+			part.Size = base * math.max(1 - p, 0.01)
+			part.Transparency = 0.55 + 0.45 * p
+			return false
+		end
+		local opacity = if low then 0.45 else 0.45 + 0.10 * math.sin(os.clock() * TAU / 1.2)
+		part.Transparency = 1 - opacity
+		return false
+	end, function()
+		Fx.Release(part)
+		if chronoAuras[cell] == aura then
+			chronoAuras[cell] = nil
+		end
+	end, loopLimiter)
+	if aura.handle == nil then
+		Fx.Release(part)
+		return nil
+	end
+	return aura
+end
+
+function RarityEffects.SetChronoAllies(parent: Instance, cells, seat, playerCount)
 	local keep = {}
-	local style = RarityEffects.Styles.L01
 	for _, cell in cells or {} do
 		keep[cell] = true
 		if not chronoAuras[cell] then
-			local root = Instance.new("Folder")
-			root.Name = "ChronoAllyAura"
-			chronoAuras[cell] = {
-				root = root,
-				ring = ring(root, style.glow),
-				ticks = pieces(12, root, "ClockTick", style.burstColor),
-				pillars = pieces(4, root, "ClockLight", style.color),
-				center = Layout.CellPosition(cell, seat, playerCount) - Vector3.yAxis * 0.53,
-			}
-			root.Parent = parent
+			local center = Layout.CellPosition(cell, seat, playerCount) - UP * 0.53
+			chronoAuras[cell] = newAura(cell, parent, center)
 		end
 	end
 	for cell, aura in chronoAuras do
 		if not keep[cell] then
-			aura.root:Destroy()
-			chronoAuras[cell] = nil
+			removeAura(cell, aura)
 		end
 	end
 end
 
-function RarityEffects.StepChrono(reducedMotion)
-	for _, aura in chronoAuras do
-		local glow = if reducedMotion then 0.30 else 0.36 + 0.12 * math.sin(os.clock() * math.pi)
-		local diameter = 5
-		showRing(aura.ring, aura.center, diameter, glow)
-		clockTicks(aura.ticks, aura.center, diameter, glow, 1)
-		for i, pillar in aura.pillars do
-			local point = aura.center + polar((i - 0.5) * TAU / 4, diameter * 0.46, 0.05)
-			line(pillar, point, point + Vector3.yAxis * 0.52, 0.07, glow * 0.62)
-		end
-	end
-end
-
-local function links(shot, opacity)
-	local parts = shot.visuals.links
-	if shot.style.name == "Arc" then
-		for i, distance in shot.links or {} do
-			local finish = Layout.PositionAt(distance, shot.enemySeat, shot.playerCount) + Vector3.yAxis * shot.lift
-			local previous = shot.center
-			for segment = 1, 5 do
-				local point = shot.center:Lerp(finish, segment / 5)
-				if segment ~= 5 then
-					point += Vector3.new(
-						math.cos(segment * 5) * 0.45,
-						math.sin(segment * 7) * 0.65,
-						math.sin(segment * 5) * 0.45
-					)
-				end
-				local index = (i - 1) * 5 + segment
-				line(parts[index], previous, point, 0.24 * IMPACT_WEIGHT, opacity * 0.39)
-				line(shot.visuals.linkCores[index], previous, point, 0.073 * IMPACT_WEIGHT, opacity)
-				previous = point
-			end
-			if i == 3 then
-				break
-			end
-		end
-	elseif shot.copiedCell then
-		for i, ribbon in shot.visuals.glass do
-			local rise = Vector3.yAxis * (0.3 + i * 0.19)
-			local start, finish = shot.from + rise, shot.center + rise
-			ribbon.near.WorldCFrame = CFrame.fromMatrix(start, Vector3.yAxis, Vector3.zAxis)
-			ribbon.far.WorldCFrame = CFrame.fromMatrix(finish, Vector3.yAxis, Vector3.zAxis)
-			ribbon.part.Enabled = true
-			fadeRibbon(ribbon, opacity * 0.88, 0.72)
-		end
-	end
-end
-
-function RarityEffects.Impact(shot, age, facing)
-	local v, s = shot.visuals, shot.style
-	local t = age / DURATION
-	local motion = if shot.reducedMotion then 0.45 else t
-	local growth = 1 - (1 - motion) ^ 2
-	local strength = if shot.reducedMotion then 0.44 else 0.92
-	local criticalScale = if s.name == "Astral" and shot.attack.Critical and not shot.reducedMotion then 1.22 else 1
-	local opacity = (1 - t) * strength
-	local flash = math.max(0, 1 - age / 0.10) ^ (if shot.reducedMotion then 1.45 else 0.95) * strength
-	local size = if s.name == "Astral" then 2.2 else 1.65
-	local diameter = size * IMPACT_SCALE * (1 + growth * (if s.name == "Emberstorm" then 0.6 else 0.8))
-	local footprint = if shot.effectCell then 3.25 else shot.lift * 2.83
-	diameter = math.max(diameter, footprint * (0.88 + growth * 0.35))
-	local ground = shot.ground
-	v.travel.Parent = nil
-	v.root.Parent = shot.parent
-	v.burst.Parent = if flash > 0 then v.root else nil
-	if v.hitGlow and flash > 0 and not shot.reducedMotion then
-		local glowSize = if s.name == "Volley" then 1.6 elseif s.name == "Astral" then 3.5 else 2.65
-		Textures.Show(v.hitGlow, facing.Position, glowSize * IMPACT_SCALE * criticalScale, flash * 0.83)
-	end
-	if flash > 0 and v.flashMesh then
-		local radius = if s.name == "Volley" then 0.42 elseif s.name == "Astral" then 1.05 else 0.84
-		poseMesh(v.flash, v.flashMesh, facing, radius * IMPACT_SCALE * criticalScale * (0.9 + growth * 0.22), flash)
-	elseif flash > 0 and v.shards then
-		for i, shard in v.shards do
-			local pose = facing
-				* CFrame.Angles(0, 0, (i - 1) * TAU / #v.shards + 0.18)
-				* CFrame.new((0.41 + growth * 0.64) * IMPACT_SCALE, 0, 0)
-			poseMesh(shard, Meshes.Shard, pose, (0.48 + i % 2 * 0.18) * IMPACT_SCALE, flash)
-		end
-	elseif flash > 0 and v.splash then
-		show(v.flash, facing, Vector3.one * (0.53 * IMPACT_SCALE), flash)
-		for i, drop in v.splash do
-			local pose = facing
-				* CFrame.Angles(0, 0, (i - (#v.splash + 1) / 2) * 0.50)
-				* CFrame.new(0, (0.34 + growth * 0.73 + i % 2 * 0.11) * IMPACT_SCALE, 0)
-			local width = 0.135 * ProjectileScale.ImpactWeight
-			show(drop, pose, Vector3.new(width, 0.32, width) * IMPACT_SCALE, flash)
-		end
-	end
-	if shot.visualLane == 0 then
-		showRing(v.ring, ground, diameter, opacity * (if shot.reducedMotion then 0.78 else 0.90), 7)
-	end
-	if v.poolRing then
-		local size = if s.name == "Venom" then 1.13 else 0.84
-		showRing(v.poolRing, ground - Vector3.yAxis * 0.025, diameter * size, opacity * 0.48, 4)
-	end
-	if v.neighbors then
-		local source = Layout.CellPosition(shot.attack.Cell, shot.attack.Seat, shot.attack.PlayerCount)
-			- Vector3.yAxis * 0.40
-		if shot.supportCells and #shot.supportCells > 0 then
-			showRing(v.supportRing, source, 2.8 + growth * 1.45, opacity * 0.66)
-		end
-		for i, cell in shot.supportCells or {} do
-			local center = Layout.CellPosition(cell, shot.attack.Seat, shot.attack.PlayerCount) - Vector3.yAxis * 0.53
-			showRing(v.neighbors[i], center, 3.35 + growth * 1.65, opacity * 0.72)
-			if not shot.reducedMotion then
-				line(v.supportLinks[i], source, center + Vector3.yAxis * 0.13, 0.10, opacity * 0.58)
-			end
-		end
-	elseif ((v.links and shot.links) or (v.glass and shot.copiedCell)) and not shot.reducedMotion then
-		links(shot, opacity)
-	elseif v.ticks then
-		clockTicks(v.ticks, ground, diameter, opacity, IMPACT_SCALE)
-	elseif v.spiral and not shot.reducedMotion then
-		local contraction = (1 - motion * 0.17 - math.max(0, motion - 0.37) * 0.46) * diameter / 2
-		for i, segment in v.spiral do
-			local arm, step = (i - 1) // 10, (i - 1) % 10
-			local angle = arm * math.pi + step * 0.43 - motion * 3
-			-- The inner turns disappear beneath the target. The outer turns clear its silhouette.
-			local radius = (0.58 + step * 0.066) * contraction
-			local height = 0.12 + step * 0.014
-			line(
-				segment,
-				ground + polar(angle, radius, height),
-				ground + polar(angle + 0.43, radius + 0.066 * contraction, height + 0.014),
-				(0.075 + step * 0.008) * IMPACT_WEIGHT,
-				opacity * (0.99 - step * 0.030)
-			)
-		end
-		for i, fragment in v.fragments do
-			local angle = i * TAU / 3 - motion * 4.3
-			local point = ground + polar(angle, contraction * (1.10 + i * 0.08), 0.34 + i * 0.12 + motion * 0.36)
-			show(
-				fragment,
-				CFrame.new(point) * CFrame.Angles(angle, angle * 2, i),
-				Vector3.one * (0.11 + i * 0.026),
-				opacity * 0.69
-			)
-		end
-	elseif v.stars and not shot.reducedMotion then
-		for i, star in v.stars do
-			local angle = i * TAU / 5 + 0.12
-			local point = ground + polar(angle, diameter * 0.44, 0.15 + (i % 3) * 0.42)
-			local nextPoint = ground + polar(angle + TAU / 5, diameter * 0.44, 0.15 + ((i % 5 + 1) % 3) * 0.42)
-			show(star, CFrame.new(point), Vector3.one * (0.19 * IMPACT_SCALE), opacity)
-			line(v.lines[i], point, nextPoint, 0.047 * IMPACT_WEIGHT, opacity * 0.56)
-			line(
-				v.pillars[i],
-				point,
-				point + Vector3.yAxis * ((0.62 + 0.47 * (i % 3)) * IMPACT_SCALE),
-				0.065 * IMPACT_WEIGHT,
-				opacity * 0.61
-			)
-		end
-	end
-	if v.chips and shot.visualLane == 0 and not shot.reducedMotion then
-		for i, chip in v.chips do
-			local angle = i * TAU / #v.chips + 0.18
-			local point = ground + polar(angle, (0.38 + motion * 1.15) * diameter * 0.52, 0.30 + motion * 1.65)
-			show(
-				chip,
-				CFrame.new(point) * CFrame.Angles(angle, motion * 3.8, i),
-				Vector3.new(0.10, 0.23, 0.11),
-				opacity * 0.69
-			)
-		end
-	end
-	if v.sparks and (shot.attack.Detonated or shot.transformedCell) and not shot.reducedMotion then
-		for i, spark in v.sparks do
-			local point = ground + polar(i * 2.40, 0.34 + motion * (0.7 + i * 0.19), 0.25 + motion * (2 + i * 0.25))
-			show(spark, CFrame.new(point), Vector3.one * (0.16 * IMPACT_SCALE), opacity)
-		end
-		for i, flame in v.flame do
-			local arm, segment = (i - 1) // 3, (i - 1) % 3
-			local angle = arm * TAU / 3 + segment * 0.27 + motion * 0.4
-			local radius = (0.8 + growth * 0.43 - segment * 0.055) * IMPACT_SCALE
-			line(
-				flame,
-				ground + polar(angle, radius, (0.18 + segment * 0.31) * IMPACT_SCALE),
-				ground + polar(angle + 0.27, radius - 0.055 * IMPACT_SCALE, (0.49 + segment * 0.31) * IMPACT_SCALE),
-				(0.15 - segment * 0.025) * IMPACT_WEIGHT,
-				opacity
-			)
-		end
-	end
-	if v.anvil and shot.transformedCell then
-		local pulse = math.min(0.6 + age * 4, 1) * (1 - 0.15 * t) * IMPACT_SCALE
-		local glow = opacity * math.min(0.5 + age * 9, 1)
-		poseMesh(v.anvil, Meshes.Anvil, facing * CFrame.new(0, 0.24, 0.08), pulse, glow)
-	end
-end
-
-function RarityEffects.Release(visuals)
-	visuals.root.Parent = nil
-	visuals.travel.Parent = nil
-	visuals.burst.Parent = nil
-	for _, ribbon in visuals.glass or {} do
-		ribbon.part.Enabled = false
-	end
-	if visuals.hitGlow then
-		visuals.hitGlow.billboard.Enabled = false
-	end
-	for _, part in visuals.root:GetChildren() do
-		part.Transparency = HIDDEN
-		local canvas = part:FindFirstChildOfClass("SurfaceGui")
-		if canvas then
-			canvas.Enabled = false
-		end
-	end
+function RarityEffects.StepChrono(reducedMotion: boolean)
+	auraReducedMotion = reducedMotion -- the shared loop animates the rings; this only carries the setting
 end
 
 return RarityEffects

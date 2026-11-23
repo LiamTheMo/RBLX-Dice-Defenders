@@ -12,6 +12,7 @@ local Layout = require(ReplicatedStorage.Shared.Layout)
 local NetClient = require(script.Parent.NetClient)
 local DiceVisuals = require(script.Parent.Dice.Visuals)
 local SettingsLogic = require(script.Parent.Settings.SettingsLogic)
+local PortalFx = require(script.Parent.Effects.PortalFx)
 
 local BoardView = {}
 
@@ -25,7 +26,14 @@ local MIN_DIE_SCALE = 0.001
 local SHRINK_TIME = 0.1
 local EXPAND_TIME = 0.25
 
+-- Portal palette is keyed by ROLE. Route start = spawn (enemies enter), route end = exit (R9). To swap which
+-- end gets which palette, swap these two constants.
+local START_ROLE = "spawn"
+local END_ROLE = "exit"
+local PORTAL_HEIGHT = 2.25 -- rim leaned 65 deg: lowest rim point ~1.7 below centre, so ~0.35 above the strip top (0.2)
+
 local pads = {} -- cell -> Part
+local portals = {} -- live PortalFx handles of the current arena
 local dice = {} -- cell -> { model, part, pad, highlight, lifted, key }
 local allyDice = {}
 local seat, playerCount = 1, 1
@@ -73,6 +81,10 @@ local function buildWorld()
 		end
 		table.clear(animations)
 		table.clear(pads)
+		for _, portal in portals do
+			portal.destroy() -- return pooled meshes before the arena (and their parent) is destroyed
+		end
+		table.clear(portals)
 		arena:Destroy()
 	end
 	root = world()
@@ -87,6 +99,9 @@ local function buildWorld()
 		Color3.fromRGB(88, 122, 78)
 	)
 
+	local portalsFolder = Instance.new("Folder")
+	portalsFolder.Name = "Portals"
+	portalsFolder.Parent = arena
 	local strips = Instance.new("Folder")
 	strips.Name = "Path"
 	strips.Parent = arena
@@ -106,21 +121,19 @@ local function buildWorld()
 				Color3.fromRGB(150, 120, 80)
 			)
 		end
-		part(
-			strips,
-			"Start",
-			Vector3.new(5, 0.4, 5),
-			CFrame.new(points[1].X, 0.3, points[1].Z),
-			Color3.fromRGB(60, 200, 90)
-		)
-		if lane == 1 then
-			part(
-				strips,
-				"End",
-				Vector3.new(5, 0.4, 5),
-				CFrame.new(points[#points].X, 0.3, points[#points].Z),
-				Color3.fromRGB(220, 70, 70)
+		-- Portals face the board camera (coop camera when two players share the arena), see PortalFx.
+		local cameraPos = (if playerCount == 2 then Layout.CoopCamera else Layout.Camera).Position
+		local function addPortal(point: Vector3, role)
+			table.insert(
+				portals,
+				PortalFx.Spawn(portalsFolder, Vector3.new(point.X, PORTAL_HEIGHT, point.Z), cameraPos, role, function()
+					return SettingsLogic.get("reducedMotion") == true
+				end)
 			)
+		end
+		addPortal(points[1], START_ROLE)
+		if lane == 1 then
+			addPortal(points[#points], END_ROLE)
 		end
 	end
 

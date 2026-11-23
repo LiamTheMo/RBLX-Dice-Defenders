@@ -1,5 +1,6 @@
 """Generates the round, cartoony two-note menu sounds into Assets/SFX/ui:
-UiOpen.ogg (up-beat, rising) and UiClose.ogg (down-beat, falling)."""
+UiOpen.ogg (up-beat, rising), UiClose.ogg (down-beat, falling) and
+UiClick.ogg (a tiny dice-tumble of plinks for plain button presses)."""
 import os
 import numpy as np, soundfile as sf
 
@@ -38,3 +39,29 @@ def make(name, f1, f2, bloop, gap=0.07):
 
 make('UiOpen.ogg',  523, 784, +0.05)   # C5 -> G5, scoops up
 make('UiClose.ogg', 659, 440, -0.04)   # E5 -> A4, drops down
+
+
+def plink(y, start, f, amp):
+    """A very short hollow 'plink' (sine + a bright inharmonic overtone, fast decay) - far snappier than the menu notes."""
+    n = int(0.05 * SR)
+    t = np.arange(n) / SR
+    w = (np.sin(2 * np.pi * f * t) + 0.35 * np.sin(2 * np.pi * f * 2.76 * t)) * np.exp(-t * 110) * np.minimum(t / 0.001, 1.0)
+    i = int(start * SR)
+    y[i:i + n] += w * amp
+
+def make_click(name, dice):
+    """A tiny dice tumble. Each die is four rapid plinks at wobbling pitches, getting quieter;
+    `dice` is a list of (start offset, pitch multiplier, volume) so several dice overlap like a handful."""
+    n = int(0.24 * SR)
+    y = np.zeros(n)
+    base = ((0.000, 1250, 0.9), (0.028, 1650, 0.8), (0.054, 1400, 0.6), (0.085, 1850, 0.45))
+    for off, mult, vol in dice:
+        for st, f, a in base:
+            plink(y, off + st, f * mult, a * vol)
+    t = np.arange(n) / SR
+    y *= np.minimum(((n / SR) - t) / 0.03, 1.0)
+    y = 0.45 * y / np.max(np.abs(y))
+    sf.write(os.path.join(OUT, name), y.astype('float32'), SR, format='OGG', subtype='VORBIS')
+
+make_click('UiClickSingle.ogg', [(0, 1.0, 1.0)])                       # one die (the first version)
+make_click('UiClick.ogg', [(0, 1.0, 1.0), (0.012, 0.8, 0.8), (0.03, 1.2, 0.7), (0.05, 0.9, 0.55)])  # a handful

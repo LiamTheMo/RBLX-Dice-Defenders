@@ -8,9 +8,7 @@ local Epic = require(script.Parent.EpicModelData)
 local Visuals = {}
 
 local AUTHORED_SIZE = 2.5
-local PIP = Color3.fromHex("#16171B")
-local GOLD = Color3.fromHex("#FFD65C")
-local STAR_RIM = Color3.fromHex("#32201A")
+local PIP = Color3.fromHex("#0E0E0E")
 local WHITE = Color3.new(1, 1, 1)
 local BLACK = Color3.new()
 local BODIES = {}
@@ -139,7 +137,7 @@ local function pixelColor(color: Color3): number
 		+ math.round(color.B * 255) * 0x10000
 end
 
-local function topTexture(packet: string, color: Color3, style, rgb: boolean?)
+local function topTexture(packet: string, color: Color3, style, rgb: boolean?, inkHex: string?)
 	local editable
 	local ok, texture = pcall(function()
 		local size = Vector2.one * Data.TextureSize
@@ -149,7 +147,10 @@ local function topTexture(packet: string, color: Color3, style, rgb: boolean?)
 		end
 		local runs = EncodingService:Base64Decode(buffer.fromstring(packet))
 		local pixels = buffer.create(size.X * size.Y * 4)
-		local ink = if style and style.Ink then Color3.fromHex(style.Ink) else BLACK
+		local ink = if style and style.Ink
+			then Color3.fromHex(style.Ink)
+			elseif inkHex then Color3.fromHex(inkHex)
+			else BLACK
 		local pixel = 0
 		for i = 0, buffer.len(runs) - 1, if rgb then 4 else 2 do
 			local first = buffer.readu8(runs, i + 1)
@@ -191,7 +192,7 @@ end
 
 task.spawn(function()
 	for typeId, style in Data.Styles do
-		TOP_TEXTURES[typeId] = topTexture(style.Texture, Color3.fromHex(style.Body))
+		TOP_TEXTURES[typeId] = topTexture(style.Texture, Color3.fromHex(style.Body), nil, nil, style.Ink)
 	end
 	for typeId, style in Rare.Styles do
 		TOP_TEXTURES[typeId] = topTexture(style.Texture, Color3.fromHex(style.Body), style)
@@ -201,10 +202,10 @@ task.spawn(function()
 	end
 	local allowed, firstMesh = pcall(AssetService.CreateEditableMesh, AssetService)
 	if allowed and firstMesh then
-		local bodyPalette = { Color3.fromHex("#E1E1E1"), Color3.fromHex("#B2B2B2"), WHITE, WHITE }
+		local bodyPalette = { Color3.fromHex("#F4F4F4"), Color3.fromHex("#DADADA"), WHITE, WHITE }
 		for tier, packet in Data.Bodies do
 			BODIES[tier] = meshTemplate(packet, bodyPalette, true, if tier == 1 then firstMesh else nil)
-			MARKS[tier] = meshTemplate(Data.Marks[tier], if tier == 7 then { STAR_RIM, GOLD } else { PIP })
+			MARKS[tier] = meshTemplate(Data.Marks[tier], if tier == 7 then { PIP, PIP } else { PIP })
 		end
 		for tier, packet in Rare.Bodies do
 			RARE_BODIES[tier] = meshTemplate(packet, { WHITE, WHITE, WHITE, WHITE }, true, nil, true)
@@ -223,7 +224,7 @@ task.spawn(function()
 			end
 			EPIC_ORNAMENTS[typeId] = meshTemplate(ornament.Mesh, palette)
 		end
-		iceChips = meshTemplate(Data.Ice, { Color3.fromHex("#245C8C"), Color3.fromHex("#58C9F1") })
+		iceChips = meshTemplate(Data.Ice, { Color3.fromHex("#48A6E8"), Color3.fromHex("#A9E1FB") })
 	end
 	loading = false
 	ready:Fire()
@@ -359,9 +360,9 @@ local function applySurfaces(
 		end
 
 		if tier == 7 then
-			local star = symbol(surface, "Star", "★", if rare then pipColor else GOLD, 0.5, 0.46)
+			local star = symbol(surface, "Star", "★", if rare then pipColor else PIP, 0.5, 0.46)
 			star.ZIndex = 2
-			star.TextStrokeColor3 = if epic then Color3.fromHex(style.Rim) else STAR_RIM
+			star.TextStrokeColor3 = if epic then Color3.fromHex(style.Rim) else PIP
 			star.TextStrokeTransparency = if rare and not epic then 1 else 0
 		else
 			local slots = if epic

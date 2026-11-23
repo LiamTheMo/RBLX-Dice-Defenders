@@ -6,11 +6,13 @@ local SettingsLogic = require(script.Parent.Settings.SettingsLogic)
 -- Menus report Open/Close (Shell does); a button press only says "something was clicked".
 -- Both are settled one frame later so a click that swaps menus plays the open sound alone.
 local UiSounds = {}
-local OPEN_ID = 100111791036149
-local CLOSE_ID = 82000819428018
+local OPEN_ID = 86983927654993
+local CLOSE_ID = 81748023213695
+local CLICK_ID = 103427166722360
 
 local openSound: AudioPlayer?
 local closeSound: AudioPlayer?
+local clickSound: AudioPlayer?
 local opened, closed, clicked, pending = false, false, false, false
 
 local function createSound(name: string, id: number, output: AudioDeviceOutput): AudioPlayer
@@ -42,10 +44,12 @@ end
 local function settle()
 	local wasOpened, wasClosed, wasClicked = opened, closed, clicked
 	opened, closed, clicked, pending = false, false, false, false
-	if wasOpened or (wasClicked and not wasClosed) then
+	if wasOpened then
 		play(openSound)
 	elseif wasClosed then
 		play(closeSound)
+	elseif wasClicked then
+		play(clickSound)
 	end
 end
 
@@ -73,6 +77,7 @@ function UiSounds.Start()
 	output.Parent = SoundService
 	openSound = createSound("UiOpen", OPEN_ID, output)
 	closeSound = createSound("UiClose", CLOSE_ID, output)
+	clickSound = createSound("UiClick", CLICK_ID, output)
 
 	local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui") :: PlayerGui
 	local connections: { [Instance]: RBXScriptConnection } = {}

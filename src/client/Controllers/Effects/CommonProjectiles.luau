@@ -3,10 +3,10 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Display = require(ReplicatedStorage.Shared.Display)
 local Layout = require(ReplicatedStorage.Shared.Layout)
 local DiceVisuals = require(script.Parent.Parent.Dice.Visuals)
-local CommonImpactMeshes = require(script.Parent.CommonImpactMeshes)
+local CommonStyles = require(script.Parent.CommonStyles)
+local Fx = require(script.Parent.FxLib)
 local ProjectileScale = require(script.Parent.ProjectileScale)
 local RarityEffects = require(script.Parent.RarityEffects)
-local Textures = require(script.Parent.RarityTextures)
 
 local CommonProjectiles = {}
 
@@ -14,113 +14,14 @@ local MAX_SHOTS = 40
 local SIZE_SCALE = ProjectileScale.Flight
 local IMPACT_SCALE = ProjectileScale.Impact
 local IMPACT_BASE = ProjectileScale.FlightLegacy
-local OUTLINE_SCALE = IMPACT_BASE * IMPACT_SCALE * 0.65
-local FADE_SECONDS = 0.40
-local WHITE = Color3.new(1, 1, 1)
-local styles = {
-	C01 = {
-		name = "Pebble",
-		color = Color3.fromHex("#BEBEBE"),
-		speed = 140,
-		size = 0.20,
-		flash = 0.055,
-		core = 1.18,
-		halo = 0.25,
-		flashColor = Color3.fromHex("#D9D9D9"),
-		trail = true,
-		trailColor = Color3.fromHex("#BEBEBE"),
-		ring = Color3.fromHex("#8F8F8F"),
-		pool = {},
-	},
-	C02 = {
-		name = "Needle",
-		color = Color3.fromHex("#D9D9D9"),
-		speed = 170,
-		size = 0.18,
-		flash = 0.10,
-		core = 0.68,
-		halo = 0.27,
-		flashColor = WHITE,
-		trail = true,
-		trailColor = Color3.fromHex("#BFBFBF"),
-		outline = CommonImpactMeshes.Needle,
-		pool = {},
-	},
-	C03 = {
-		name = "Hammer",
-		color = Color3.fromHex("#FFC34D"),
-		speed = 145,
-		size = 0.22,
-		flash = 0.22,
-		core = 0.82,
-		halo = 0.36,
-		flashColor = Color3.fromHex("#FFE9B0"),
-		trail = true,
-		trailColor = Color3.fromHex("#FFD079"),
-		outline = CommonImpactMeshes.Hammer,
-		outlineScale = 0.82,
-		pool = {},
-	},
-	C04 = {
-		name = "Twinshot",
-		color = Color3.fromHex("#FFF8E8"),
-		speed = 155,
-		size = 0.20,
-		flash = FADE_SECONDS,
-		core = 0.36,
-		halo = 0.25,
-		trail = true,
-		outline = CommonImpactMeshes.Twinshot,
-		outlineScale = 1.1,
-		pool = {},
-	},
-	C05 = {
-		name = "Longshot",
-		color = Color3.fromHex("#66FF33"),
-		speed = 165,
-		size = 0.16,
-		flash = 0.10,
-		core = 1.05,
-		halo = 0.40,
-		flashColor = Color3.fromHex("#A3FF73"),
-		ring = Color3.fromHex("#66FF33"),
-		pool = {},
-	},
-	C06 = {
-		name = "Chill",
-		color = Color3.fromHex("#6CE0FF"),
-		speed = 150,
-		size = 0.20,
-		flash = 0.10,
-		core = 0.48,
-		halo = 0.38,
-		flashColor = Color3.fromHex("#E8FFFF"),
-		trail = true,
-		outline = CommonImpactMeshes.Chill,
-		pool = {},
-	},
-	C07 = {
-		name = "Spark",
-		color = Color3.fromHex("#FFF066"),
-		speed = 160,
-		size = 0.20,
-		flash = 0.10,
-		core = 0.50,
-		halo = 0.34,
-		flashColor = Color3.fromHex("#FFF7BA"),
-		trail = true,
-		outline = CommonImpactMeshes.Spark,
-		ring = Color3.fromHex("#FFD700"),
-		pool = {},
-	},
-}
-
-for id, style in RarityEffects.Styles do
-	styles[id] = style
-end
+local LANE_OFFSET = 0.6 -- C04: studs each side of the shot line at D=5
+local GROUND_Y = 0.47
+local HIT_SECONDS = 0.30 -- R3: hit rings and flash end by +300 ms
+local SLOW_FALLBACK = 0.40 -- slow marker lifetime when the record carries no SlowUntil
+local styles = table.clone(RarityEffects.Styles)
 
 for id, die in Display.Dice do
-	if not styles[id] then
+	if not styles[id] and not CommonStyles[id] then
 		styles[id] = {
 			name = die.Name:gsub("%s", ""),
 			color = die.Color,
@@ -135,8 +36,8 @@ end
 
 local slowMarkers = {}
 
-local function piece(name: string, color: Color3, wedge: boolean?)
-	local p = if wedge then Instance.new("WedgePart") else Instance.new("Part")
+local function piece(name: string, color: Color3)
+	local p = Instance.new("Part")
 	p.Name = name
 	p.Color = color
 	p.Material = Enum.Material.Neon
@@ -165,10 +66,50 @@ local function showRing(rim: CylinderHandleAdornment, radius: number, opacity: n
 end
 
 local function stopTrail(shot)
-	for _, trail in shot.trails do
-		trail.Enabled = false
-		trail:Clear()
+	for _, h in shot.trails do
+		h.trail.MaxLength = 0
+		Fx.ReleaseTrail(h)
 	end
+	table.clear(shot.trails)
+end
+
+-- Trails come from FxLib's pool (30-trail budget) for the flight only and go back on impact or release.
+local function startTrails(shot)
+	local style, dot, count = shot.style, shot.dot, shot.trailCount
+	for i = 1, count do
+		local half = SIZE_SCALE * (if style.detail then 0.045 else 0.055)
+		local h = Fx.Trail(dot, {
+			Lifetime = 0.12,
+			Width = half * 2,
+			LightEmission = 0.6,
+			Transparency = if style.detail then 0.1 else 0.12,
+		})
+		if not h then
+			return
+		end
+		local offset = Vector3.xAxis * ((i - (count + 1) / 2) * 0.24)
+		h.a0.Position, h.a1.Position = offset + Vector3.yAxis * half, offset - Vector3.yAxis * half
+		h.trail.MaxLength = SIZE_SCALE * (if style.detail then 1.8 elseif style.name == "Hammer" then 1.2 else 0.9)
+		h.trail.Color = if style.streak
+			then ColorSequence.new(style.streak:Lerp(style.burstColor, 0.32), style.streak:Lerp(style.accent, 0.35))
+			else ColorSequence.new(style.trailColor or style.color)
+		table.insert(shot.trails, h)
+	end
+end
+
+-- The hit ends at +0.30 s, except a layer the profile specifies longer (Emberstorm embers) keeps its own length.
+local function hitSeconds(style): number
+	local seconds = style.hitSeconds
+	if not seconds then
+		seconds = HIT_SECONDS
+		if style.profile then
+			for _, layer in style.profile.impact do
+				seconds = math.max(seconds, layer.dur or 0)
+			end
+		end
+		style.hitSeconds = seconds
+	end
+	return seconds
 end
 
 local function release(shot)
@@ -204,24 +145,15 @@ local function borrow(style)
 			dot.Material = Enum.Material.SmoothPlastic
 		end
 	end
-	local shot = { dot = dot, style = style, shards = {}, trails = {} }
+	local shot = { dot = dot, style = style, trails = {}, trailCount = 0 }
 	if style.detail then
 		shot.visuals = RarityEffects.Create(style, dot)
 	else
 		local flash = piece(style.name .. "Impact", style.color)
 		flash.Shape = Enum.PartType.Ball
 		shot.flash = flash
-		if style.halo and dot then
-			shot.travelGlow = Textures.Create(dot, "Glow", style.color)
-			shot.impactGlow = Textures.Create(flash, "Glow", style.flashColor or style.color)
-		end
 		if style.ring then
 			shot.ring = ring(flash, style.name .. "Ring", style.ring)
-		end
-		for i, _ in style.outline or {} do
-			local shard = piece(style.name .. "Shard", style.flashColor or style.color, true)
-			shard.Parent = flash
-			shot.shards[i] = shard
 		end
 	end
 	local count = if not dot or not style.trail
@@ -229,29 +161,67 @@ local function borrow(style)
 		elseif style.detail == "Bolt" then 3
 		elseif style.detail == "Crystal" or style.name == "Arc" then 2
 		else 1
-	for i = 1, count do
-		local width = Vector3.yAxis * SIZE_SCALE * (if style.detail then 0.045 else 0.055)
-		local offset = Vector3.xAxis * ((i - (count + 1) / 2) * 0.24)
-		local top, bottom = Instance.new("Attachment"), Instance.new("Attachment")
-		top.Position, bottom.Position = offset + width, offset - width
-		top.Parent, bottom.Parent = dot, dot
-		local trail = Instance.new("Trail")
-		trail.Attachment0, trail.Attachment1 = top, bottom
-		trail.FaceCamera = true
-		trail.Lifetime = 0.12
-		trail.MaxLength = SIZE_SCALE * (if style.detail then 1.8 elseif style.name == "Hammer" then 1.2 else 0.9)
-		trail.LightEmission = 0.6
-		trail.Color = if style.streak
-			then ColorSequence.new(style.streak:Lerp(style.burstColor, 0.32), style.streak:Lerp(style.accent, 0.35))
-			else ColorSequence.new(style.trailColor or style.color)
-		trail.Transparency = NumberSequence.new(if style.detail then 0.1 else 0.12, 1)
-		trail.WidthScale = NumberSequence.new(1, 0)
-		trail.Enabled = false
-		trail.Parent = dot
-		table.insert(shot.trails, trail)
-	end
+	shot.trailCount = count
 	table.insert(style.pool, shot)
 	return shot
+end
+
+local SLOW_COLOR_FROM, SLOW_COLOR_TO = Color3.fromHex("#6CE0FF"), Color3.fromHex("#2FB4FF")
+local SLOW_DIA: { Fx.Key } = {
+	{ t = 0, v = 0.9 },
+	{ t = 0.3, v = 3.0, ease = Fx.Easing.quadOut },
+	{ t = 0.45, v = 2.2, ease = Fx.Easing.quadOut },
+}
+local SLOW_TRANS: { Fx.Key } = { { t = 0, v = 0 }, { t = 0.1, v = 0.6 }, { t = 0.3, v = 0.55 } }
+
+local function releaseMarker(target: BasePart)
+	local marker = slowMarkers[target]
+	if marker then
+		Fx.Release(marker.part)
+		slowMarkers[target] = nil
+	end
+end
+
+-- C06's hit ring doubles as the slow marker: expands, settles to a steady ring and lasts the real slow
+-- (SlowUntil from the hit record). A refresh extends the end time; it does not replay the expansion.
+local function startSlowMarker(target: BasePart, expiresAt: number?, parent: Instance, scale: number)
+	local now = workspace:GetServerTimeNow()
+	local expires = expiresAt or now + SLOW_FALLBACK
+	if expires <= now then
+		return
+	end
+	local marker = slowMarkers[target]
+	if not marker then
+		local part = Fx.Part("Fx_Ring", { Parent = parent, Material = Enum.Material.Neon, Color = SLOW_COLOR_FROM })
+		if not part then
+			return
+		end
+		marker = { part = part, started = now, expires = expires, scale = scale }
+		slowMarkers[target] = marker
+	end
+	marker.expires = math.max(marker.expires, expires)
+end
+
+local function stepMarker(target: BasePart, marker, now: number, steady: boolean)
+	local age = now - marker.started
+	local diameter, transparency, alpha
+	if steady then
+		diameter, transparency, alpha = 2.2, 0.55, 1
+	else
+		diameter = Fx.Sample(SLOW_DIA, age)
+		if age > 0.45 then
+			diameter *= 1 + 0.05 * (0.5 + 0.5 * math.sin(age * 6))
+		end
+		transparency = Fx.Sample(SLOW_TRANS, age)
+		alpha = math.clamp(age / 0.3, 0, 1)
+	end
+	local fade = math.min((marker.expires - now) / 0.15, 1)
+	local part = marker.part
+	local base = target.Position
+	part.Size = Fx.Meshes.Fx_Ring.Size * (diameter * marker.scale)
+	part.CFrame = CFrame.new(base.X, base.Y - target.Size.Y / 2 + 0.04, base.Z)
+	part.Color = SLOW_COLOR_FROM:Lerp(SLOW_COLOR_TO, alpha)
+	part.Transparency = 1 - (1 - transparency) * fade
 end
 
 local function fire(parent, enemy, attack, reducedMotion, style, visualLane, onImpact: (() -> ())?)
@@ -315,18 +285,214 @@ local function fire(parent, enemy, attack, reducedMotion, style, visualLane, onI
 	if shot.dot and not reducedMotion then
 		shot.dot.CFrame = if shot.visuals then shot.travelFrame + shot.from else CFrame.new(shot.from)
 		shot.dot.Parent = parent
-		if shot.travelGlow then
-			Textures.Show(shot.travelGlow, shot.from, shot.dot.Size.X * 3.2, style.halo)
-		end
-		for _, trail in shot.trails do
-			trail.Enabled = true
-		end
+		startTrails(shot)
 		if shot.visuals then
 			RarityEffects.Travel(shot, shot.from, 0)
 		end
 	end
 	-- EnemyView still supplies the tracer for impact-only styles.
 	return not style.impactOnly, true
+end
+
+-- Common dice (C01-C07): pooled Fx MeshParts driven by one Fx.Run entry per shot ------------------------------
+
+local activeShots = {}
+
+-- Flat shapes (stars, flashes) face the camera; fans also turn so their prong side points along `direction`.
+local function orientation(orient: string, point: Vector3, ground: Vector3, direction: Vector3): CFrame
+	if orient == "ground" then
+		return CFrame.new(ground)
+	end
+	local facing = Fx.FaceCamera(CFrame.new(point))
+	if orient == "camera" then
+		return facing
+	end
+	local v = facing:VectorToObjectSpace(direction)
+	if v.X * v.X + v.Z * v.Z < 1e-6 then
+		return facing
+	end
+	local roll = if orient == "fanBack" then math.atan2(-v.X, -v.Z) else math.atan2(v.X, v.Z)
+	return Fx.FaceCamera(CFrame.new(point), roll)
+end
+
+local function setSize(part: MeshPart, mesh: string, uniform: boolean?, size: number)
+	size = math.max(size, 0.01)
+	part.Size = if uniform then Vector3.one * size else Fx.Meshes[mesh].Size * size
+end
+
+local function fireCommon(
+	parent: Folder,
+	enemy,
+	attack,
+	reducedMotion: boolean,
+	style,
+	onImpact: () -> ()
+): (boolean, boolean)
+	local tier = Fx.Tier(reducedMotion)
+	local scale = Fx.Scale(DiceVisuals.Size(attack.Type))
+	local token = {}
+	local cores, trails, parts = {}, {}, {}
+	local elapsed, impacted = 0, false
+
+	local distance = attack.Distance
+	local center = Layout.PositionAt(distance, enemy.seat, enemy.playerCount) + Vector3.yAxis * enemy.lift
+	-- The die stands on a 0.4-stud pad, with a quarter stud between its top and the launch.
+	local from = Layout.CellPosition(attack.Cell, attack.Seat, attack.PlayerCount)
+		+ Vector3.yAxis * (DiceVisuals.Size(attack.Type) + 0.65 - Layout.Y)
+	local camera = workspace.CurrentCamera
+	local up = if camera then camera.CFrame.UpVector else Vector3.yAxis
+	local lane = up * ((attack.Lane or 0) * LANE_OFFSET * scale)
+	local hitOffset = if attack.SharedTarget or attack.Lane ~= nil then lane else Vector3.zero
+	from += lane
+	local flight = if reducedMotion then 0 else (center - from).Magnitude / style.speed
+	if enemy.hp > 0 then
+		local arrival = workspace:GetServerTimeNow() + flight
+		center = Layout.PositionAt(enemy.speed * (arrival - enemy.spawnAt), enemy.seat, enemy.playerCount)
+			+ Vector3.yAxis * enemy.lift
+	end
+	local eye = if camera then (camera.CFrame.Position - center).Unit else Vector3.yAxis
+	local axis = math.max(math.abs(eye.X), math.abs(eye.Y), math.abs(eye.Z))
+	local surface = center + eye * (enemy.lift / axis + 0.45) + hitOffset
+	local ground = Vector3.new(center.X, GROUND_Y, center.Z)
+	local direction = surface - from
+	direction = if direction.Magnitude > 0.01 then direction.Unit else Vector3.zAxis
+	-- C02 sixth hit / C07 fourth hit: the server marks the record Boosted (Match procEvery).
+	local boosted = attack.Boosted == true and not reducedMotion
+	local target = enemy.part
+	local slowed, slowUntil = attack.Slowed, attack.SlowUntil
+
+	local function stopTrails()
+		for _, h in trails do
+			h.trail.MaxLength = 0
+			Fx.ReleaseTrail(h)
+		end
+		table.clear(trails)
+	end
+
+	local function releaseParts(list)
+		for _, part in list do
+			Fx.Release(part)
+		end
+		table.clear(list)
+	end
+
+	local function startTrail(part: MeshPart)
+		local def = style.trail
+		if not def or not Fx.LayerAllowed(tier, "trail") then
+			return
+		end
+		local h = Fx.Trail(part, {
+			Color = def.color,
+			Lifetime = def.lifetime,
+			Width = def.width * scale,
+			LightEmission = def.emission,
+			Transparency = def.transparency,
+		})
+		if h then
+			h.trail.MaxLength = if def.length then def.length * scale else 0
+			table.insert(trails, h)
+		end
+	end
+
+	local function update(dt: number): boolean
+		elapsed += dt
+		if not impacted then
+			if elapsed < flight then
+				local progress = elapsed / flight
+				local cf = CFrame.new(from:Lerp(surface, progress))
+				for i, part in cores do
+					part.CFrame = cf
+					local fadeIn = style.cores[i].fadeIn
+					if fadeIn then
+						part.Transparency = fadeIn * (1 - math.min(progress / 0.25, 1))
+					end
+				end
+				if style.trail and #trails == 0 and progress >= style.trail.from and cores[1] then
+					startTrail(cores[1])
+				end
+				return false
+			end
+			impacted = true
+			if onImpact then
+				onImpact()
+			end
+			stopTrails()
+			releaseParts(cores)
+			for _, def in style.hits do
+				if Fx.LayerAllowed(tier, def.layer) then
+					local part = Fx.Part(def.mesh, {
+						Parent = parent,
+						Color = def.color,
+						Material = def.material,
+						CFrame = CFrame.new(surface),
+					})
+					if part then
+						parts[def] = part
+					end
+				end
+			end
+			if slowed and target.Parent then
+				startSlowMarker(target, slowUntil, parent, scale)
+			end
+		end
+		local age = elapsed - flight
+		if age >= style.duration then
+			return true
+		end
+		for def, part in parts do
+			if age >= def.dur then
+				Fx.Release(part)
+				parts[def] = nil
+			else
+				local mul = Fx.Sample(def.sizeKeys, age) * def.size * scale
+				if boosted and def.boost then
+					mul *= def.boost
+				end
+				setSize(part, def.mesh, def.uniform, mul)
+				part.CFrame = orientation(def.orient, surface, ground, direction)
+				local opacity = 1 - Fx.Sample(def.transKeys, age)
+				part.Transparency = 1 - (if reducedMotion then Fx.FlashOpacity(true, opacity) else opacity)
+			end
+		end
+		return false
+	end
+
+	local function onEnd()
+		activeShots[token] = nil
+		stopTrails()
+		releaseParts(cores)
+		for _, part in parts do
+			Fx.Release(part)
+		end
+		table.clear(parts)
+		onImpact = nil
+	end
+
+	local handle = Fx.Run(update, onEnd, style.limiter)
+	if not handle then
+		return true, false
+	end
+	activeShots[token] = handle
+	if not reducedMotion then
+		for i, def in style.cores do
+			if Fx.LayerAllowed(tier, def.layer) then
+				local part = Fx.Part(def.mesh, {
+					Parent = parent,
+					Color = def.color,
+					Material = def.material,
+					CFrame = CFrame.new(from),
+				})
+				if part then
+					setSize(part, def.mesh, def.uniform, def.size * scale)
+					if def.fadeIn then
+						part.Transparency = def.fadeIn
+					end
+				end
+				cores[i] = part
+			end
+		end
+	end
+	return true, true
 end
 
 function CommonProjectiles.Fire(
@@ -336,6 +502,13 @@ function CommonProjectiles.Fire(
 	reducedMotion: boolean,
 	onImpact: () -> ()
 ): (boolean, boolean)
+	local common = CommonStyles[attack.Type]
+	if common then
+		if attack.Distance == nil then
+			return false, false
+		end
+		return fireCommon(parent, enemy, attack, reducedMotion, common, onImpact)
+	end
 	local style = styles[attack.Type]
 	if not style or (attack.Distance == nil and not style.impactOnly) then
 		return false, false
@@ -346,22 +519,6 @@ function CommonProjectiles.Fire(
 		fire(parent, enemy, attack, reducedMotion, style, 1, nil)
 	end
 	return handled, hasImpact
-end
-
-local function startSlowMarker(target: BasePart, expiresAt: number?)
-	local now = workspace:GetServerTimeNow()
-	local expires = expiresAt or now + FADE_SECONDS
-	if expires <= now then
-		return
-	end
-	local marker = slowMarkers[target]
-	if not marker then
-		local rim = ring(target, "ChillSlowMarker", Color3.fromHex("#2FB4FF"))
-		rim.CFrame = CFrame.new(0, -target.Size.Y / 2 + 0.04, 0) * CFrame.Angles(math.pi / 2, 0, 0)
-		marker = { rim = rim, started = now, expires = expires }
-		slowMarkers[target] = marker
-	end
-	marker.expires = math.max(marker.expires, expires)
 end
 
 local function advance(shot, dt: number, camera: Camera)
@@ -390,12 +547,13 @@ local function advance(shot, dt: number, camera: Camera)
 		if shot.visuals then
 			RarityEffects.StartStatus(shot)
 		elseif shot.slowed and shot.target.Parent then
-			startSlowMarker(shot.target, shot.slowUntil)
+			startSlowMarker(shot.target, shot.slowUntil, shot.parent, 1)
 		end
 	end
 
 	local age = shot.elapsed - shot.flight
-	if age >= FADE_SECONDS then
+	local hitEnd = hitSeconds(shot.style)
+	if age >= hitEnd then
 		release(shot)
 		return
 	end
@@ -413,36 +571,10 @@ local function advance(shot, dt: number, camera: Camera)
 	shot.flash.Color = color
 	local coreOpacity = strength * (1 - coreProgress) ^ (if shot.reducedMotion then 1.65 else 1.25)
 	shot.flash.Transparency = 1 - coreOpacity
-	if shot.impactGlow then
-		Textures.Show(shot.impactGlow, shot.impact.Position, shot.flash.Size.X * 2.7, coreOpacity * style.halo)
-	end
 	if shot.ring then
-		local ringProgress = if shot.reducedMotion then 0.5 else age / FADE_SECONDS
+		local ringProgress = if shot.reducedMotion then 0.5 else age / hitEnd
 		local radius = IMPACT_SCALE * (0.27 + 0.83 * (1 - (1 - ringProgress) ^ 2))
-		local intensity = if style.name == "Spark" then 0.70 else 1
-		showRing(shot.ring, radius, intensity * strength * (1 - age / FADE_SECONDS) ^ 1.4, ProjectileScale.RingWeight)
-	end
-	if style.outline then
-		local progress = math.min(age / style.flash, 1)
-		local size = OUTLINE_SCALE * (style.outlineScale or 1)
-		if shot.boosted then
-			size *= if style.name == "Spark" then 1.4 else 1.22
-		end
-		if style.name == "Hammer" and not shot.reducedMotion then
-			size *= 0.48 + 0.52 * math.min(age / 0.04, 1) - 0.45 * math.max(age - 0.04, 0) / 0.18
-		end
-		local pose = shot.impact
-		if style.name == "Hammer" or style.name == "Twinshot" then
-			local direction = pose:VectorToObjectSpace(pose.Position - shot.from)
-			pose *= CFrame.Angles(0, 0, math.atan2(direction.Y, direction.X))
-		end
-		for i, shard in shot.shards do
-			local definition = style.outline[i]
-			local offset = definition[1]
-			shard.Size = definition[2] * size
-			shard.CFrame = pose * (offset.Rotation + offset.Position * size)
-			shard.Transparency = 1 - strength * (1 - progress) ^ (if shot.reducedMotion then 1.55 else 1.25)
-		end
+		showRing(shot.ring, radius, strength * (1 - age / hitEnd) ^ 1.4, ProjectileScale.RingWeight)
 	end
 	shot.flash.Parent = shot.parent
 end
@@ -459,30 +591,28 @@ function CommonProjectiles.Step(dt: number, reducedMotion: boolean?)
 		end
 	end
 	local now = workspace:GetServerTimeNow()
+	local steady = Fx.Tier(reducedMotion == true) == "Low"
 	for target, marker in slowMarkers do
-		local remaining = marker.expires - now
-		if not target.Parent or remaining <= 0 then
-			marker.rim:Destroy()
-			slowMarkers[target] = nil
+		if not target.Parent or marker.expires <= now then
+			releaseMarker(target)
 		else
-			local fade = math.min(remaining / 0.18, 1)
-			local growth = math.clamp((now - marker.started) / FADE_SECONDS, 0, 1)
-			local radius = target.Size.X * (if reducedMotion then 0.68 else 0.62 + 0.10 * growth)
-			showRing(marker.rim, radius, fade * (if reducedMotion then 0.32 else 0.70))
+			stepMarker(target, marker, now, steady)
 		end
 	end
 end
 
 function CommonProjectiles.Clear(keepSlowMarkers: boolean?)
+	for _, handle in activeShots do
+		handle.cancel()
+	end
 	for _, style in styles do
 		for _, shot in style.pool do
 			release(shot)
 		end
 	end
 	if not keepSlowMarkers then
-		for target, marker in slowMarkers do
-			marker.rim:Destroy()
-			slowMarkers[target] = nil
+		for target in slowMarkers do
+			releaseMarker(target)
 		end
 	end
 end
