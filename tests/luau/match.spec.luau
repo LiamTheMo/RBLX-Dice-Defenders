@@ -497,10 +497,12 @@ test("endless run warns before the wave 10 boss; historical waves use the shared
 	expect(state.wavesCompleted >= 10, "ten waves cleared")
 	expectEq(state.wave, 11, "wave 11 started")
 	expectEq(state.lives, 3, "no breaches")
-	expectEq(warned[5], nil, "miniboss is not a boss wave")
+	expectEq(warned[3], nil, "miniboss is not a boss wave")
+	expect(warned[5] ~= nil and warned[5] >= 3, "warning before wave 5: " .. tostring(warned[5]))
 	expect(warned[10] ~= nil and warned[10] >= 3, "warning before wave 10: " .. tostring(warned[10]))
 	expectEq(warned[6], nil, "no warning before wave 6")
-	for _, w in { 10 } do
+	expectEq(warned[8], nil, "wave 8 is a miniboss wave")
+	for _, w in { 5, 10 } do
 		expect(
 			bossAtWave[w] ~= nil and bossSpawn[w] ~= nil and math.abs(bossAtWave[w] - bossSpawn[w]) <= DT,
 			"wave "
@@ -511,9 +513,11 @@ test("endless run warns before the wave 10 boss; historical waves use the shared
 				.. tostring(bossSpawn[w])
 		)
 	end
-	expectEq(#queues[3], 10, "ordinary wave size")
-	expectEq(queues[5][1].kind, "Brute", "wave 5 first-slot miniboss")
-	expectEq(queues[5][10].kind, "Runner", "wave 5 last-slot runner")
+	expectEq(#queues[2], 10, "ordinary wave size")
+	expectEq(queues[3][1].kind, "Brute", "wave 3 first-slot miniboss")
+	expectEq(queues[3][10].kind, "Runner", "wave 3 last-slot runner")
+	expectEq(queues[8][1].kind, "Brute", "wave 8 first-slot miniboss")
+	expectEq(#queues[5], 1, "wave 5 is a single boss")
 	expectEq(#queues[10], 1, "boss replaces the wave")
 	expectEq(queues[10][1].hp, 8460, "wave 10 shared scaling")
 end)

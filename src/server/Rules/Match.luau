@@ -305,17 +305,89 @@ end
 local function startWave(state)
 	local wave = state.wave + 1
 	state.wave = wave
-	state.queue, state.carriedHp, state.hpStep = CoopWaves.Next(wave, state.carriedHp, state.hpStep)
+	local duel = state.mode == "Duel"
+	state.queue, state.carriedHp, state.hpStep = CoopWaves.Next(wave, state.carriedHp, state.hpStep, duel)
+	if duel then
+		local mul = 1 + Balance.Duel.DeathHpPerWave * math.max(0, wave - Balance.Duel.DeathWave + 1)
+		for _, entry in state.queue do
+			entry.hp = math.max(1, math.floor(entry.hp * mul + 0.5))
+		end
+	end
 	state.qi = 1
 	state.nextSpawnAt = state.nextWaveAt
+	state.waveStartAt = state.nextWaveAt
+	state.bossSpawned = false
 	state.waveState = "Active"
-	state.bossAt = if CoopWaves.IsBoss(wave) then state.nextSpawnAt else nil
+	state.bossAt = if not duel and CoopWaves.IsBoss(wave) then state.nextSpawnAt else nil
+	state.out.dirty = true
+end
+
+-- Seconds a Duel wave lasts before its boss: 90, 80, 70, 60, 60 ...
+function Match.RoundTime(wave: number): number
+	local cfg = Balance.Duel
+	return math.max(cfg.RoundMin, cfg.RoundStart - cfg.RoundStep * (wave - 1))
+end
+
+-- Duel speed: the death wave and later mobs run faster.
+local function duelSpeedMul(wave: number): number
+	return 1 + Balance.Duel.DeathSpeedPerWave * math.max(0, wave - Balance.Duel.DeathWave + 1)
+end
+
+-- Duel boss (Random Dice PvP): once a wave's mobs have spawned and the round timer has run out, or both lanes are clear, each
+-- lane's remaining mobs are absorbed into one boss: HP = BossPerRound x wave + AbsorbShare x their HP.
+local function spawnDuelBosses(state, now: number)
+	local cfg = Balance.Duel
+	local speedMul = Formulas.SpeedMul(state.wave) * duelSpeedMul(state.wave)
+	if state.wave >= cfg.BerserkWave then
+		speedMul *= cfg.BerserkBossSpeed
+	end
+	local keep = {}
+	local absorbed = { 0, 0 }
+	for _, enemy in state.enemies do
+		if enemy.hp > 0 then
+			absorbed[enemy.seat] += enemy.hp
+			table.insert(state.out.R, { Id = enemy.id, Why = "Absorb", Arena = state.mode, Seat = enemy.seat })
+		else
+			table.insert(keep, enemy)
+		end
+	end
+	state.enemies = keep
+	for index = 1, 2 do
+		local hp = math.max(1, math.floor(cfg.BossPerRound * state.wave + cfg.AbsorbShare * absorbed[index] + 0.5))
+		local enemy = {
+			id = state.nextEnemyId,
+			kind = "Boss",
+			hp = hp,
+			maxHp = hp,
+			speed = Enemies.Kinds.Boss.speed * speedMul,
+			spawnAt = now,
+			dist = 0,
+			seat = index,
+		}
+		state.nextEnemyId += 1
+		table.insert(state.enemies, enemy)
+		table.insert(state.out.S, {
+			Id = enemy.id,
+			Kind = "Boss",
+			SpawnAt = now,
+			Speed = enemy.speed,
+			MaxHp = hp,
+			Hp = hp,
+			Seat = index,
+			PlayerCount = state.playerCount,
+			Arena = state.mode,
+		})
+	end
+	state.bossSpawned = true
 	state.out.dirty = true
 end
 
 local function spawn(state, now: number)
 	local interval = Formulas.SpawnInterval(state.wave)
 	local speedMul = Formulas.SpeedMul(state.wave)
+	if state.mode == "Duel" then
+		speedMul *= duelSpeedMul(state.wave)
+	end
 	while state.qi <= #state.queue and state.nextSpawnAt <= now do
 		if #state.enemies + state.playerCount > Balance.MaxAlive then
 			state.nextSpawnAt = math.max(state.nextSpawnAt, now) -- wait, never drop
@@ -491,6 +563,18 @@ function Match.Step(state, now: number)
 	end
 	if state.waveState == "Active" then
 		spawn(state, now)
+		if state.mode == "Duel" and not state.bossSpawned and state.qi > #state.queue then
+			local clear = true
+			for _, enemy in state.enemies do
+				if enemy.hp > 0 then
+					clear = false
+					break
+				end
+			end
+			if clear or now >= state.waveStartAt + Match.RoundTime(state.wave) then
+				spawnDuelBosses(state, now)
+			end
+		end
 	end
 
 	-- Move + breach. dist is a pure function of time so clients can reproduce it.
@@ -545,6 +629,11 @@ function Match.Step(state, now: number)
 		if enemy.hp <= 0 then
 			local gain = Formulas.KillMp(enemy.kind, state.wave)
 			if duel then
+				-- Random Dice PvP: 10 SP a kill, +10 for every boss killed (one a wave), fixed at BerserkMp from berserk.
+				gain = math.min(Balance.Duel.BerserkMp, Balance.Duel.KillMpPerWave * state.wave)
+					* (if enemy.kind == "Boss" then Balance.BossMpMul else 1)
+			end
+			if duel then
 				local owner = Match.Seat(state, enemy.seat)
 				Economy.TryChange(owner, "mp", gain)
 				owner.kills += 1
@@ -564,12 +653,17 @@ function Match.Step(state, now: number)
 	state.enemies = alive
 
 	-- Wave clear.
-	if state.waveState == "Active" and state.qi > #state.queue and #alive == 0 then
+	if
+		state.waveState == "Active"
+		and state.qi > #state.queue
+		and #alive == 0
+		and (state.mode ~= "Duel" or state.bossSpawned)
+	then
 		state.wavesCompleted = state.wave
 		state.out.dirty = true
 		state.waveState = "Prep"
 		state.nextWaveAt = now + Balance.WaveGap
-		state.bossAt = if CoopWaves.IsBoss(state.wave + 1) then state.nextWaveAt else nil
+		state.bossAt = if state.mode ~= "Duel" and CoopWaves.IsBoss(state.wave + 1) then state.nextWaveAt else nil
 	end
 end
 

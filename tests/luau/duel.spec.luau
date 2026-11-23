@@ -221,9 +221,107 @@ test("there is no wave cap: a Duel keeps playing past wave 30", function()
 	state.waveState = "Active"
 	state.queue = {}
 	state.qi = 1
+	state.bossSpawned = true -- the wave's boss is already dead
 	Match.Step(state, DT)
 	expectEq(state.phase, "Playing", "still playing")
 	expectEq(state.wavesCompleted, 40, "wave cleared")
+end)
+
+local Balance = require(Server.Config.Balance)
+
+-- Runs the Duel until `wave`'s bosses have spawned; returns the state and the Boss enemies by seat.
+local function toBoss(wave: number)
+	local state = newDuel()
+	local now = 0
+	for _ = 1, 4000 do
+		now += 0.25
+		Match.Step(state, now)
+		Match.TakeOut(state)
+		if state.bossSpawned and state.wave == wave then
+			break
+		end
+		if state.wave > wave or state.phase ~= "Playing" then
+			break
+		end
+		-- keep both seats alive: the test only looks at the boss rule
+		state.lives, state.partner.lives = 99, 99
+	end
+	local bosses = {}
+	for _, enemy in state.enemies do
+		if enemy.kind == "Boss" then
+			bosses[enemy.seat] = enemy
+		end
+	end
+	return state, bosses
+end
+
+test("every Duel wave ends in one boss per lane, HP = BossPerRound x wave + half the absorbed mobs", function()
+	local state, bosses = toBoss(1)
+	expect(state.bossSpawned, "boss spawned")
+	expect(bosses[1] and bosses[2], "a boss on each lane")
+	local base = Balance.Duel.BossPerRound * 1
+	for seat = 1, 2 do
+		expect(bosses[seat].maxHp >= base, "boss HP is at least the per-round base")
+		expect(bosses[seat].maxHp <= base + Balance.Duel.AbsorbShare * 2000, "absorbed share stays modest in wave 1")
+	end
+	for _, enemy in state.enemies do
+		expect(enemy.kind == "Boss", "all remaining mobs were absorbed")
+	end
+end)
+
+test("the boss comes early when both lanes are clear, otherwise after the round timer", function()
+	local state = newDuel()
+	state.wave, state.waveState, state.qi, state.queue = 3, "Active", 1, {}
+	state.waveStartAt = 0
+	state.bossSpawned = false
+	Match.Step(state, DT)
+	expect(state.bossSpawned, "clear lanes: boss at once")
+	local slow = newDuel()
+	slow.wave, slow.waveState, slow.qi, slow.queue = 3, "Active", 1, {}
+	slow.waveStartAt = 0
+	slow.bossSpawned = false
+	table.insert(
+		slow.enemies,
+		{ id = 900, kind = "Grunt", hp = 50, maxHp = 50, speed = 0, spawnAt = 0, dist = 0, seat = 1 }
+	)
+	slow.nextEnemyId = 901
+	local now = 0
+	while now < 5 do
+		now += 0.25
+		Match.Step(slow, now)
+	end
+	expect(not slow.bossSpawned, "a mob alive and the round timer not up: no boss yet")
+	while now < Match.RoundTime(3) + 1 do
+		now += 0.25
+		Match.Step(slow, now)
+	end
+	expect(slow.bossSpawned, "boss after the round timer")
+	local seat1
+	for _, enemy in slow.enemies do
+		if enemy.kind == "Boss" and enemy.seat == 1 then
+			seat1 = enemy
+		end
+	end
+	expectEq(seat1.maxHp, math.floor(Balance.Duel.BossPerRound * 3 + 0.5 * 50 + 0.5), "absorbs the mob's HP")
+end)
+
+test("Duel kill MP is 10 x wave (+10 per boss killed), fixed at 110 from berserk, boss x10", function()
+	local function killMp(kind: string, wave: number): number
+		local state = newDuel()
+		state.wave, state.waveState, state.qi, state.queue, state.bossSpawned = wave, "Active", 1, {}, true
+		state.mp = 0
+		table.insert(
+			state.enemies,
+			{ id = 1, kind = kind, hp = 0, maxHp = 10, speed = 0, spawnAt = 0, dist = 0, seat = 1 }
+		)
+		state.nextEnemyId = 2
+		Match.Step(state, DT)
+		return state.mp
+	end
+	for wave, expected in { [1] = 10, [4] = 40, [10] = 100, [11] = 110, [25] = 110 } do
+		expectEq(killMp("Grunt", wave), expected, "kill MP at wave " .. wave)
+	end
+	expectEq(killMp("Boss", 3), 300, "a boss pays x10")
 end)
 
 test("a forfeit gives the win to the other seat", function()
@@ -292,4 +390,11 @@ test("Solo and Co-op are unchanged", function()
 	Match.Step(coop, 0.2)
 	expectEq(coop.result, "Lost", "Co-op loss")
 	expectEq(coop.duel, nil, "no duel verdict")
+end)
+
+test("round timer: 90 s, 10 s shorter each wave, floor 60 s", function()
+	local want = { 90, 80, 70, 60, 60, 60 }
+	for wave, seconds in want do
+		expectEq(Match.RoundTime(wave), seconds, "wave " .. wave)
+	end
 end)

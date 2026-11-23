@@ -13,3 +13,7 @@ The developer's v8.9.2 release notes confirm a later Co-op rework and omit the f
 Both modes multiply the reference HP by 0.18 and round to the nearest whole number. This keeps the historical growth curve in proportion to the damage of Dice Defenders' starter dice. The wave-10 boss has 47,000 HP in the historical source and 8,460 HP per lane here. Local spawn timing, boss behavior, and run rewards use Dice Defenders' rules.
 
 New profiles receive 500 tutorial Gems reserved for five free, distinct starter rolls. The game equips the resulting dice. Clearing wave 10 in the Solo tutorial pauses progression for the player's choice to end or keep playing. The separate gift grants one random Epic die, 500 regular Gems, and five Dice Shards. One shard converts into one spare copy of a die the player owns.
+
+## Boss schedule
+
+Following randomdice.gg's current Co-op page: a boss on every 5th wave to 35, then on odd waves; a miniboss (Brute) on waves 3, 8 ... 33, then on even waves from 36. Waves 5, 15 ... keep the old miniboss HP (and carry the HP progression as a ten-mob wave) so the measured curve still holds at every decade boss. The new miniboss waves use a softer coefficient (2 instead of 5 up to wave 35), calibrated with `tools/balance_sim.py` so starter decks end where they did before.
