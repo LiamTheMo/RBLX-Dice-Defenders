@@ -129,7 +129,7 @@ SettingsDefs.DEFS = table.freeze({
 		min = 0,
 		max = 100,
 		step = 5,
-		noEffectYet = true,
+		noEffectYet = false,
 	},
 	{
 		id = "musicVolume",
@@ -153,7 +153,7 @@ SettingsDefs.DEFS = table.freeze({
 		min = 0,
 		max = 100,
 		step = 5,
-		noEffectYet = true,
+		noEffectYet = false,
 	},
 	{
 		id = "interfaceVolume",
@@ -165,7 +165,7 @@ SettingsDefs.DEFS = table.freeze({
 		min = 0,
 		max = 100,
 		step = 5,
-		noEffectYet = true,
+		noEffectYet = false,
 	},
 	{
 		id = "ambienceVolume",

@@ -8,7 +8,9 @@ local NAN, INF = 0 / 0, math.huge
 local OWNED = { C01 = {}, C02 = {}, C03 = {}, C04 = {}, C05 = {} }
 local GOOD = { "C01", "C02", "C03", "C04", "C05" }
 
-test("Shape accepts a 5 distinct string array in any order", function()
+test("Shape accepts up to five distinct ids in a dense array", function()
+	expect(Deck.Shape({}), "empty loadout")
+	expect(Deck.Shape({ "C01", "C02" }), "partial loadout")
 	expect(Deck.Shape(GOOD), "starter")
 	expect(Deck.Shape({ "C05", "C01", "C04", "C02", "C03" }), "permutation")
 	expect(Deck.Shape({ "a", "b", "c", "d", "12345678" }), "8 byte id")
@@ -24,8 +26,6 @@ test("Shape rejects malformed input", function()
 		{ "string", "C01" },
 		{ "number", 5 },
 		{ "bool", true },
-		{ "empty", {} },
-		{ "4", { "C01", "C02", "C03", "C04" } },
 		{ "6", { "C01", "C02", "C03", "C04", "C05", "C06" } },
 		{ "dup", { "C01", "C01", "C02", "C03", "C04" } },
 		{ "number value", { "C01", "C02", "C03", "C04", 5 } },
@@ -35,7 +35,7 @@ test("Shape rejects malformed input", function()
 		{ "string key", { "C01", "C02", "C03", "C04", "C05", x = "C06" } },
 		{ "string key replaces", { "C01", "C02", "C03", "C04", x = "C05" } },
 		{ "0 based", { [0] = "C01", "C02", "C03", "C04", "C05" } },
-		{ "sparse", { [1] = "C01", [2] = "C02", [3] = "C03", [4] = "C04", [6] = "C05" } },
+		{ "sparse", { [1] = "C01", [3] = "C03" } },
 		{ "fraction key", { [1] = "C01", [2] = "C02", [3] = "C03", [4] = "C04", [4.5] = "C05" } },
 		{ "nan value", { "C01", "C02", "C03", "C04", NAN } },
 		{ "inf key", { [INF] = "C01", "C02", "C03", "C04", "C05" } },
@@ -54,7 +54,7 @@ test("Check: UnknownDie before NotOwned, permutation ok", function()
 	expectEq(unknown, "UnknownDie", "not in catalog")
 	local _, notOwned = Deck.Check({ C01 = {} }, GOOD)
 	expectEq(notOwned, "NotOwned", "catalog die not owned")
-	local _, bad = Deck.Check(OWNED, { "C01" })
+	local _, bad = Deck.Check(OWNED, { [2] = "C01" })
 	expectEq(bad, "BadDeck", "bad shape")
 end)
 
@@ -77,11 +77,15 @@ test("Equip copies the ids; a rejected equip leaves the profile unchanged", func
 	ids[1] = "C01"
 	expectEq(profile.Deck[1], "C05", "copy independent of caller")
 	local before = table.concat(profile.Deck, ",")
-	for _, bad in { { "C01" }, { "C01", "C01", "C02", "C03", "C04" }, { "C01", "C02", "C03", "C04", "ZZZ" } } do
+	for _, bad in { { [2] = "C01" }, { "C01", "C01", "C02", "C03", "C04" }, { "C01", "C02", "C03", "C04", "ZZZ" } } do
 		local ok = Deck.Equip(profile, bad)
 		expect(not ok, "rejected")
 		expectEq(table.concat(profile.Deck, ","), before, "unchanged")
 	end
+	expect(Deck.IsReady(profile), "full deck is ready")
+	expect(Deck.Equip(profile, { "C01" }) and not Deck.IsReady(profile), "a partial loadout is valid but cannot start")
+	expect(Deck.Equip(profile, {}) and #profile.Deck == 0 and not Deck.IsReady(profile), "all slots clear")
+	expect(profile.Dice.C01 ~= nil, "unequipping keeps ownership")
 end)
 
 test("quest catalog is well formed", function()

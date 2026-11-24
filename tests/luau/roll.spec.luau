@@ -29,7 +29,9 @@ test("oddsRows: the Catalog's basis points as true percentages in display order,
 	for _, row in rows do
 		text[row.Rarity] = row.Text
 	end
-	for r, want in { Secret = "0%", Mythic = "0%", Legendary = "1%", Epic = "14%", Rare = "45%", Common = "40%" } do
+	for r, want in
+		{ Secret = "0.01%", Mythic = "0.1%", Legendary = "1%", Epic = "10%", Rare = "30%", Common = "58.89%" }
+	do
 		expectEq(text[r], want, r)
 	end
 	expectEq(#RollLogic.oddsRows(nil), 0, "no Catalog yet: no rows")
@@ -39,8 +41,10 @@ end)
 
 test("prices from the Catalog; canAfford", function()
 	expectEq(RollLogic.price(POOL, 1), 100, "one roll")
-	expectEq(RollLogic.price(POOL, 10), 900, "ten rolls")
-	expectEq(RollLogic.price(POOL, 5), nil, "no such count")
+	expectEq(RollLogic.price(POOL, 10), 1000, "ten rolls")
+	expectEq(RollLogic.price(POOL, 5), 500, "any count is the single price x count")
+	expectEq(RollLogic.price(POOL, 10, 10), 900, "VIP ten")
+	expectEq(RollLogic.price(POOL, 1, 10), 90, "VIP one")
 	expectEq(RollLogic.price(nil, 1), nil, "no Catalog")
 	expectEq(RollLogic.canAfford(nil, 100), false, "no balance")
 	expectEq(RollLogic.canAfford(99, 100), false, "below")
@@ -49,17 +53,29 @@ test("prices from the Catalog; canAfford", function()
 	expectEq(RollLogic.canAfford(500, nil), false, "no price")
 end)
 
-test("buttons: enabled only when allowed and affordable", function()
+test("buttons: enabled only when allowed and affordable; ROLL MAX takes every roll the Gems cover, up to 50", function()
 	local b = RollLogic.buttons(POOL, 150, true)
-	expect(#b == 2 and b[1].Count == 1 and b[2].Count == 10, "ROLL 1 and ROLL 10")
+	expect(#b == 3 and b[1].Count == 1 and b[2].Count == 10 and b[3].Max == true, "ROLL 1, ROLL 10, ROLL MAX")
 	expect(b[1].Price == 100 and b[1].Enabled, "ROLL 1 affordable")
-	expect(b[2].Price == 900 and not b[2].Enabled, "ROLL 10 not")
+	expect(b[2].Price == 1000 and not b[2].Enabled, "ROLL 10 not")
+	expect(b[3].Count == 1 and b[3].Price == 100 and b[3].Enabled, "MAX = 1 roll with 150 Gems")
 	local rich = RollLogic.buttons(POOL, 5000, true)
 	expect(rich[1].Enabled and rich[2].Enabled, "both affordable")
+	expect(rich[3].Count == 50 and rich[3].Price == 5000 and rich[3].Enabled, "MAX = 50 for 5000")
+	expectEq(RollLogic.buttons(POOL, 99999, true)[3].Count, 50, "capped at 50")
+	expectEq(RollLogic.buttons(POOL, 99999, true, 0, 20)[3].Count, 20, "Catalog cap")
+	expectEq(RollLogic.buttons(POOL, 2345, true)[3].Count, 23, "2345 Gems = 23 rolls")
+	local vip = RollLogic.buttons(POOL, 5000, true, 10)
+	expect(vip[1].Price == 90 and vip[2].Price == 900, "VIP prices")
+	expect(vip[3].Count == 50 and vip[3].Price == 4500, "VIP MAX 50 for 4500")
+	expectEq(RollLogic.buttons(POOL, 1000, true, 10)[3].Count, 11, "VIP: 1000 Gems = 11 rolls")
+	local broke = RollLogic.buttons(POOL, 50, true)
+	expect(broke[3].Count == 0 and not broke[3].Enabled and broke[3].Price == 100, "MAX off when broke")
 	local barred = RollLogic.buttons(POOL, 5000, false)
-	expect(not barred[1].Enabled and not barred[2].Enabled, "not allowed: both off")
+	expect(not barred[1].Enabled and not barred[2].Enabled and not barred[3].Enabled, "not allowed: all off")
 	local loading = RollLogic.buttons(nil, 5000, true)
-	expect(#loading == 2 and not loading[1].Enabled and loading[1].Price == "-", "no Catalog: off, no price")
+	expect(#loading == 3 and not loading[1].Enabled and loading[1].Price == "-", "no Catalog: off, no price")
+	expect(not loading[3].Enabled and loading[3].Price == "-", "no Catalog: MAX off")
 end)
 
 test("pity: count from Meta.Pity, 'n / Max' text, fraction", function()
@@ -78,9 +94,9 @@ end)
 
 test("featured: the Catalog's ids with their rarity and Display name", function()
 	local f = RollLogic.featured(POOL)
-	expectEq(#f, 2, "two")
+	expectEq(#f, #POOL.Featured, "all featured dice")
 	for i, id in POOL.Featured do
-		expect(f[i].Id == id and f[i].Rarity == "Legendary" and f[i].Name == Display.Dice[id].Name, id)
+		expect(f[i].Id == id and f[i].Rarity == Display.Dice[id].Rarity and f[i].Name == Display.Dice[id].Name, id)
 	end
 	expectEq(#RollLogic.featured(nil), 0, "no Catalog")
 end)
@@ -92,11 +108,11 @@ test("result tiles: one result in the middle; ten show the three rarest, the bes
 	for i = 1, 10 do
 		ten[i] = { Id = "C01", Rarity = "Common", New = false }
 	end
-	ten[4] = { Id = "E03", Rarity = "Epic", New = false }
+	ten[4] = { Id = "E02", Rarity = "Epic", New = false }
 	ten[7] = { Id = "L02", Rarity = "Legendary", New = true }
 	ten[9] = { Id = "R02", Rarity = "Rare", New = false }
 	local t = RollLogic.resultTiles(ten)
-	expect(t[2].Id == "L02" and t[1].Id == "E03" and t[3].Id == "R02", "best three, best centred")
+	expect(t[2].Id == "L02" and t[1].Id == "E02" and t[3].Id == "R02", "best three, best centred")
 	expectEq(t[2].Name, "Forge", "named")
 end)
 

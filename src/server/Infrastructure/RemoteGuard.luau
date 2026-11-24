@@ -6,10 +6,13 @@
 -- reaching the threshold calls `kick` exactly once. Soft rejections (anything the
 -- ready check or a handler returns) are never counted.
 local Balance = require(script.Parent.Parent.Config.Balance)
+local Admin = require(script.Parent.Parent.Rules.Admin)
+local Tutorial = require(script.Parent.Parent.Rules.Tutorial)
 local Bag = require(script.Parent.Parent.Rules.Bag)
 local Deck = require(script.Parent.Parent.Rules.Deck)
 local Roll = require(script.Parent.Parent.Rules.Roll)
 local Shop = require(script.Parent.Parent.Rules.Shop)
+local Teams = require(script.Parent.Parent.Rules.Teams)
 local Upgrade = require(script.Parent.Parent.Rules.Upgrade)
 local Validate = require(script.Parent.Parent.Rules.Validate)
 local SettingsDefs = require(game:GetService("ReplicatedStorage").Shared.SettingsDefs)
@@ -23,8 +26,24 @@ RemoteGuard.MAX_SEQ = 2 ^ 31 - 1
 -- arguments after seq and must return exactly true.
 RemoteGuard.Specs = table.freeze({
 	Start = table.freeze({ argc = 1 }),
+	CoopReady = table.freeze({
+		argc = 2,
+		check = function(ready)
+			return type(ready) == "boolean"
+		end,
+	}),
+	QueueDuel = table.freeze({
+		argc = 2,
+		check = function(on)
+			return type(on) == "boolean"
+		end,
+	}),
+	Surrender = table.freeze({ argc = 1 }),
+	LeaveDuel = table.freeze({ argc = 1 }),
+	TutorialAction = table.freeze({ argc = 3, check = Tutorial.Shape }),
 	Summon = table.freeze({ argc = 1 }),
 	EquipDeck = table.freeze({ argc = 2, check = Deck.Shape }),
+	TeamAction = table.freeze({ argc = 3, check = Teams.Shape }),
 	ClaimQuest = table.freeze({
 		argc = 2,
 		check = function(id)
@@ -43,6 +62,7 @@ RemoteGuard.Specs = table.freeze({
 	Roll = table.freeze({ argc = 3, check = Roll.Shape }),
 	Buy = table.freeze({ argc = 2, check = Shop.Shape }),
 	UpgradeDie = table.freeze({ argc = 2, check = Upgrade.Shape }),
+	AdminAction = table.freeze({ argc = 6, check = Admin.Shape }),
 	-- A die type id, 1..8 bytes (whether it is in the match deck is the rule's job).
 	PowerUp = table.freeze({
 		argc = 2,
@@ -60,8 +80,8 @@ RemoteGuard.Specs = table.freeze({
 
 export type Options = {
 	clock: () -> number,
-	-- (owner) -> true, or (false, softCode). Throwing counts as "NotLoaded".
-	ready: ((any) -> (boolean, string?))?,
+	-- (owner, name) -> true, or (false, softCode). Throwing counts as "NotLoaded".
+	ready: ((any, string) -> (boolean, string?))?,
 	-- (owner, reason) -> (); called once per player at the threshold.
 	kick: ((any, string) -> ())?,
 	warn: ((string) -> ())?,
@@ -165,7 +185,7 @@ function RemoteGuard:Call(owner: any, name: string, handler: (any, ...any) -> (b
 	end
 
 	if self._ready then
-		local readyOk, ready, code = pcall(self._ready, owner)
+		local readyOk, ready, code = pcall(self._ready, owner, name)
 		if not readyOk or ready ~= true then
 			return false, if readyOk and type(code) == "string" then code else "NotLoaded"
 		end

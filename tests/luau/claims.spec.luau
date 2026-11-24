@@ -103,7 +103,7 @@ test("id spaces are disjoint, fit the ClaimQuest remote and route to their own k
 		expectEq(seen[id], "Achievement", "achievement " .. id)
 	end
 	expectEq(seen["C01:5"], "Mastery", "mastery C01:5")
-	expectEq(n, 6 + 1 + 6 + 5 + 28 * 4, "every id counted once")
+	expectEq(n, 6 + 1 + 6 + 5 + 29 * 4, "every id counted once")
 end)
 
 test("quest ids claim through the router: paid once, then AlreadyClaimed", function()

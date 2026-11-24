@@ -2,7 +2,7 @@
 -- player as the Catalog event. Pure. Arrays only (no sparse keys); the id lists
 -- below Cosmetics keep config order, the others are sorted by Id. Never reads the
 -- redeem code list.
---   { StarterDeck = { ids }, Dice = {{Id, Name, Rarity, Damage, Rate, AttackSpeed, Aura?}},
+--   { StarterDeck = { ids }, Dice = {{Id, Name, Rarity, Damage, Rate, AttackSpeed, Aura?, Description?, Stats?}},
 --     PowerUp = { Max, Costs, DamagePerTier },
 --     Materials = {{Id, Name, Rarity, Description, Sell?}},
 --     Items = {{Id, Name, Rarity, Description, Icon?, Sell?, Use?}},
@@ -10,14 +10,14 @@
 --     Daily = { Days = {{Day, Chest?, Rewards}} }, Milestones = {{Id, Wave, Reachable, Rewards}},
 --     Achievements = {{Id, Name, Desc, Goal, Badge, Rewards}},
 --     Mastery = { Max, Need = { per level 1..Max-1 }, Milestones = {{Lv, Rewards}} },
---     DieLevel = { Max, Copies = { per level 1..Max-1 } },
+--     DieLevel = { Max, Copies = { per level 1..Max-1 }, Gold = { per class }, Crit = { per class percent }, Offset = { [rarity] = class offset } },
 --     Repeat = { PerWave = Rewards, BossWave = Rewards },  -- a boss wave pays BossWave gems instead of PerWave's
---     Roll = { Pools = {{Id, Name, Prices = {{Count, Gems}}, Odds = {{Rarity, Bp}}, Dice = {{Id, Rarity}},
+--     Roll = { MaxCount, Pools = {{Id, Name, Prices = {{Count, Gems}}, Odds = {{Rarity, Bp}}, Dice = {{Id, Rarity}},
 --              Pity = {Rarity, Max}, Featured = { ids }}} },
 --     Shop = { Offers = {{Id, Tab = "Featured"|"Gems", Name, Currency = "Gold"|"Gems"|"Robux", Price, Rewards,
 --              Limit?, ProductId?, Available}} } }
 -- Damage is a die's base damage, Rate its attacks per second per pip, AttackSpeed its seconds per attack at 1
--- pip (2 dp, Formulas.Period); Aura (aura dice only) its base attack-speed bonus to adjacent dice in percent; Use is display text
+-- pip (2 dp, Formulas.Period); Stats (optional) the extra Bag combat-stat rows of a die, {{Label, Value, Suffix?, Icon?}}; Aura (aura dice only) its base attack-speed bonus to adjacent dice in percent; Use is display text
 -- ("+100 XP"); Rewards are Rewards.Lines: {{Kind, Id?, Amount}}. Roll odds are basis points (sum 10000): the menu
 -- shows exactly these numbers.
 local Achievements = require(script.Parent.Parent.Config.Achievements)
@@ -96,6 +96,8 @@ function Catalog.Build()
 				AttackSpeed = math.floor(Formulas.Period(id, 1) * 100 + 0.5) / 100,
 				Aura = if t.aura then math.floor(Formulas.Aura(id, 1, 1) * 1000 + 0.5) / 10 else nil,
 				Description = t.description,
+				Stats = if t.stats then table.clone(t.stats) else nil,
+				Targeting = t.targeting or Dice.DefaultTargeting,
 			}
 		end),
 		Materials = rows(Inventory.Materials, function(id, m)
@@ -147,7 +149,13 @@ function Catalog.Build()
 				return { Lv = level, Rewards = Rewards.Lines(mastery.Rewards[level]) }
 			end),
 		},
-		DieLevel = { Max = dieLevel.Max, Copies = table.clone(dieLevel.Copies) },
+		DieLevel = {
+			Max = dieLevel.Max,
+			Copies = table.clone(dieLevel.Copies),
+			Gold = table.clone(dieLevel.Gold),
+			Crit = table.clone(dieLevel.Crit),
+			Offset = table.clone(dieLevel.Offset),
+		},
 		Repeat = {
 			PerWave = Rewards.Lines({
 				Gold = reward.goldPerWave,
@@ -158,6 +166,7 @@ function Catalog.Build()
 			BossWave = Rewards.Lines({ Gems = Balance.WaveGems[1].boss }),
 		},
 		Roll = {
+			MaxCount = RollConfig.MaxCount, -- ROLL MAX buys at most this many
 			Pools = map(RollConfig.Pools, function(pool)
 				return {
 					Id = pool.Id,

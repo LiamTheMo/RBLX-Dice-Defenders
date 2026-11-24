@@ -226,7 +226,7 @@ test("sim", function()
 	for _, id in Dice.Deck do -- ceiling: every summon and merge result is the same Common
 		batch("only " .. id, { id }, full, id ~= "C02")
 	end
-	batch("strong full", { "L01", "L02", "L04", "L05", "L06" }, full, true)
-	batch("new epics full", { "E06", "E07", "E08", "E09", "E10" }, full, true)
+	batch("strong full", { "L01", "L02", "M01", "S01", "E03" }, full, true)
+	batch("epics and rares full", { "E01", "E02", "E03", "R01", "R04" }, full, true)
 	batch("rares full", { "R01", "R02", "R03", "R04", "R05" }, full, true)
 end)

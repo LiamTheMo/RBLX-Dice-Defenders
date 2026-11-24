@@ -181,9 +181,9 @@ function Toolbar.new(parent)
 		local pad = if compact then 36 else 50 -- text start inside the field
 		input.Position = UDim2.fromOffset(PAD_L + pad, cy)
 		input.Size = UDim2.fromOffset(searchW - pad - 12, math.max(FIELD_H, Kit.minHit))
-		input.TextSize = if compact then 23 else 26
+		input.TextSize = if compact then 20 else 24
 		-- phone: "Search..." when it fits, else just the magnifier
-		input.PlaceholderText = if not compact then placeholder elseif searchW - pad - 8 >= 86 then "Search..." else ""
+		input.PlaceholderText = if not compact then placeholder elseif searchW - pad - 8 >= 86 then "Search" else ""
 		menu.Position = UDim2.fromOffset(right + 4, cy + hitH / 2)
 	end
 	table.insert(conns, parent:GetPropertyChangedSignal("Size"):Connect(layout))

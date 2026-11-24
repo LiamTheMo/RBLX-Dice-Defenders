@@ -29,31 +29,20 @@ return {
 		SlotGrey = "rbxassetid://86679428947492", -- HUD_SlotGrey.png (lighter grey: loading)
 		Plus = "rbxassetid://107677699351348", -- HUD_Plus.png (empty slot)
 		Gear = "rbxassetid://121271384774331", -- HUD_Gear.png
+		-- In-match HUD (text-free sheet, native px, whole art, no slicing; keep aspect when scaling).
+		GameBar = "rbxassetid://72468083657559", -- Game_StatusBar.png 660x74
+		GameDivider = "rbxassetid://105844333790925", -- Game_StatusDivider.png 8x40
+		HeartFull = "rbxassetid://81382167662841", -- Game_HeartFull.png 76x76
+		HeartEmpty = "rbxassetid://133273395255758", -- Game_HeartEmpty.png 76x76
+		UpgradeBlank = "rbxassetid://118016473787372", -- Game_UpgradeBlank.png 128x140
 	},
-	-- Elemental die art, one icon per die cut from bag menu/sheets/dice-icons-clean.png (the only source covering all 10 in one style):
-	-- awaiting upload. Only dice listed in DieArt use it; other dice show Icon.Roll tinted with their Display colour.
+	-- Dice without a thumbnail use the Roll icon tinted with their Display colour.
 	Dice = {
-		Sun = "rbxassetid://92375704626493", -- HUD_Die_Sun.png
-		Ice = "rbxassetid://137551370057628", -- HUD_Die_Ice.png
-		Fire = "rbxassetid://92126709791096", -- HUD_Die_Fire.png
-		Leaf = "rbxassetid://78696450481883", -- HUD_Die_Leaf.png
-		Lightning = "rbxassetid://105735192413916", -- HUD_Die_Lightning.png
-		Wind = "rbxassetid://125939635765640", -- HUD_Die_Wind.png
-		Rock = "rbxassetid://140000197910693", -- HUD_Die_Rock.png
-		Water = "rbxassetid://84790101174995", -- HUD_Die_Water.png
-		Light = "rbxassetid://95604252012939", -- HUD_Die_Light.png
-		Shadow = "rbxassetid://101027605408362", -- HUD_Die_Shadow.png
+		Astral = "rbxthumb://type=Asset&id=100392198939888&w=420&h=420",
+		Dragon = "rbxthumb://type=Asset&id=140058325428836&w=420&h=420",
 	},
 	DieArt = {
-		L04 = "Sun",
-		E06 = "Ice",
-		L05 = "Fire",
-		E07 = "Leaf",
-		E08 = "Lightning",
-		R06 = "Wind",
-		R07 = "Rock",
-		E09 = "Water",
-		L06 = "Light",
-		E10 = "Shadow",
+		M01 = "Astral",
+		S01 = "Dragon",
 	},
 }

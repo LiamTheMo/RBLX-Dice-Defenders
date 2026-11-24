@@ -13,5 +13,6 @@ return {
 	}, -- Shop_ChestOpenGems.png
 	Clover = { Image = "rbxassetid://111437107375643", Size = Vector2.new(179, 191), Ink = Rect.new(0, 0, 179, 191) }, -- Shop_Clover.png
 	Crown = { Image = "rbxassetid://96910090967843", Size = Vector2.new(230, 188), Ink = Rect.new(0, 0, 230, 188) }, -- Shop_Crown.png
+	VipPass = { Image = "rbxassetid://126869110345567", Size = Vector2.new(512, 512), Ink = Rect.new(0, 0, 512, 512) }, -- VIP game pass badge (Assets/UI/new/shop menu/gamepasses/VIP.png, Image asset in group 33284082)
 	Robux = { Image = "rbxassetid://74672180062997", Size = Vector2.new(94, 104), Ink = Rect.new(0, 0, 94, 104) }, -- Shop_Robux.png
 }

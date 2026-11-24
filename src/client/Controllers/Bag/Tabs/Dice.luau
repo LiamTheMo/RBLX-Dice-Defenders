@@ -12,7 +12,7 @@ Dice.Label = "DICE"
 Dice.Icon = "IconDice"
 Dice.Fallback = Sprites.Icon.Roll -- tinted glyph for dice without art
 Dice.Grid = "Dice"
-Dice.Placeholder = "Search dice..."
+Dice.Placeholder = "Search"
 Dice.SortOptions = {
 	{ Id = "Rarity", Label = "Rarity" },
 	{ Id = "Level", Label = "Level" },
@@ -22,6 +22,7 @@ Dice.SortOptions = {
 Dice.DefaultSort = "Rarity"
 Dice.EmptyText = "No dice found"
 Dice.DetailW = 368 -- mockup detail panel width
+Dice.HasTopBar = true -- UNEQUIP ALL row above the detail panel (Bag builds it)
 
 -- Die art asset id, or nil (the grid then tints its fallback glyph).
 local function art(id: string): string?
@@ -42,7 +43,7 @@ local function lockedItem(id: string, name: string, rarity: string, footer: stri
 		Rarity = rarity,
 		Damage = s and s.Damage,
 		AttackSpeed = s and s.AttackSpeed,
-		Aura = s and s.Aura,
+		ExtraStats = s and s.Stats,
 		Ability = s and s.Description,
 		Level = 0,
 		Locked = true,
@@ -54,6 +55,34 @@ local function lockedItem(id: string, name: string, rarity: string, footer: stri
 		Note = note,
 	}
 end
+
+-- The account's total crit damage, shown beside the inventory's sort box: the starter 100% (a crit hits for 2x) plus the
+-- crit every die level-up has earned (the server sums the same curve). Nil until the catalogue's curve has loaded.
+local BASE_CRIT = 100
+local BASE_CRIT_CHANCE = 5
+function Dice.Count(meta, catalog): string?
+	local DL = catalog and catalog.DieLevel
+	if type(DL) ~= "table" or type(DL.Crit) ~= "table" or meta == nil then
+		return nil
+	end
+	local offsets = if type(DL.Offset) == "table" then DL.Offset else {}
+	local total = BASE_CRIT
+	for _, die in meta.Dice or {} do
+		local info = Display.Dice[die.Id]
+		local off = if info and type(offsets[info.Rarity]) == "number" then offsets[info.Rarity] else 0
+		for l = 1, if info and type(die.Level) == "number" then math.min(die.Level, 500) - 1 else 0 do
+			local v = DL.Crit[l + off]
+			total += if type(v) == "number" then v else 0
+		end
+	end
+	-- two rows of "label<TAB>number" (the toolbar left-aligns the labels, right-aligns the numbers): the total in deep
+	-- tangerine, the starter 5% crit chance (display only: no crit-chance upgrade exists yet) under it
+	return ('Crit Damage\t<font color="#FF7A00">%g%%</font>\nCrit Chance\t<font color="#FFC21A">%g%%</font>'):format(
+		total,
+		BASE_CRIT_CHANCE
+	)
+end
+Dice.CountGain = true -- the toolbar keeps room beside the total for the green "+N%" an UPGRADE hover previews
 
 function Dice.GetItems(meta, catalog)
 	local stats = {} -- Catalog entries (Damage, Rate) by die id
@@ -72,10 +101,25 @@ function Dice.GetItems(meta, catalog)
 	end
 	local cap = if ok then DL.Max else nil
 	local costs = if ok then DL.Copies else {}
+	-- Gold and crit curves are indexed by class = level + the rarity's offset (Random Dice: rarer dice start further up)
+	local goldCurve = if ok and type(DL.Gold) == "table" then DL.Gold else {}
+	local critCurve = if ok and type(DL.Crit) == "table" then DL.Crit else {}
+	local offsets = if ok and type(DL.Offset) == "table" then DL.Offset else {}
+	local balance = if meta and type(meta.Gold) == "number" then meta.Gold else 0
+	local function curve(list, rarity: string, level: number): number?
+		local off = if type(offsets[rarity]) == "number" then offsets[rarity] else 0
+		local v = list[level + off]
+		return if type(v) == "number" then v else nil
+	end
 	local items = {}
-	local owned = {}
+	local shards = 0
+	for _, stack in meta and meta.Materials or {} do
+		if stack.Id == "DieShard" then
+			shards = stack.Quantity
+			break
+		end
+	end
 	for _, die in meta and meta.Dice or {} do
-		owned[die.Id] = true
 		local info = Display.Dice[die.Id]
 		if info then
 			local equipped = inDeck(meta, die.Id)
@@ -88,7 +132,8 @@ function Dice.GetItems(meta, catalog)
 				Rarity = info.Rarity,
 				Damage = s and s.Damage,
 				AttackSpeed = s and s.AttackSpeed,
-				Aura = s and s.Aura,
+				ExtraStats = s and s.Stats,
+				Targeting = s and s.Targeting,
 				Ability = s and s.Description,
 				Level = die.Level,
 				Equipped = equipped,
@@ -102,64 +147,65 @@ function Dice.GetItems(meta, catalog)
 				Copies = spare,
 				LevelMax = cap,
 				LevelCost = if type(cost) == "number" then cost else nil,
+				LevelGold = curve(goldCurve, info.Rarity, die.Level),
+				CritGain = curve(critCurve, info.Rarity, die.Level),
+				Gold = balance,
+				Shards = shards,
 			})
 		end
 	end
-	local unowned = {}
-	for id in Display.Dice do
-		if not owned[id] then
-			table.insert(unowned, id)
-		end
-	end
-	table.sort(unowned)
-	for _, id in unowned do
-		local info = Display.Dice[id]
-		local unavailable = info.Rarity == "Mythic"
-		local note = if unavailable
-			then "Not available yet"
-			elseif info.Rarity == "Common" then "Not owned"
-			else "Not owned"
-		table.insert(
-			items,
-			lockedItem(id, info.Name, info.Rarity, if unavailable then "Locked" else "Not owned", note, stats[id])
-		)
-	end
-	for _, die in Display.Locked do
-		table.insert(items, lockedItem(die.Id, die.Name, die.Rarity, "Locked", "Not available yet"))
-	end
-	return items
+	return items -- unowned and unreleased dice are not listed at all
 end
 
--- Damage, Attack Speed (seconds per attack at 1 pip) and the extra effect (Aura: the attack-speed bonus an aura die
--- gives adjacent dice, in percent) come from the Catalog; a dash when the Catalog lacks it or the die has none.
+-- Combat stats: Damage and Attack Speed (seconds per attack at 1 pip) always, then any number of ability stats the Catalog
+-- lists for the die (Config/Dice `stats`: { { Label, Value, Suffix?, Icon?, Color? } }, in order: crit chance, poison damage,
+-- chain damage, phase duration, MP bonus ...). A dash when the Catalog lacks a number. The panel scrolls past ~4 rows.
+local UPGRADE_YELLOW = Color3.fromRGB(255, 190, 20) -- the UPGRADE button's amber (Shared.PillYellow)
 local DASH = "\u{2013}"
+local DEFAULT_DESC = "placeholder desc" -- shown for dice with no ability text yet
+local DEFAULT_TARGETING = "Front" -- every die targets the front enemy until its Config entry says otherwise
 local function num(v, suffix: string?): string
 	return if type(v) == "number" then string.format("%g", v) .. (suffix or "") else DASH
 end
 local function stats(item)
-	return {
+	local list = {
 		{ Icon = "IconSword", Label = "Damage", Value = num(item.Damage) },
-		{ Icon = "IconHourglass", Label = "Attack Speed", Value = num(item.AttackSpeed, "s") },
-		{ Icon = "IconFlame", Label = "Aura", Value = if item.Aura then "+" .. num(item.Aura, "%") else DASH },
+		{ Icon = "IconHourglass", Label = "SPA", Value = num(item.AttackSpeed, "s") },
+		{
+			Icon = "IconDice",
+			Label = "Target",
+			Value = if type(item.Targeting) == "string" then item.Targeting else DEFAULT_TARGETING,
+		},
 	}
+	for _, st in if type(item.ExtraStats) == "table" then item.ExtraStats else {} do
+		if type(st) == "table" and type(st.Label) == "string" and st.Value ~= nil then
+			table.insert(list, {
+				Icon = if type(st.Icon) == "string" then st.Icon else "IconDice",
+				Label = st.Label,
+				Value = if type(st.Value) == "number" then num(st.Value, st.Suffix) else tostring(st.Value),
+				Color = if typeof(st.Color) == "Color3" then st.Color else nil,
+			})
+		end
+	end
+	return list
 end
 
--- Buttons: one size; EQUIP for an owned die not in the deck, UPGRADE when the spare copies cover the next level.
 function Dice.Detail(item)
 	local locked = item.Locked == true
 	local equipped = item.Equipped == true
 	local hint = if locked then item.Footer else nil
-	local equipOk = not locked and not equipped
-	local max, cost = item.LevelMax, item.LevelCost
-	local loaded = max ~= nil and (cost ~= nil or item.Level >= max)
+	local max, cost, goldCost = item.LevelMax, item.LevelCost, item.LevelGold
+	local loaded = max ~= nil and ((cost ~= nil and goldCost ~= nil) or item.Level >= max)
 	local atMax = loaded and item.Level >= max
-	local upOk = not locked and loaded and not atMax and item.Copies >= cost
+	local haveGold = (item.Gold or 0) >= (goldCost or 0)
+	local upOk = not locked and loaded and not atMax and item.Copies >= cost and haveGold
 	local upHint = if locked
 		then item.Footer
 		elseif not loaded then "Still loading"
 		elseif atMax then "Max level"
 		elseif upOk then "Upgrade"
-		else ("Need %d copies"):format(cost)
+		elseif item.Copies < cost then ("Need %d copies"):format(cost)
+		else ("Need %s gold"):format(BagLogic.formatCount(goldCost))
 	local copies = if loaded and not locked
 		then (if atMax then ("Copies %d"):format(item.Copies) else ("Copies %d / %d"):format(item.Copies, cost))
 		else nil
@@ -169,70 +215,65 @@ function Dice.Detail(item)
 		StatusTag = if equipped then "EQUIPPED" else nil,
 		Icon = item.Icon,
 		Tint = item.Tint,
-		BtnW = { 117, 100, 101 },
-		TopY = 16,
-		ArtY = 28,
-		ArtH = 105,
-		NameY = 126,
-		Ys = { Sub = 166, Desc = 194, Extra = 244 }, -- mockup rows (detail panel y 224): level 390, text 418, stats 468
+		BtnW = { 125, 125 },
+		TopY = 14,
+		ArtY = 20,
+		ArtH = 94,
+		NameY = 108,
+		Ys = { Sub = 150, Desc = 180, Extra = 240 }, -- the panel is shorter now (it sits under the action row)
 		Subline = if copies
 			then {
 				Kind = "Level",
 				Value = item.Level,
 				Max = max,
 				Copies = copies,
+				FillColor = UPGRADE_YELLOW, -- the same amber as the UPGRADE button
 				Progress = if atMax then 1 else math.min(1, item.Copies / cost), -- the bar: spare copies toward the next level
 			}
 			else nil,
-		Description = if item.Ability then item.Ability elseif locked then item.Note else "",
+		Description = if type(item.Ability) == "string" and item.Ability ~= ""
+			then item.Ability
+			elseif locked then item.Note
+			else DEFAULT_DESC,
 		Stats = stats(item),
+		-- the crit damage the next level adds: the toolbar's Crit Damage total shows it in green while UPGRADE is hovered or held
+		Preview = if loaded
+				and not locked
+				and not atMax
+				and type(item.CritGain) == "number"
+				and item.CritGain > 0
+			then "+" .. string.format("%g", item.CritGain) .. "%"
+			else nil,
+		ActionDrop = -3, -- the buttons sit a little lower than on the other tabs
+		-- the gold price of the next level, shown on a tag above UPGRADE
+		UpgradeCost = if loaded and not locked and not atMax then { Amount = goldCost, Afford = haveGold } else nil,
 		Buttons = {
-			{
-				Id = "Equip",
-				Label = "EQUIP",
-				Style = "Green",
-				Enabled = equipOk,
-				Hint = hint or "Already equipped",
-			},
 			{
 				Id = "Upgrade",
 				Label = "UPGRADE",
-				Style = "Grey",
+				Style = "Yellow",
 				Enabled = upOk,
 				Hint = upHint,
 			},
 			{
-				Id = "Sell",
-				Label = "SELL",
-				Style = "Red",
-				Icon = "Coins",
-				Enabled = false,
-				Hint = hint or "Copies level this die up",
+				Id = if equipped then "Unequip" else "Equip",
+				Label = if equipped then "UNEQUIP" else "EQUIP",
+				Style = if equipped then "Red" else "Green",
+				Enabled = not locked,
+				Hint = hint,
 			},
 		},
 	}
 end
 
--- UNEQUIP ALL resets the loadout to the Catalog's starter deck (EquipDeck needs 5 dice); off when it already is.
-function Dice.Footer(meta, catalog)
+-- The action row above the detail panel: UNEQUIP ALL (red), enabled while the loadout holds a die.
+function Dice.TopBar(meta)
 	local deck = meta and meta.Deck or {}
-	local starter = catalog and catalog.StarterDeck
-	local same = BagLogic.sameDeck(deck, starter)
-	local icons, tints = {}, {}
-	for i, id in deck do
-		icons[i] = art(id) or Sprites.Icon.Roll
-		local info = Display.Dice[id]
-		tints[i] = if art(id) == nil and info then info.Color else Color3.new(1, 1, 1)
-	end
 	return {
-		Label = ("EQUIPPED LOADOUT (%d/5)"):format(#deck),
-		Slots = icons,
-		Tints = tints,
-		Button = {
+		UnequipAll = {
 			Label = "UNEQUIP ALL",
-			Enabled = starter ~= nil and not same,
-			Hint = if same then "Already the starter deck" else "Still loading",
-			Deck = starter,
+			Enabled = #deck > 0,
+			Hint = if meta then "No dice equipped" else "Still loading",
 		},
 	}
 end

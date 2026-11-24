@@ -11,7 +11,7 @@
 Playful readable collectible dice (toy-like bevels, chunky pips, distinctive silhouette). Vibrant magical effects with restrained screen clutter; readable at 48–64px and in a 15-cell phone landscape board. Each rarity adds a recognizable non-color visual language: Common plain etched corners, Rare patterned rim, Epic luminous runes, Legendary floating accent, Mythic celestial rings, Secret masked unknown motif (no launch Secret assets required). Glow should not obscure pip count; 7-pip is a large **star**, visually unmistakable.
 
 ## Required dice asset package — 19 release dice
-Per each stable ID C01–C07, R01–R07, E01, E03, E05–E10, L01, L02, L04–L06, M01:
+Per each stable ID C01–C07, R01–R05, E01, E02, E03, L01, L02, M01, S01:
 1. **UI beauty art**: front/isometric view with pip/star, clean silhouette, 1:1 large render and a cropped inventory card variant, both generated with ChatGPT image generation; no label embedded unless requested.
 2. **One large clean 3D breakdown image** generated with ChatGPT: front, rear, left, right, top, bottom, three-quarter views, **exploded component layout** with parts separated and identified (cube base, bevel/chamfer, pip inserts, motifs, rune strips, floaters, VFX mount points), dimensions/proportions and consistent orientation, material & color callouts and how moving parts animate.
 3. **Gameplay VFX conceptual art** generated through ChatGPT: projectile, hit, ability trigger, status ring and merge cue. All visual effect concepts must be distinct.
@@ -22,6 +22,7 @@ Per each stable ID C01–C07, R01–R07, E01, E03, E05–E10, L01, L02, L04–L0
 ## UI generated asset checklist
 - Lobby home, world selection, stage card (Wave 100 goal), matchmaking solo/duo/experimental squad, Infinite access/season leaderboard.
 - HUD wave/boss/progress, 15-cell board, spawn button and MP meter, dice detail tooltip, in-match upgrade strip, shared lives/team portraits, pause/reconnect.
+- Match HUD art (status bar, divider, hearts, blank upgrade tile) is cut from `Assets/UI/new/game hud/game-hud-without-text.png` by `tools/slice_game_hud.py`; the summon pill and gear reuse `SharedSprites.PillPurple` and `Sprites.Hud.Gear`; dice and text are drawn in code.
 - Collection rarity filters, dice cards, locked state, detail/compare, level/copies, crafting.
 - Gold/Gem wallets, rotating store cards, purchase confirmation, chests, exact pre-open odds, duplicate conversion, pity tracker, Robux offer disclosures and receipt failure state.
 - Daily/weekly quest, profile upgrades, achievements, world clear, rewards, loss, tutorial and settings.

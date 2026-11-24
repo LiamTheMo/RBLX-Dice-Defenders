@@ -6,6 +6,7 @@ local Match = require(Server.Rules.Match)
 local Board = require(Server.Rules.Board)
 local Formulas = require(Server.Rules.Formulas)
 local Balance = require(Server.Config.Balance)
+local CoopWaves = require(Server.Config.CoopWaves)
 local Dice = require(Server.Config.Dice)
 local Enemies = require(Server.Config.Enemies)
 local Layout = require(game:GetService("ReplicatedStorage").Shared.Layout)
@@ -28,7 +29,7 @@ end
 local function openWave(state)
 	state.wave = 1
 	state.waveState = "Active"
-	state.queue = { "Grunt" }
+	state.queue = { { kind = "Grunt", hp = 20 } }
 	state.qi = 1
 	state.nextSpawnAt = math.huge
 end
@@ -139,7 +140,22 @@ test("layout: path length, clamped PositionAt, constant Y, camera, cell grid", f
 		expectEq(Layout.PositionAt(d).Y, Layout.Y, "constant Y at " .. d)
 	end
 	local a, b = Layout.PositionAt(40), Layout.PositionAt(41)
-	expectNear((b - a).Magnitude, 1, 1e-6, "unit speed along a segment")
+	local real = 0
+	for i = 2, #Layout.Waypoints do
+		real += (Layout.Waypoints[i] - Layout.Waypoints[i - 1]).Magnitude
+	end
+	expectNear(
+		(b - a).Magnitude,
+		real / Layout.PathLength,
+		1e-6,
+		"constant speed along a segment (real route onto balance studs)"
+	)
+	expectEq(
+		Layout.PositionAt(Layout.CoopJunction, 1, 2),
+		Layout.PositionAt(Layout.CoopJunction, 2, 2),
+		"co-op lanes meet at the junction"
+	)
+	expect(Layout.PositionAt(0, 1, 2) ~= Layout.PositionAt(0, 2, 2), "co-op lanes start apart")
 	expect(Layout.Camera.Position ~= nil and Layout.Camera.LookAt ~= nil, "camera")
 	expectEq(Balance.BoardCells, Layout.COLS * Layout.ROWS, "board size matches layout")
 	expect(Layout.CellPosition(1).X < Layout.CellPosition(5).X, "row-major columns")
@@ -149,6 +165,51 @@ test("layout: path length, clamped PositionAt, constant Y, camera, cell grid", f
 	for _, point in Layout.Waypoints do
 		expect(point.X >= 500, "arena clear of the lobby map")
 	end
+end)
+
+test("layout: duel arena (two boards, two U routes, 124-stud scaling, pads match the model)", function()
+	local O = Layout.DUEL_ORIGIN
+	expectEq(Layout.ArenaOf(1), "Solo", "legacy 1")
+	expectEq(Layout.ArenaOf(2), "Coop", "legacy 2")
+	expectEq(Layout.ArenaOf("Duel"), "Duel", "duel key")
+	expect(Layout.PositionAt(0, 1, "Duel") ~= Layout.PositionAt(0, 2, "Duel"), "duel seats start apart")
+	expect(
+		Layout.PositionAt(Layout.PathLength, 1, "Duel") ~= Layout.PositionAt(Layout.PathLength, 2, "Duel"),
+		"duel seats end apart"
+	)
+	for seat = 1, 2 do
+		local points = Layout.Path(seat, "Duel")
+		expectEq(Layout.PositionAt(-5, seat, "Duel"), points[1], "clamped below")
+		expectEq(Layout.PositionAt(1e9, seat, "Duel"), points[#points], "clamped above")
+		expectEq(Layout.PositionAt(Layout.PathLength, seat, "Duel"), points[#points], "end")
+		for d = 0, Layout.PathLength, 3 do
+			expectEq(Layout.PositionAt(d, seat, "Duel").Y, Layout.Y, "constant Y at " .. d)
+		end
+		local real = 0
+		for i = 2, #points do
+			real += (points[i] - points[i - 1]).Magnitude
+		end
+		local a, b = Layout.PositionAt(40, seat, "Duel"), Layout.PositionAt(41, seat, "Duel")
+		expectNear((b - a).Magnitude, real / Layout.PathLength, 1e-6, "constant speed on the first leg")
+	end
+	-- Numbers measured from ReplicatedStorage.Maps.Duel (centre x 5400): route corners and pad centres.
+	expectNear((Layout.Path(1, "Duel")[1] - O).X, -18.65, 1e-6, "seat 1 start x")
+	expectNear((Layout.Path(1, "Duel")[1] - O).Z, -20.55, 1e-6, "seat 1 start z")
+	expectNear((Layout.Path(1, "Duel")[2] - O).Z, -2.9, 1e-6, "seat 1 bottom z")
+	expectNear((Layout.Path(2, "Duel")[4] - O).X, 18.65, 1e-6, "seat 2 end x")
+	expectNear((Layout.Path(2, "Duel")[4] - O).Z, 20.55, 1e-6, "seat 2 end z")
+	local padRows = { { -20.5, -14.5, -8.5 }, { 8.5, 14.5, 20.5 } }
+	for seat = 1, 2 do
+		for cell = 1, 15 do
+			local c = Layout.CellPosition(cell, seat, "Duel") - O
+			expectNear(c.X, (((cell - 1) % 5) - 2) * 6, 1e-6, "pad x seat " .. seat .. " cell " .. cell)
+			expectNear(c.Z, padRows[seat][(cell - 1) // 5 + 1], 1e-6, "pad z seat " .. seat .. " cell " .. cell)
+			expectEq(c.Y, Layout.Y, "pad Y")
+		end
+	end
+	expectEq(Layout.CellPosition(1, 1, 2), Layout.CellPosition(1, 1, "Coop"), "numeric key = name")
+	expect(Layout.DuelCamera(1).Position.Z < Layout.DuelCamera(1).LookAt.Z, "seat 1 camera on -z looks toward +z")
+	expect(Layout.DuelCamera(2).Position.Z > Layout.DuelCamera(2).LookAt.Z, "seat 2 camera on +z looks toward -z")
 end)
 
 test("display data covers every die and enemy; pip 7 shows as 7 star", function()
@@ -171,11 +232,11 @@ test("first wave starts 4 s after Start and spawns on schedule", function()
 	runFor(state, 1)
 	expectEq(state.wave, 1, "wave 1 started")
 	expectEq(state.waveState, "Active", "active")
-	expectEq(#state.queue, 8, "8 spawns queued")
+	expectEq(#state.queue, 10, "10 spawns queued")
 	expectEq(#state.enemies >= 1, true, "first enemy out")
 	local batch = Match.TakeOut(state)
 	expectEq(batch.S[1].Kind, "Grunt", "spawn record kind")
-	expectEq(batch.S[1].Hp, 110, "spawn record hp")
+	expectEq(batch.S[1].Hp, 20, "spawn record hp")
 	expectEq(batch.S[1].Speed, 6, "wave 1 speed")
 	local again = Match.TakeOut(state)
 	expectEq(#again.S, 0, "outbox drained")
@@ -184,6 +245,7 @@ end)
 test("breach costs the kind's lives, loss at 0, no reward state change by Match", function()
 	expectEq(Balance.StartLives, 3, "start lives")
 	local state = newState()
+	expectEq(state.lives, Balance.StartLives, "fresh match lives = snapshot MaxLives")
 	openWave(state)
 	addEnemy(state, "Grunt", 80, Layout.PathLength - 0.1)
 	runFor(state, 0.3)
@@ -255,7 +317,27 @@ test("kill MP bands and kind multipliers", function()
 		end
 		expectEq(why, "Kill", kind .. " removal reason")
 		expectEq(batch.F[1].Type, "C03", "attack identifies the firing die")
-		expectEq(batch.F[1].Distance, nil, "tracers need no hit distance")
+		expectEq(batch.F[1].Distance, enemy.dist, "Hammer keeps the lethal impact position")
+	end
+end)
+
+test("all Common dice report confirmed hits and the visual ability flags", function()
+	for _, id in { "C01", "C02", "C03", "C04", "C05", "C06", "C07" } do
+		local state = newState()
+		openWave(state)
+		place(state, 5, id, 1)
+		local target = addEnemy(state, "Grunt", 1000, 1)
+		local cfg = Dice.Types[id]
+		state.board[5].hits = (cfg.procEvery or 1) - 1
+		Match.Step(state, state.lastNow + DT)
+		local batch = Match.TakeOut(state)
+		expectEq(#batch.F, cfg.shots or 1, id .. " shot count")
+		for _, shot in batch.F do
+			expectEq(shot.Type, id, "effect identifier")
+			expectEq(shot.Distance, target.dist, id .. " confirmed impact position")
+			expectEq(shot.Boosted, if cfg.procEvery then true else nil, id .. " boosted impact")
+			expectEq(shot.Slowed, if cfg.slow then true else nil, id .. " slow marker")
+		end
 	end
 end)
 
@@ -376,7 +458,7 @@ test("a summoned die lands exactly one hit in its first tick", function()
 	expectEq(die.hits, 1, "one hit, no catch-up from cd = 0")
 end)
 
-test("endless run: boss warning of at least 3 s before waves 5 and 10; Brute and Boss queued last", function()
+test("endless run warns before the wave 10 boss; historical waves use the shared queue", function()
 	local state = newState()
 	for cell = 1, 15 do
 		place(state, cell, if cell % 2 == 0 then "C03" else "C05", 7)
@@ -397,7 +479,7 @@ test("endless run: boss warning of at least 3 s before waves 5 and 10; Brute and
 			lastWarn = state.bossAt
 			warned[state.wave + 1] = state.bossAt - t
 		end
-		if state.waveState == "Active" and Formulas.IsBoss(state.wave) and bossAtWave[state.wave] == nil then
+		if state.waveState == "Active" and CoopWaves.IsBoss(state.wave) and bossAtWave[state.wave] == nil then
 			bossAtWave[state.wave] = state.bossAt
 		end
 		for _, enemy in state.enemies do
@@ -415,9 +497,11 @@ test("endless run: boss warning of at least 3 s before waves 5 and 10; Brute and
 	expect(state.wavesCompleted >= 10, "ten waves cleared")
 	expectEq(state.wave, 11, "wave 11 started")
 	expectEq(state.lives, 3, "no breaches")
+	expectEq(warned[3], nil, "miniboss is not a boss wave")
 	expect(warned[5] ~= nil and warned[5] >= 3, "warning before wave 5: " .. tostring(warned[5]))
 	expect(warned[10] ~= nil and warned[10] >= 3, "warning before wave 10: " .. tostring(warned[10]))
 	expectEq(warned[6], nil, "no warning before wave 6")
+	expectEq(warned[8], nil, "wave 8 is a miniboss wave")
 	for _, w in { 5, 10 } do
 		expect(
 			bossAtWave[w] ~= nil and bossSpawn[w] ~= nil and math.abs(bossAtWave[w] - bossSpawn[w]) <= DT,
@@ -429,19 +513,20 @@ test("endless run: boss warning of at least 3 s before waves 5 and 10; Brute and
 				.. tostring(bossSpawn[w])
 		)
 	end
-	expectEq(queues[3][#queues[3]], "Brute", "wave 3 ends with the Brute")
-	expectEq(#queues[3], Formulas.WaveCount(3) + 1, "wave 3 queue")
-	expectEq(queues[5][#queues[5]], "Boss", "wave 5 ends with the Boss")
-	expectEq(#queues[5], Formulas.WaveCount(5) + 1, "wave 5: no Brute")
-	expectEq(queues[10][#queues[10]], "Boss", "wave 10 ends with the Boss")
-	expectEq(#queues[4], Formulas.WaveCount(4), "wave 4: plain")
+	expectEq(#queues[2], 10, "ordinary wave size")
+	expectEq(queues[3][1].kind, "Brute", "wave 3 first-slot miniboss")
+	expectEq(queues[3][10].kind, "Runner", "wave 3 last-slot runner")
+	expectEq(queues[8][1].kind, "Brute", "wave 8 first-slot miniboss")
+	expectEq(#queues[5], 1, "wave 5 is a single boss")
+	expectEq(#queues[10], 1, "boss replaces the wave")
+	expectEq(queues[10][1].hp, 8460, "wave 10 shared scaling")
 end)
 
 test("max 90 alive: spawns wait and are never dropped", function()
 	local state = newState()
 	state.wave = 1
 	state.waveState = "Active"
-	state.queue = { "Grunt", "Grunt", "Grunt" }
+	state.queue = table.create(3, { kind = "Grunt", hp = 20 })
 	state.qi = 1
 	state.nextSpawnAt = 0
 	for _ = 1, Balance.MaxAlive do
@@ -495,7 +580,7 @@ test("summons and merges draw only from the passed deck, which Match copies", fu
 end)
 
 test("a Rare/Epic/Legendary deck summons, merges and deals damage", function()
-	local deck = { "R03", "E01", "L06", "R04", "E05" }
+	local deck = { "R03", "E01", "L02", "R04", "E03" }
 	local state = Match.New(1, Random.new(7), 0, deck)
 	openWave(state)
 	for _ = 1, Balance.BoardCells do
@@ -522,7 +607,7 @@ end)
 
 test("stat-only dice: one pip-1 hit deals exactly base, with no perk", function()
 	for id, cfg in Dice.Types do
-		if cfg.rarity ~= "Common" then
+		if cfg.rarity ~= "Common" and not cfg.singularity then
 			local state = newState()
 			openWave(state)
 			place(state, 5, id, 1)

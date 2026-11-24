@@ -6,6 +6,7 @@ local Achievements = require(script.Parent.Parent.Config.Achievements)
 local Codes = require(script.Parent.Parent.Config.Codes)
 local Dice = require(script.Parent.Parent.Config.Dice)
 local Inventory = require(script.Parent.Parent.Config.Inventory)
+local Matchmaking = require(script.Parent.Parent.Config.Matchmaking)
 local Milestones = require(script.Parent.Parent.Config.Milestones)
 local Progression = require(script.Parent.Parent.Config.Progression)
 local Quests = require(script.Parent.Parent.Config.Quests)
@@ -13,13 +14,15 @@ local RollConfig = require(script.Parent.Parent.Config.Roll)
 local ShopConfig = require(script.Parent.Parent.Config.Shop)
 local SettingsDefs = require(game:GetService("ReplicatedStorage").Shared.SettingsDefs)
 local Deck = require(script.Parent.Deck)
+local Teams = require(script.Parent.Teams)
+local Tutorial = require(script.Parent.Tutorial)
 local Validate = require(script.Parent.Validate)
 
 local ProfileSchema = {}
 
-ProfileSchema.VERSION = 11
+ProfileSchema.VERSION = 15
 
-local STARTER_GEMS = 50 -- new profiles and every v3 profile once (v3 -> v4)
+local LEGACY_STARTER_GEMS = 50 -- old profiles migrating from v3 once (v3 -> v4)
 
 local function deepCopy(value)
 	if type(value) ~= "table" then
@@ -95,10 +98,11 @@ function ProfileSchema.Default()
 		profileRevision = 0,
 		Dice = starterDice(),
 		Deck = table.clone(Dice.Deck),
+		Teams = {},
 		Claimed = {},
 		Daily = { Day = 0, Kills = 0, Claimed = {} },
 		Redeemed = {},
-		Gems = STARTER_GEMS,
+		Gems = LEGACY_STARTER_GEMS,
 		Xp = 0,
 		Materials = {},
 		Items = {},
@@ -114,20 +118,43 @@ function ProfileSchema.Default()
 		RollPity = cleanRollPity(nil),
 		Purchases = {},
 		Receipts = {},
+		Rating = { DR = 0, Streak = 0, BestStreak = 0, Wins = 0, Losses = 0, Draws = 0, LastDuelRunId = 0, Recent = {} },
 	}
 end
 
+local function newProfile()
+	local profile = ProfileSchema.Default()
+	profile.Gems = 0
+	profile.Dice = {}
+	profile.Deck = {}
+	profile.Tutorial = { Stage = "Roll", Rolls = {} }
+	return profile
+end
+
 -- v10 -> v11: retired die -> same-rarity replacement.
-local RETIRED = { E02 = "E08", E04 = "E07", L03 = "L06" }
+local RETIRED_V11 = { E02 = "E08", E04 = "E07", L03 = "L06" }
+local RETIRED_V12 = {
+	R06 = "R02",
+	R07 = "R03",
+	E06 = "E03",
+	E07 = "E05",
+	E08 = "E01",
+	E09 = "E03",
+	E10 = "E05",
+	L04 = "L02",
+	L05 = "L02",
+	L06 = "L01",
+}
+local EPIC_IDS_V13 = { E03 = "E02", E05 = "E03" }
 
 local function clampInt(value: any, min: number, max: number, fallback: number): number
 	return if Validate.IsInt(value, min, max) then value else fallback
 end
 
 -- Moves the retired entries of data.Dice and data.Mastery onto their targets (data is a copy).
-local function convertRetired(data)
+local function convertRetired(data, retired)
 	local dice, mastery = data.Dice, data.Mastery
-	for old, new in RETIRED do
+	for old, new in retired do
 		if type(dice) == "table" and type(dice[old]) == "table" then
 			local from, to = dice[old], dice[new]
 			local copies = clampInt(from.Copies, 0, Validate.MAX_INT, 0)
@@ -152,7 +179,9 @@ local function convertRetired(data)
 				local claimed = if type(to.Claimed) == "table" then table.clone(to.Claimed) else {}
 				if type(from.Claimed) == "table" then
 					for level, flag in from.Claimed do
-						claimed[level] = flag
+						if flag == true then
+							claimed[level] = true
+						end
 					end
 				end
 				mastery[new] = {
@@ -169,9 +198,24 @@ local function convertRetired(data)
 		end
 	end
 	if type(data.Deck) == "table" then
-		for slot, id in data.Deck do
-			if RETIRED[id] then
-				data.Deck[slot] = RETIRED[id]
+		local used = {}
+		for _, id in data.Deck do
+			if type(id) == "string" and not retired[id] then
+				used[id] = true
+			end
+		end
+		for slot = 1, #Dice.Deck do
+			local replacement = retired[data.Deck[slot]]
+			if replacement then
+				if used[replacement] then
+					for _, starter in Dice.Deck do
+						if not used[starter] then
+							replacement = starter
+							break
+						end
+					end
+				end
+				data.Deck[slot], used[replacement] = replacement, true
 			end
 		end
 	end
@@ -191,7 +235,7 @@ local MIGRATIONS: { [number]: (any) -> any } = {
 	end,
 	-- v3 -> v4: the starter Gems; any stray value of a new field is dropped.
 	[3] = function(data)
-		data.Gems, data.Xp, data.Materials, data.Items, data.Cosmetics = STARTER_GEMS, nil, nil, nil, nil
+		data.Gems, data.Xp, data.Materials, data.Items, data.Cosmetics = LEGACY_STARTER_GEMS, nil, nil, nil, nil
 		return data
 	end,
 	-- v4 -> v5: the progress fields start empty (any stray value is dropped).
@@ -232,9 +276,12 @@ local MIGRATIONS: { [number]: (any) -> any } = {
 	[9] = function(data)
 		local max = Progression.DieLevel.Max
 		if type(data.Dice) == "table" then
-			for id in Dice.Types do
-				local entry = data.Dice[id]
-				if type(entry) == "table" and Validate.IsInt(entry.Level, max + 1, 10) then
+			for id, entry in data.Dice do
+				if
+					(Dice.Types[id] or RETIRED_V12[id] or RETIRED_V11[id] or EPIC_IDS_V13[id])
+					and type(entry) == "table"
+					and Validate.IsInt(entry.Level, max + 1, 10)
+				then
 					entry.Level = max
 				end
 			end
@@ -243,7 +290,41 @@ local MIGRATIONS: { [number]: (any) -> any } = {
 	end,
 	-- v10 -> v11: E02/E04/L03 are removed; owned copies, mastery and deck slots move to E08/E07/L06.
 	[10] = function(data)
-		convertRetired(data)
+		convertRetired(data, RETIRED_V11)
+		return data
+	end,
+	[11] = function(data)
+		convertRetired(data, RETIRED_V11)
+		convertRetired(data, RETIRED_V12)
+		return data
+	end,
+	[12] = function(data)
+		-- Clear the retired Reactor ID before reusing it for Mirror.
+		convertRetired(data, RETIRED_V11)
+		convertRetired(data, RETIRED_V12)
+		for _, field in { "Dice", "Mastery" } do
+			local entries = data[field]
+			if type(entries) == "table" then
+				entries.E02, entries.E03, entries.E05 = entries.E03, entries.E05, nil
+			end
+		end
+		if type(data.Deck) == "table" then
+			for slot, id in data.Deck do
+				data.Deck[slot] = EPIC_IDS_V13[id] or id
+			end
+		end
+		return data
+	end,
+	-- v13 -> v14: Rating (Dice Rating) starts empty (any stray value is dropped).
+	[13] = function(data)
+		data.Rating = nil
+		return data
+	end,
+	-- v14 -> v15: Rating.Recent (per-opponent cooldown list) starts empty.
+	[14] = function(data)
+		if type(data.Rating) == "table" then
+			data.Rating.Recent = {}
+		end
 		return data
 	end,
 }
@@ -253,8 +334,8 @@ local function count(value: any): number
 end
 
 -- Owned dice: known catalog ids only, Level 1..DieLevel.Max (anything else resets to 1), Copies a count; starters always present.
-local function cleanDice(stored: any)
-	local owned = starterDice()
+local function cleanDice(stored: any, rolling: boolean)
+	local owned = if rolling then {} else starterDice()
 	if type(stored) == "table" then
 		for id, entry in stored do
 			if type(id) == "string" and Dice.Types[id] ~= nil and type(entry) == "table" then
@@ -388,6 +469,40 @@ local function cleanMastery(stored: any)
 	return mastery
 end
 
+-- Dice Rating record: counters are integers 0..MAX_INT (anything else resets to 0); the last duel run id is 31-bit.
+-- Streak may not exceed BestStreak.
+local function cleanRecent(stored: any)
+	local recent = {}
+	if type(stored) == "table" then
+		for _, entry in stored do
+			if
+				#recent < Matchmaking.RecentMax
+				and type(entry) == "table"
+				and Validate.IsInt(entry.UserId, 1, 2 ^ 53)
+				and Validate.IsInt(entry.At, 0, 2 ^ 40)
+			then
+				table.insert(recent, { UserId = entry.UserId, At = entry.At })
+			end
+		end
+	end
+	return recent
+end
+
+local function cleanRating(stored: any)
+	local rating = if type(stored) == "table" then stored else {}
+	local best = count(rating.BestStreak)
+	return {
+		DR = count(rating.DR),
+		Streak = math.min(count(rating.Streak), best),
+		BestStreak = best,
+		Wins = count(rating.Wins),
+		Losses = count(rating.Losses),
+		Draws = count(rating.Draws),
+		LastDuelRunId = clampInt(rating.LastDuelRunId, 0, 2 ^ 31 - 1, 0),
+		Recent = cleanRecent(rating.Recent),
+	}
+end
+
 -- Saved client settings: the cleaned value of each registry key that has one (a missing key
 -- reads as its default on the client). Walks the registry, so a huge stored table costs nothing.
 local function cleanSettings(stored: any)
@@ -401,10 +516,10 @@ local function cleanSettings(stored: any)
 end
 
 -- Returns (profile) or (nil, problem). Problems: "Corrupt", "NewerVersion". A nil
--- `stored` is a brand-new player and yields Default(). Never mutates `stored`.
+-- A nil `stored` starts onboarding. Never mutates `stored`.
 function ProfileSchema.Migrate(stored: any)
 	if stored == nil then
-		return ProfileSchema.Default()
+		return newProfile()
 	end
 	if type(stored) ~= "table" or not Validate.IsInt(stored.Version, 1, 2 ^ 31) then
 		return nil, "Corrupt"
@@ -425,16 +540,15 @@ function ProfileSchema.Migrate(stored: any)
 			data.Version += 1
 		end
 	end
-	-- Idempotent: also repairs a current-version save that still holds a retired id (hand-edited or restored).
-	if data == stored then
-		data = deepCopy(stored)
-	end
-	convertRetired(data)
-
-	local dice = cleanDice(data.Dice)
+	local rolling = type(data.Tutorial) == "table" and data.Tutorial.Stage == "Roll"
+	local dice = cleanDice(data.Dice, rolling)
+	local tutorial = Tutorial.Restore(data.Tutorial, dice)
 	local stats = if type(data.Stats) == "table" then data.Stats else {}
 	local login = if type(data.Login) == "table" then data.Login else {}
-	local deck = if Deck.Check(dice, data.Deck) then table.clone(data.Deck) else table.clone(Dice.Deck)
+	local deck = if rolling
+		then {}
+		elseif Deck.Check(dice, data.Deck) then table.clone(data.Deck)
+		else table.clone(Dice.Deck)
 
 	local profile = {
 		Version = ProfileSchema.VERSION,
@@ -444,8 +558,11 @@ function ProfileSchema.Migrate(stored: any)
 		TrialCleared = data.TrialCleared == true,
 		LastRewardRunId = if Validate.IsInt(data.LastRewardRunId, 0, 2 ^ 31 - 1) then data.LastRewardRunId else 0, -- run ids are 31-bit
 		profileRevision = Validate.IsInt(data.profileRevision, 0, 2 ^ 52) and data.profileRevision or 0,
+		adminEditId = if type(data.adminEditId) == "string" and #data.adminEditId == 36 then data.adminEditId else nil,
 		Dice = dice,
 		Deck = deck,
+		Teams = Teams.Clean(data.Teams, dice),
+		Tutorial = tutorial,
 		Claimed = cleanFlags(data.Claimed, Quests.List, function(quest)
 			return quest.Daily ~= true and quest.Weekly == nil
 		end),
@@ -470,6 +587,7 @@ function ProfileSchema.Migrate(stored: any)
 		RollPity = cleanRollPity(data.RollPity),
 		Purchases = cleanPurchases(data.Purchases),
 		Receipts = cleanReceipts(data.Receipts),
+		Rating = cleanRating(data.Rating),
 	}
 
 	-- Store metadata: keep a well-formed lease so a held lease is honoured.

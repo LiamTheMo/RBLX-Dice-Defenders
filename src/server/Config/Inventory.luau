@@ -24,6 +24,11 @@ Inventory.Materials = table.freeze({
 		Description = "Green shards left behind by Verdant Trial enemies.",
 		Sell = 2, -- *tune*
 	}),
+	DieShard = entry({
+		Name = "Dice Shard",
+		Rarity = "Rare",
+		Description = "Select an owned die in the Dice tab to turn one shard into one spare copy.",
+	}),
 })
 
 Inventory.Items = table.freeze({

@@ -1,11 +1,11 @@
 -- Bag pure logic: search filter, stable sort, count formatting, Meta + Catalog inventory rows, quantity stepper,
--- deck compare. No Roblox APIs (unit-tested headless).
+-- loadout edits. No Roblox APIs (unit-tested headless).
 
 local BagLogic = {}
 
 BagLogic.MAX_QTY = 1_000_000 -- server's BagAction qty cap (Rules/Bag.MAX_QTY): a larger qty is a hard strike
 
-local RANK = { Mythic = 6, Legendary = 5, Epic = 4, Rare = 3, Uncommon = 2, Common = 1 }
+local RANK = { Secret = 7, Mythic = 6, Legendary = 5, Epic = 4, Rare = 3, Uncommon = 2, Common = 1 }
 
 function BagLogic.rarityRank(rarity: string?): number
 	return RANK[rarity or ""] or 0
@@ -54,6 +54,9 @@ function BagLogic.sort(items, key: string)
 	table.sort(out, function(a, b)
 		if (a.Locked == true) ~= (b.Locked == true) then
 			return b.Locked == true -- unowned items always sort after owned ones
+		end
+		if (a.Equipped == true) ~= (b.Equipped == true) then
+			return a.Equipped == true -- equipped items always come first
 		end
 		local ka, desc = get(a)
 		local kb = get(b)
@@ -151,19 +154,6 @@ function BagLogic.stepQty(qty: number?, delta, owned: number?): number
 	return math.clamp(q, 1, top)
 end
 
--- True when both decks hold the same ids in the same slots.
-function BagLogic.sameDeck(a, b): boolean
-	if type(a) ~= "table" or type(b) ~= "table" or #a ~= #b then
-		return false
-	end
-	for i, id in a do
-		if b[i] ~= id then
-			return false
-		end
-	end
-	return true
-end
-
 -- LOCK / UNLOCK detail button for a Material or Item (sends BagAction Lock / Unlock). UNLOCK drops the
 -- padlock so the longer label fits the shared action-row text size.
 function BagLogic.lockButton(locked: boolean)
@@ -177,19 +167,18 @@ function BagLogic.lockButton(locked: boolean)
 	}
 end
 
--- New 5-id deck with `slot` set to `id`, or nil unless the result is exactly 5 distinct owned ids (a malformed
--- EquipDeck is a hard strike on the server, so never send anything this does not return).
+-- Replace a slot or fill the next empty slot, keeping the loadout a dense array.
 function BagLogic.replaceSlot(deck, ownedIds, id, slot)
-	if type(deck) ~= "table" or type(ownedIds) ~= "table" or type(id) ~= "string" or #deck ~= 5 then
+	if type(deck) ~= "table" or type(ownedIds) ~= "table" or type(id) ~= "string" or #deck > 5 then
 		return nil
 	end
-	if type(slot) ~= "number" or slot < 1 or slot > 5 or slot % 1 ~= 0 then
+	if type(slot) ~= "number" or slot < 1 or slot > math.min(#deck + 1, 5) or slot % 1 ~= 0 then
 		return nil
 	end
 	local out = table.clone(deck)
 	out[slot] = id
 	local seen = {}
-	for i = 1, 5 do
+	for i = 1, #out do
 		local d = out[i]
 		if type(d) ~= "string" or seen[d] or not table.find(ownedIds, d) then
 			return nil

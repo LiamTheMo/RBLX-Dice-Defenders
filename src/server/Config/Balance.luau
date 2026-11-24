@@ -56,12 +56,40 @@ Balance.KillMp = table.freeze({
 Balance.BruteMpMul = 5
 Balance.BossMpMul = 10
 
+-- 1v1 Duel (docs/DICE_RATING.md sections 4 and 9): no wave cap and no draws; it ends at 0 lives or a surrender/forfeit.
+-- Scaling from Random Dice PvP (docs/DUEL_SCALING.md): a boss ends every wave with HP BossPerRound x wave + AbsorbShare x the
+-- lane's remaining mob HP (the boss absorbs them); from DeathWave mobs get tougher and faster; from BerserkWave a kill pays a
+-- fixed BerserkMp and the boss is faster. All *tune* (the source's 25000 x round is on a larger HP scale than ours).
+Balance.Duel = table.freeze({
+	MinWavesForRewards = 3,
+	BossPerRound = 300,
+	AbsorbShare = 0.5,
+	-- Round timer (randomdice.gg): 90 s, 10 s shorter each wave, floor 60 s. The boss comes once the mobs have spawned and
+	-- the timer has run out, or earlier when both lanes are clear.
+	RoundStart = 90,
+	RoundStep = 10,
+	RoundMin = 60,
+	DeathWave = 7,
+	DeathHpPerWave = 0.08,
+	DeathSpeedPerWave = 0.03,
+	BerserkWave = 11,
+	KillMpPerWave = 10, -- kill MP = this x wave (10, then +10 per boss killed), capped at BerserkMp
+	BerserkMp = 110,
+	BerserkBossSpeed = 1.25,
+}) -- a forfeit or surrender before this many cleared waves pays the winner nothing (win-trading guard, *tune*)
+
 -- Net: token buckets per player and remote, and the hard-violation kick.
 Balance.Remotes = table.freeze({
 	Start = table.freeze({ rate = 1, burst = 2 }),
+	CoopReady = table.freeze({ rate = 2, burst = 3 }),
+	QueueDuel = table.freeze({ rate = 1, burst = 3 }), -- *tune*
+	Surrender = table.freeze({ rate = 1, burst = 2 }), -- *tune*
+	LeaveDuel = table.freeze({ rate = 1, burst = 2 }), -- *tune*
+	TutorialAction = table.freeze({ rate = 2, burst = 3 }),
 	Summon = table.freeze({ rate = 10, burst = 8 }),
 	Merge = table.freeze({ rate = 5, burst = 8 }),
 	EquipDeck = table.freeze({ rate = 1, burst = 3 }),
+	TeamAction = table.freeze({ rate = 1, burst = 3 }),
 	ClaimQuest = table.freeze({ rate = 2, burst = 4 }),
 	RedeemCode = table.freeze({ rate = 1, burst = 3 }),
 	SaveSettings = table.freeze({ rate = 0.5, burst = 3 }), -- *tune*
@@ -70,6 +98,7 @@ Balance.Remotes = table.freeze({
 	Buy = table.freeze({ rate = 1, burst = 3 }), -- *tune*
 	UpgradeDie = table.freeze({ rate = 2, burst = 4 }), -- *tune*
 	PowerUp = table.freeze({ rate = 2, burst = 4 }), -- *tune*
+	AdminAction = table.freeze({ rate = 1, burst = 2 }),
 })
 Balance.KickThreshold = 20
 Balance.LogInterval = 5 -- seconds between violation log lines per player

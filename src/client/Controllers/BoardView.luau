@@ -12,11 +12,11 @@ local Layout = require(ReplicatedStorage.Shared.Layout)
 local NetClient = require(script.Parent.NetClient)
 local DiceVisuals = require(script.Parent.Dice.Visuals)
 local SettingsLogic = require(script.Parent.Settings.SettingsLogic)
+local PortalFx = require(script.Parent.Effects.PortalFx)
 
 local BoardView = {}
 
 local CELLS = Layout.COLS * Layout.ROWS
-local PAD_COLOR = Color3.fromRGB(70, 74, 84)
 local SELECT_COLOR = Color3.fromRGB(255, 220, 60)
 local PARTNER_COLOR = Color3.fromRGB(80, 220, 230)
 local PARTNER_OUTLINE = Color3.new(1, 1, 1) -- distinct from every type colour
@@ -25,14 +25,26 @@ local MIN_DIE_SCALE = 0.001
 local SHRINK_TIME = 0.1
 local EXPAND_TIME = 0.25
 
-local pads = {} -- cell -> Part
+-- Portal palette is keyed by ROLE. Route start = spawn (enemies enter), route end = exit (R9). To swap which
+-- end gets which palette, swap these two constants.
+local START_ROLE = "spawn"
+local END_ROLE = "exit"
+-- Route points are at Layout.Y (0.8 above the route top). The rim leans 65 deg: its lowest point is ~1.7 below
+-- the portal centre, so a centre 1.25 above that height keeps it ~0.35 above the strip.
+local PORTAL_LIFT = 1.25
+
+local pads = {} -- cell -> the pad's glow quad (Neon, transparent until selected)
+local portals = {} -- live PortalFx handles of the current arena
 local dice = {} -- cell -> { model, part, pad, highlight, lifted, key }
+local allyDice = {}
+local seat, arenaKey = 1, "Solo" -- arenaKey: "Solo" | "Coop" | "Duel" (Layout.ArenaOf)
 local animations = {} -- die -> current transition
 local board = {} -- latest Board from State
 local playing = false
 local selected: number? = nil
+local dragging: { from: number, input: InputObject }? = nil
 local boardKey = ""
-local padsFolder: Folder, diceFolder: Folder
+local diceFolder: Folder
 local root: Folder, arena: Folder
 local rayParams = RaycastParams.new()
 
@@ -62,62 +74,89 @@ local function world(): Folder
 end
 
 local function buildWorld()
+	if arena then
+		for _, collection in { dice, allyDice } do
+			for _, die in collection do
+				die.model:Destroy()
+			end
+			table.clear(collection)
+		end
+		table.clear(animations)
+		table.clear(pads)
+		for _, portal in portals do
+			portal.destroy() -- return pooled meshes before the arena (and their parent) is destroyed
+		end
+		table.clear(portals)
+		arena:Destroy()
+	end
 	root = world()
 	arena = Instance.new("Folder") -- parented by render() only while playing
 	arena.Name = "Arena"
-	local center = Layout.Camera.LookAt
-	part(
-		arena,
-		"Ground",
-		Vector3.new(170, 1, 120),
-		CFrame.new(center.X, -0.5, Layout.ORIGIN.Z),
-		Color3.fromRGB(88, 122, 78)
-	)
 
-	local strips = Instance.new("Folder")
-	strips.Name = "Path"
-	strips.Parent = arena
-	local points = Layout.Waypoints
-	for i = 1, #points - 1 do
-		local a, b = points[i], points[i + 1]
-		local length = (b - a).Magnitude
-		part(
-			strips,
-			"Strip",
-			Vector3.new(7, 0.2, length + 7),
-			CFrame.lookAt(Vector3.new((a.X + b.X) / 2, 0.1, (a.Z + b.Z) / 2), Vector3.new(b.X, 0.1, b.Z)),
-			Color3.fromRGB(150, 120, 80)
+	-- The World 1 map for this mode (ReplicatedStorage.Maps, built by hand in Studio): island, route, pads.
+	local maps = ReplicatedStorage:WaitForChild("Maps", 10)
+	local source = maps and maps:FindFirstChild(arenaKey)
+	if source == nil then
+		warn("BoardView: ReplicatedStorage.Maps is missing the map " .. arenaKey)
+	end
+	local map = if source then source:Clone() else Instance.new("Model")
+	map.Name = "Map"
+	if source then
+		local shift = if arenaKey == "Duel"
+			then Layout.DUEL_ORIGIN.X - Layout.DUEL_MAP_X
+			elseif arenaKey == "Coop" then Layout.COOP_ORIGIN.X - Layout.COOP_MAP_X
+			else Layout.ORIGIN.X - Layout.SOLO_MAP_X
+		map:PivotTo(map:GetPivot() + Vector3.new(shift, 0, 0))
+	end
+	map.Parent = arena
+
+	-- Portals sit on the ends of the route and face the board camera (coop camera when two players share the arena, this seat's camera in a duel).
+	local portalsFolder = Instance.new("Folder")
+	portalsFolder.Name = "Portals"
+	portalsFolder.Parent = arena
+	local cameraPos = (if arenaKey == "Duel"
+		then Layout.DuelCamera(seat)
+		elseif arenaKey == "Coop" then Layout.CoopCameraFor(seat)
+		else Layout.Camera).Position
+	local function addPortal(point: Vector3, role)
+		table.insert(
+			portals,
+			PortalFx.Spawn(portalsFolder, point + Vector3.yAxis * PORTAL_LIFT, cameraPos, role, function()
+				return SettingsLogic.get("reducedMotion") == true
+			end)
 		)
 	end
-	part(
-		strips,
-		"Start",
-		Vector3.new(5, 0.4, 5),
-		CFrame.new(points[1].X, 0.3, points[1].Z),
-		Color3.fromRGB(60, 200, 90)
-	)
-	part(
-		strips,
-		"End",
-		Vector3.new(5, 0.4, 5),
-		CFrame.new(points[#points].X, 0.3, points[#points].Z),
-		Color3.fromRGB(220, 70, 70)
-	)
+	for lane = 1, if arenaKey == "Solo" then 1 else 2 do
+		local points = Layout.Path(lane, arenaKey)
+		addPortal(points[1], START_ROLE)
+		if lane == 1 or arenaKey == "Duel" then
+			addPortal(points[#points], END_ROLE)
+		end
+	end
 
-	padsFolder = Instance.new("Folder")
-	padsFolder.Name = "Pads"
-	padsFolder.Parent = arena
+	-- This seat's pads: tap targets (Cell attribute) and a glow quad for the selection state.
+	local padsRoot = map:FindFirstChild("Pads")
+	local rayTargets = {}
+	for i = 1, CELLS do
+		local model = padsRoot and padsRoot:FindFirstChild(string.format("Pad_%03d", i + (seat - 1) * CELLS))
+		local glow = model and model:FindFirstChild("Pad_GlowActive")
+		if model then
+			for _, name in { "Pad_Base", "Pad_Ring", "Pad_Inset" } do
+				local piece = model:FindFirstChild(name)
+				if piece then
+					piece:SetAttribute("Cell", i)
+				end
+			end
+			table.insert(rayTargets, model)
+		end
+		pads[i] = glow
+	end
 	diceFolder = Instance.new("Folder")
 	diceFolder.Name = "Dice"
 	diceFolder.Parent = arena
-	for i = 1, CELLS do
-		local c = Layout.CellPosition(i)
-		local pad = part(padsFolder, "Pad" .. i, Vector3.new(5.4, 0.4, 5.4), CFrame.new(c.X, 0.2, c.Z), PAD_COLOR)
-		pad:SetAttribute("Cell", i)
-		pads[i] = pad
-	end
+	table.insert(rayTargets, diceFolder)
 	rayParams.FilterType = Enum.RaycastFilterType.Include
-	rayParams.FilterDescendantsInstances = { padsFolder, diceFolder }
+	rayParams.FilterDescendantsInstances = rayTargets
 end
 
 local function positionDie(die)
@@ -186,13 +225,15 @@ local function stepAnimations()
 	end
 end
 
-local function makeDie(cell: number)
-	local c = Layout.CellPosition(cell)
+local function makeDie(cell: number, side: number)
+	local c = Layout.CellPosition(cell, side, arenaKey)
 	local model = Instance.new("Model")
 	model.Name = "Die" .. cell
 	local body = part(model, "Body", Vector3.one, CFrame.identity, Color3.new(1, 1, 1))
 	body.CanQuery = true
-	body:SetAttribute("Cell", cell)
+	if side == seat then
+		body:SetAttribute("Cell", cell)
+	end
 	model.PrimaryPart = body
 	local highlight = Instance.new("Highlight")
 	highlight.Adornee = model
@@ -204,7 +245,7 @@ local function makeDie(cell: number)
 	return {
 		model = model,
 		part = body,
-		pad = CFrame.new(c.X, 0.4, c.Z),
+		pad = CFrame.new(c.X, Layout.PadTop, c.Z) * CFrame.Angles(0, Layout.DiceYaw(arenaKey, seat), 0),
 		highlight = highlight,
 		lifted = false,
 		key = "",
@@ -218,13 +259,16 @@ end
 
 local function refreshPads()
 	for i = 1, CELLS do
-		local color = PAD_COLOR
-		if selected == i then
-			color = SELECT_COLOR
-		elseif selected and canMerge(selected, i) then
-			color = PARTNER_COLOR
+		local glow = pads[i]
+		if glow then
+			if selected == i then
+				glow.Color, glow.Transparency = SELECT_COLOR, 0.1
+			elseif selected and canMerge(selected, i) then
+				glow.Color, glow.Transparency = PARTNER_COLOR, 0.1
+			else
+				glow.Transparency = 1
+			end
 		end
-		pads[i].Color = color
 		local die = dice[i]
 		if die and board[i] then
 			local isSelected = selected == i
@@ -242,6 +286,12 @@ end
 local function render(snapshot)
 	local previous = board
 	playing = snapshot.Phase == "Playing"
+	local nextArena = Layout.ArenaOf(snapshot.Mode or snapshot.PlayerCount)
+	if playing and ((snapshot.Seat or 1) ~= seat or nextArena ~= arenaKey) then
+		seat, arenaKey = snapshot.Seat or 1, nextArena
+		previous, selected, boardKey, dragging = {}, nil, "", nil
+		buildWorld()
+	end
 	arena.Parent = if playing then root else nil
 	board = if playing then snapshot.Board or {} else {}
 	local still = SettingsLogic.get("reducedMotion")
@@ -254,7 +304,7 @@ local function render(snapshot)
 		local die = dice[i]
 		if entry then
 			if die == nil then
-				die = makeDie(i)
+				die = makeDie(i, seat)
 				dice[i] = die
 			end
 			if die.key ~= parts[i] then
@@ -284,49 +334,116 @@ local function render(snapshot)
 	end
 	local key = table.concat(parts, ",")
 	if key ~= boardKey or not playing then
-		selected = nil -- never merge from a stale selection
+		selected, dragging = nil, nil -- never merge from a stale selection
 	end
 	boardKey = key
+	local ally = if playing then snapshot.PartnerBoard else nil
+	for i = 1, CELLS do
+		local entry = if ally then ally[i] else nil
+		local die = allyDice[i]
+		if entry then
+			if not die then
+				die = makeDie(i, 3 - seat)
+				allyDice[i] = die
+			end
+			local key = entry.T .. entry.P
+			if die.key ~= key then
+				die.key = key
+				applyDie(die, entry)
+			end
+			die.model.Parent = diceFolder
+		elseif die then
+			die.model.Parent = nil
+		end
+	end
 	refreshPads()
 end
 
-local function onTap(cell: number)
-	if not playing then
+-- Drag a die onto a matching one to merge. The die follows the pointer; letting go anywhere else drops it back.
+
+local function groundPoint(position: Vector3): Vector3?
+	local camera = workspace.CurrentCamera
+	if camera == nil then
+		return nil
+	end
+	local inset = GuiService:GetGuiInset()
+	local ray = camera:ViewportPointToRay(position.X + inset.X, position.Y + inset.Y)
+	if ray.Direction.Y >= 0 then
+		return nil
+	end
+	return ray.Origin + ray.Direction * ((Layout.PadTop - ray.Origin.Y) / ray.Direction.Y)
+end
+
+local function cellAt(point: Vector3): number?
+	local half = Layout.CELL_SIZE / 2
+	for i = 1, CELLS do
+		local c = Layout.CellPosition(i, seat, arenaKey)
+		if math.abs(point.X - c.X) <= half and math.abs(point.Z - c.Z) <= half then
+			return i
+		end
+	end
+	return nil
+end
+
+local function endDrag(position: Vector3?)
+	local drag = dragging
+	if drag == nil then
 		return
 	end
-	if selected == nil then
-		if board[cell] then
-			selected = cell
-		end
-	elseif canMerge(selected, cell) then
-		task.spawn(NetClient.Request, "Merge", selected, cell)
-		selected = nil
-	elseif cell ~= selected and board[cell] then
-		selected = cell
-	else
-		selected = nil -- tap A again, or empty: clear
+	dragging = nil
+	local point = position and groundPoint(position)
+	local to = point and cellAt(point)
+	if to and canMerge(drag.from, to) then
+		task.spawn(NetClient.Request, "Merge", drag.from, to)
 	end
+	selected = nil -- refreshPads drops the die back on its pad
 	refreshPads()
 end
 
 local function onInput(input: InputObject, processed: boolean)
-	if processed then
+	if processed or not playing then
 		return
 	end
 	local kind = input.UserInputType
 	if kind ~= Enum.UserInputType.MouseButton1 and kind ~= Enum.UserInputType.Touch then
 		return
 	end
-	local camera = workspace.CurrentCamera
-	if camera == nil then
+	local point = groundPoint(input.Position)
+	local cell = point and cellAt(point)
+	if cell and board[cell] then
+		dragging = { from = cell, input = input }
+		selected = cell -- lifts the die and lights up the dice it can merge with
+		refreshPads()
+	end
+end
+
+local function onInputChanged(input: InputObject)
+	local drag = dragging
+	if drag == nil then
 		return
 	end
-	local inset = GuiService:GetGuiInset()
-	local ray = camera:ViewportPointToRay(input.Position.X + inset.X, input.Position.Y + inset.Y)
-	local hit = workspace:Raycast(ray.Origin, ray.Direction * 500, rayParams)
-	local cell = hit and hit.Instance:GetAttribute("Cell")
-	if type(cell) == "number" then
-		onTap(cell)
+	if input ~= drag.input and input.UserInputType ~= Enum.UserInputType.MouseMovement then
+		return
+	end
+	local die = dice[drag.from]
+	local point = groundPoint(
+		if input == drag.input then input.Position else UserInputService:GetMouseLocation() - GuiService:GetGuiInset()
+	)
+	if die and point then
+		local lift = die.part.Size.Y / 2 + LIFT
+		die.model:PivotTo(CFrame.new(point.X, Layout.PadTop + lift, point.Z) * (die.pad - die.pad.Position))
+	end
+end
+
+local function onInputEnded(input: InputObject)
+	local drag = dragging
+	if drag and (input == drag.input or input.UserInputType == Enum.UserInputType.MouseButton1) then
+		endDrag(
+			if input.UserInputType == Enum.UserInputType.MouseButton1
+					or input.UserInputType == Enum.UserInputType.Touch
+				then input.Position
+				else nil
+		)
 	end
 end
 
@@ -334,6 +451,8 @@ function BoardView.Start()
 	buildWorld()
 	RunService.RenderStepped:Connect(stepAnimations)
 	UserInputService.InputBegan:Connect(onInput)
+	UserInputService.InputChanged:Connect(onInputChanged)
+	UserInputService.InputEnded:Connect(onInputEnded)
 	NetClient.State:Connect(render)
 	if NetClient.Last then
 		render(NetClient.Last)

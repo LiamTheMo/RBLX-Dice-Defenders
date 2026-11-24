@@ -12,6 +12,9 @@ local Dice = {}
 
 Dice.Deck = table.freeze({ "C01", "C02", "C03", "C04", "C05" })
 
+-- Bag display: how a die picks its target unless its entry sets `targeting`. Every die is "Front" for now.
+Dice.DefaultTargeting = "Front"
+
 Dice.Types = table.freeze({
 	C01 = table.freeze({
 		name = "Pebble",
@@ -67,28 +70,20 @@ Dice.Types = table.freeze({
 		rate = 0.85,
 		aura = table.freeze({ base = 0.06, perPip = 0.01, perTier = 0.01 }),
 	}),
-	R06 = table.freeze({ name = "Wind", rarity = "Rare", base = 15, rate = 1.30 }),
-	R07 = table.freeze({ name = "Rock", rarity = "Rare", base = 26, rate = 0.75 }),
 	E01 = table.freeze({ name = "Emberstorm", rarity = "Epic", base = 28, rate = 0.75 }),
-	E03 = table.freeze({ name = "Mirror", rarity = "Epic", base = 21, rate = 1.00 }),
-	E05 = table.freeze({ name = "Gravity", rarity = "Epic", base = 30, rate = 0.70 }),
-	E06 = table.freeze({ name = "Ice", rarity = "Epic", base = 22, rate = 0.95 }),
-	E07 = table.freeze({ name = "Leaf", rarity = "Epic", base = 24, rate = 0.88 }),
-	E08 = table.freeze({ name = "Lightning", rarity = "Epic", base = 20, rate = 1.05 }),
-	E09 = table.freeze({ name = "Water", rarity = "Epic", base = 26, rate = 0.80 }),
-	E10 = table.freeze({ name = "Shadow", rarity = "Epic", base = 30, rate = 0.70 }),
+	E02 = table.freeze({ name = "Mirror", rarity = "Epic", base = 21, rate = 1.00 }),
+	E03 = table.freeze({ name = "Gravity", rarity = "Epic", base = 30, rate = 0.70 }),
 	L01 = table.freeze({ name = "Chrono", rarity = "Legendary", base = 30, rate = 0.85 }),
 	L02 = table.freeze({ name = "Forge", rarity = "Legendary", base = 34, rate = 0.75 }),
-	L04 = table.freeze({ name = "Sun", rarity = "Legendary", base = 32, rate = 0.80 }),
-	L05 = table.freeze({ name = "Fire", rarity = "Legendary", base = 34, rate = 0.75 }),
-	L06 = table.freeze({
-		name = "Light",
-		rarity = "Legendary",
-		base = 28,
-		rate = 0.90,
-		aura = table.freeze({ base = 0.08, perPip = 0.015, perTier = 0.015 }),
+	M01 = table.freeze({
+		name = "Astral",
+		rarity = "Mythic",
+		base = 140,
+		rate = 0.80,
+		singularity = table.freeze({ damage = 5, critChance = 10, critDamage = 2 }),
+		description = "Singularity: With exactly one Astral on your board, it deals 5× damage. 10% of those hits deal 10× damage.",
 	}),
-	M01 = table.freeze({ name = "Astral", rarity = "Mythic", base = 32, rate = 0.80 }),
+	S01 = table.freeze({ name = "Dragon", rarity = "Secret", base = 36, rate = 0.80 }),
 })
 
 return table.freeze(Dice)

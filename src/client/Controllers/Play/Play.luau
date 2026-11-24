@@ -9,6 +9,7 @@ local GuiService = game:GetService("GuiService")
 
 local NetClient = require(script.Parent.Parent.NetClient)
 local PlayLogic = require(script.Parent.PlayLogic)
+local RatingLogic = require(script.Parent.Parent.RatingLogic)
 local Shell = require(script.Parent.Parent.Bag.Shell)
 local View = require(script.Parent.View)
 
@@ -37,18 +38,40 @@ function Play.new(parent, deps)
 	shell:SetTab(1)
 
 	local busy = false
+	local alive = true
+	local function viewKey(snap)
+		return snap
+			and `{snap.Phase}|{snap.BestWave}|{snap.TrialCleared}|{snap.CanSolo}|{snap.CanCoop}|{snap.CoopReady}|{snap.CanQueue}|{snap.QueueState}|{snap.QueueSince}|{RatingLogic.progress(
+				snap.Rating
+			).Text}|{snap.Rating and snap.Rating.Streak}|{snap.Rating and snap.Rating.Rank}`
+	end
 	local pending = {} -- milestone ids with a ClaimQuest in flight, held until the next Meta after a success
 
 	local shown -- the State fields the last render drew
 	local function render()
 		local snap = NetClient.Last
-		shown = snap and `{snap.Phase}|{snap.BestWave}|{snap.TrialCleared}`
+		shown = viewKey(snap)
 		local catalog = NetClient.LastCatalog
 		view:SetWorlds(PlayLogic.worlds(snap))
 		view:SetSelected(PlayLogic.WORLD.Id)
 		view:SetMilestones(PlayLogic.milestones(catalog, NetClient.LastMeta, pending))
 		view:SetRepeat(PlayLogic.repeatTiles(catalog))
-		view:SetStartState(PlayLogic.startState(snap, busy))
+		local tutorial = NetClient.LastMeta and NetClient.LastMeta.Tutorial
+		local blocked = tutorial and tutorial.Stage == "Roll"
+		view:SetStartState(
+			if blocked or (snap and snap.CanSolo == false) then "Disabled" else PlayLogic.startState(snap, busy)
+		)
+		view:SetCoopState(
+			if busy
+					or blocked
+					or not snap
+					or not snap.CanCoop
+				then "Disabled"
+				elseif snap.CoopReady then "Waiting"
+				else "Ready"
+		)
+		local rating = (snap and snap.Rating) or (NetClient.LastMeta and NetClient.LastMeta.Rating)
+		view:SetDuel(RatingLogic.queueButton(snap, busy, blocked == true, workspace:GetServerTimeNow()), rating)
 	end
 
 	view:OnSelect(function(id)
@@ -56,6 +79,9 @@ function Play.new(parent, deps)
 	end)
 	view:OnLocked(function()
 		deps.toast("Coming soon!")
+	end)
+	view:OnDuelBlocked(function(note)
+		deps.toast(note)
 	end)
 	view:OnClaim(function(row)
 		local id = PlayLogic.claimTarget(row, pending)
@@ -90,6 +116,47 @@ function Play.new(parent, deps)
 			end
 		end)
 	end)
+	view:OnCoop(function(ready)
+		if busy then
+			return
+		end
+		busy = true
+		render()
+		task.spawn(function()
+			local ok = NetClient.Request("CoopReady", ready)
+			busy = false
+			if shell:IsOpen() then
+				if ok and ready then
+					deps.toast("Ready for co-op. Waiting for your partner.")
+				end
+				render()
+			end
+		end)
+	end)
+	view:OnDuel(function(on)
+		if busy then
+			return
+		end
+		busy = true
+		render()
+		task.spawn(function()
+			NetClient.Request("QueueDuel", on) -- a rejection toast comes from Lobby
+			busy = false
+			if shell:IsOpen() then
+				render()
+			end
+		end)
+	end)
+	-- Live search timer: 1 Hz, rewrites the button text only (the view is not rebuilt).
+	task.spawn(function()
+		while alive do
+			task.wait(1)
+			local snap = NetClient.Last
+			if alive and shell:IsOpen() and snap and snap.QueueState == "Searching" then
+				view:SetDuelLabel(RatingLogic.queueButton(snap, false, false, workspace:GetServerTimeNow()).Label)
+			end
+		end
+	end)
 	table.insert(
 		conns,
 		NetClient.State:Connect(function(snap)
@@ -99,7 +166,7 @@ function Play.new(parent, deps)
 			if snap.Phase ~= "Lobby" and snap.Phase ~= "Ended" then
 				shell:Close()
 			else
-				local key = `{snap.Phase}|{snap.BestWave}|{snap.TrialCleared}` -- State ticks often; rebuild only on a visible change
+				local key = viewKey(snap)
 				if key ~= shown then
 					render()
 				end
@@ -138,6 +205,9 @@ function Play.new(parent, deps)
 	)
 
 	self.Shell, self.View, self._conns = shell, view, conns
+	self._kill = function()
+		alive = false
+	end
 	self._open = function()
 		if shell:IsOpen() then
 			return
@@ -176,6 +246,7 @@ function Play:IsOpen(): boolean
 end
 
 function Play:Destroy()
+	self._kill()
 	for _, c in self._conns do
 		c:Disconnect()
 	end

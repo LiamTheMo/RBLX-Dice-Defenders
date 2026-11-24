@@ -1,5 +1,6 @@
--- Die level-up (docs/MVP.md "Remotes", UpgradeDie): spend spare copies of a die for +1 level.
--- Pure, no yields. Costs are Progression.DieLevel.Copies (server config; clients only get a read-only Catalog copy for display).
+-- Die level-up (docs/MVP.md "Remotes", UpgradeDie): spend spare copies AND gold of a die for +1 level.
+-- Pure, no yields. Costs are Progression.DieLevel (server config; clients only get a read-only Catalog copy for display).
+-- Codes also include NoGold (Gold below the step's cost).
 local Dice = require(script.Parent.Parent.Config.Dice)
 local Progression = require(script.Parent.Parent.Config.Progression)
 local Economy = require(script.Parent.Economy)
@@ -40,8 +41,29 @@ function Upgrade.Die(profile: any, id: any): (boolean, string?)
 	if not ok then
 		return false, copies
 	end
-	entry.Copies, entry.Level = copies, entry.Level + 1
+	local goldCost = Progression.GoldCost(Dice.Types[id].rarity, entry.Level)
+	local okGold, gold = Economy.Sum(profile.Gold, -(goldCost or 0))
+	if not okGold then
+		return false, if gold == "Insufficient" then "NoGold" else gold
+	end
+	entry.Copies, entry.Level, profile.Gold = copies, entry.Level + 1, gold
 	return true, nil
+end
+
+-- Crit damage percent the whole account has earned from die levels (summed over every owned die).
+function Upgrade.CritBonus(profile: any): number
+	local total = 0
+	local owned = profile.Dice
+	if type(owned) ~= "table" then
+		return 0
+	end
+	for id, entry in owned do
+		local cfg = Dice.Types[id]
+		if cfg and type(entry) == "table" and Validate.IsInt(entry.Level, 1, Progression.DieLevel.Max) then
+			total += Progression.CritOf(cfg.rarity, entry.Level)
+		end
+	end
+	return total
 end
 
 return Upgrade

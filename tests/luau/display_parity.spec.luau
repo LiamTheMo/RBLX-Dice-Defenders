@@ -10,7 +10,7 @@ local Catalog = require(Server.Rules.Catalog)
 local Progression = require(Server.Config.Progression)
 local Display = require(game:GetService("ReplicatedStorage").Shared.Display)
 
-local RARITIES = { Common = true, Rare = true, Epic = true, Legendary = true, Mythic = true }
+local RARITIES = { Common = true, Rare = true, Epic = true, Legendary = true, Mythic = true, Secret = true }
 
 local function dps(cfg): number
 	return cfg.base * cfg.rate * (cfg.shots or 1) * (cfg.shotMul or 1)

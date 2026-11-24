@@ -31,6 +31,7 @@ local MIN_INTERVAL = {
 	Summon = 0.125,
 	Merge = 0.25,
 	EquipDeck = 1.0,
+	TeamAction = 1.0, -- server bucket 1/s, burst 3
 	ClaimQuest = 0.5,
 	RedeemCode = 1.0,
 	SaveSettings = 2.0,
@@ -39,6 +40,12 @@ local MIN_INTERVAL = {
 	Buy = 1.0, -- server bucket 1/s, burst 3
 	UpgradeDie = 0.5, -- server bucket 2/s, burst 4
 	PowerUp = 0.5, -- server bucket 2/s, burst 4
+	AdminAction = 1.0,
+	CoopReady = 0.5,
+	QueueDuel = 0.5, -- server bucket 1/s, burst 3
+	Surrender = 1.0, -- server bucket 1/s, burst 2
+	LeaveDuel = 1.0, -- server bucket 1/s, burst 2
+	TutorialAction = 0.5,
 }
 local pending = {}
 local seq = 0
@@ -70,7 +77,7 @@ function NetClient.Request(name: string, ...): (boolean, string?)
 	if result ~= true then
 		return reject(name, if type(code) == "string" then code else "Rejected")
 	end
-	return true, nil
+	return true, if type(code) == "string" then code else nil
 end
 
 function NetClient.Start()
@@ -83,6 +90,7 @@ function NetClient.Start()
 				"Summon",
 				"Merge",
 				"EquipDeck",
+				"TeamAction",
 				"ClaimQuest",
 				"RedeemCode",
 				"SaveSettings",
@@ -91,6 +99,12 @@ function NetClient.Start()
 				"Buy",
 				"UpgradeDie",
 				"PowerUp",
+				"AdminAction",
+				"CoopReady",
+				"QueueDuel",
+				"Surrender",
+				"LeaveDuel",
+				"TutorialAction",
 			}
 		do
 			functions[name] = folder:WaitForChild(name)

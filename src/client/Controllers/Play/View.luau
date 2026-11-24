@@ -1,6 +1,6 @@
 -- Play menu view, two pages in the shared window's content box (the Shell draws the title, close X and the WORLDS / 1v1 tabs):
 --   WORLDS: world banner cards | first-time milestones | selected world, repeat rewards, START
---   1v1:    rank cards | trophy rewards ("Coming soon": no PvP backend) | rank, trophies, PLAY (disabled, COMING SOON)
+--   1v1:    rank ladder | your record | your rank, DR, progress, streak, 1V1 RANKED ready button
 -- Visual only. Design px under the shell's UIScale; one layout path from the slot's Size offset (1068 x 507 at the Full tier,
 -- smaller on phones, where the lists and the right column scroll). Fixed-shape art is drawn whole at its native aspect.
 -- View.new(slot) -> :SetPage(1|2) :SetWorlds(list) :SetSelected(id) :SetMilestones(rows) :SetRepeat(tiles, boss)
@@ -18,6 +18,7 @@ local Shared = require(script.Parent.Parent.SharedSprites)
 local Sprites = require(script.Parent.Parent.Sprites)
 local PlaySprites = require(script.Parent.PlaySprites)
 local PlayLogic = require(script.Parent.PlayLogic)
+local RatingLogic = require(script.Parent.Parent.RatingLogic)
 
 local Q = Draw.Q
 local make = UiKit.make
@@ -151,7 +152,19 @@ local function bloom(host, x, y, w, h, radius, z)
 end
 
 -- The big green button (Play_Start art, live label): normal / hover / pressed (Parts.interact) and disabled (dim).
-local function bigButton(parent, text: string, w: number, h: number, cx: number, cy: number, z: number)
+local function bigButton(
+	parent,
+	text: string,
+	w: number,
+	h: number,
+	cx: number,
+	cy: number,
+	z: number,
+	sizeText: string?
+)
+	-- The art keeps its aspect, so its real box is the largest START_ASP rectangle inside w x h; the label is laid out in that box.
+	local aw = math.min(w, h * START_ASP)
+	w, h = aw, aw / START_ASP
 	local btn = make("ImageButton", {
 		Name = "Start",
 		BackgroundTransparency = 1,
@@ -163,7 +176,7 @@ local function bigButton(parent, text: string, w: number, h: number, cx: number,
 		ZIndex = z,
 	}, parent)
 	make("UIAspectRatioConstraint", { AspectRatio = START_ASP }, btn)
-	local size = fitSize(text, w * 0.56, math.floor(h * 0.62), 8)
+	local size = fitSize(sizeText or text, w * 0.56, math.floor(h * 0.62), 8) -- sizeText: the widest label a live button can show
 	local l = label(btn, {
 		Name = "Label",
 		Text = text,
@@ -200,7 +213,7 @@ local function bigButton(parent, text: string, w: number, h: number, cx: number,
 	return hit, function(on: boolean)
 		btn:SetAttribute("Enabled", on)
 		refresh()
-	end
+	end, l
 end
 
 local View = {}
@@ -700,7 +713,9 @@ function View:_buildRight(pnl)
 	end
 	info.CanvasSize = UDim2.fromOffset(0, y + 4)
 	self._scrolls.Info = info
-	local hit, setOn = bigButton(pnl, "START", startW, startH, rw / 2, L.h - startH / 2 - 19, pnl.ZIndex + 5)
+	local buttonY = L.h - startH / 2 - 19
+	local sideW = math.floor((rw - 28) / 2)
+	local hit, setOn = bigButton(pnl, "SOLO", sideW, startH, rw / 2 - sideW / 2 - 4, buttonY, pnl.ZIndex + 5)
 	hit.Activated:Connect(function()
 		if self._startState == "Ready" and self._onStart then
 			self._onStart()
@@ -708,6 +723,22 @@ function View:_buildRight(pnl)
 	end)
 	self._startBtn, self._setStartOn = hit, setOn
 	setOn(self._startState == "Ready")
+	local mode = self._coopState
+	local coop, setCoop = bigButton(
+		pnl,
+		if mode == "Waiting" then "CANCEL READY" else "CO-OP",
+		sideW,
+		startH,
+		rw / 2 + sideW / 2 + 4,
+		buttonY,
+		pnl.ZIndex + 5
+	)
+	setCoop(mode == "Ready" or mode == "Waiting")
+	coop.Activated:Connect(function()
+		if self._onCoop and (mode == "Ready" or mode == "Waiting") then
+			self._onCoop(mode ~= "Waiting")
+		end
+	end)
 end
 
 -- 1v1 ---------------------------------------------------------------------------------------------------------
@@ -715,16 +746,22 @@ end
 function View:_buildRanks()
 	local L = self._L
 	local left = panel(self, "RanksPanel", 0, L.lw)
-	local mid = panel(self, "RewardsPanel", L.midX, L.mid)
+	local mid = panel(self, "RecordPanel", L.midX, L.mid)
 	local right = panel(self, "RankPanel", L.rightX, L.rw)
-	-- rank cards
+	local rating = self._rating -- RatingLogic.rating(snap.Rating), nil on an old snapshot
+	local mine = if rating then rating.Rank else "Bronze"
+	local function tint(rank: string): Color3
+		local c = RatingLogic.rankColor(rank)
+		return Color3.fromRGB(c[1], c[2], c[3])
+	end
+	-- rank ladder: the three ranks, the player's own highlighted and tagged YOU
 	local ranks = PlayLogic.RANKS
 	local y0, rgap = if L.h < 440 then 12 else 27, if L.h < 440 then 8 else 13
 	local ch = math.clamp(math.floor((L.h - 2 * y0 - (#ranks - 1) * rgap) / #ranks), 40, 112) -- 112 at Full; shorter on phones
 	local cw = L.lw - 24
 	for i, rk in ranks do
 		local y = y0 + (i - 1) * (ch + rgap)
-		local sel = rk.Id == self._rank
+		local sel = rk.Id == mine
 		if sel then
 			bloom(left, 12, y, cw, ch, 10, left.ZIndex + 1)
 		end
@@ -736,19 +773,13 @@ function View:_buildRanks()
 			Radius = 12,
 		})
 		card.UIStroke.Color = if sel then ORANGE else Chrome.PanelRim
-		local btn = make("TextButton", {
-			Name = "Hit",
-			BackgroundTransparency = 1,
-			Text = "",
-			Size = UDim2.fromScale(1, 1),
-			ZIndex = card.ZIndex + 5,
-		}, card)
 		local art = PlaySprites[rk.Art]
 		local sw = math.min((ch - 16) * art.Size.X / art.Size.Y, cw * 0.3) -- narrow phone cards: the shield leaves the name room
 		local sh = sw * art.Size.Y / art.Size.X
 		icon(card, art, 10 + sw / 2, ch / 2, sw, sh, card.ZIndex + 1)
 		local tx = 10 + sw + 12
-		local nameW = cw - tx - 12 - (if rk.Locked then ch * 0.3 + 8 else 0)
+		local tagW = if sel then 46 else 0
+		local nameW = cw - tx - 12 - tagW
 		label(card, {
 			Name = "Name",
 			Text = rk.Name,
@@ -758,47 +789,73 @@ function View:_buildRanks()
 			X = tx,
 			Y = ch / 2,
 			W = nameW + 6,
+			Color = tint(rk.Id),
 		})
-		if rk.Locked then
-			local ls = round(ch * 0.3)
-			icon(card, Shared.Padlock, cw - 12 - ls / 2, ch / 2, ls, ls, card.ZIndex + 1).Name = "Padlock"
+		if sel then
+			label(card, {
+				Name = "YouTag",
+				Text = "YOU",
+				Size = 16,
+				Fixed = true,
+				X = cw - 12 - tagW / 2,
+				Y = ch / 2,
+				W = tagW,
+				Stroke = 2,
+			})
 		end
-		Parts.interact(
-			btn,
-			function(state) -- the Frame card has no button signals: the Hit button drives its hover look
-				card.UIStroke.Color = if sel then ORANGE elseif state == "Normal" then Chrome.PanelRim else Chrome.Light
-			end
-		)
-		btn.Activated:Connect(function()
-			if rk.Locked then
-				if self._onLocked then
-					self._onLocked(rk.Id)
-				end
-			else
-				self._rank = rk.Id
-				self:_queue()
-			end
-		end)
 	end
-	-- rewards: no PvP backend, so nothing to list
-	header(mid, "TROPHY REWARDS", L.mid)
-	local cy = HEAD_H + (L.h - HEAD_H) / 2 - 20
-	icon(mid, PlaySprites.Trophy, L.mid / 2, cy - 38, 70, 70)
-	label(mid, { Name = "ComingSoon", Text = "COMING SOON", Size = 32, X = L.mid / 2, Y = cy + 22, W = L.mid - 40 })
-	label(mid, {
+	-- record: wins / losses / best streak
+	header(mid, "YOUR RECORD", L.mid)
+	local rec = scroll(mid, "Record", 0, HEAD_H, L.mid, L.h - HEAD_H)
+	local rows = {
+		{ "WINS", if rating then rating.Wins else 0 },
+		{ "LOSSES", if rating then rating.Losses else 0 },
+		{ "BEST STREAK", if rating then rating.BestStreak else 0 },
+	}
+	local rowH = if L.h < 440 then 34 else 46
+	for i, r in rows do
+		local ry = 8 + (i - 1) * rowH
+		label(rec, {
+			Name = "K" .. i,
+			Text = r[1],
+			Size = 20,
+			AX = 0,
+			X = 14,
+			Y = ry + rowH / 2,
+			W = L.mid * 0.6,
+			Color = GREY,
+			Stroke = 2,
+		})
+		label(rec, {
+			Name = "V" .. i,
+			Text = tostring(r[2]),
+			Size = 24,
+			AX = 0,
+			X = L.mid * 0.66,
+			Y = ry + rowH / 2,
+			W = L.mid * 0.3,
+		})
+	end
+	local noteY = 8 + #rows * rowH + 14
+	local note = label(rec, {
 		Name = "Note",
-		Text = "1v1 trophy rewards will appear here",
-		Size = 18,
+		Text = "Win 1v1 matches to earn DR and rank up. Win streaks pay bonus DR and gold.",
+		Size = 16,
+		Fixed = true,
 		Color = GREY,
 		X = L.mid / 2,
-		Y = cy + 58,
-		W = L.mid - 40,
+		Y = noteY + 30,
+		W = L.mid - 28,
+		H = 60,
 		Stroke = 2,
 	})
-	-- selected rank, trophies, PLAY
+	note.TextWrapped = true
+	rec.CanvasSize = UDim2.fromOffset(0, noteY + 70)
+	self._scrolls.Record = rec
+	-- your rank, DR, progress, streak, 1V1 button
 	local rk
 	for _, r in ranks do
-		if r.Id == self._rank then
+		if r.Id == mine then
 			rk = r
 		end
 	end
@@ -809,38 +866,125 @@ function View:_buildRanks()
 	local availH = L.h - startH - 22
 	local info = scroll(right, "Info", 0, 0, rw, availH)
 	local art = PlaySprites[rk.Art]
-	local sh = math.min(112, availH * 0.42)
+	local sh = math.min(112, availH * 0.36)
 	local glow = Draw.img(info, { Name = "Glow", ZIndex = info.ZIndex + 1 })
 	Draw.apply(glow, Q.GlowRadial, rw / 2, 7 + sh / 2, sh * 2.2, sh * 2.2)
-	glow.ImageColor3 = ORANGE
+	glow.ImageColor3 = tint(rk.Id)
 	icon(info, art, rw / 2, 7 + sh / 2, sh * art.Size.X / art.Size.Y, sh, info.ZIndex + 2).Name = "Shield"
 	local y = 7 + sh + 2
 	label(info, {
 		Name = "RankName",
 		Text = rk.Name,
-		Size = fitSize(rk.Name, rw - 24, 40, floorSize()),
+		Size = fitSize(rk.Name, rw - 24, 36, floorSize()),
 		Fixed = true,
 		X = rw / 2,
-		Y = y + 20,
+		Y = y + 18,
 		W = rw - 24,
+		Color = tint(rk.Id),
 	})
-	y += 42
-	local tp = Chrome.strip(info, {
-		Name = "Trophies",
+	y += 38
+	local chip = Chrome.strip(info, {
+		Name = "DrChip",
 		Position = UDim2.fromOffset(round(rw / 2 - 90), y),
 		Size = UDim2.fromOffset(180, 44),
 		ZIndex = info.ZIndex + 1,
 		Radius = 22,
 	})
-	icon(tp, PlaySprites.Trophy, 34, 22, 34, 32)
-	label(tp, { Name = "TrophyCount", Text = "0", Size = 30, X = 110, Y = 21, W = 100 })
-	info.CanvasSize = UDim2.fromOffset(0, y + 56)
+	icon(chip, PlaySprites.Trophy, 34, 22, 34, 32)
+	label(chip, {
+		Name = "DrCount",
+		Text = `{if rating then rating.DR else 0} DR`,
+		Size = 26,
+		X = 112,
+		Y = 21,
+		W = 110,
+	})
+	y += 52
+	local prog = RatingLogic.progress(self._ratingRaw)
+	local bar = make("Frame", {
+		Name = "ProgressBar",
+		BackgroundColor3 = Color3.fromRGB(20, 22, 38),
+		BorderSizePixel = 0,
+		Position = UDim2.fromOffset(24, y),
+		Size = UDim2.fromOffset(rw - 48, 16),
+		ZIndex = info.ZIndex + 1,
+	}, info)
+	make("UICorner", { CornerRadius = UDim.new(0, 8) }, bar)
+	make("UIStroke", { Color = Chrome.PanelRim, Thickness = 2 }, bar)
+	local fill = make("Frame", {
+		Name = "Fill",
+		BackgroundColor3 = tint(rk.Id),
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(prog.Frac, 1),
+		ZIndex = bar.ZIndex + 1,
+	}, bar)
+	make("UICorner", { CornerRadius = UDim.new(0, 8) }, fill)
+	y += 16
+	if prog.Text ~= "" then
+		label(info, {
+			Name = "ProgressText",
+			Text = prog.Text,
+			Size = 18,
+			X = rw / 2,
+			Y = y + 14,
+			W = rw - 24,
+			Color = GREY,
+			Stroke = 2,
+		})
+		y += 28
+	end
+	local streak = RatingLogic.streakText(if rating then rating.Streak else 0)
+	if streak ~= "" then
+		label(info, { Name = "Streak", Text = streak, Size = 22, X = rw / 2, Y = y + 14, W = rw - 24, Color = ORANGE })
+		y += 30
+	end
+	local duel = self._duel
+	if duel.Note then
+		label(info, {
+			Name = "DuelNote",
+			Text = duel.Note,
+			Size = 18,
+			X = rw / 2,
+			Y = y + 14,
+			W = rw - 24,
+			Color = GREY,
+			Stroke = 2,
+		})
+		y += 28
+	end
+	label(info, {
+		Name = "MatchCaption",
+		Text = "Opponents are within one rank of yours.",
+		Size = 18,
+		X = rw / 2,
+		Y = y + 14,
+		W = rw - 24,
+		Color = GREY,
+		Stroke = 2,
+	})
+	y += 28
+	info.CanvasSize = UDim2.fromOffset(0, y + 8)
 	self._scrolls.Info = info
-	local hit, setOn = bigButton(right, "COMING SOON", startW, startH, rw / 2, L.h - startH / 2 - 12, right.ZIndex + 5)
-	setOn(false)
+	local hit, setOn, btnLabel = bigButton(
+		right,
+		duel.Label or "FIND MATCH",
+		startW,
+		startH,
+		rw / 2,
+		L.h - startH / 2 - 12,
+		right.ZIndex + 5,
+		RatingLogic.QUEUE_WIDEST
+	)
+	self._duelLabel = btnLabel
+	setOn(duel.State == "Find" or duel.State == "Searching")
 	hit.Activated:Connect(function()
-		if self._onLocked then
-			self._onLocked("Play1v1") -- disabled: the controller answers with its "Coming soon!" toast
+		local s = self._duel
+		if s.State == "Find" or s.State == "Searching" then
+			if self._onDuel then
+				self._onDuel(s.State == "Find")
+			end
+		elseif s.Note and self._onDuelBlocked then
+			self._onDuelBlocked(s.Note) -- disabled: the controller answers with a toast
 		end
 	end)
 end
@@ -863,7 +1007,7 @@ function View:_build()
 		c:Destroy()
 	end
 	table.clear(self._scrolls)
-	self._startBtn, self._setStartOn = nil, nil
+	self._startBtn, self._setStartOn, self._duelLabel = nil, nil, nil
 	if self._page == 2 then
 		self:_buildRanks()
 	else
@@ -894,7 +1038,8 @@ function View.new(slot)
 	local self = setmetatable({}, View)
 	self._conns, self._scrolls = {}, {}
 	self._page, self._worlds, self._selected, self._rows = 1, {}, nil, {}
-	self._tiles, self._boss, self._startState, self._rank = {}, nil, "Disabled", "Bronze"
+	self._tiles, self._boss, self._startState = {}, nil, "Disabled"
+	self._duel, self._ratingRaw, self._rating = { State = "Disabled", Label = "FIND MATCH" }, nil, nil
 	self._root = make(
 		"Frame",
 		{ Name = "PlayView", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = slot.ZIndex + 1 },
@@ -983,6 +1128,39 @@ end
 
 function View:OnStart(cb)
 	self._onStart = cb
+end
+
+function View:SetCoopState(state: string)
+	if self._coopState ~= state then
+		self._coopState = state
+		self:_queue()
+	end
+end
+
+-- state = RatingLogic.queueButton(...) ({ State = "Find"|"Searching"|"Matched"|"Disabled", Label, Note }); rating = snap.Rating (nil on an old snapshot).
+function View:SetDuel(state, rating)
+	self._duel, self._ratingRaw, self._rating = state, rating, RatingLogic.rating(rating)
+	self:_queue()
+end
+
+-- Live search timer: swaps the button text in place (no rebuild); the next build draws the state's own label.
+function View:SetDuelLabel(str: string)
+	local l = self._duelLabel
+	if l and l.Parent and l.Text ~= str then
+		l.Text = str
+	end
+end
+
+function View:OnDuel(cb)
+	self._onDuel = cb
+end
+
+function View:OnDuelBlocked(cb)
+	self._onDuelBlocked = cb
+end
+
+function View:OnCoop(cb)
+	self._onCoop = cb
 end
 
 function View:OnClaim(cb)

@@ -10,7 +10,8 @@ Remotes.Kinds = table.freeze({
 	Start = "Function", -- (seq)
 	Summon = "Function", -- (seq)
 	Merge = "Function", -- (seq, from, to)
-	EquipDeck = "Function", -- (seq, ids): 5 distinct owned die ids
+	EquipDeck = "Function", -- (seq, ids): up to 5 distinct owned die ids
+	TeamAction = "Function", -- (seq, "Save"|"Load", slot 1..5): team presets (Rules/Teams); the saved ids stay on the server
 	ClaimQuest = "Function", -- (seq, questId)
 	RedeemCode = "Function", -- (seq, code)
 	SaveSettings = "Function", -- (seq, patch): {[settingId] = value}, cleaned against Shared/SettingsDefs
@@ -19,8 +20,14 @@ Remotes.Kinds = table.freeze({
 	Buy = "Function", -- (seq, offerId): a Gold or Gems Shop offer (Rules/Shop); price and grant stay on the server
 	UpgradeDie = "Function", -- (seq, dieId): spend spare copies of that die for +1 level (Rules/Upgrade); the client never sends a level, copies or cost
 	PowerUp = "Function", -- (seq, dieId): in-match Power Up of one die type of the deck (Rules/Match.TryPowerUp); MP, tier and cost stay on the server
+	AdminAction = "Function", -- (seq, action, userId, kind, id, quantity)
+	CoopReady = "Function", -- (seq, ready)
+	QueueDuel = "Function", -- (seq, on): search (true) or stop searching (false) for a ranked 1v1 Duel (Services/QueueService); codes NotLoaded, FinishStarterRolls, BadDeck, WrongPhase, Unavailable
+	Surrender = "Function", -- (seq): give up the live Duel (Rules/Match.Surrender); codes WrongPhase, NotInDuel
+	LeaveDuel = "Function", -- (seq): leave a Duel server back to the public lobby; codes NotInDuel, WrongPhase, Unavailable
+	TutorialAction = "Function", -- (seq, action, dieId)
 	State = "Event", -- S -> C snapshot
-	Enemies = "Event", -- S -> C, owner only: {S, H, R, F}
+	Enemies = "Event", -- S -> C, match participants: {S, H, R, F}
 	Meta = "Event", -- S -> C, that player only: lobby payload (docs/MVP.md "Meta")
 	Catalog = "Event", -- S -> C, that player only, once on load before Meta: display catalogue
 	RollResult = "Event", -- S -> C, that player only, after a successful Roll: {Pool, Results = {{Id, Rarity, New}}, Pity}

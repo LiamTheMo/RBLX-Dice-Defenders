@@ -67,8 +67,7 @@ test("malformed argument matrix: BadArgs, never reaches the handler, seq not con
 		EquipDeck = {
 			P(),
 			P(1),
-			P(1, {}),
-			P(1, { "C01", "C02", "C03", "C04" }),
+			P(1, { [2] = "C01" }),
 			P(1, { "C01", "C02", "C03", "C04", "C05", "C06" }),
 			P(1, { "C01", "C01", "C02", "C03", "C04" }),
 			P(1, { "C01", "C02", "C03", "C04", 5 }),
@@ -82,6 +81,19 @@ test("malformed argument matrix: BadArgs, never reaches the handler, seq not con
 			P(1, true),
 			P(1, nil),
 			P(1, { "C01", "C02", "C03", "C04", "C05" }, 1),
+		},
+		TeamAction = {
+			P(),
+			P(1),
+			P(1, "Save"),
+			P(1, "Save", 0),
+			P(1, "Save", 6),
+			P(1, "Save", 1.5),
+			P(1, "Wipe", 1),
+			P(1, 5, 1),
+			P(1, "Load", "1"),
+			P(1, "Load", NAN),
+			P(1, "Load", 1, 1),
 		},
 		ClaimQuest = {
 			P(),
@@ -194,7 +206,7 @@ test("malformed argument matrix: BadArgs, never reaches the handler, seq not con
 			P(1, "", 1),
 			P(1, ("x"):rep(17), 1), -- 17-byte pool
 			P(1, "Standard", 0),
-			P(1, "Standard", 11),
+			P(1, "Standard", 51),
 			P(1, "Standard", -1),
 			P(1, "Standard", 1.5),
 			P(1, "Standard", NAN),
@@ -244,6 +256,21 @@ test("malformed argument matrix: BadArgs, never reaches the handler, seq not con
 			P(1, NAN),
 			P(1, INF),
 		},
+		AdminAction = {
+			P(1, "Give", 123, "Gold", ""),
+			P(1, "Give", {}, "Gold", "", 1),
+			P(1, "Give", 123, "Gold", "Gold", 1),
+			P(1, "Give", 123, "Cosmetics", "Trail", 2),
+			P(1, "Take", 123, "Dice", "C01", 0),
+			P(1, "Revoke", 123, "Items", "XpTome", 1),
+			P(1, "Revoke", 123, "Dice", "C01", 2),
+			P(1, "Reset", 123, "", "", 0),
+		},
+		CoopReady = { P(1), P(1, "true"), P(1, true, 2) },
+		QueueDuel = { P(1), P(1, "true"), P(1, true, 2), P(1, 1), P(1, nil), P(1, {}) },
+		Surrender = { P(), P(1, true), P(1, 1) },
+		LeaveDuel = { P(), P(1, true), P(1, 1) },
+		TutorialAction = { P(1, "Claim"), P(1, "Other", ""), P(1, "Convert", ""), P(1, "End", "R01") },
 		Merge = {
 			P(),
 			P(1),
@@ -273,6 +300,7 @@ test("malformed argument matrix: BadArgs, never reaches the handler, seq not con
 		Summon = P(1),
 		Merge = P(1, 1, 2),
 		EquipDeck = P(1, { "C01", "C02", "C03", "C04", "C05" }),
+		TeamAction = P(1, "Save", 1),
 		ClaimQuest = P(1, "S1"),
 		RedeemCode = P(1, "WELCOME"),
 		SaveSettings = P(1, { shadows = false }),
@@ -281,6 +309,12 @@ test("malformed argument matrix: BadArgs, never reaches the handler, seq not con
 		Buy = P(1, "Frag20"),
 		UpgradeDie = P(1, "C01"),
 		PowerUp = P(1, "C01"),
+		AdminAction = P(1, "Give", 123, "Gold", "", 1),
+		CoopReady = P(1, true),
+		QueueDuel = P(1, true),
+		Surrender = P(1),
+		LeaveDuel = P(1),
+		TutorialAction = P(1, "Roll", ""),
 	}
 	for name in RemoteGuard.Specs do
 		expect(matrix[name] ~= nil and valid[name] ~= nil, name .. " is covered by the matrix")
@@ -298,6 +332,18 @@ test("malformed argument matrix: BadArgs, never reaches the handler, seq not con
 			)
 		end
 	end
+end)
+
+test("AdminAction authorizes the requester independently of the target user ID", function()
+	local Admin = require(Server.Rules.Admin)
+	local env = make(function(player, remote)
+		return remote == "AdminAction" and Admin.IsAllowed(player.UserId), "Forbidden"
+	end)
+	local ok, code = env.call({ UserId = 123 }, "AdminAction", 1, "Reset", 855002824, "", "RESET", 0)
+	expect(not ok and code == "Forbidden", "an allowlisted target grants no permission to the requester")
+	expectEq(env.calls, 0, "rejected before the handler")
+	expect(env.call({ UserId = 855002824 }, "AdminAction", 1, "Revoke", 123, "Dice", "R01", 1), "allowlisted requester")
+	expectEq(env.calls, 1, "authorized action reaches the handler")
 end)
 
 test("exact arg count: extra and missing args fail, nil seq is BadSeq", function()
@@ -515,6 +561,8 @@ test("EquipDeck and ClaimQuest pass their arguments through; ids of 1 and 16 byt
 	expect(got.n == 1 and got[1] == "S1", "id passed")
 	expect(env.call(owner, "ClaimQuest", 3, "x"), "1 byte")
 	expect(env.call(owner, "ClaimQuest", 4, ("x"):rep(16)), "16 bytes")
+	expect(env.call(owner, "EquipDeck", 5, { "C01" }), "partial deck reaches the handler")
+	expect(env.call(owner, "EquipDeck", 6, {}), "clearing the deck reaches the handler")
 end)
 
 test("EquipDeck and ClaimQuest buckets match Balance (burst 3 and 4), per remote", function()
@@ -745,15 +793,15 @@ test("BagAction bucket is burst 6 at 3/s; soft codes are not counted; NetClient'
 	expectEq(honest.guard:Violations(sent), 0, "honest client never limited")
 end)
 
-test("Roll passes pool and count through; 1/16-byte pools and counts 1..10 are well formed", function()
+test("Roll passes pool and count through; 1/16-byte pools and counts 1..50 are well formed", function()
 	local env, owner = make(), {}
 	local got
 	env.handler = function(_, ...)
 		got = table.pack(...)
 		return true
 	end
-	expect(env.call(owner, "Roll", 1, "Standard", 10), "ok")
-	expect(got.n == 2 and got[1] == "Standard" and got[2] == 10, "args passed")
+	expect(env.call(owner, "Roll", 1, "Standard", 50), "ok")
+	expect(got.n == 2 and got[1] == "Standard" and got[2] == 50, "args passed")
 	expect(env.call(owner, "Roll", 2, "x", 1), "1-byte pool")
 	expect(
 		env.call(owner, "Roll", 3, ("x"):rep(16), 5),
