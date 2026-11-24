@@ -8,6 +8,7 @@ local SoundService = game:GetService("SoundService")
 
 local Display = require(ReplicatedStorage.Shared.Display)
 local Layout = require(ReplicatedStorage.Shared.Layout)
+local EnemyRig = require(script.Parent.EnemyRig)
 local NetClient = require(script.Parent.NetClient)
 local CommonProjectiles = require(script.Parent.Effects.CommonProjectiles)
 local RarityEffects = require(script.Parent.Effects.RarityEffects)
@@ -56,6 +57,10 @@ local function spawn(record)
 	end
 	local size = SIZES[record.Kind] or 2.4
 	local style = Display.Enemies[record.Kind]
+	local height = EnemyRig.Height(record.Kind) -- nil: no rigged model, keep the cube
+	if height then
+		size = height
+	end
 	local p = Instance.new("Part")
 	p.Name = "Enemy" .. record.Id
 	p.Anchored = true
@@ -70,10 +75,14 @@ local function spawn(record)
 		record.Seat,
 		record.Arena or record.PlayerCount
 	) + Vector3.yAxis * (size / 2)
+	local rig = if height then EnemyRig.New(record.Kind, p) else nil
+	if rig then
+		p.Transparency = 1 -- the invisible box only carries the health bar and the hit position
+	end
 
 	local gui = Instance.new("BillboardGui")
 	gui.Size = UDim2.fromOffset(if record.Kind == "Boss" then 120 else 64, 22)
-	gui.StudsOffset = Vector3.new(0, size / 2 + 1.5, 0)
+	gui.StudsOffset = Vector3.new(0, size / 2 + (if rig then 1.0 else 1.5), 0)
 	gui.AlwaysOnTop = true
 	gui.Parent = p
 	local back = Instance.new("Frame")
@@ -108,6 +117,7 @@ local function spawn(record)
 		maxHp = record.MaxHp,
 		hp = record.Hp,
 		lift = size / 2,
+		rig = rig,
 		seat = record.Seat,
 		playerCount = record.Arena or record.PlayerCount, -- the layout arena key
 	}
@@ -234,9 +244,15 @@ end
 
 local function onFrame(dt: number)
 	local now = workspace:GetServerTimeNow()
+	local still = SettingsLogic.get("reducedMotion")
 	for _, e in enemies do
-		local p = Layout.PositionAt(e.speed * (now - e.spawnAt), e.seat, e.playerCount)
+		local dist = e.speed * (now - e.spawnAt)
+		local p = Layout.PositionAt(dist, e.seat, e.playerCount)
 		e.part.Position = p + Vector3.new(0, e.lift, 0)
+		if e.rig then
+			local ahead = Layout.PositionAt(dist + 1, e.seat, e.playerCount)
+			EnemyRig.Step(e.rig, dist, p, ahead, still)
+		end
 	end
 	local clock = os.clock()
 	for _, t in tracers do

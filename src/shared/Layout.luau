@@ -102,12 +102,15 @@ Layout.CoopPathLength = VIRTUAL_LENGTH
 
 -- Duel: one U per seat (west side in, across the bottom next to the divider, up the east side), measured on the
 -- map's route strips. Seat 1 is north (z negative), seat 2 the mirror in z.
+-- Seat 2 walks west to east; seat 1's camera looks the other way, so its route runs east to west and both
+-- players see the spawn portal on the left and the exit on the right of their own lane.
 local function duelPath(sign: number)
+	local x = -18.65 * sign
 	return table.freeze({
-		DO + Vector3.new(-18.65, Y, 20.55 * sign),
-		DO + Vector3.new(-18.65, Y, 2.9 * sign),
-		DO + Vector3.new(18.65, Y, 2.9 * sign),
-		DO + Vector3.new(18.65, Y, 20.55 * sign),
+		DO + Vector3.new(x, Y, 20.55 * sign),
+		DO + Vector3.new(x, Y, 2.9 * sign),
+		DO + Vector3.new(-x, Y, 2.9 * sign),
+		DO + Vector3.new(-x, Y, 20.55 * sign),
 	})
 end
 local duel = { duelPath(-1), duelPath(1) }
@@ -154,35 +157,39 @@ end
 
 -- Fixed top-down-ish views framing each map's route and board (tuned for phones: 844x390 and 667x375).
 Layout.Camera = table.freeze({
-	Position = O + Vector3.new(1, 43, 8.3),
+	Position = O + Vector3.new(1, 44.9, 16.4), -- ~65 degrees down (was ~74), a little further back
 	LookAt = O + Vector3.new(1, 3.2, -3),
 	FieldOfView = 55,
 })
 
-local duelCameras = {
-	table.freeze({
-		Position = DO + Vector3.new(0, 68, -8),
-		LookAt = DO + Vector3.new(0, 3.2, 2),
-		FieldOfView = 60,
-	}),
-	table.freeze({
-		Position = DO + Vector3.new(0, 68, 8),
-		LookAt = DO + Vector3.new(0, 3.2, -2),
-		FieldOfView = 60,
-	}),
-}
-
 Layout.CoopCamera = table.freeze({
-	Position = CO + Vector3.new(-1, 68, 14),
-	LookAt = CO + Vector3.new(-1, 3.2, 0),
+	Position = CO + Vector3.new(-1, 67.5, 35), -- ~65 degrees down, like Solo; further back, aimed toward the player's side
+	LookAt = CO + Vector3.new(-1, 3.2, 5),
 	FieldOfView = 56,
 })
+
+-- Co-op: seat 2 uses CoopCamera (own board at the bottom); seat 1 gets the same view turned 180 degrees about the
+-- map's centre, so every player sees their own board near the bottom of the screen.
+local coopCamera1 = table.freeze({
+	Position = CO + Vector3.new(1, 67.5, -35),
+	LookAt = CO + Vector3.new(1, 3.2, -5),
+	FieldOfView = 56,
+})
+function Layout.CoopCameraFor(seat: number?)
+	return if seat == 1 then coopCamera1 else Layout.CoopCamera
+end
+
+-- Yaw (radians) to turn dice by so their faces read upright for a viewer on `seat`: the seat-1 camera in co-op
+-- and duel looks along +z, the opposite of the default view.
+function Layout.DiceYaw(arenaKey: (number | string)?, seat: number?): number
+	return if arenaOf(arenaKey) ~= "Solo" and seat == 1 then math.pi else 0
+end
 
 -- Duel cameras: a player's own board is at the bottom of the screen. Seat 2 sits on the +z side looking toward -z,
 -- seat 1 is the same view turned 180 degrees about the map's centre. Both boards, both routes and both portals stay
 -- inside the screen at 844x390 and 667x375 (checked with perspective projection, margins >= 0.15 of half-screen).
 function Layout.DuelCamera(seat: number?)
-	return if seat == 2 then duelCameras[2] else duelCameras[1]
+	return Layout.CoopCameraFor(if seat == 2 then 2 else 1) -- both 2-player modes share the co-op views
 end
 
 return table.freeze(Layout)

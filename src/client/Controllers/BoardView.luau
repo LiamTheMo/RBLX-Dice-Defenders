@@ -42,6 +42,7 @@ local animations = {} -- die -> current transition
 local board = {} -- latest Board from State
 local playing = false
 local selected: number? = nil
+local dragging: { from: number, input: InputObject }? = nil
 local boardKey = ""
 local diceFolder: Folder
 local root: Folder, arena: Folder
@@ -115,7 +116,7 @@ local function buildWorld()
 	portalsFolder.Parent = arena
 	local cameraPos = (if arenaKey == "Duel"
 		then Layout.DuelCamera(seat)
-		elseif arenaKey == "Coop" then Layout.CoopCamera
+		elseif arenaKey == "Coop" then Layout.CoopCameraFor(seat)
 		else Layout.Camera).Position
 	local function addPortal(point: Vector3, role)
 		table.insert(
@@ -244,7 +245,7 @@ local function makeDie(cell: number, side: number)
 	return {
 		model = model,
 		part = body,
-		pad = CFrame.new(c.X, Layout.PadTop, c.Z),
+		pad = CFrame.new(c.X, Layout.PadTop, c.Z) * CFrame.Angles(0, Layout.DiceYaw(arenaKey, seat), 0),
 		highlight = highlight,
 		lifted = false,
 		key = "",
@@ -288,7 +289,7 @@ local function render(snapshot)
 	local nextArena = Layout.ArenaOf(snapshot.Mode or snapshot.PlayerCount)
 	if playing and ((snapshot.Seat or 1) ~= seat or nextArena ~= arenaKey) then
 		seat, arenaKey = snapshot.Seat or 1, nextArena
-		previous, selected, boardKey = {}, nil, ""
+		previous, selected, boardKey, dragging = {}, nil, "", nil
 		buildWorld()
 	end
 	arena.Parent = if playing then root else nil
@@ -333,7 +334,7 @@ local function render(snapshot)
 	end
 	local key = table.concat(parts, ",")
 	if key ~= boardKey or not playing then
-		selected = nil -- never merge from a stale selection
+		selected, dragging = nil, nil -- never merge from a stale selection
 	end
 	boardKey = key
 	local ally = if playing then snapshot.PartnerBoard else nil
@@ -358,43 +359,91 @@ local function render(snapshot)
 	refreshPads()
 end
 
-local function onTap(cell: number)
-	if not playing then
+-- Drag a die onto a matching one to merge. The die follows the pointer; letting go anywhere else drops it back.
+
+local function groundPoint(position: Vector3): Vector3?
+	local camera = workspace.CurrentCamera
+	if camera == nil then
+		return nil
+	end
+	local inset = GuiService:GetGuiInset()
+	local ray = camera:ViewportPointToRay(position.X + inset.X, position.Y + inset.Y)
+	if ray.Direction.Y >= 0 then
+		return nil
+	end
+	return ray.Origin + ray.Direction * ((Layout.PadTop - ray.Origin.Y) / ray.Direction.Y)
+end
+
+local function cellAt(point: Vector3): number?
+	local half = Layout.CELL_SIZE / 2
+	for i = 1, CELLS do
+		local c = Layout.CellPosition(i, seat, arenaKey)
+		if math.abs(point.X - c.X) <= half and math.abs(point.Z - c.Z) <= half then
+			return i
+		end
+	end
+	return nil
+end
+
+local function endDrag(position: Vector3?)
+	local drag = dragging
+	if drag == nil then
 		return
 	end
-	if selected == nil then
-		if board[cell] then
-			selected = cell
-		end
-	elseif canMerge(selected, cell) then
-		task.spawn(NetClient.Request, "Merge", selected, cell)
-		selected = nil
-	elseif cell ~= selected and board[cell] then
-		selected = cell
-	else
-		selected = nil -- tap A again, or empty: clear
+	dragging = nil
+	local point = position and groundPoint(position)
+	local to = point and cellAt(point)
+	if to and canMerge(drag.from, to) then
+		task.spawn(NetClient.Request, "Merge", drag.from, to)
 	end
+	selected = nil -- refreshPads drops the die back on its pad
 	refreshPads()
 end
 
 local function onInput(input: InputObject, processed: boolean)
-	if processed then
+	if processed or not playing then
 		return
 	end
 	local kind = input.UserInputType
 	if kind ~= Enum.UserInputType.MouseButton1 and kind ~= Enum.UserInputType.Touch then
 		return
 	end
-	local camera = workspace.CurrentCamera
-	if camera == nil then
+	local point = groundPoint(input.Position)
+	local cell = point and cellAt(point)
+	if cell and board[cell] then
+		dragging = { from = cell, input = input }
+		selected = cell -- lifts the die and lights up the dice it can merge with
+		refreshPads()
+	end
+end
+
+local function onInputChanged(input: InputObject)
+	local drag = dragging
+	if drag == nil then
 		return
 	end
-	local inset = GuiService:GetGuiInset()
-	local ray = camera:ViewportPointToRay(input.Position.X + inset.X, input.Position.Y + inset.Y)
-	local hit = workspace:Raycast(ray.Origin, ray.Direction * 500, rayParams)
-	local cell = hit and hit.Instance:GetAttribute("Cell")
-	if type(cell) == "number" then
-		onTap(cell)
+	if input ~= drag.input and input.UserInputType ~= Enum.UserInputType.MouseMovement then
+		return
+	end
+	local die = dice[drag.from]
+	local point = groundPoint(
+		if input == drag.input then input.Position else UserInputService:GetMouseLocation() - GuiService:GetGuiInset()
+	)
+	if die and point then
+		local lift = die.part.Size.Y / 2 + LIFT
+		die.model:PivotTo(CFrame.new(point.X, Layout.PadTop + lift, point.Z) * (die.pad - die.pad.Position))
+	end
+end
+
+local function onInputEnded(input: InputObject)
+	local drag = dragging
+	if drag and (input == drag.input or input.UserInputType == Enum.UserInputType.MouseButton1) then
+		endDrag(
+			if input.UserInputType == Enum.UserInputType.MouseButton1
+					or input.UserInputType == Enum.UserInputType.Touch
+				then input.Position
+				else nil
+		)
 	end
 end
 
@@ -402,6 +451,8 @@ function BoardView.Start()
 	buildWorld()
 	RunService.RenderStepped:Connect(stepAnimations)
 	UserInputService.InputBegan:Connect(onInput)
+	UserInputService.InputChanged:Connect(onInputChanged)
+	UserInputService.InputEnded:Connect(onInputEnded)
 	NetClient.State:Connect(render)
 	if NetClient.Last then
 		render(NetClient.Last)

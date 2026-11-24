@@ -8,6 +8,7 @@ local Epic = require(script.Parent.EpicModelData)
 local Visuals = {}
 
 local AUTHORED_SIZE = 2.5
+local DICE_SIZE = 4 -- every die, studs per side on the board
 local PIP = Color3.fromHex("#0E0E0E")
 local WHITE = Color3.new(1, 1, 1)
 local BLACK = Color3.new()
@@ -23,8 +24,8 @@ local iceChips
 local ready = Instance.new("BindableEvent")
 local loading = true
 
-function Visuals.Size(typeId: string): number
-	return if Data.Styles[typeId] or Rare.Styles[typeId] or Epic.Styles[typeId] then AUTHORED_SIZE * 2 else 4.4
+function Visuals.Size(_typeId: string): number
+	return DICE_SIZE
 end
 
 local function meshTemplate(

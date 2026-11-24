@@ -93,7 +93,7 @@ local function onState(snapshot)
 	end
 	local nextView = if snapshot.Mode == "Duel"
 		then Layout.DuelCamera(snapshot.Seat)
-		elseif snapshot.PlayerCount == 2 then Layout.CoopCamera
+		elseif snapshot.PlayerCount == 2 then Layout.CoopCameraFor(snapshot.Seat)
 		else Layout.Camera
 	if board ~= onBoard or (board and nextView ~= view) then
 		onBoard, view = board, nextView
