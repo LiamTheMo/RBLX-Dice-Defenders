@@ -1,15 +1,16 @@
 --!strict
 -- 3D route portals (rulings R9, Assets/Models/Dice/_vfx/portal): pooled MeshParts driven by one Fx.Run loop per
 -- portal. Rim static, three vortex layers spin, Core scale pulse, Glow pulse (the only fading part). Neon only
--- on Core and Glow. Palette is keyed by ROLE ("spawn" = route start, "exit" = route end).
+-- on Core and Glow. Palette is keyed by ROLE ("spawn" = route start, "exit" = route end, "summon" = the Goblin King
+-- portal: same structure in deep blue-gray, grown in and out by setScale).
 -- Mesh parts load asynchronously (Fx.Warm), so missing layers are borrowed lazily from the update loop.
 
 local Fx = require(script.Parent.FxLib)
 
 local PortalFx = {}
 
-export type Role = "spawn" | "exit"
-export type Portal = { destroy: () -> () }
+export type Role = "spawn" | "exit" | "summon"
+export type Portal = { destroy: () -> (), setScale: (scale: number) -> () }
 
 type Layer = {
 	mesh: string,
@@ -17,7 +18,7 @@ type Layer = {
 	size: Vector3?, -- overrides the mesh's native size (flattened backing disc)
 	spin: number, -- deg/s, 0 = static
 	neon: boolean,
-	colors: { spawn: Color3, exit: Color3 },
+	colors: { spawn: Color3, exit: Color3, summon: Color3 },
 }
 
 local function hex(s: string): Color3
@@ -30,35 +31,35 @@ local LAYERS: { Layer } = {
 		offset = 0,
 		spin = 0,
 		neon = false,
-		colors = { spawn = hex("#4a4256"), exit = hex("#4a2a2e") },
+		colors = { spawn = hex("#4a4256"), exit = hex("#4a2a2e"), summon = hex("#3d4a5c") },
 	},
 	{
 		mesh = "Portal_VortexOuter",
 		offset = 0,
 		spin = 40,
 		neon = false,
-		colors = { spawn = hex("#3a3048"), exit = hex("#3a1e24") },
+		colors = { spawn = hex("#3a3048"), exit = hex("#3a1e24"), summon = hex("#2c3544") },
 	},
 	{
 		mesh = "Portal_VortexMid",
 		offset = 0.06,
 		spin = 70,
 		neon = false,
-		colors = { spawn = hex("#6a5a82"), exit = hex("#7a2f3a") },
+		colors = { spawn = hex("#6a5a82"), exit = hex("#7a2f3a"), summon = hex("#4f5f76") },
 	},
 	{
 		mesh = "Portal_VortexInner",
 		offset = 0.12,
 		spin = 110,
 		neon = false,
-		colors = { spawn = hex("#8a74ac"), exit = hex("#a04050") },
+		colors = { spawn = hex("#8a74ac"), exit = hex("#a04050"), summon = hex("#6b7f99") },
 	},
 	{
 		mesh = "Portal_Core",
 		offset = 0.17,
 		spin = 0,
 		neon = true,
-		colors = { spawn = hex("#b9a2e8"), exit = hex("#d9606e") },
+		colors = { spawn = hex("#b9a2e8"), exit = hex("#d9606e"), summon = hex("#a9bdd6") },
 	},
 	{
 		-- Dark opaque backing so the ground never shows through the vortex blade gaps (flattened Fx_Orb, ~2.95 studs).
@@ -67,14 +68,14 @@ local LAYERS: { Layer } = {
 		size = Vector3.new(2.95, 2.95, 0.05),
 		spin = 0,
 		neon = false,
-		colors = { spawn = hex("#241d30"), exit = hex("#241216") },
+		colors = { spawn = hex("#241d30"), exit = hex("#241216"), summon = hex("#1c2330") },
 	},
 	{
 		mesh = "Portal_Glow",
 		offset = 0,
 		spin = 0,
 		neon = true,
-		colors = { spawn = hex("#7a62b0"), exit = hex("#b0404e") },
+		colors = { spawn = hex("#7a62b0"), exit = hex("#b0404e"), summon = hex("#6b7f99") },
 	},
 }
 local CORE = 5
@@ -82,11 +83,11 @@ local BACKING = 6
 local GLOW = 7
 local LEAN = math.rad(65) -- elevation of the face normal above the horizon (disc plane 25 deg from horizontal)
 
-local PERIOD = { spawn = 1.6, exit = 2.2 }
+local PERIOD = { spawn = 1.6, exit = 2.2, summon = 1.6 }
 -- Spin sign -1 about Z yields counter-clockwise seen from the front for the spawn portal. layers.json says +1 is
 -- CCW, but the Luau CFrame.Angles convention differs; do not "fix" this.
-local SPIN_SIGN = { spawn = -1, exit = 1 }
-local CORE_SCALE = { spawn = 1, exit = 1.2 } -- exit core is 0.6 vs 0.5 studs
+local SPIN_SIGN = { spawn = -1, exit = 1, summon = -1 }
+local CORE_SCALE = { spawn = 1, exit = 1.2, summon = 1 } -- exit core is 0.6 vs 0.5 studs
 local REDUCED_CORE_PERIOD = 3
 
 -- position: portal centre; cameraPos: the board camera. The face looks toward the camera but is leaned back to a
@@ -102,6 +103,7 @@ function PortalFx.Spawn(
 	local missing = #LAYERS
 	local startClock = os.clock()
 	local done = false
+	local grow = 1 -- overall scale (the summon portal opens and closes with it)
 	local handle: Fx.Handle? = nil
 	local toCam = cameraPos - position
 	local flat = Vector3.new(toCam.X, 0, toCam.Z)
@@ -117,7 +119,7 @@ function PortalFx.Spawn(
 		local layer = LAYERS[index]
 		local cf = base * CFrame.new(0, 0, -layer.offset) * CFrame.Angles(0, 0, spinRad * SPIN_SIGN[role])
 		part.CFrame = cf
-		part.Size = (layer.size or Fx.Meshes[layer.mesh].Size) * scale
+		part.Size = (layer.size or Fx.Meshes[layer.mesh].Size) * scale * grow
 		if transparency then
 			part.Transparency = transparency
 		end
@@ -159,7 +161,7 @@ function PortalFx.Spawn(
 			place(GLOW, 0, 1.025, 0.62)
 		else
 			local u = (t / period) % 1
-			if role == "spawn" then
+			if role ~= "exit" then
 				local e = 1 - (1 - u) * (1 - u)
 				place(GLOW, 0, 0.95 + 0.15 * e, 0.5 + 0.25 * u)
 			else
@@ -194,6 +196,12 @@ function PortalFx.Spawn(
 	-- Fx.Run returns nil at the global cap: the portal stays as a static prop.
 
 	return {
+		setScale = function(scale: number)
+			grow = scale
+			if not done then
+				frame(os.clock() - startClock, reducedMotion())
+			end
+		end,
 		destroy = function()
 			if handle then
 				handle.cancel() -- runs release()

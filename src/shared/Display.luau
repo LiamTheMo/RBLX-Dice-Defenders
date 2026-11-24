@@ -1,5 +1,7 @@
 -- Names and colours the client draws with. Keyed by the same ids the server sends.
 
+local Bosses = require(script.Parent.Bosses)
+
 local Display = {}
 
 Display.Dice = table.freeze({
@@ -31,7 +33,10 @@ Display.Enemies = table.freeze({
 	Grunt = table.freeze({ Name = "Grunt", Color = Color3.fromHex("#F5F5F5") }),
 	Runner = table.freeze({ Name = "Runner", Color = Color3.fromHex("#00E5FF") }),
 	Brute = table.freeze({ Name = "Brute", Color = Color3.fromHex("#3949AB") }),
-	Boss = table.freeze({ Name = "Thorn Warden", Color = Color3.fromHex("#101010") }),
+	Boss = table.freeze({ Name = "Thorn Warden", Color = Color3.fromHex("#101010") }), -- generic fallback
+	GoblinKing = table.freeze({ Name = Bosses.Info.GoblinKing.Name, Color = Bosses.Info.GoblinKing.Color }),
+	CursedKing = table.freeze({ Name = Bosses.Info.CursedKing.Name, Color = Bosses.Info.CursedKing.Color }),
+	CourtJester = table.freeze({ Name = Bosses.Info.CourtJester.Name, Color = Bosses.Info.CourtJester.Color }),
 })
 
 -- Pip count shown on a die; pip 7 is the star tier.

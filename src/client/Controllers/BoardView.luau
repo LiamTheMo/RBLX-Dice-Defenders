@@ -13,6 +13,7 @@ local NetClient = require(script.Parent.NetClient)
 local DiceVisuals = require(script.Parent.Dice.Visuals)
 local SettingsLogic = require(script.Parent.Settings.SettingsLogic)
 local PortalFx = require(script.Parent.Effects.PortalFx)
+local LockFx = require(script.Parent.Effects.LockFx)
 
 local BoardView = {}
 
@@ -87,6 +88,7 @@ local function buildWorld()
 			portal.destroy() -- return pooled meshes before the arena (and their parent) is destroyed
 		end
 		table.clear(portals)
+		LockFx.Clear()
 		arena:Destroy()
 	end
 	root = world()
@@ -254,7 +256,7 @@ end
 
 local function canMerge(a: number, b: number): boolean
 	local x, y = board[a], board[b]
-	return a ~= b and x and y and x.T == y.T and x.P == y.P and x.P <= 6 or false
+	return a ~= b and x and y and x.T == y.T and x.P == y.P and x.P <= 6 and not x.L and not y.L or false
 end
 
 local function refreshPads()
@@ -356,6 +358,19 @@ local function render(snapshot)
 			die.model.Parent = nil
 		end
 	end
+	local mine, theirs = {}, {}
+	if playing then
+		for i = 1, CELLS do
+			mine[i] = if board[i] and board[i].L then true else nil
+			theirs[i] = if ally and ally[i] and ally[i].L then true else nil
+		end
+	end
+	LockFx.Sync("own", mine, function(cell)
+		return Layout.CellPosition(cell, seat, arenaKey)
+	end)
+	LockFx.Sync("ally", theirs, function(cell)
+		return Layout.CellPosition(cell, 3 - seat, arenaKey)
+	end)
 	refreshPads()
 end
 
@@ -410,7 +425,7 @@ local function onInput(input: InputObject, processed: boolean)
 	end
 	local point = groundPoint(input.Position)
 	local cell = point and cellAt(point)
-	if cell and board[cell] then
+	if cell and board[cell] and not board[cell].L then -- a die locked by a boss cannot be dragged
 		dragging = { from = cell, input = input }
 		selected = cell -- lifts the die and lights up the dice it can merge with
 		refreshPads()

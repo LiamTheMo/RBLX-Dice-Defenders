@@ -78,7 +78,7 @@ local function boardView(seat)
 	local view = {}
 	for i = 1, Balance.BoardCells do
 		local die = seat.board[i]
-		view[i] = if die then { T = die.type, P = die.pip } else false
+		view[i] = if die then { T = die.type, P = die.pip, L = if die.lockedBy then true else nil } else false
 	end
 	return view
 end
@@ -159,6 +159,8 @@ local function snapshot(player: Player)
 		then match.nextWaveAt
 		else nil
 	out.BossAt = match.bossAt
+	out.BossVariant = match.nextBossVariant -- the boss that comes next, fixed until it spawns
+	out.BossWave = Match.NextBossWave(match)
 	out.Result = match.result
 	local reward = rewards[player]
 	out.RewardGold, out.RewardXp, out.RewardGems =
@@ -288,7 +290,7 @@ local function flush(intent: boolean?)
 		return
 	end
 	local batch, dirty = Match.TakeOut(match)
-	if #batch.S > 0 or #batch.H > 0 or #batch.R > 0 or #batch.F > 0 then
+	if #batch.S > 0 or #batch.H > 0 or #batch.R > 0 or #batch.F > 0 or #batch.A > 0 then
 		for _, player in participants do
 			Net.Fire("Enemies", player, batch)
 		end

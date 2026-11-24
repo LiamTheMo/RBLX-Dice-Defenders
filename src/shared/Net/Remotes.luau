@@ -27,7 +27,7 @@ Remotes.Kinds = table.freeze({
 	LeaveDuel = "Function", -- (seq): leave a Duel server back to the public lobby; codes NotInDuel, WrongPhase, Unavailable
 	TutorialAction = "Function", -- (seq, action, dieId)
 	State = "Event", -- S -> C snapshot
-	Enemies = "Event", -- S -> C, match participants: {S, H, R, F}
+	Enemies = "Event", -- S -> C, match participants: {S, H, R, F, A}
 	Meta = "Event", -- S -> C, that player only: lobby payload (docs/MVP.md "Meta")
 	Catalog = "Event", -- S -> C, that player only, once on load before Meta: display catalogue
 	RollResult = "Event", -- S -> C, that player only, after a successful Roll: {Pool, Results = {{Id, Rarity, New}}, Pity}

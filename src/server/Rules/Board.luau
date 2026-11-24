@@ -64,13 +64,22 @@ function Board.Summon(board: { any }, cell: any, typeId: any, id: number): (bool
 end
 
 -- Code IllegalMerge for anything outside: both cells occupied, from ~= to, same
--- type, same pip, pip <= 6.
+-- type, same pip, pip <= 6, neither die locked by a boss.
 function Board.CheckMerge(board: { any }, from: any, to: any): (boolean, string?)
 	if not (Validate.IsInt(from, 1, Balance.BoardCells) and Validate.IsInt(to, 1, Balance.BoardCells)) then
 		return false, "IllegalMerge"
 	end
 	local a, b = board[from], board[to]
-	if from == to or not a or not b or a.type ~= b.type or a.pip ~= b.pip or a.pip >= Board.MAX_PIP then
+	if
+		from == to
+		or not a
+		or not b
+		or a.type ~= b.type
+		or a.pip ~= b.pip
+		or a.pip >= Board.MAX_PIP
+		or a.lockedBy
+		or b.lockedBy
+	then
 		return false, "IllegalMerge"
 	end
 	return true, nil

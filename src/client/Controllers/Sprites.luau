@@ -41,6 +41,12 @@ return {
 		Astral = "rbxthumb://type=Asset&id=100392198939888&w=420&h=420",
 		Dragon = "rbxthumb://type=Asset&id=140058325428836&w=420&h=420",
 	},
+	-- Boss portraits by variant (HUD "approaches" strip), group-owned Image assets uploaded 2026-11-24.
+	Boss = {
+		GoblinKing = "rbxthumb://type=Asset&id=96056308738131&w=256&h=256",
+		CursedKing = "rbxthumb://type=Asset&id=135490538869758&w=256&h=256",
+		CourtJester = "rbxthumb://type=Asset&id=140208999198089&w=256&h=256",
+	},
 	DieArt = {
 		M01 = "Astral",
 		S01 = "Dragon",

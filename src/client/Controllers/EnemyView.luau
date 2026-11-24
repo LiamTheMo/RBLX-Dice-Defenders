@@ -9,6 +9,7 @@ local SoundService = game:GetService("SoundService")
 local Display = require(ReplicatedStorage.Shared.Display)
 local Layout = require(ReplicatedStorage.Shared.Layout)
 local EnemyRig = require(script.Parent.EnemyRig)
+local BossAbilityPlayer = require(script.Parent.BossAbilityPlayer)
 local NetClient = require(script.Parent.NetClient)
 local CommonProjectiles = require(script.Parent.Effects.CommonProjectiles)
 local RarityEffects = require(script.Parent.Effects.RarityEffects)
@@ -56,8 +57,8 @@ local function spawn(record)
 		return
 	end
 	local size = SIZES[record.Kind] or 2.4
-	local style = Display.Enemies[record.Kind]
-	local height = EnemyRig.Height(record.Kind) -- nil: no rigged model, keep the cube
+	local style = Display.Enemies[record.Variant or record.Kind] or Display.Enemies[record.Kind]
+	local height = EnemyRig.Height(record.Kind, record.Variant) -- nil: no rigged model, keep the cube
 	if height then
 		size = height
 	end
@@ -75,7 +76,7 @@ local function spawn(record)
 		record.Seat,
 		record.Arena or record.PlayerCount
 	) + Vector3.yAxis * (size / 2)
-	local rig = if height then EnemyRig.New(record.Kind, p) else nil
+	local rig = if height then EnemyRig.New(record.Kind, p, record.Variant, record.Arena or record.PlayerCount) else nil
 	if rig then
 		p.Transparency = 1 -- the invisible box only carries the health bar and the hit position
 	end
@@ -118,6 +119,7 @@ local function spawn(record)
 		hp = record.Hp,
 		lift = size / 2,
 		rig = rig,
+		variant = record.Variant,
 		seat = record.Seat,
 		playerCount = record.Arena or record.PlayerCount, -- the layout arena key
 	}
@@ -237,6 +239,12 @@ local function onBatch(batch)
 	for _, record in batch.F or {} do
 		fire(record)
 	end
+	for _, record in batch.A or {} do
+		local e = enemies[record.Id]
+		if e then
+			BossAbilityPlayer.On(e, record)
+		end
+	end
 	for _, record in batch.R or {} do
 		remove(record.Id)
 	end
@@ -251,7 +259,9 @@ local function onFrame(dt: number)
 		e.part.Position = p + Vector3.new(0, e.lift, 0)
 		if e.rig then
 			local ahead = Layout.PositionAt(dist + 1, e.seat, e.playerCount)
-			EnemyRig.Step(e.rig, dist, p, ahead, still)
+			-- a running boss ability clip overrides the walk pose (the server holds the boss still meanwhile)
+			local override = if e.ability and not still then BossAbilityPlayer.Pose(e, now) else nil
+			EnemyRig.Step(e.rig, dist, p, ahead, still, override)
 		end
 	end
 	local clock = os.clock()

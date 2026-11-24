@@ -2,7 +2,7 @@
 -- the clock (`now`) and a Random. Intents (TrySummon/TryMerge) validate fully before
 -- mutating. All MP changes go through Economy.
 --
--- Outbox: state.out = { S, H, R, F, dirty }. Match.TakeOut drains it for the
+-- Outbox: state.out = { S, H, R, F, A, dirty }. Match.TakeOut drains it for the
 -- Enemies push; `dirty` flags that the State snapshot changed.
 --
 -- Power Up: state.tiers[typeId] = 1..Balance.PowerUp.Max for each type of the deck; it lives only in the match.
@@ -17,6 +17,8 @@ local Board = require(script.Parent.Board)
 local Economy = require(script.Parent.Economy)
 local Formulas = require(script.Parent.Formulas)
 local Layout = require(game:GetService("ReplicatedStorage").Shared.Layout)
+local Bosses = require(game:GetService("ReplicatedStorage").Shared.Bosses)
+local BossAbilities = require(script.Parent.BossAbilities)
 
 local Match = {}
 
@@ -36,7 +38,7 @@ local FEATURED_VFX = {
 }
 
 local function newOut()
-	return { S = {}, H = {}, R = {}, F = {}, Hidx = {}, dirty = false }
+	return { S = {}, H = {}, R = {}, F = {}, A = {}, Hidx = {}, dirty = false }
 end
 
 local function tiersFor(deck: { string })
@@ -85,12 +87,15 @@ function Match.New(
 		waveState = "Prep",
 		nextWaveAt = now + Balance.FirstWaveDelay,
 		bossAt = nil,
+		bossCount = 0, -- bosses spawned so far
+		nextBossVariant = Bosses.Roll(runId, 1, nil), -- the upcoming boss, fixed until it spawns (shown in advance)
 		queue = {},
 		carriedHp = CoopWaves.InitialHp,
 		hpStep = 0,
 		qi = 1,
 		nextSpawnAt = 0,
 		enemies = {},
+		pending = {}, -- Goblin King portal spawns not yet due: { at, dist, kind, seat }
 		nextEnemyId = 1,
 		lastNow = now,
 		rewardGranted = false,
@@ -160,7 +165,7 @@ end
 
 function Match.TakeOut(state)
 	local out = state.out
-	local batch = { S = out.S, H = out.H, R = out.R, F = out.F }
+	local batch = { S = out.S, H = out.H, R = out.R, F = out.F, A = out.A }
 	local dirty = out.dirty
 	state.out = newOut()
 	return batch, dirty
@@ -322,6 +327,34 @@ local function startWave(state)
 	state.out.dirty = true
 end
 
+-- Takes the upcoming boss variant for a spawn and rolls the next one (never the same twice in a row).
+local function takeBossVariant(state): string
+	local variant = state.nextBossVariant
+	state.bossCount += 1
+	state.nextBossVariant = Bosses.Roll(state.runId, state.bossCount + 1, variant)
+	return variant
+end
+
+-- Wave number of the boss still to come (nil when none is near): this wave while its boss has not spawned, else a later one.
+function Match.NextBossWave(state): number?
+	local start = state.wave + 1
+	if state.waveState == "Active" then
+		local spawned = if state.mode == "Duel" then state.bossSpawned else state.qi > #state.queue
+		if not spawned then
+			start = state.wave
+		end
+	end
+	if state.mode == "Duel" then
+		return start
+	end
+	for wave = start, start + 40 do
+		if CoopWaves.IsBoss(wave) then
+			return wave
+		end
+	end
+	return nil
+end
+
 -- Seconds a Duel wave lasts before its boss: 90, 80, 70, 60, 60 ...
 function Match.RoundTime(wave: number): number
 	local cfg = Balance.Duel
@@ -352,6 +385,7 @@ local function spawnDuelBosses(state, now: number)
 		end
 	end
 	state.enemies = keep
+	local variant = takeBossVariant(state) -- both lanes face the same boss
 	for index = 1, 2 do
 		local hp = math.max(1, math.floor(cfg.BossPerRound * state.wave + cfg.AbsorbShare * absorbed[index] + 0.5))
 		local enemy = {
@@ -363,12 +397,14 @@ local function spawnDuelBosses(state, now: number)
 			spawnAt = now,
 			dist = 0,
 			seat = index,
+			ability = BossAbilities.New(variant, now),
 		}
 		state.nextEnemyId += 1
 		table.insert(state.enemies, enemy)
 		table.insert(state.out.S, {
 			Id = enemy.id,
 			Kind = "Boss",
+			Variant = variant,
 			SpawnAt = now,
 			Speed = enemy.speed,
 			MaxHp = hp,
@@ -394,6 +430,7 @@ local function spawn(state, now: number)
 			return
 		end
 		local entry = state.queue[state.qi]
+		local variant = if entry.kind == "Boss" then takeBossVariant(state) else nil
 		for index = 1, state.playerCount do
 			local enemy = {
 				id = state.nextEnemyId,
@@ -406,12 +443,14 @@ local function spawn(state, now: number)
 				spawnAt = state.nextSpawnAt,
 				dist = 0,
 				seat = index,
+				ability = if variant then BossAbilities.New(variant, state.nextSpawnAt) else nil,
 			}
 			state.nextEnemyId += 1
 			table.insert(state.enemies, enemy)
 			table.insert(state.out.S, {
 				Id = enemy.id,
 				Kind = enemy.kind,
+				Variant = variant,
 				SpawnAt = enemy.spawnAt,
 				Speed = enemy.speed,
 				MaxHp = enemy.maxHp,
@@ -444,10 +483,235 @@ local function damage(state, enemy, amount: number)
 end
 
 local function setSpeed(state, enemy, speed, now)
+	now = math.max(now, enemy.speedAt or now) -- changes of one enemy within a step never run backwards in time
+	enemy.speedAt = now
 	enemy.dist = math.max(0, enemy.speed * (now - enemy.spawnAt))
 	enemy.speed = speed
 	enemy.spawnAt = now - enemy.dist / speed
 	updateEnemy(state, enemy)
+end
+
+-- Speed of a held boss: ~0 (the client reproduces dist = speed x (now - spawnAt), so a true 0 would lose the position).
+local HOLD_SPEED = 1e-4
+
+-- One speed from every modifier: base x slow, or HOLD_SPEED while a boss ability keeps it still.
+-- baseSpeed exists only while a modifier is active, so a hand-set enemy.speed is never shadowed.
+local function refreshSpeed(state, enemy, now: number)
+	if enemy.slowMul or enemy.held then
+		local base = enemy.baseSpeed or enemy.speed
+		enemy.baseSpeed = base
+		setSpeed(state, enemy, if enemy.held then HOLD_SPEED else base * (enemy.slowMul or 1), now)
+	else
+		setSpeed(state, enemy, enemy.baseSpeed or enemy.speed, now)
+		enemy.baseSpeed = nil
+	end
+end
+
+local function pathLengthOf(state): number
+	return if state.playerCount == 2 then Layout.CoopPathLength else Layout.PathLength
+end
+
+local function distAt(enemy, t: number): number
+	return math.max(0, enemy.speed * (t - enemy.spawnAt))
+end
+
+-- Own random stream of one cast (never the gameplay rng): a pure function of the run, the boss and the cast number.
+local function castRng(state, boss)
+	return Random.new(state.runId * 131071 + boss.id * 8191 + boss.ability.casts)
+end
+
+-- Up to `n` distinct entries of `list`, in the stream's order (partial Fisher-Yates on a copy).
+local function pickDistinct(rng, list: { number }, n: number): { number }
+	local pool, picked = table.clone(list), {}
+	for _ = 1, math.min(n, #pool) do
+		local at = rng:NextInteger(1, #pool)
+		table.insert(picked, pool[at])
+		pool[at] = pool[#pool]
+		pool[#pool] = nil
+	end
+	return picked
+end
+
+-- Hit points of a Goblin King summon: the wave's last regular slot (state.carriedHp) like the queue, Duel scaling included.
+local function summonHp(state, kind: string): number
+	local hp = state.carriedHp * CoopWaves.HpScale * Enemies.Kinds[kind].hpMul
+	if state.mode == "Duel" then
+		hp *= 1 + Balance.Duel.DeathHpPerWave * math.max(0, state.wave - Balance.Duel.DeathWave + 1)
+	end
+	return math.max(1, math.floor(hp + 0.5))
+end
+
+-- Portal Summon: queues the 4 spawns at a portal just ahead of the boss, one every regular spawn interval (none when it
+-- is dead or too near the end). Returns that distance and the seconds until the last one is out, or nil when nothing
+-- was queued.
+local function portalSummon(state, boss, at: number): (number?, number?)
+	local cfg = boss.ability.cfg
+	local limit = cfg.MaxRouteFraction * pathLengthOf(state)
+	local bossDist = distAt(boss, at)
+	if boss.hp <= 0 or bossDist > limit then
+		return nil, nil
+	end
+	local dist = math.min(bossDist + cfg.PortalAhead, limit) -- in front of the boss, in its walking direction
+	local n = cfg.SummonGrunts + cfg.SummonFast
+	local gap = Formulas.SpawnInterval(state.wave)
+	for i = 1, n do
+		table.insert(state.pending, {
+			at = at + gap * (i - 1),
+			dist = dist,
+			kind = if i == (n + 1) // 2 then "Runner" else "Grunt", -- the fast one in the middle
+			seat = boss.seat,
+		})
+	end
+	return dist, gap * (n - 1)
+end
+
+-- Creates the portal spawns that are due. SpawnAt is back-dated so dist = speed x (now - spawnAt) is the portal point
+-- at its spawn time. They are ordinary enemies but not part of the wave queue, so they never count toward its quota.
+local function spawnPending(state, now: number)
+	local pending = state.pending
+	if #pending == 0 then
+		return
+	end
+	local kept = {}
+	for _, p in pending do
+		if p.at > now then
+			table.insert(kept, p)
+			continue
+		end
+		local speed = Enemies.Kinds[p.kind].speed * Formulas.SpeedMul(state.wave)
+		if state.mode == "Duel" then
+			speed *= duelSpeedMul(state.wave)
+		end
+		local hp = summonHp(state, p.kind)
+		local enemy = {
+			id = state.nextEnemyId,
+			kind = p.kind,
+			hp = hp,
+			maxHp = hp,
+			speed = speed,
+			spawnAt = p.at - p.dist / speed,
+			dist = p.dist,
+			seat = p.seat,
+		}
+		state.nextEnemyId += 1
+		table.insert(state.enemies, enemy)
+		table.insert(state.out.S, {
+			Id = enemy.id,
+			Kind = enemy.kind,
+			SpawnAt = enemy.spawnAt,
+			Speed = speed,
+			MaxHp = hp,
+			Hp = hp,
+			Seat = p.seat,
+			PlayerCount = state.playerCount,
+			Arena = state.mode,
+		})
+		state.out.dirty = true
+	end
+	state.pending = kept
+end
+
+-- Hammer Lock: locks up to LockCount unlocked dice of the boss's board, never more than MaxLocked held by this boss.
+local function hammerLock(state, boss, rng): { number }
+	local cfg = boss.ability.cfg
+	local board = Match.Seat(state, boss.seat).board
+	local free, mine = {}, 0
+	for cell = 1, Balance.BoardCells do
+		local die = board[cell]
+		if die and die.lockedBy == boss.id then
+			mine += 1
+		elseif die and not die.lockedBy then
+			table.insert(free, cell)
+		end
+	end
+	local cells = pickDistinct(rng, free, math.min(cfg.LockCount, cfg.MaxLocked - mine))
+	for _, cell in cells do
+		board[cell].lockedBy = boss.id
+	end
+	return cells
+end
+
+-- Dice Shuffle: Dice random dice of the boss's board get a random pip 1 to MAX_PIP (type and cell stay).
+local function diceShuffle(state, boss, rng): ({ number }, { number })
+	local board = Match.Seat(state, boss.seat).board
+	local occupied = {}
+	for cell = 1, Balance.BoardCells do
+		if board[cell] then
+			table.insert(occupied, cell)
+		end
+	end
+	local cells, pips = pickDistinct(rng, occupied, boss.ability.cfg.Dice), {}
+	for i, cell in cells do
+		pips[i] = rng:NextInteger(1, Board.MAX_PIP)
+		board[cell].pip = pips[i]
+	end
+	return cells, pips
+end
+
+-- A lock ends the moment the boss that set it is dead or gone.
+local function releaseLocks(state)
+	local alive
+	for _, seat in { state, state.partner } do
+		for cell = 1, Balance.BoardCells do
+			local die = seat.board[cell]
+			if die and die.lockedBy then
+				if alive == nil then
+					alive = {}
+					for _, enemy in state.enemies do
+						if enemy.hp > 0 then
+							alive[enemy.id] = true
+						end
+					end
+				end
+				if not alive[die.lockedBy] then
+					die.lockedBy = nil
+					state.out.dirty = true
+				end
+			end
+		end
+	end
+end
+
+-- Applies one boss ability event on the match clock. Replication: windup and cast go out as A records.
+local function bossEvent(state, boss, event)
+	local out = state.out
+	local cfg = boss.ability.cfg
+	local phase = event.Phase
+	if phase == "windup" then
+		boss.held = true
+		refreshSpeed(state, boss, event.At)
+	elseif phase == "resume" then
+		boss.held = nil
+		refreshSpeed(state, boss, event.At)
+	elseif phase == "cast" then
+		local at = event.At
+		local variant = boss.ability.variant
+		if variant == "GoblinKing" then
+			local dist, span = portalSummon(state, boss, at)
+			event.Target = dist
+			event.Info = if dist then { Distance = dist, Lane = boss.seat, Seconds = span } else nil
+		elseif variant == "CursedKing" then
+			local cells = hammerLock(state, boss, castRng(state, boss))
+			event.Target = if #cells > 0 then cells else nil
+			event.Info = { Cells = cells, Seat = boss.seat }
+			state.out.dirty = true
+		elseif variant == "CourtJester" then
+			local cells, pips = diceShuffle(state, boss, castRng(state, boss))
+			event.Target = if #cells > 0 then cells else nil
+			event.Info = { Cells = cells, Pips = pips, Seat = boss.seat }
+			state.out.dirty = true
+		end
+	end
+	if phase ~= "resume" then
+		table.insert(out.A, {
+			Id = boss.id,
+			Ability = cfg.Id,
+			Phase = phase,
+			At = event.CastAt,
+			Target = event.Target,
+			Info = event.Info,
+		})
+	end
 end
 
 local function attack(state, seat, index: number, now: number)
@@ -463,7 +727,9 @@ local function attack(state, seat, index: number, now: number)
 	end
 	for cell = 1, Balance.BoardCells do
 		local die = seat.board[cell]
-		if die then
+		if die and die.lockedBy then
+			die.cd = math.max(die.cd, now) -- a locked die neither fires nor banks shots
+		elseif die then
 			local cfg = Dice.Types[die.type]
 			local tier = seat.tiers[die.type] or 1 -- a die off the deck (only a spec places one) is tier 1
 			local period = Formulas.Period(die.type, die.pip, auras[cell])
@@ -517,8 +783,8 @@ local function attack(state, seat, index: number, now: number)
 					damage(state, target, amount)
 					if cfg.slow and target.hp > 0 then
 						if not target.slowUntil then
-							target.baseSpeed = target.speed
-							setSpeed(state, target, target.speed * (1 - cfg.slow), now)
+							target.slowMul = 1 - cfg.slow
+							refreshSpeed(state, target, now)
 						end
 						target.slowUntil = now + cfg.slowDuration
 					end
@@ -578,16 +844,23 @@ function Match.Step(state, now: number)
 	end
 
 	-- Move + breach. dist is a pure function of time so clients can reproduce it.
+	spawnPending(state, now)
 	local survivors = {}
 	local duel = state.mode == "Duel"
 	for _, enemy in state.enemies do
+		if enemy.ability then
+			for _, event in BossAbilities.Tick(enemy.ability, now) do
+				bossEvent(state, enemy, event)
+			end
+		end
 		if enemy.slowUntil and now >= enemy.slowUntil then
-			setSpeed(state, enemy, enemy.baseSpeed, enemy.slowUntil)
-			enemy.slowUntil = nil
+			local at = enemy.slowUntil
+			enemy.slowUntil, enemy.slowMul = nil, nil
+			refreshSpeed(state, enemy, at)
 		end
 		enemy.dist = math.max(0, enemy.speed * (now - enemy.spawnAt))
 		-- Duel lanes are the same 124-stud balance length as Co-op (docs/DICE_RATING.md section 5).
-		local pathLength = if state.playerCount == 2 then Layout.CoopPathLength else Layout.PathLength
+		local pathLength = pathLengthOf(state)
 		if enemy.dist >= pathLength then
 			local owner = if duel then Match.Seat(state, enemy.seat) else state
 			owner.lives -= Enemies.Kinds[enemy.kind].lives
@@ -598,6 +871,7 @@ function Match.Step(state, now: number)
 		end
 	end
 	state.enemies = survivors
+	releaseLocks(state)
 	if duel then
 		local a, b = state.lives <= 0, state.partner.lives <= 0
 		if a or b then
@@ -651,12 +925,14 @@ function Match.Step(state, now: number)
 		end
 	end
 	state.enemies = alive
+	releaseLocks(state)
 
 	-- Wave clear.
 	if
 		state.waveState == "Active"
 		and state.qi > #state.queue
 		and #alive == 0
+		and #state.pending == 0
 		and (state.mode ~= "Duel" or state.bossSpawned)
 	then
 		state.wavesCompleted = state.wave

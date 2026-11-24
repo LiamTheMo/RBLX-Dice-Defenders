@@ -5,6 +5,8 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local BossWalk = require(script.Parent.BossWalk)
+
 local EnemyRig = {}
 
 local rad, sin, cos, pi = math.rad, math.sin, math.cos, math.pi
@@ -60,6 +62,18 @@ function CLIPS.Brute(p, k)
 		}
 end
 
+-- Boss variants (template name = variant) play the baked walk: root stays on the ground, the bob is in the Hips pose.
+for variant in BossWalk.Data do
+	CLIPS[variant] = function(p, k)
+		return 0, 0, if k == 0 then {} else BossWalk.Pose(variant, p)
+	end
+end
+
+-- Template name for a record: a boss uses its Variant when that rig exists, else the plain Kind (generic behaviour).
+local function key(kind: string, variant: string?): string
+	return if kind == "Boss" and BossWalk.Has(variant) then variant :: string else kind
+end
+
 local store: Instance?
 local heights = {}
 
@@ -72,14 +86,16 @@ local function template(kind: string): Model?
 end
 
 -- Height of the model in studs, or nil when this kind has no rig (the caller keeps its cube).
-function EnemyRig.Height(kind: string): number?
-	local t = template(kind)
+function EnemyRig.Height(kind: string, variant: string?): number?
+	local t = template(key(kind, variant))
 	return t and t:GetAttribute("Height")
 end
 
 -- Clones the rig under `parent`. Returns the handle EnemyRig.Step takes, or nil.
-function EnemyRig.New(kind: string, parent: Instance)
-	local t = template(kind)
+-- `arena` (record.Arena or PlayerCount) picks the boss stride.
+function EnemyRig.New(kind: string, parent: Instance, variant: string?, arena: (number | string)?)
+	local name = key(kind, variant)
+	local t = template(name)
 	if t == nil then
 		return nil
 	end
@@ -91,11 +107,25 @@ function EnemyRig.New(kind: string, parent: Instance)
 		end
 	end
 	model.Parent = parent
-	return { model = model, motors = motors, clip = CLIPS[kind], stride = STRIDE[kind], dir = -Vector3.zAxis }
+	return {
+		model = model,
+		motors = motors,
+		clip = CLIPS[name],
+		stride = if BossWalk.Has(name) then BossWalk.Stride(name, arena) else STRIDE[kind],
+		dir = -Vector3.zAxis,
+	}
 end
 
+-- override (a boss ability clip): { poses = { [joint] = CFrame }, weight = 0..1 } blended over the walk pose, or nil.
 -- ground: feet position; ahead: a point further along the route (nil at the end, keeps the last heading).
-function EnemyRig.Step(rig, distance: number, ground: Vector3, ahead: Vector3?, still: boolean)
+function EnemyRig.Step(
+	rig,
+	distance: number,
+	ground: Vector3,
+	ahead: Vector3?,
+	still: boolean,
+	override: { poses: { [string]: CFrame }, weight: number }?
+)
 	if ahead then
 		local d = Vector3.new(ahead.X - ground.X, 0, ahead.Z - ground.Z)
 		if d.Magnitude > 1e-3 then
@@ -107,7 +137,9 @@ function EnemyRig.Step(rig, distance: number, ground: Vector3, ahead: Vector3?, 
 	-- front of the model is -Z, so look along the heading
 	rig.model:PivotTo(CFrame.lookAt(ground, ground + rig.dir) * CF(0, y, 0) * ANG(pitch, 0, 0))
 	for name, motor in rig.motors do
-		motor.Transform = poses[name] or CFrame.identity
+		local pose = poses[name] or CFrame.identity
+		local clip = if override then override.poses[name] else nil
+		motor.Transform = if clip then pose:Lerp(clip, override.weight) else pose
 	end
 end
 

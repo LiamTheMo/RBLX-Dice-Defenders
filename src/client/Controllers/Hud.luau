@@ -19,6 +19,7 @@ local SettingsLogic = require(script.Parent.Settings.SettingsLogic)
 local Sprites = require(script.Parent.Sprites)
 local UiKit = require(script.Parent.UiKit)
 local Display = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Display"))
+local Bosses = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Bosses"))
 
 local make, label = UiKit.make, UiKit.label
 local WHITE, NAVY = UiKit.WHITE, UiKit.NAVY
@@ -415,6 +416,23 @@ local function build()
 	ui.NextWaveBox, ui.NextWave = line(top, { Name = "NextWave", LayoutOrder = 4, Visible = false }, "", 26)
 	ui.BossBox, ui.Boss =
 		line(top, { Name = "Boss", LayoutOrder = 5, Visible = false }, "", 28, Color3.fromRGB(255, 150, 120))
+	-- Portrait of the upcoming boss left of the text (hidden while its sprite id is empty).
+	make("UIListLayout", {
+		FillDirection = Enum.FillDirection.Horizontal,
+		VerticalAlignment = Enum.VerticalAlignment.Center,
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Padding = UDim.new(0, 10),
+	}, ui.BossBox)
+	ui.BossIcon = make("ImageLabel", {
+		Name = "Portrait",
+		BackgroundTransparency = 1,
+		ScaleType = Enum.ScaleType.Fit,
+		Size = UDim2.fromOffset(44, 44),
+		LayoutOrder = 0,
+		Visible = false,
+		ZIndex = 3,
+	}, ui.BossBox)
+	ui.Boss.LayoutOrder = 1
 
 	-- Top right: gear. Draws idle / hover / pressed and does nothing: Settings only exists in the lobby and
 	-- closes itself mid-match. The hit box grows to 44 real px on phones (see rescale).
@@ -707,9 +725,24 @@ local function updateCountdowns()
 	if ui.NextWaveBox.Visible then
 		ui.NextWave.Text = ("Next wave in %ds"):format(math.ceil(nextIn))
 	end
-	ui.BossBox.Visible = snap.Phase == "Playing" and bossIn ~= nil and bossIn > 0
+	-- The upcoming boss is known from the start: its portrait and name show from 3 waves ahead (every round in a Duel).
+	local info = Bosses.Info[snap.BossVariant]
+	local name = if info then info.Name else Display.Enemies.Boss.Name
+	local wavesAway = if snap.BossWave and snap.Wave then snap.BossWave - snap.Wave else nil
+	local line1
+	if bossIn ~= nil and bossIn > 0 then
+		line1 = ("%s approaches \u{2014} %ds"):format(name, math.ceil(bossIn))
+	elseif info and snap.Mode == "Duel" then
+		line1 = ("Round boss: %s"):format(name)
+	elseif info and wavesAway and wavesAway >= 1 and wavesAway <= 3 then
+		line1 = ("Boss in %d wave%s: %s"):format(wavesAway, if wavesAway == 1 then "" else "s", name)
+	end
+	ui.BossBox.Visible = snap.Phase == "Playing" and line1 ~= nil
 	if ui.BossBox.Visible then
-		ui.Boss.Text = ("%s approaches \u{2014} %ds"):format(Display.Enemies.Boss.Name, math.ceil(bossIn))
+		ui.Boss.Text = line1
+		local portrait = info and Sprites.Boss[info.Portrait] or ""
+		ui.BossIcon.Image = portrait
+		ui.BossIcon.Visible = portrait ~= ""
 	end
 end
 
