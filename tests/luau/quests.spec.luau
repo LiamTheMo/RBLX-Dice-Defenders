@@ -166,13 +166,13 @@ test("a clock going backwards never reopens a claimed day", function()
 end)
 
 -- Moved from economy.spec with Economy.GrantRunReward.
-test("SettleRun pays Gold 5, Xp 10, Fragments 1 and Gems 1-3 a wave (no win bonus), once per run id", function()
+test("SettleRun pays Gold 5, Xp 10, Fragments 1 and Gems 10-30 a wave (no win bonus), once per run id", function()
 	local p = fresh()
 	local ok, bundle = Quests.SettleRun(p, 7, 4, 0, N)
 	expect(ok and bundle.Gold == 20 and bundle.Xp == 40 and bundle.Materials.Fragment == 4, "4-wave loss")
-	expectEq(bundle.Gems, 5, "gems for waves 1-4")
+	expectEq(bundle.Gems, 50, "gems for waves 1-4")
 	expect(p.Gold == 20 and p.Xp == 40 and p.Materials.Fragment == 4, "paid onto the profile")
-	expectEq(p.Gems, 55, "gems paid onto the profile")
+	expectEq(p.Gems, 100, "gems paid onto the profile")
 	expect(p.BestWave == 4 and p.RunsPlayed == 1 and p.TrialCleared == false, "stats")
 	expectEq(p.LastRewardRunId, 7, "run id recorded")
 

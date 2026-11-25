@@ -91,7 +91,6 @@ function Match.New(
 		nextBossVariant = Bosses.Roll(runId, 1, nil), -- the upcoming boss, fixed until it spawns (shown in advance)
 		queue = {},
 		carriedHp = CoopWaves.InitialHp,
-		hpStep = 0,
 		qi = 1,
 		nextSpawnAt = 0,
 		enemies = {},
@@ -311,7 +310,7 @@ local function startWave(state)
 	local wave = state.wave + 1
 	state.wave = wave
 	local duel = state.mode == "Duel"
-	state.queue, state.carriedHp, state.hpStep = CoopWaves.Next(wave, state.carriedHp, state.hpStep, duel)
+	state.queue, state.carriedHp = CoopWaves.Next(wave, state.carriedHp, duel)
 	if duel then
 		local mul = 1 + Balance.Duel.DeathHpPerWave * math.max(0, wave - Balance.Duel.DeathWave + 1)
 		for _, entry in state.queue do
@@ -534,7 +533,7 @@ end
 
 -- Hit points of a Goblin King summon: the wave's last regular slot (state.carriedHp) like the queue, Duel scaling included.
 local function summonHp(state, kind: string): number
-	local hp = state.carriedHp * CoopWaves.HpScale * Enemies.Kinds[kind].hpMul
+	local hp = state.carriedHp * Enemies.Kinds[kind].hpMul
 	if state.mode == "Duel" then
 		hp *= 1 + Balance.Duel.DeathHpPerWave * math.max(0, state.wave - Balance.Duel.DeathWave + 1)
 	end

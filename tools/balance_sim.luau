@@ -5,6 +5,7 @@ local Server = game:GetService("ServerScriptService").Server
 local Match = require(Server.Rules.Match)
 local Dice = require(Server.Config.Dice)
 local Formulas = require(Server.Rules.Formulas)
+local CoopWaves = require(Server.Config.CoopWaves)
 local Layout = require(game:GetService("ReplicatedStorage").Shared.Layout)
 
 local P = { seeds = __SEEDS or 40, dt = 0.25, maxWave = 200 } -- dt = Balance.MaxStep; the live tick is 0.1
@@ -187,6 +188,12 @@ local function batch(name, deck, bot, quiet)
 	print(
 		"  wave gruntHp | median-over-seeds: regular-mob median death progress, end-of-wave (last 3 deaths mean), leaks, lives, gruntDPS"
 	)
+	local starts, base = {}, CoopWaves.InitialHp -- b of each wave (CoopWaves.Next)
+	for w = 1, P.maxWave do
+		starts[w] = base
+		local _, nextBase = CoopWaves.Next(w, base)
+		base = nextBase
+	end
 	for w = 1, waves[#waves] do
 		local mid, tail, leaks, lives, dps = {}, {}, {}, {}, {}
 		for _, stats in all do
@@ -207,7 +214,7 @@ local function batch(name, deck, bot, quiet)
 				string.format(
 					"  w%-2d %6d | n=%-2d mid %.2f end %.2f leaks %d lives %d dps %.0f",
 					w,
-					Formulas.EnemyHp("Grunt", w),
+					starts[w],
 					#mid,
 					median(mid),
 					median(tail),

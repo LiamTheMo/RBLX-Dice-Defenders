@@ -6,14 +6,13 @@ local ProfileSchema = require(Server.Rules.ProfileSchema)
 local Tutorial = require(Server.Rules.Tutorial)
 local Layout = require(game:GetService("ReplicatedStorage").Shared.Layout)
 
-test("Solo and Co-op share the measured lane HP and seat two owns its board", function()
-	local hp, step = CoopWaves.InitialHp, 0
+test("Solo and Co-op share the lane HP and seat two owns its board", function()
+	local hp = CoopWaves.InitialHp
 	for wave = 1, 10 do
 		local queue
-		queue, hp, step = CoopWaves.Next(wave, hp, step)
+		queue, hp = CoopWaves.Next(wave, hp)
 		if wave == 10 then
-			expectEq(queue[1].rawHp, 47000, "historical boss anchor")
-			expectEq(queue[1].hp, 8460, "local HP conversion")
+			expectEq(queue[1].hp, 50485, "wave 10 boss: (4300 + 90) x 11.5")
 		end
 	end
 	expectEq(Layout.CoopPathLength, Layout.PathLength, "same time to travel either lane")

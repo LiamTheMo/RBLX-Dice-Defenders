@@ -156,7 +156,7 @@ test("repeatLines: the real per-run payout, no drop odds", function()
 	end
 	expectEq(
 		table.concat(text, "|"),
-		"PER WAVE:|+5 GOLD +1 GEM +10 XP|+1 FRAGMENT|BOSS WAVE: +3 GEMS",
+		"PER WAVE:|+5 GOLD +10 GEMS +10 XP|+1 FRAGMENT|BOSS WAVE: +30 GEMS",
 		"payout from Balance.Reward and WaveGems"
 	)
 	for _, t in text do

@@ -6,26 +6,7 @@
 All modes use the same virtual wave index `w` (starting at 1), party size `n`, enemy type coefficients, and combat formulas. World/Mode modifiers change the configuration, not the underlying algorithm.
 
 ### Enemy HP
-```text
-W(w) = (1 + 0.018 * min(w-1,39)) * (1.038 ^ max(0,w-40))
-P_HP(n) = {1:1.00, 2:1.68, 3:2.30, 4:2.88}[n]
-H_enemy = round(80 * W(w) * P_HP(n) * enemyTypeHP * bossHP * killPressure)
-```
-The first 40 waves ramp gently; after that, health grows exponentially at 3.8% per wave, compounded. Per-world multipliers are 1.0 in World 1. Proposed standard enemy multipliers: Grunt 1; Runner .70; Swarm .42; Brute 3.0; Shield 2.3; Regenerator 1.7; Elite 5.0. Boss health multiplier: 12 at wave 10, linearly reaching 25 at wave 100, with individual adjustment by boss mechanics.
-
-### Difficulty example, solo normal monster
-| Wave | Approx. HP |
-|---:|---:|
-| 1 | 80 |
-| 20 | 107 |
-| 40 | 136 |
-| 60 | 286 |
-| 80 | 604 |
-| 100 | 1,272 |
-| 150 | 8,200 |
-| 200 | 52,800 |
-
-The figures are illustrative approximations, not test outcomes. HP scaling alone will not balance the full stage; target enemy damage throughput, deck growth and boss-specific mechanics in simulations.
+Implemented as the Random Dice model (b, d × n, Fast ×0.5, Mini-Boss and Boss multipliers that grow per kind); see [WAVE_SCALING.md](WAVE_SCALING.md). The enemy-type and boss multipliers below are older proposals and are not in the code. Per-world multipliers are 1.0 in World 1. Proposed standard enemy multipliers: Grunt 1; Runner .70; Swarm .42; Brute 3.0; Shield 2.3; Regenerator 1.7; Elite 5.0.
 
 ### Spawn budgets and speed
 ```text
@@ -35,7 +16,7 @@ SpeedMultiplier = min(1.60, 1+.006*(w-1))
 ```
 At most 90 live enemies for solo/duo initially; temporarily throttle spawns rather than deleting unspawned enemy budget. For quad prototype, at most 120 live enemies subject to device testing. Multiplayer count multipliers proposed {1:1.0, 2:1.15, 3:1.3, 4:1.45}; HP scaling and spawn scaling must be evaluated together to avoid compounding difficulty beyond party throughput.
 
-### Infinite kill-responsive pressure
+### Infinite kill-responsive pressure (proposal, not implemented)
 Only verified, non-summoned hostile kills count as `K`, once per match (not once per player). Let `ExpectedKills(w)` be the sum of configured enemy budgets completed through wave w. Compute:
 ```text
 surplus = clamp((K-ExpectedKills(w))/max(50,ExpectedKills(w)),0,.20)
@@ -44,7 +25,7 @@ killPressure = 1 + .30 * surplus          # 1.00–1.06
 Evaluate at **wave boundaries**, not for each hit; enemies spawned within a wave keep fixed HP. This responds to unusual extra kills without punishing efficient teams with uncontrolled runaway HP. Infinite pressure is predominantly wave-based. For a future kills-first variant, use a virtual wave derived from kills **instead** of stacking independent exponentials. Never count boss-generated farmable minions toward `K`.
 
 ### Boss events
-- Implemented (MVP Trial, endless, no win): a boss every 5th wave (5, 10, 15, ...) with 8.5x a Grunt's HP, plus a big Brute mini-boss on waves 3, 8, 13, ... 33 then every even wave from 36; see MVP.md. Later staged-World targets: wave 10,20,30,...100; final boss must die for stage completion.
+- Implemented (MVP Trial, endless, no win): a boss every 5th wave (5, 10, 15, ...) with the Boss HP multiplier (10 + 1.5 per boss so far), plus a Brute mini-boss on waves 3, 8, 13, ... 33 then every even wave from 36 (5 + 1.5 per mini-boss so far); see [WAVE_SCALING.md](WAVE_SCALING.md) and MVP.md. Later staged-World targets: wave 10,20,30,...100; final boss must die for stage completion.
 - Infinite: wave 110,120,130... OR +400 eligible kills since the previous boss, whichever occurs first. **Exactly one** boss event if thresholds coincide, then reset the kill target. Transition after World 1 wave 100 does not double-spawn.
 - Every 5th non-boss wave can carry an Elite modifier. Telegraph bosses ≥3 seconds ahead.
 - Implemented: 3 lives; Grunt/Runner breach -1, Brute/Boss -2; zero lives ends the run. Proposed for the full game: 20 team lives; ordinary breach -1, Elite -2, Boss -5.
@@ -64,7 +45,6 @@ Merge **two dice of the same identity AND same pip (1–6)** to produce a single
 
 **Aura dice (implemented, *tune*):** one effect, `aura = {base, perPip, perTier}` in the die config: an attack-speed bonus to the four orthogonal neighbours (5x3 board, no row wrap) of `base + perPip*(pip-1) + perTier*(tier-1)`. Beacon uses 0.06 / 0.01 / 0.01. A die's total received bonus is capped at `Balance.AuraCap` = 30%; the bonus is recomputed from the board every step (no accumulation, no procs).
 
-**Enemy HP retune with this model (*tune*):** the pip rate and Power Up raise late DPS, so `Balance.EnemyHp` growth is 7% to wave 10, 26% for waves 11-15, then 7% a wave (was 22% and 4%). Simulator (`tools/balance_sim.py`, bots power up when the board is full): starter deck full 15/15/15, eager clears wave 10 in 40/40 runs, single Common decks end at waves 15-18, Rares 18-21, new Epics 19-21, Legendary 25-28.
 
 ## 3. In-match MP (separate from persistent Gold and Gems)
 Starting MP: 100 (exactly four summons). Summon cost after `s` successful summons:

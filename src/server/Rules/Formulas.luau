@@ -23,36 +23,6 @@ function Formulas.SpeedMul(w: number): number
 	return math.min(1.6, 1 + 0.006 * (w - 1))
 end
 
-function Formulas.EnemyHp(kind: string, w: number): number
-	local c = Balance.EnemyHp
-	local growth, from = 1, 1
-	for _, band in c.growth do
-		local to = math.min(w, band.toWave)
-		if to > from then
-			growth *= (1 + band.rate) ^ (to - from)
-			from = to
-		end
-	end
-	local ease = math.min(1, c.easeFrom + (1 - c.easeFrom) * (w - 1) / c.easeWaves) -- the first waves face the 4 starting dice
-	return math.floor(c.base * growth * ease * Enemies.Kinds[kind].hpMul + 0.5)
-end
-
--- Enemy kind of the 1-based spawn index `i` in wave `w` (the Brute and Boss are queued separately).
-function Formulas.KindAt(w: number, i: number): string
-	if w >= 3 and i % 3 == 0 then
-		return "Runner"
-	end
-	return "Grunt"
-end
-
-function Formulas.IsBoss(w: number): boolean
-	return w % 5 == 0
-end
-
-function Formulas.HasBrute(w: number): boolean
-	return (w >= 3 and w <= 33 and (w - 3) % 5 == 0) or (w >= 36 and w % 2 == 0)
-end
-
 -- MP for a kill in wave `w`.
 function Formulas.KillMp(kind: string, w: number): number
 	local band = 0
@@ -83,11 +53,14 @@ function Formulas.RewardFragments(waves: number): number
 	return Balance.Reward.fragmentsPerWave * waves
 end
 
--- Gems for clearing wave `w` (Balance.WaveGems).
+-- Gems for clearing wave `w` (Balance.WaveGems). Gem waves follow the Random Dice card table, not the enemy schedule:
+-- up to 35 boss = every 5th, mini-boss = w % 5 == 3; from 36 odd waves are boss waves, even waves mini-boss waves.
 function Formulas.WaveGems(w: number): number
+	local boss = if w <= 35 then w % 5 == 0 else w % 2 == 1
+	local mini = if w <= 35 then w % 5 == 3 else w % 2 == 0
 	for _, b in Balance.WaveGems do
 		if w <= b.maxWave then
-			return if Formulas.IsBoss(w) then b.boss elseif Formulas.HasBrute(w) then b.brute else b.wave
+			return if boss then b.boss elseif mini then b.brute else b.wave
 		end
 	end
 	return 0

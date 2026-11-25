@@ -25,26 +25,20 @@ Balance.AuraCap = 0.30
 Balance.SummonCost = table.freeze({ base = 10, step = 10 }) -- MP: base + step * summons so far
 -- Run reward (*tune*): per wave cleared.
 Balance.Reward = table.freeze({ goldPerWave = 5, xpPerWave = 10, fragmentsPerWave = 1 })
--- Gems per wave cleared: Random Dice co-op's card schedule (1 a wave, 2 on a mini-boss wave, 3 on a boss
--- wave; 2 and 6 after wave 45). The first band whose maxWave >= w; a wave with both pays `boss`.
+-- Gems per wave cleared: Random Dice co-op's card schedule x10 (a gem is worth a tenth of a card). By wave number:
+-- up to 35 a plain wave pays 1 card, a mini-boss wave (w % 5 == 3) 2, a boss wave (w % 5 == 0) 3; from 36 there are no plain
+-- waves: even = mini-boss, odd = boss (2 / 6 cards), doubled from 112, tripled from 500, x4 from 1001, x5 from 1501.
+-- The first band whose maxWave >= w; `brute` = mini-boss wave. Formulas.WaveGems picks the column.
+Balance.GemsPerCard = 10
 Balance.WaveGems = table.freeze({
-	table.freeze({ maxWave = 45, wave = 1, brute = 2, boss = 3 }),
-	table.freeze({ maxWave = math.huge, wave = 2, brute = 6, boss = 6 }),
+	table.freeze({ maxWave = 35, wave = 10, brute = 20, boss = 30 }),
+	table.freeze({ maxWave = 111, wave = 0, brute = 20, boss = 60 }),
+	table.freeze({ maxWave = 499, wave = 0, brute = 40, boss = 120 }),
+	table.freeze({ maxWave = 1000, wave = 0, brute = 60, boss = 180 }),
+	table.freeze({ maxWave = 1500, wave = 0, brute = 80, boss = 240 }),
+	table.freeze({ maxWave = math.huge, wave = 0, brute = 100, boss = 300 }),
 })
 
--- Enemy HP (*tune*): base * growth * ease * hpMul. growth multiplies (1 + rate) for each wave after the
--- first, at the rate of the band the wave is in; the steep band is the Commons wall (docs/MVP.md "Waves");
--- ease = min(1, easeFrom + (1 - easeFrom) * (w - 1) / easeWaves).
-Balance.EnemyHp = table.freeze({
-	base = 275,
-	growth = table.freeze({
-		table.freeze({ toWave = 10, rate = 0.07 }),
-		table.freeze({ toWave = 15, rate = 0.26 }),
-		table.freeze({ toWave = math.huge, rate = 0.07 }),
-	}),
-	easeFrom = 0.4,
-	easeWaves = 3,
-})
 -- Kill MP (*tune*): the first band whose maxWave >= w; Brute pays x5, Boss x10.
 Balance.KillMp = table.freeze({
 	table.freeze({ maxWave = 5, mp = 10 }),

@@ -68,16 +68,6 @@ test("wave formulas", function()
 	expectEq(Formulas.SpeedMul(1), 1, "speed 1")
 	expectNear(Formulas.SpeedMul(10), 1.054, 1e-9, "speed 10")
 	expectEq(Formulas.SpeedMul(500), 1.6, "speed cap")
-	expectEq(Formulas.EnemyHp("Grunt", 1), 110, "grunt hp 1")
-	expectEq(Formulas.EnemyHp("Grunt", 10), 506, "grunt hp 10")
-	expectEq(Formulas.EnemyHp("Grunt", 11), 637, "grunt hp 11: the steep band starts")
-	expectEq(Formulas.EnemyHp("Grunt", 15), 1606, "grunt hp 15")
-	expectEq(Formulas.EnemyHp("Grunt", 16), 1718, "grunt hp 16: the gentle band")
-	expectEq(Formulas.EnemyHp("Runner", 1), 55, "runner 0.5x")
-	expectEq(Formulas.EnemyHp("Brute", 1), 220, "brute 2x")
-	expectEq(Formulas.EnemyHp("Boss", 5), 3064, "boss hp 5: 8.5x")
-	expectEq(Formulas.EnemyHp("Boss", 10), 4297, "boss hp 10")
-	expectEq(Formulas.EnemyHp("Boss", 15), 13648, "boss hp 15")
 	expectEq(Formulas.RewardGold(0), 0, "reward 0")
 	expectEq(Formulas.RewardGold(10), 50, "reward 10: no win bonus")
 	expectEq(Formulas.RewardXp(10), 100, "xp 10")
@@ -86,32 +76,16 @@ test("wave formulas", function()
 	for w = 1, 10 do
 		gems[w] = Formulas.WaveGems(w)
 	end
-	expectEq(table.concat(gems, ","), "1,1,2,1,3,1,1,2,1,3", "gems: Random Dice's 1,1,2,1,3 cycle (Brute 2, Boss 3)")
+	expectEq(table.concat(gems, ","), "10,10,20,10,30,10,10,20,10,30", "gems: Random Dice's 1,1,2,1,3 cycle x10 (mini-boss 20, boss 30)")
 	expectEq(Formulas.RewardGems(0), 0, "gems 0")
-	expectEq(Formulas.RewardGems(15), 24, "gems 15")
-	expectEq(Formulas.WaveGems(45), 3, "gems 45: last of the first band")
-	expectEq(Formulas.WaveGems(46), 6, "gems 46: Brute wave, second band")
-	expectEq(Formulas.WaveGems(47), 2, "gems 47: plain wave, second band")
-	expectEq(Formulas.WaveGems(50), 6, "gems 50: Boss wave, second band")
-end)
-
-test("composition: Runner from wave 3 every 3rd; Brute and Boss schedules", function()
-	expectEq(Formulas.KindAt(1, 3), "Grunt", "w1 i3")
-	expectEq(Formulas.KindAt(3, 3), "Runner", "w3 i3")
-	expectEq(Formulas.KindAt(3, 5), "Grunt", "w3 i5")
-	expectEq(Formulas.KindAt(5, 5), "Grunt", "no Brute in the spawn index")
-	expectEq(Formulas.KindAt(5, 15), "Runner", "w5 i15")
-	expectEq(Formulas.KindAt(5, 7), "Grunt", "w5 i7")
-	for w = 1, 40 do
-		expectEq(Formulas.IsBoss(w), w % 5 == 0, "boss " .. w)
+	expectEq(Formulas.RewardGems(15), 240, "gems 15")
+	local expect = {
+		[35] = 30, [36] = 20, [37] = 60, [40] = 20, [111] = 60, [112] = 40, [113] = 120, [499] = 120, [500] = 60,
+		[501] = 180, [1000] = 60, [1001] = 240, [1500] = 80, [1501] = 300, [1502] = 100,
+	}
+	for w, g in expect do
+		expectEq(Formulas.WaveGems(w), g, "gems wave " .. w)
 	end
-	local brutes = {}
-	for w = 1, 40 do
-		if Formulas.HasBrute(w) then
-			table.insert(brutes, w)
-		end
-	end
-	expectEq(table.concat(brutes, ","), "3,8,13,18,23,28,33,36,38,40", "brute waves")
 end)
 
 test("perk damage: hitDamage = max(1, floor(base * perk * tierMul)) plus flat, no pip term", function()
@@ -236,7 +210,7 @@ test("first wave starts 4 s after Start and spawns on schedule", function()
 	expectEq(#state.enemies >= 1, true, "first enemy out")
 	local batch = Match.TakeOut(state)
 	expectEq(batch.S[1].Kind, "Grunt", "spawn record kind")
-	expectEq(batch.S[1].Hp, 20, "spawn record hp")
+	expectEq(batch.S[1].Hp, 130, "spawn record hp: 100 + 30 x slot 1")
 	expectEq(batch.S[1].Speed, 6, "wave 1 speed")
 	local again = Match.TakeOut(state)
 	expectEq(#again.S, 0, "outbox drained")
@@ -519,7 +493,7 @@ test("endless run warns before the wave 10 boss; historical waves use the shared
 	expectEq(queues[8][1].kind, "Brute", "wave 8 first-slot miniboss")
 	expectEq(#queues[5], 1, "wave 5 is a single boss")
 	expectEq(#queues[10], 1, "boss replaces the wave")
-	expectEq(queues[10][1].hp, 8460, "wave 10 shared scaling")
+	expectEq(queues[10][1].hp, 50485, "wave 10 boss: (4300 + 90) x 11.5")
 end)
 
 test("max 90 alive: spawns wait and are never dropped", function()
