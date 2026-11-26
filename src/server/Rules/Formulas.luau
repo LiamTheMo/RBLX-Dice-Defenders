@@ -74,6 +74,16 @@ function Formulas.RewardGems(waves: number): number
 	return sum
 end
 
+-- Duel XP and Gems for `waves` cleared (Balance.DuelReward): winner full, loser reduced, bot match scaled; floored.
+function Formulas.DuelReward(waves: number, won: boolean, vsBot: boolean): (number, number)
+	local cfg = Balance.DuelReward
+	local w = math.min(waves, cfg.MaxWaves)
+	local scale = if vsBot then cfg.BotFactor else 1
+	local xp = math.floor(Formulas.RewardXp(w) * (if won then 1 else cfg.LossXpFactor) * scale)
+	local gems = math.floor(Formulas.RewardGems(w) * (if won then 1 else cfg.LossGemFactor) * scale)
+	return xp, gems
+end
+
 -- Seconds between attacks: each pip is its own shooter (rate x PipRate[pip]); `aura` is the attack-speed
 -- bonus (a fraction) the die receives from adjacent aura dice.
 function Formulas.Period(typeId: string, pip: number, aura: number?): number

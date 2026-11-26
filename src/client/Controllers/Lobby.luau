@@ -18,12 +18,12 @@ local Daily = require(script.Parent.Daily.Daily)
 local Shop = require(script.Parent.Shop.Shop)
 local Settings = require(script.Parent.Settings.Settings)
 local Codes = require(script.Parent.Codes.Codes)
+local Results = require(script.Parent.Results.Results)
 local TutorialView = require(script.Parent.TutorialView)
 local RatingLogic = require(script.Parent.RatingLogic)
 
 local make, panel, label, button = UiKit.make, UiKit.panel, UiKit.label, UiKit.button
-local NAVY, WHITE, GREEN = UiKit.NAVY, UiKit.WHITE, UiKit.GREEN
-local GOLD = Color3.fromRGB(255, 215, 90)
+local WHITE = UiKit.WHITE
 -- Panel / toast skin matching the HUD: dark-brown fill, copper outline, white text with a dark outline.
 local BROWN = Color3.fromRGB(58, 30, 23)
 local COPPER = Color3.fromRGB(224, 135, 90)
@@ -65,7 +65,6 @@ local TOASTS = {
 }
 -- QueueDuel / Surrender / LeaveDuel refusals read from RatingLogic.duelCodeText (they differ from the Co-op wording above).
 local DUEL_REMOTES = { QueueDuel = true, Surrender = true, LeaveDuel = true }
-local RESULT_TITLES = { Lost = "Defeat", Aborted = "Run Ended", Error = "Something went wrong" }
 
 local Lobby = {}
 
@@ -73,7 +72,6 @@ local connections = {}
 local gui, ui
 local toastToken = 0
 local openPanel = nil
-local dismissed = false
 local lobbyActive = false
 
 -- Every menu window: HUD name -> ui key. Opening one closes the others.
@@ -262,60 +260,8 @@ local function renderProfile(snap)
 	end
 end
 
-local function renderResult(snap)
-	local show = snap.Phase == "Ended" and not dismissed
-	ui.ResultBackdrop.Visible = show
-	if show then
-		local duel = RatingLogic.result(snap) -- nil for Solo / Co-op: their card is unchanged
-		for _, name in { "ResultDelta", "ResultRank", "ResultBonus", "ResultStreak" } do
-			ui[name].Visible = duel ~= nil
-		end
-		local inDuelServer = duel ~= nil and snap.InDuelServer == true
-		ui.ResultReturn.Visible = inDuelServer
-		ui.ResultAutoNote.Visible = inDuelServer
-		ui.Continue.Size = if inDuelServer then UDim2.new(0.38, -4, 1, 0) else UDim2.fromOffset(160, ROW)
-		ui.ResultSub.Visible = false
-		ui.ResultBot.Visible = false
-		if duel then
-			ui.ResultSub.Text = if duel.NoDR then "Quit too early: no DR was awarded" else duel.Subtitle or ""
-			ui.ResultSub.Visible = ui.ResultSub.Text ~= ""
-			ui.ResultBot.Text = duel.BotText or ""
-			ui.ResultBot.Visible = duel.BotText ~= nil
-			ui.ResultTitle.Text = duel.Title
-			ui.ResultTitle.TextColor3 = Color3.fromRGB(duel.Color[1], duel.Color[2], duel.Color[3])
-			ui.ResultWave.Visible = false
-			ui.ResultDelta.Text = if duel.NoDR
-				then `No DR change  ({duel.DRText})`
-				else `{duel.DeltaText}  ({duel.DRText})`
-			local rc = duel.RankColor
-			ui.ResultRank.Text = duel.RankChangeText or `{duel.RankText} RANK`
-			ui.ResultRank.TextColor3 = if duel.RankChanged then GOLD else Color3.fromRGB(rc[1], rc[2], rc[3])
-			ui.ResultBonus.Text = duel.BonusText or ""
-			ui.ResultBonus.Visible = duel.BonusText ~= nil
-			ui.ResultStreak.Text = duel.StreakText
-			ui.ResultBonus.Visible = duel.BonusText ~= nil and not duel.NoDR
-			ui.ResultReward.Text = duel.GoldText or ""
-			ui.ResultReward.Visible = duel.GoldText ~= nil
-			return
-		end
-		ui.ResultTitle.TextColor3 = WHITE
-		ui.ResultWave.Visible = true
-		ui.ResultTitle.Text = RESULT_TITLES[snap.Result] or "Run Ended"
-		ui.ResultWave.Text = "Wave " .. tostring(snap.Wave or 0)
-		ui.ResultReward.Text = ("+%d Gold   +%d XP   +%d Gems"):format(
-			snap.RewardGold or 0,
-			snap.RewardXp or 0,
-			snap.RewardGems or 0
-		)
-		ui.ResultReward.Visible = snap.RewardGold ~= nil
-	end
-end
-
 local function renderState(snap)
 	local phase = snap.Phase
-	if phase ~= "Ended" then
-		dismissed = false
-	end
 	local active = phase == "Lobby" or phase == "Ended"
 	ui.Root.Visible = active
 	if not active then
@@ -323,13 +269,13 @@ local function renderState(snap)
 			showPanel(nil) -- closes every menu; only on the transition, not every State tick
 		end
 		lobbyActive = false
-		ui.ResultBackdrop.Visible = false
+		ui.Results:Render(snap)
 		return
 	end
 	lobbyActive = true
 	renderProfile(snap)
 	ui.LobbyHud:SetGold(snap.Gold)
-	renderResult(snap)
+	ui.Results:Render(snap)
 end
 
 local function renderMeta()
@@ -342,6 +288,9 @@ local function renderMeta()
 		ui.LobbyHud:SetXp(meta.Level, meta.XpInto, meta.XpNeed)
 	end
 	renderProfile(NetClient.Last)
+	if NetClient.Last then
+		ui.Results:Render(NetClient.Last) -- the level bar reads Meta, which can land after the Ended snapshot
+	end
 end
 
 local function build()
@@ -387,130 +336,8 @@ local function build()
 
 	newPanel("Profile")
 
-	-- Results card (Ended): local dismiss only; backdrop swallows input behind it.
-	ui.ResultBackdrop = make("TextButton", {
-		Size = UDim2.fromScale(1, 1),
-		BackgroundColor3 = NAVY,
-		BackgroundTransparency = 0.4,
-		BorderSizePixel = 0,
-		AutoButtonColor = false,
-		Text = "",
-		Visible = false,
-		ZIndex = 20,
-	}, ui.Root)
-	local card = skin(panel({
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromScale(0.5, 0.96),
-		ZIndex = 21,
-	}, ui.ResultBackdrop))
-	make("UISizeConstraint", { MinSize = Vector2.new(280, 240), MaxSize = Vector2.new(400, 372) }, card)
-	make("UIPadding", {
-		PaddingLeft = UDim.new(0, 10),
-		PaddingRight = UDim.new(0, 10),
-		PaddingTop = UDim.new(0, 8),
-		PaddingBottom = UDim.new(0, 8),
-	}, card)
-	make("UIListLayout", {
-		SortOrder = Enum.SortOrder.LayoutOrder,
-		Padding = UDim.new(0, 6),
-		HorizontalAlignment = Enum.HorizontalAlignment.Center,
-	}, card)
-	ui.ResultTitle = label({ Size = UDim2.new(1, 0, 0, 44), LayoutOrder = 1, ZIndex = 22 }, card, 40)
-	ui.ResultWave = label({ Size = UDim2.new(1, 0, 0, 36), LayoutOrder = 2, ZIndex = 22 }, card, 26)
-	-- Duel variant: why it ended, and the practice-match line (hidden for Solo / Co-op).
-	ui.ResultSub = label({ Size = UDim2.new(1, 0, 0, 22), LayoutOrder = 2, ZIndex = 22, Visible = false }, card, 20)
-	ui.ResultBot = label({
-		Size = UDim2.new(1, 0, 0, 20),
-		LayoutOrder = 3,
-		ZIndex = 22,
-		Visible = false,
-		TextColor3 = Color3.fromRGB(190, 200, 230),
-	}, card, 18)
-	-- Duel variant rows (hidden for Solo / Co-op): DR change, rank line, streak bonus, win streak.
-	ui.ResultDelta = label({ Size = UDim2.new(1, 0, 0, 30), LayoutOrder = 4, ZIndex = 22, Visible = false }, card, 30)
-	ui.ResultRank = label({ Size = UDim2.new(1, 0, 0, 24), LayoutOrder = 5, ZIndex = 22, Visible = false }, card, 22)
-	ui.ResultBonus = label({
-		Size = UDim2.new(1, 0, 0, 20),
-		LayoutOrder = 6,
-		ZIndex = 22,
-		Visible = false,
-		TextColor3 = Color3.fromRGB(248, 130, 20),
-	}, card, 20)
-	ui.ResultStreak = label({ Size = UDim2.new(1, 0, 0, 20), LayoutOrder = 7, ZIndex = 22, Visible = false }, card, 20)
-	ui.ResultReward =
-		label({ Size = UDim2.new(1, 0, 0, 32), LayoutOrder = 8, ZIndex = 22, TextColor3 = GOLD }, card, 26)
-	for _, name in
-		{
-			"ResultTitle",
-			"ResultWave",
-			"ResultSub",
-			"ResultBot",
-			"ResultDelta",
-			"ResultRank",
-			"ResultBonus",
-			"ResultStreak",
-			"ResultReward",
-		}
-	do
-		outline(ui[name])
-	end
-	local buttons = make("Frame", {
-		Name = "ResultButtons",
-		BackgroundTransparency = 1,
-		Size = UDim2.new(1, 0, 0, ROW),
-		LayoutOrder = 9,
-		ZIndex = 22,
-	}, card)
-	make("UIListLayout", {
-		FillDirection = Enum.FillDirection.Horizontal,
-		HorizontalAlignment = Enum.HorizontalAlignment.Center,
-		VerticalAlignment = Enum.VerticalAlignment.Center,
-		SortOrder = Enum.SortOrder.LayoutOrder,
-		Padding = UDim.new(0, 8),
-	}, buttons)
-	ui.Continue = button(
-		{ Size = UDim2.fromOffset(160, ROW), LayoutOrder = 1, ZIndex = 22, Text = "Continue" },
-		buttons,
-		GREEN,
-		function()
-			dismissed = true
-			ui.ResultBackdrop.Visible = false
-		end
-	)
-	ui.Continue.Name = "Continue"
-	local returning = false
-	ui.ResultReturn = button(
-		{ Size = UDim2.new(0.62, -4, 1, 0), LayoutOrder = 2, ZIndex = 22, Text = "RETURN TO LOBBY", Visible = false },
-		buttons,
-		GOLD,
-		function()
-			if returning then
-				return
-			end
-			returning = true
-			ui.ResultReturn.Active = false
-			ui.ResultReturn.Text = "RETURNING..."
-			task.spawn(function()
-				local ok = NetClient.Request("LeaveDuel") -- a refusal toast comes from the Rejected handler
-				if not ok then
-					returning = false
-					ui.ResultReturn.Active = true
-					ui.ResultReturn.Text = "RETURN TO LOBBY"
-				end
-			end)
-		end
-	)
-	ui.ResultReturn.Name = "ReturnToLobby"
-	ui.ResultAutoNote = label({
-		Size = UDim2.new(1, 0, 0, 18),
-		LayoutOrder = 10,
-		ZIndex = 22,
-		Visible = false,
-		Text = "You return to the lobby automatically after 30 s.",
-		TextColor3 = Color3.fromRGB(190, 200, 230),
-	}, card, 16)
-	outline(ui.ResultAutoNote)
+	-- Unified results window (Summary / Victory / Defeat); CONTINUE dismisses locally, or runs LeaveDuel in a duel server.
+	ui.Results = Results.new(ui.Root)
 
 	-- Top-centre: the bottom of the screen holds the HUD's deck bar.
 	ui.ToastFrame = Chrome.panel(gui, {
@@ -519,12 +346,12 @@ local function build()
 		Position = UDim2.new(0.5, 0, 0, 10),
 		Size = UDim2.new(0.5, 0, 0, 44),
 		Visible = false,
-		ZIndex = 60, -- above the bag banner (Z 30+)
+		ZIndex = 400, -- above the Results window (Z 300+) and the bag banner
 		Radius = 22,
 		Rim = 2,
 	})
 	make("UISizeConstraint", { MinSize = Vector2.new(220, 44), MaxSize = Vector2.new(460, 48) }, ui.ToastFrame)
-	ui.Toast = label({ Size = UDim2.fromScale(1, 1), ZIndex = 61 }, ui.ToastFrame, 22)
+	ui.Toast = label({ Size = UDim2.fromScale(1, 1), ZIndex = 401 }, ui.ToastFrame, 22)
 	outline(ui.Toast)
 end
 
@@ -588,6 +415,9 @@ function Lobby.Destroy()
 	end
 	if ui and ui.Codes then
 		ui.Codes:Destroy()
+	end
+	if ui and ui.Results then
+		ui.Results:Destroy()
 	end
 	if gui then
 		gui:Destroy()

@@ -4,7 +4,9 @@
 
 local Balance = require(script.Parent.Parent.Config.Balance)
 local Economy = require(script.Parent.Economy)
+local Formulas = require(script.Parent.Formulas)
 local Rating = require(script.Parent.Rating)
+local Rewards = require(script.Parent.Rewards)
 
 local DuelSettle = {}
 
@@ -17,6 +19,8 @@ end
 -- (Rating.Apply's table plus Why), the Gold already credited to the profile. A seat that was not applied
 -- (no profile such as a bot seat, AlreadyApplied, a bad record) has no result. goldFactor (default 1) scales the
 -- winner's Gold, floored (bot matches); opponentIsBot marks results with VsBot = true for the caller.
+-- Each applied result also carries Xp and Gems (Formulas.DuelReward) granted through Rewards.Apply in the same once-per-run
+-- step as DR; an early forfeit and a refused bundle grant 0.
 function DuelSettle.Run(
 	profiles: { any },
 	duelDr: { number },
@@ -52,6 +56,8 @@ function DuelSettle.Run(
 				RankBefore = rank,
 				RankAfter = rank,
 				Gold = 0,
+				Xp = 0,
+				Gems = 0,
 				VsBot = if opponentIsBot then true else nil,
 			}
 		elseif profile then
@@ -66,6 +72,15 @@ function DuelSettle.Run(
 						result.Gold = 0 -- an overflowing balance forfeits the reward, never the DR
 					end
 				end
+				local xp, gems = 0, 0
+				if not early then
+					xp, gems = Formulas.DuelReward(wavesCompleted or 0, result.Outcome == "Win", opponentIsBot == true)
+				end
+				local bundle = { Xp = if xp > 0 then xp else nil, Gems = if gems > 0 then gems else nil }
+				if next(bundle) == nil or not Rewards.Apply(profile, bundle) then
+					xp, gems = 0, 0 -- nothing earned, or a corrupt or overflowing balance forfeits the reward, never the DR
+				end
+				result.Xp, result.Gems = xp, gems
 				results[seat] = result
 			end
 		end

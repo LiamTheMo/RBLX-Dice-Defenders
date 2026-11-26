@@ -63,9 +63,14 @@ function TeleportGateway:TeleportPlayerToReserved(
 	return ok, if ok then nil else result
 end
 
-function TeleportGateway:TeleportToLobby(player: Player)
+function TeleportGateway:TeleportToLobby(player: Player, teleportData: any?)
 	local ok, result = self:_call(function()
-		self._service:TeleportAsync(self._lobbyPlaceId, { player })
+		local options
+		if teleportData ~= nil then
+			options = Instance.new("TeleportOptions")
+			options:SetTeleportData(teleportData)
+		end
+		self._service:TeleportAsync(self._lobbyPlaceId, { player }, options)
 	end)
 	return ok, if ok then nil else result
 end

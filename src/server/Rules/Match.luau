@@ -97,6 +97,7 @@ function Match.New(
 		pending = {}, -- Goblin King portal spawns not yet due: { at, dist, kind, seat }
 		nextEnemyId = 1,
 		lastNow = now,
+		startedAt = now, -- read-only: the Ended snapshot reports lastNow - startedAt as the run time
 		rewardGranted = false,
 		out = newOut(),
 	}

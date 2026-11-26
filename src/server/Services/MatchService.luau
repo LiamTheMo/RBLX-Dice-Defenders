@@ -24,6 +24,7 @@ local DuelRoom = require(script.Parent.Parent.Rules.DuelRoom)
 local DuelSettle = require(script.Parent.Parent.Rules.DuelSettle)
 local Matchmaker = require(script.Parent.Parent.Rules.Matchmaker)
 local Rating = require(script.Parent.Parent.Rules.Rating)
+local ResultCarry = require(script.Parent.Parent.Rules.ResultCarry)
 local Teams = require(script.Parent.Parent.Rules.Teams)
 local Economy = require(script.Parent.Parent.Rules.Economy)
 local Formulas = require(script.Parent.Parent.Rules.Formulas)
@@ -48,8 +49,12 @@ local participants: { Player } = {}
 local readyForCoop: { [Player]: boolean } = {}
 local duelResults: { [Player]: any } = {} -- this match's DuelResult per player
 local rewards = {}
+local xpFrom: { [Player]: any } = {} -- {XpFrom, LevelFrom, XpNeedFrom} per player, taken before this match's reward
+local pendingResult: { [Player]: any } = {} -- lobby: {Data, Until} validated Duel result carried in TeleportData
+local PENDING_RESULT_SECONDS = 60 -- PendingResult rides every State push this long after join (the client may connect late)
+local returning: { [Player]: boolean } = {} -- a lobby teleport is already in flight
 local shuttingDown = false -- set first thing in BindToClose: leavers then Abort a Duel instead of forfeiting
-local DUEL_RETURN_SECONDS = 30 -- an ended Duel server sends its players back to the lobby after this long
+local DUEL_RETURN_SECONDS = 3 -- grace after a Duel ends before everyone is sent home (the result screen shows in the lobby)
 -- A reserved Duel server (not a VIP server): PrivateServerId is set and nobody owns it.
 local isDuelServer = game.PrivateServerId ~= "" and game.PrivateServerOwnerId == 0
 local duelDesc = nil -- DuelRoom descriptor read from the first expected player's TeleportData
@@ -122,6 +127,12 @@ local function snapshot(player: Player)
 	for i = 1, Balance.BoardCells do
 		out.Board[i] = false
 	end
+	local pending = pendingResult[player]
+	if pending and os.clock() >= pending.Until then
+		pendingResult[player] = nil
+		pending = nil
+	end
+	out.PendingResult = if pending then pending.Data else nil -- lobby only: a Duel result carried by teleport
 	local index = seatFor(player)
 	if match == nil or not index then
 		out.Phase = if match and match.phase == "Playing" then "NotOwner" else "Lobby"
@@ -162,6 +173,20 @@ local function snapshot(player: Player)
 	out.BossVariant = match.nextBossVariant -- the boss that comes next, fixed until it spawns
 	out.BossWave = Match.NextBossWave(match)
 	out.Result = match.result
+	if match.phase == "Ended" then -- read-only result-card extras; the client only displays them
+		out.Kills = seat.kills
+		out.DurationSec = math.max(0, math.floor(match.lastNow - match.startedAt))
+		local opponent = if match.mode == "Duel" then participants[3 - index] else nil
+		out.OpponentUserId = if opponent and match.bot == nil then opponent.UserId else nil
+	end
+	if match.phase == "Ended" then
+		local before = xpFrom[player]
+		if before then
+			out.XpFrom, out.LevelFrom, out.XpNeedFrom = before.XpFrom, before.LevelFrom, before.XpNeedFrom
+		end
+		local duel = out.DuelResult
+		out.RatingBefore = if type(duel) == "table" then duel.DRBefore else nil
+	end
 	local reward = rewards[player]
 	out.RewardGold, out.RewardXp, out.RewardGems =
 		if reward then reward.Gold or 0 else nil,
@@ -306,6 +331,13 @@ local function settle(skipPlayer: Player?)
 		return
 	end
 	match.rewardGranted = true
+	for _, player in participants do
+		local profile = if player ~= skipPlayer then ProfileService.Get(player) else nil
+		if profile then
+			local level, into, need = Progression.Level(profile.Xp, Progression.Account)
+			xpFrom[player] = { XpFrom = into, LevelFrom = level, XpNeedFrom = need }
+		end
+	end
 	if match.result == "Duel" then
 		-- DR and Gold apply once (Rating guards by run id); no quests and no Tutorial rewards for a Duel.
 		local profiles = {}
@@ -336,6 +368,10 @@ local function settle(skipPlayer: Player?)
 				end
 			end
 			duelResults[player] = results[index]
+			local result = results[index]
+			if result then
+				rewards[player] = { Gold = result.Gold, Xp = result.Xp, Gems = result.Gems }
+			end
 			ProfileService.MarkChanged(player) -- Changed pushes State and Meta (DR, Gold, Recent)
 			task.spawn(ProfileService.SaveNow, player)
 		end
@@ -381,8 +417,18 @@ local function removeFromOrder(player: Player)
 end
 
 -- Sends a player back to the public lobby server (never yields the caller).
-local function returnToLobby(player: Player)
-	task.spawn(QueueService.TeleportToLobby, player)
+local function returnToLobby(player: Player, withResult: boolean?)
+	if returning[player] then
+		return
+	end
+	returning[player] = true
+	local carry = if withResult and match and match.phase == "Ended" then ResultCarry.Build(snapshot(player)) else nil
+	task.spawn(function()
+		local ok = QueueService.TeleportToLobby(player, if carry then { [ResultCarry.KEY] = carry } else nil)
+		if not ok then
+			returning[player] = nil -- a failed teleport may be retried
+		end
+	end)
 end
 
 -- A Duel server whose Duel never began (second player missing or failed to load): no DR changes, everyone goes home.
@@ -441,6 +487,9 @@ local function onRemoving(player: Player)
 	end
 	rewards[player] = nil
 	duelResults[player] = nil
+	xpFrom[player] = nil
+	pendingResult[player] = nil
+	returning[player] = nil
 end
 
 -- runId is a random 31-bit integer so ids never repeat across servers; it only
@@ -482,6 +531,7 @@ local function startMatch(player, partner): (boolean, string?)
 	end
 	table.clear(rewards)
 	table.clear(duelResults)
+	table.clear(xpFrom)
 	table.clear(readyForCoop)
 	participants = if partner then { player, partner } else { player }
 	for _, member in participants do
@@ -517,6 +567,7 @@ local function beginDuel(humans: { Player }, duelDr: { number }, bot): boolean
 	end
 	table.clear(rewards)
 	table.clear(duelResults)
+	table.clear(xpFrom)
 	table.clear(readyForCoop)
 	participants = table.clone(humans)
 	for _, member in participants do
@@ -644,7 +695,7 @@ local function handleLeaveDuel(player: Player): (boolean, string?)
 	if match and match.phase == "Playing" and seatFor(player) then
 		return false, "WrongPhase"
 	end
-	returnToLobby(player)
+	returnToLobby(player, true)
 	return true, nil
 end
 
@@ -861,7 +912,7 @@ local function duelServerTick(now: number)
 		if now - duelEndedAt >= DUEL_RETURN_SECONDS then
 			duelReturned = true
 			for _, player in participants do
-				returnToLobby(player)
+				returnToLobby(player, true)
 			end
 		end
 	end
@@ -996,7 +1047,20 @@ local function onLocalBot(player: Player, bot)
 	end
 end
 
+-- Lobby server: a player arriving from a finished Duel carries its result; keep it only if it validates.
+local function readCarry(player: Player)
+	local ok, joinData = pcall(player.GetJoinData, player)
+	local data = if ok then ResultCarry.FromJoinData(joinData) else nil
+	pendingResult[player] = if data then { Data = data, Until = os.clock() + PENDING_RESULT_SECONDS } else nil
+end
+
 function MatchService.Start()
+	if not isDuelServer then
+		Players.PlayerAdded:Connect(readCarry)
+		for _, player in Players:GetPlayers() do
+			readCarry(player)
+		end
+	end
 	if isDuelServer then
 		Players.PlayerAdded:Connect(adoptDuelPlayer)
 		for _, player in Players:GetPlayers() do

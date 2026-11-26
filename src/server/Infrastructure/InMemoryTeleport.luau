@@ -34,8 +34,8 @@ function InMemoryTeleport:TeleportPlayerToReserved(player, accessCode: string, t
 	return true
 end
 
-function InMemoryTeleport:TeleportToLobby(player)
-	if not self:_record({ Kind = "Lobby", Player = player }) then
+function InMemoryTeleport:TeleportToLobby(player, teleportData: any?)
+	if not self:_record({ Kind = "Lobby", Player = player, TeleportData = teleportData }) then
 		return false, "simulated failure"
 	end
 	return true

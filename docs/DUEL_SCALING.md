@@ -20,3 +20,5 @@ Bot-vs-bot check: Bronze/Silver/Gold mirror matches end at wave 11-13, about 6-7
 Co-op uses the same HP model (see `docs/WAVE_SCALING.md`); its step values are placeholders to tune.
 
 MP (SP) gain: Co-op/Solo `Balance.KillMp` already matches the documented shape (10 per kill, +10 per boss band, capped at 50 per NamuWiki; boss x10). Summon cost 10 + 10 per summon matches the source.
+
+Rewards and return: a Duel also pays XP and Gems (`Balance.DuelReward`, see BALANCING.md). The Duel server sends players home `DUEL_RETURN_SECONDS` (3 s) after the end with the result in TeleportData (`Rules/ResultCarry`); the lobby validates it and shows it once as snapshot `PendingResult`.

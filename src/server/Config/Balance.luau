@@ -72,6 +72,11 @@ Balance.Duel = table.freeze({
 	BerserkBossSpeed = 1.25,
 }) -- a forfeit or surrender before this many cleared waves pays the winner nothing (win-trading guard, *tune*)
 
+-- Duel XP and Gems (same Rewards path as Solo/Co-op; Gold stays Rating's streak Gold). Per wave cleared the winner earns
+-- Formulas.RewardXp / RewardGems (the Solo payout), counting at most MaxWaves waves (long stalls cannot farm). The loser gets
+-- LossXpFactor of the XP and LossGemFactor of the Gems; a bot match multiplies both by BotFactor. An early forfeit pays none. *tune*
+Balance.DuelReward = table.freeze({ MaxWaves = 20, LossXpFactor = 0.4, LossGemFactor = 0, BotFactor = 0.5 })
+
 -- Net: token buckets per player and remote, and the hard-violation kick.
 Balance.Remotes = table.freeze({
 	Start = table.freeze({ rate = 1, burst = 2 }),

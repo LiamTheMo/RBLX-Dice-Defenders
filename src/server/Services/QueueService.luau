@@ -71,11 +71,11 @@ function QueueService.State(player: Player): string?
 end
 
 -- Teleports one player to the public lobby server. Yields; returns (ok, reason?).
-function QueueService.TeleportToLobby(player: Player)
+function QueueService.TeleportToLobby(player: Player, teleportData: any?)
 	if teleport == nil or RunService:IsStudio() then
 		return false, "Unavailable"
 	end
-	return teleport:TeleportToLobby(player)
+	return teleport:TeleportToLobby(player, teleportData)
 end
 
 local function pollOnce()
