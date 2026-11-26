@@ -58,12 +58,20 @@ end
 function Formulas.WaveGems(w: number): number
 	local boss = if w <= 35 then w % 5 == 0 else w % 2 == 1
 	local mini = if w <= 35 then w % 5 == 3 else w % 2 == 0
+	local gems = 0
 	for _, b in Balance.WaveGems do
 		if w <= b.maxWave then
-			return if boss then b.boss elseif mini then b.brute else b.wave
+			gems = if boss then b.boss elseif mini then b.brute else b.wave
+			break
 		end
 	end
-	return 0
+	local mul = 1
+	for _, t in Balance.ChallengeTiers do
+		if w >= t.from then
+			mul = t.GemMul
+		end
+	end
+	return gems * mul
 end
 
 function Formulas.RewardGems(waves: number): number

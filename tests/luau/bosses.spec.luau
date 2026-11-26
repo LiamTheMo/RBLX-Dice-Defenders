@@ -115,6 +115,25 @@ test("NextBossWave: solo skips to the next boss wave, Duel is every wave", funct
 	expectEq(Match.NextBossWave(duel), 1, "duel wave 1")
 end)
 
+test("BossPlan lists the next boss waves, matches the variants actually taken", function()
+	local state = Match.New(7, Random.new(1), 0, Dice.Deck)
+	local plan = Match.BossPlan(state, 4)
+	expectEq(#plan, 4, "four entries")
+	expectEq(plan[1].Wave, 5, "first boss wave")
+	expectEq(plan[1].Variant, state.nextBossVariant, "entry 1 is the announced boss")
+	expectEq(plan[4].Wave, 20, "fifth-wave cadence")
+	local previous
+	for n, entry in plan do
+		expectEq(entry.Variant, Bosses.Roll(7, n, previous), "same chain as the spawn roll")
+		previous = entry.Variant
+	end
+	state.wave, state.waveState = 35, "Prep"
+	local late = Match.BossPlan(state, 3)
+	expectEq(late[1].Wave, 37, "odd waves after 35")
+	expectEq(late[3].Wave, 41, "odd cadence")
+	expectEq(#Match.BossPlan(Match.NewDuel(1, Random.new(1), 0, Dice.Deck, Dice.Deck), 4), 0, "no plan in Duel")
+end)
+
 test("every variant has Display, portrait slot, walk data and a stride per arena", function()
 	local colors = {}
 	for _, id in Bosses.List do

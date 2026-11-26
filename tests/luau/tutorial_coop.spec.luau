@@ -12,7 +12,7 @@ test("Solo and Co-op share the lane HP and seat two owns its board", function()
 		local queue
 		queue, hp = CoopWaves.Next(wave, hp)
 		if wave == 10 then
-			expectEq(queue[1].hp, 50485, "wave 10 boss: (4300 + 90) x 11.5")
+			expectEq(queue[1].hp, 54050, "wave 10 boss: (4600 + 100) x 11.5")
 		end
 	end
 	expectEq(Layout.CoopPathLength, Layout.PathLength, "same time to travel either lane")

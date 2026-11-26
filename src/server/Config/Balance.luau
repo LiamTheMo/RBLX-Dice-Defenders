@@ -27,17 +27,24 @@ Balance.SummonCost = table.freeze({ base = 10, step = 10 }) -- MP: base + step *
 Balance.Reward = table.freeze({ goldPerWave = 5, xpPerWave = 10, fragmentsPerWave = 1 })
 -- Gems per wave cleared: Random Dice co-op's card schedule x10 (a gem is worth a tenth of a card). By wave number:
 -- up to 35 a plain wave pays 1 card, a mini-boss wave (w % 5 == 3) 2, a boss wave (w % 5 == 0) 3; from 36 there are no plain
--- waves: even = mini-boss, odd = boss (2 / 6 cards), doubled from 112, tripled from 500, x4 from 1001, x5 from 1501.
--- The first band whose maxWave >= w; `brute` = mini-boss wave. Formulas.WaveGems picks the column.
+-- waves: even = mini-boss, odd = boss (2 / 6 cards). The first band whose maxWave >= w; `brute` = mini-boss wave.
+-- Formulas.WaveGems then multiplies by the Challenge Tier's GemMul (owner: the cards become gems, 10 gems per card).
 Balance.GemsPerCard = 10
 Balance.WaveGems = table.freeze({
 	table.freeze({ maxWave = 35, wave = 10, brute = 20, boss = 30 }),
-	table.freeze({ maxWave = 111, wave = 0, brute = 20, boss = 60 }),
-	table.freeze({ maxWave = 499, wave = 0, brute = 40, boss = 120 }),
-	table.freeze({ maxWave = 1000, wave = 0, brute = 60, boss = 180 }),
-	table.freeze({ maxWave = 1500, wave = 0, brute = 80, boss = 240 }),
-	table.freeze({ maxWave = math.huge, wave = 0, brute = 100, boss = 300 }),
+	table.freeze({ maxWave = math.huge, wave = 0, brute = 20, boss = 60 }),
 })
+-- Challenge Tiers: `from` is the first wave of the tier. GemMul is the owner's (1, 2, 3, 4, 5). The owner gave no numbers for
+-- the monster HP / movement speed jump or the shorter boss skill cooldowns, so those factors are neutral 1.0: TODO-owner.
+-- Nothing reads HpMul / SpeedMul / CooldownMul yet.
+Balance.ChallengeTiers = table.freeze({
+	table.freeze({ from = 1, GemMul = 1, HpMul = 1.0, SpeedMul = 1.0, CooldownMul = 1.0 }),
+	table.freeze({ from = 112, GemMul = 2, HpMul = 1.0, SpeedMul = 1.0, CooldownMul = 1.0 }), -- Tier 1 (112-499)
+	table.freeze({ from = 500, GemMul = 3, HpMul = 1.0, SpeedMul = 1.0, CooldownMul = 1.0 }), -- Tier 2 (500-1000)
+	table.freeze({ from = 1001, GemMul = 4, HpMul = 1.0, SpeedMul = 1.0, CooldownMul = 1.0 }), -- Tier 3 (1001-1500)
+	table.freeze({ from = 1501, GemMul = 5, HpMul = 1.0, SpeedMul = 1.0, CooldownMul = 1.0 }), -- Max tier (1501+)
+})
+Balance.MaxRunWaves = 5000 -- anti-abuse cap on the waves a run may report (Quests.SettleRun)
 
 -- Kill MP (*tune*): the first band whose maxWave >= w; Brute pays x5, Boss x10.
 Balance.KillMp = table.freeze({
@@ -53,22 +60,23 @@ Balance.BossMpMul = 10
 -- 1v1 Duel (docs/DICE_RATING.md sections 4 and 9): no wave cap and no draws; it ends at 0 lives or a surrender/forfeit.
 -- Scaling from Random Dice PvP (docs/DUEL_SCALING.md): a boss ends every wave with HP BossPerRound x wave + AbsorbShare x the
 -- lane's remaining mob HP (the boss absorbs them); from DeathWave mobs get tougher and faster; from BerserkWave a kill pays a
--- fixed BerserkMp and the boss is faster. All *tune* (the source's 25000 x round is on a larger HP scale than ours).
+-- fixed BerserkMp and the boss is faster. (25000 x round and the 40 s floor are the owner's Random Dice spec).
 Balance.Duel = table.freeze({
 	MinWavesForRewards = 3,
-	BossPerRound = 300,
+	BossPerRound = 25000,
 	AbsorbShare = 0.5,
-	-- Round timer (randomdice.gg): 90 s, 10 s shorter each wave, floor 60 s. The boss comes once the mobs have spawned and
+	-- Round timer (randomdice.gg): 90 s, 10 s shorter each wave, floor 40 s. The boss comes once the mobs have spawned and
 	-- the timer has run out, or earlier when both lanes are clear.
 	RoundStart = 90,
 	RoundStep = 10,
-	RoundMin = 60,
+	RoundMin = 40,
 	DeathWave = 7,
 	DeathHpPerWave = 0.08,
 	DeathSpeedPerWave = 0.03,
 	BerserkWave = 11,
-	KillMpPerWave = 10, -- kill MP = this x wave (10, then +10 per boss killed), capped at BerserkMp
-	BerserkMp = 110,
+	KillMpPerWave = 10, -- kill SP = min(BerserkMp, this x wave) (owner spec)
+	BerserkMp = 110, -- the SP cap
+	BossKillMul = 2, -- a boss pays this x the wave's regular-kill SP (max 220); Co-op keeps Balance.BossMpMul
 	BerserkBossSpeed = 1.25,
 }) -- a forfeit or surrender before this many cleared waves pays the winner nothing (win-trading guard, *tune*)
 

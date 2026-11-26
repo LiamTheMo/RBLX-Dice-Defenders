@@ -244,7 +244,9 @@ function ResultsView.new(parent: GuiObject, handlers: { onContinue: () -> (), on
 		BorderSizePixel = 0,
 		AutoButtonColor = false,
 		Text = "",
-		Size = UDim2.fromScale(1, 1),
+		-- The Lobby gui uses CoreUISafeInsets (origin below the top bar): oversize the dim so it also covers that strip.
+		Position = UDim2.fromOffset(-3000, -3000),
+		Size = UDim2.fromOffset(9000, 9000),
 		Selectable = false,
 		ZIndex = 1,
 	}, root)

@@ -305,7 +305,7 @@ test("the boss comes early when both lanes are clear, otherwise after the round 
 	expectEq(seat1.maxHp, math.floor(Balance.Duel.BossPerRound * 3 + 0.5 * 50 + 0.5), "absorbs the mob's HP")
 end)
 
-test("Duel kill MP is 10 x wave (+10 per boss killed), fixed at 110 from berserk, boss x10", function()
+test("Duel kill MP is 10 x wave (+10 per boss killed), fixed at 110 from berserk, boss x2", function()
 	local function killMp(kind: string, wave: number): number
 		local state = newDuel()
 		state.wave, state.waveState, state.qi, state.queue, state.bossSpawned = wave, "Active", 1, {}, true
@@ -321,7 +321,8 @@ test("Duel kill MP is 10 x wave (+10 per boss killed), fixed at 110 from berserk
 	for wave, expected in { [1] = 10, [4] = 40, [10] = 100, [11] = 110, [25] = 110 } do
 		expectEq(killMp("Grunt", wave), expected, "kill MP at wave " .. wave)
 	end
-	expectEq(killMp("Boss", 3), 300, "a boss pays x10")
+	expectEq(killMp("Boss", 3), 60, "a boss pays 2x the wave SP")
+	expectEq(killMp("Boss", 12), 220, "boss SP caps at 220")
 end)
 
 test("a forfeit gives the win to the other seat", function()
@@ -392,8 +393,8 @@ test("Solo and Co-op are unchanged", function()
 	expectEq(coop.duel, nil, "no duel verdict")
 end)
 
-test("round timer: 90 s, 10 s shorter each wave, floor 60 s", function()
-	local want = { 90, 80, 70, 60, 60, 60 }
+test("round timer: 90 s, 10 s shorter each wave, floor 40 s", function()
+	local want = { 90, 80, 70, 60, 50, 40, 40 }
 	for wave, seconds in want do
 		expectEq(Match.RoundTime(wave), seconds, "wave " .. wave)
 	end

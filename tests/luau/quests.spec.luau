@@ -5,6 +5,7 @@ local Quests = require(Server.Rules.Quests)
 local Config = require(Server.Config.Quests)
 local ProfileSchema = require(Server.Rules.ProfileSchema)
 local Economy = require(Server.Rules.Economy)
+local Balance = require(Server.Config.Balance)
 
 local NAN, INF = 0 / 0, math.huge
 
@@ -223,7 +224,7 @@ test("SettleRun rejects bad run input and leaves the profile unchanged", functio
 		{ 1, 1.5, "BadWaves" },
 		{ 1, NAN, "BadWaves" },
 		{ 1, INF, "BadWaves" },
-		{ 1, 1001, "BadWaves" },
+		{ 1, Balance.MaxRunWaves + 1, "BadWaves" },
 	}
 	for index, args in cases do
 		local ok, code = Quests.SettleRun(p, args[1], args[2], 5, N)
@@ -375,4 +376,11 @@ test("SettleRun adds Mastery Xp = waves to owned deck dice only, once per run id
 	Quests.SettleRun(p, 3, 0, 0, N, { "C03" })
 	expectEq(p.Mastery.C03, nil, "a wave-0 run adds nothing")
 	expect(Quests.SettleRun(fresh(), 1, 2, 0, N), "no deck is fine")
+end)
+
+test("SettleRun pays deep runs past wave 1500 and refuses only above the anti-abuse cap", function()
+	local p = fresh()
+	expect(Quests.SettleRun(p, 1, 1600, 10, N), "wave 1600 accepted")
+	local ok, code = Quests.SettleRun(p, 2, Balance.MaxRunWaves + 1, 10, N)
+	expect(not ok and code == "BadWaves", "above the cap refused")
 end)

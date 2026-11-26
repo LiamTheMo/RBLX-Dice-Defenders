@@ -132,7 +132,7 @@ function Quests.SettleRun(profile: any, runId: any, waves: any, kills: any, now:
 	if not Validate.IsInt(runId, 1, 2 ^ 31 - 1) then
 		return false, "BadRun"
 	end
-	if not Validate.IsInt(waves, 0, 1000) then
+	if not Validate.IsInt(waves, 0, Balance.MaxRunWaves) then
 		return false, "BadWaves"
 	end
 	if profile.LastRewardRunId == runId then

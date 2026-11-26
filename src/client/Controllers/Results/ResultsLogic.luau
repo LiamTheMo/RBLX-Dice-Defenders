@@ -12,8 +12,8 @@
 --   Wave: string?,                            "12" (Summary only)
 --   RunTime: string?,                         "24:18" via RatingLogic.clock; nil when DurationSec missing
 --   Kills: string?,                           "1,285"; nil when missing
---   Tiles: { Tile },   ordered reward tiles, one component for Summary and Victory/Defeat. Coins, Gems, Xp first (each only when
---                      its amount is a number > 0), then one "Drop" tile per valid entry of snap.Drops (never invented).
+--   Tiles: { Tile },   ordered reward tiles, one component for Summary and Victory/Defeat. Coins, Gems, Xp first (each whenever
+--                      its amount is a number, 0 included; hidden only when absent), then one "Drop" tile per valid entry of snap.Drops (never invented).
 --     Tile = { Kind = "Coins" | "Gems" | "Xp" | "Drop", Text = "+1,450" (Drop: its Name), Name: string?, Rarity: string?,
 --              DieId: string?, ArtKey: string? }   Coins = DuelResult.Gold (Duel) / RewardGold; Gems/Xp = RewardGems/RewardXp.
 --                      snap.Drops = { { Id?, Name?, Rarity?, ArtKey? } }; an entry needs a string Id or Name.
@@ -85,7 +85,7 @@ function ResultsLogic.view(snap: any, meta: any?, own: any?)
 	}
 	local tiles = {}
 	local function amount(kind: string, n: any)
-		if type(n) == "number" and n > 0 then
+		if type(n) == "number" then -- a real 0 still shows; only an absent value hides
 			table.insert(tiles, { Kind = kind, Text = plus(n) })
 		end
 	end

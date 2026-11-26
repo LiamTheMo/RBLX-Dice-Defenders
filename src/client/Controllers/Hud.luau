@@ -13,6 +13,8 @@ local NetClient = require(script.Parent.NetClient)
 local Preload = require(script.Parent.Preload)
 local Chrome = require(script.Parent.Bag.Chrome)
 local HudLogic = require(script.Parent.HudLogic)
+local BossPortraits = require(script.Parent.BossPortraitSprites)
+local WaveTrackLogic = require(script.Parent.WaveTrackLogic)
 local RatingLogic = require(script.Parent.RatingLogic)
 local SharedSprites = require(script.Parent.SharedSprites)
 local SettingsLogic = require(script.Parent.Settings.SettingsLogic)
@@ -67,6 +69,7 @@ local Hud = {}
 
 local connections = {}
 local gui, ui
+local trackKey -- last wave-track state drawn (nil forces a rebuild, e.g. after a rescale)
 local toastToken = 0
 
 local function request(name: string)
@@ -413,26 +416,26 @@ local function build()
 	make("UIStroke", { Color = INK, Thickness = 2 }, botText):SetAttribute("Rim", 2)
 	ui.WaitBox, ui.Wait =
 		line(top, { Name = "DuelWait", LayoutOrder = 3, Visible = false }, RatingLogic.WAITING_TEXT, 24)
-	ui.NextWaveBox, ui.NextWave = line(top, { Name = "NextWave", LayoutOrder = 4, Visible = false }, "", 26)
-	ui.BossBox, ui.Boss =
-		line(top, { Name = "Boss", LayoutOrder = 5, Visible = false }, "", 28, Color3.fromRGB(255, 150, 120))
-	-- Portrait of the upcoming boss left of the text (hidden while its sprite id is empty).
+	ui.NextWaveBox, ui.NextWave = line(top, { Name = "NextWave", LayoutOrder = 5, Visible = false }, "", 26)
+	-- Wave track under the status bar: a dot per wave, the boss waves as portrait circles (rebuilt on a wave change).
+	ui.TrackBox = Chrome.strip(top, {
+		Name = "WaveTrack",
+		LayoutOrder = 4,
+		Visible = false,
+		AutomaticSize = Enum.AutomaticSize.XY,
+	})
+	make("UIPadding", {
+		PaddingLeft = UDim.new(0, 16),
+		PaddingRight = UDim.new(0, 16),
+		PaddingTop = UDim.new(0, 5),
+		PaddingBottom = UDim.new(0, 5),
+	}, ui.TrackBox)
 	make("UIListLayout", {
 		FillDirection = Enum.FillDirection.Horizontal,
 		VerticalAlignment = Enum.VerticalAlignment.Center,
 		SortOrder = Enum.SortOrder.LayoutOrder,
-		Padding = UDim.new(0, 10),
-	}, ui.BossBox)
-	ui.BossIcon = make("ImageLabel", {
-		Name = "Portrait",
-		BackgroundTransparency = 1,
-		ScaleType = Enum.ScaleType.Fit,
-		Size = UDim2.fromOffset(44, 44),
-		LayoutOrder = 0,
-		Visible = false,
-		ZIndex = 3,
-	}, ui.BossBox)
-	ui.Boss.LayoutOrder = 1
+		Padding = UDim.new(0, 8),
+	}, ui.TrackBox)
 
 	-- Top right: gear. Draws idle / hover / pressed and does nothing: Settings only exists in the lobby and
 	-- closes itself mid-match. The hit box grows to 44 real px on phones (see rescale).
@@ -691,6 +694,10 @@ local function rescale()
 		choiceHit.Size = UDim2.fromOffset(CONFIRM_BTN_W, choiceH)
 	end
 	Chrome.restroke(ui.Root, s * GROUP_K)
+	-- Phones: real-px minimums (text >= 13, dots >= 8, portraits >= 22) are met by growing the design size and dropping
+	-- passed waves from the track, never by shrinking art.
+	ui.NextWave.TextSize = math.max(26, math.ceil(13 / (s * GROUP_K)))
+	trackKey = nil
 end
 
 local surrendering = false -- a Surrender request is in flight or accepted: the button stays off until the match changes
@@ -713,6 +720,86 @@ local function paintSurrender()
 	ui.SurrenderText.TextTransparency = if surrendering then 0.5 else 0
 end
 
+-- Rebuilds the wave track: the dots up to the next boss and its portrait frame at the end (see WaveTrackLogic.window).
+local TRACK_DIM = Color3.fromRGB(96, 96, 108)
+local TRACK_MAX_W = 700 -- design px (the Top group is 717 wide)
+local function buildTrack(snap)
+	for _, c in ui.TrackBox:GetChildren() do
+		if c:IsA("GuiObject") then
+			c:Destroy()
+		end
+	end
+	local k = ui.Scale.Scale * GROUP_K
+	local dotSize, bossSize = math.max(14, math.ceil(8 / k)), math.max(38, math.ceil(22 / k))
+	local items = WaveTrackLogic.window(snap.Wave, snap.BossPlan)
+	local function width(list)
+		local w = 32 + 8 * (#list - 1)
+		for _, it in list do
+			w += if it.Boss then bossSize else dotSize
+		end
+		return w
+	end
+	while #items > 1 and width(items) > TRACK_MAX_W do -- drop passed waves first, then the far end
+		table.remove(items, if items[1].Past then 1 else #items)
+	end
+	for i, it in items do
+		local cell
+		if it.Boss then
+			local size = math.ceil(bossSize * 46 / 38)
+			cell = make("Frame", {
+				BackgroundColor3 = Chrome.FieldFill,
+				BorderSizePixel = 0,
+				Size = UDim2.fromOffset(size, size),
+			}, ui.TrackBox)
+			local rim = make("UIStroke", {
+				Color = if it.Current then CYAN else GOLD_TEXT,
+				Thickness = 4,
+			}, cell)
+			rim:SetAttribute("Rim", rim.Thickness)
+			local info = Bosses.Info[it.Variant or snap.BossVariant] -- plan entry 1 = BossVariant: the boss frame is always the next boss
+			local portrait = info and BossPortraits[info.Portrait]
+			local art = portrait and portrait.Image or ""
+			if art ~= "" then
+				local img = make("ImageLabel", {
+					BackgroundTransparency = 1,
+					Image = art,
+					ScaleType = Enum.ScaleType.Crop,
+					Size = UDim2.fromScale(1, 1),
+				}, cell)
+				make("UICorner", { CornerRadius = UDim.new(1, 0) }, img)
+			else
+				-- No portrait art for this variant: a generic "?" in the HUD font.
+				local q = make("TextLabel", {
+					BackgroundTransparency = 1,
+					Font = FONT,
+					Text = "?",
+					TextSize = math.floor(size * 0.6),
+					TextColor3 = GOLD_TEXT,
+					Size = UDim2.fromScale(1, 1),
+				}, cell)
+				make("UIStroke", { Color = INK, Thickness = 2 }, q):SetAttribute("Rim", 2)
+			end
+		else
+			local size = if it.Current then math.ceil(dotSize * 20 / 14) else dotSize
+			cell = make("Frame", {
+				BackgroundColor3 = if it.Current then WHITE elseif it.Past then TRACK_DIM else Chrome.FieldFill,
+				BackgroundTransparency = if it.Current or it.Past then 0 else 0.3,
+				BorderSizePixel = 0,
+				Size = UDim2.fromOffset(size, size),
+			}, ui.TrackBox)
+			local rim = make("UIStroke", {
+				Color = if it.Current then CYAN elseif it.Past then TRACK_DIM else Chrome.PanelRim,
+				Thickness = if it.Current then 3 else 2,
+			}, cell)
+			rim:SetAttribute("Rim", rim.Thickness)
+		end
+		cell.Name = "W" .. it.Wave
+		cell.LayoutOrder = i
+		make("UICorner", { CornerRadius = UDim.new(1, 0) }, cell)
+	end
+	Chrome.restroke(ui.TrackBox, k)
+end
+
 local function updateCountdowns()
 	local snap = NetClient.Last
 	if not snap then
@@ -720,30 +807,22 @@ local function updateCountdowns()
 	end
 	local now = workspace:GetServerTimeNow()
 	local nextIn = snap.NextWaveAt and snap.NextWaveAt - now
-	local bossIn = snap.BossAt and snap.BossAt - now
 	ui.NextWaveBox.Visible = snap.Phase == "Playing" and nextIn ~= nil and nextIn > 0
 	if ui.NextWaveBox.Visible then
 		ui.NextWave.Text = ("Next wave in %ds"):format(math.ceil(nextIn))
 	end
-	-- The upcoming boss is known from the start: its portrait and name show from 3 waves ahead (every round in a Duel).
-	local info = Bosses.Info[snap.BossVariant]
-	local name = if info then info.Name else Display.Enemies.Boss.Name
-	local wavesAway = if snap.BossWave and snap.Wave then snap.BossWave - snap.Wave else nil
-	local line1
-	if bossIn ~= nil and bossIn > 0 then
-		line1 = ("%s approaches \u{2014} %ds"):format(name, math.ceil(bossIn))
-	elseif info and snap.Mode == "Duel" then
-		line1 = ("Round boss: %s"):format(name)
-	elseif info and wavesAway and wavesAway >= 1 and wavesAway <= 3 then
-		line1 = ("Boss in %d wave%s: %s"):format(wavesAway, if wavesAway == 1 then "" else "s", name)
+	local mode = snap.Mode
+	local key = ("%s:%s:%s:%s"):format(
+		tostring(snap.Wave),
+		tostring(snap.BossWave),
+		tostring(snap.BossVariant),
+		tostring(mode)
+	)
+	if key ~= trackKey then
+		trackKey = key
+		buildTrack(snap)
 	end
-	ui.BossBox.Visible = snap.Phase == "Playing" and line1 ~= nil
-	if ui.BossBox.Visible then
-		ui.Boss.Text = line1
-		local portrait = info and Sprites.Boss[info.Portrait] or ""
-		ui.BossIcon.Image = portrait
-		ui.BossIcon.Visible = portrait ~= ""
-	end
+	ui.TrackBox.Visible = snap.Phase == "Playing" and mode ~= "Duel" -- a Duel has a boss every round: nothing to track
 end
 
 local function render(snap)

@@ -150,9 +150,12 @@ test("tiles: order, duel gems and xp, drops, zero hidden", function()
 	expectEq(t[4].ArtKey, "L05", "art key falls back to id")
 	expectEq(t[5].Text, "L09", "id as name")
 	snap.RewardGems, snap.Drops = 0, {}
-	expectEq(#ResultsLogic.view(snap).Tiles, 2, "zero gems hidden, empty drops none")
+	expectEq(#ResultsLogic.view(snap).Tiles, 3, "a real zero gems shows, empty drops none")
+	snap.RewardGems = nil
+	expectEq(#ResultsLogic.view(snap).Tiles, 2, "absent gems hidden")
+	snap.RewardGems = 0
 	snap.Drops = nil
-	expectEq(#ResultsLogic.view(snap).Tiles, 2, "nil drops")
+	expectEq(#ResultsLogic.view(snap).Tiles, 3, "nil drops")
 end)
 
 test("count data: totals", function()
@@ -186,4 +189,40 @@ test("count data: level bar", function()
 	expectEq(ex.LevelUps, 1, "one level up")
 	expectEq(ResultsLogic.view({ Phase = "Ended", RewardXp = 0 }, meta).Level.From.Frac, 0.845, "0 xp: from = to")
 	expectEq(ResultsLogic.view({ Phase = "Ended" }, meta).Level.From, nil, "unknown xp: no animation")
+end)
+
+test("summary: zero kills, zero rewards, a 0-second run still show", function()
+	local v = ResultsLogic.view({
+		Phase = "Ended",
+		Result = "Lost",
+		Wave = 1,
+		Kills = 0,
+		DurationSec = 5,
+		RewardGold = 0,
+		RewardGems = 0,
+		RewardXp = 0,
+	})
+	expectEq(v.Kills, "0", "zero kills")
+	expectEq(v.RunTime, "0:05", "run time")
+	expectEq(#v.Tiles, 3, "coins, gems, xp at 0")
+	expectEq(v.Tiles[1].Text, "+0", "zero coins")
+	expectEq(ResultsLogic.view({ Phase = "Ended", Result = "Lost", Wave = 1, DurationSec = 0 }).RunTime, "0:00", "0 s")
+end)
+
+test("summary: aborted run keeps its stats and line", function()
+	local v = ResultsLogic.view({
+		Phase = "Ended",
+		Mode = "Coop",
+		Result = "Aborted",
+		Wave = 4,
+		Kills = 0,
+		DurationSec = 61,
+		RewardGold = 0,
+		RewardGems = 0,
+		RewardXp = 0,
+	})
+	expectEq(v.OutcomeLine, "Run aborted", "line")
+	expectEq(v.Kills, "0", "kills")
+	expectEq(v.RunTime, "1:01", "time")
+	expectEq(#v.Tiles, 3, "zero tiles shown")
 end)

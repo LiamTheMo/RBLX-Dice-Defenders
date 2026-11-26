@@ -355,7 +355,25 @@ function Match.NextBossWave(state): number?
 	return nil
 end
 
--- Seconds a Duel wave lasts before its boss: 90, 80, 70, 60, 60 ...
+-- The next `count` (co-op) boss waves as { Wave, Variant }, from the same Roll chain takeBossVariant walks; entry 1 is NextBossWave/nextBossVariant.
+function Match.BossPlan(state, count: number): { { Wave: number, Variant: string } }
+	local plan = {}
+	local wave = Match.NextBossWave(state)
+	if state.mode == "Duel" or wave == nil then
+		return plan
+	end
+	local variant = state.nextBossVariant
+	for i = 1, count do
+		table.insert(plan, { Wave = wave, Variant = variant })
+		repeat
+			wave += 1
+		until CoopWaves.IsBoss(wave)
+		variant = Bosses.Roll(state.runId, state.bossCount + 1 + i, variant)
+	end
+	return plan
+end
+
+-- Seconds a Duel wave lasts before its boss: 90, 80, 70, 60, 50, 40 ...
 function Match.RoundTime(wave: number): number
 	local cfg = Balance.Duel
 	return math.max(cfg.RoundMin, cfg.RoundStart - cfg.RoundStep * (wave - 1))
@@ -903,9 +921,9 @@ function Match.Step(state, now: number)
 		if enemy.hp <= 0 then
 			local gain = Formulas.KillMp(enemy.kind, state.wave)
 			if duel then
-				-- Random Dice PvP: 10 SP a kill, +10 for every boss killed (one a wave), fixed at BerserkMp from berserk.
+				-- Owner spec: regular kill = min(110, 10 x wave) SP, a boss 2x that (max 220).
 				gain = math.min(Balance.Duel.BerserkMp, Balance.Duel.KillMpPerWave * state.wave)
-					* (if enemy.kind == "Boss" then Balance.BossMpMul else 1)
+					* (if enemy.kind == "Boss" then Balance.Duel.BossKillMul else 1)
 			end
 			if duel then
 				local owner = Match.Seat(state, enemy.seat)

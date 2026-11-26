@@ -76,12 +76,29 @@ test("wave formulas", function()
 	for w = 1, 10 do
 		gems[w] = Formulas.WaveGems(w)
 	end
-	expectEq(table.concat(gems, ","), "10,10,20,10,30,10,10,20,10,30", "gems: Random Dice's 1,1,2,1,3 cycle x10 (mini-boss 20, boss 30)")
+	expectEq(
+		table.concat(gems, ","),
+		"10,10,20,10,30,10,10,20,10,30",
+		"gems: Random Dice's 1,1,2,1,3 cycle x10 (mini-boss 20, boss 30)"
+	)
 	expectEq(Formulas.RewardGems(0), 0, "gems 0")
 	expectEq(Formulas.RewardGems(15), 240, "gems 15")
 	local expect = {
-		[35] = 30, [36] = 20, [37] = 60, [40] = 20, [111] = 60, [112] = 40, [113] = 120, [499] = 120, [500] = 60,
-		[501] = 180, [1000] = 60, [1001] = 240, [1500] = 80, [1501] = 300, [1502] = 100,
+		[35] = 30,
+		[36] = 20,
+		[37] = 60,
+		[40] = 20,
+		[111] = 60,
+		[112] = 40,
+		[113] = 120,
+		[499] = 120,
+		[500] = 60,
+		[501] = 180,
+		[1000] = 60,
+		[1001] = 240,
+		[1500] = 80,
+		[1501] = 300,
+		[1502] = 100,
 	}
 	for w, g in expect do
 		expectEq(Formulas.WaveGems(w), g, "gems wave " .. w)
@@ -210,7 +227,7 @@ test("first wave starts 4 s after Start and spawns on schedule", function()
 	expectEq(#state.enemies >= 1, true, "first enemy out")
 	local batch = Match.TakeOut(state)
 	expectEq(batch.S[1].Kind, "Grunt", "spawn record kind")
-	expectEq(batch.S[1].Hp, 130, "spawn record hp: 100 + 30 x slot 1")
+	expectEq(batch.S[1].Hp, 110, "spawn record hp: 100 + 10 x slot 1")
 	expectEq(batch.S[1].Speed, 6, "wave 1 speed")
 	local again = Match.TakeOut(state)
 	expectEq(#again.S, 0, "outbox drained")
@@ -438,6 +455,9 @@ test("endless run warns before the wave 10 boss; historical waves use the shared
 		place(state, cell, if cell % 2 == 0 then "C03" else "C05", 7)
 	end
 	state.mp = 0
+	for id in state.tiers do
+		state.tiers[id] = Balance.PowerUp.Max -- the spec is about boss warnings, not survival
+	end
 	local warned = {} -- wave -> lead seconds
 	local lastWarn
 	local bossAtWave, bossSpawn = {}, {}
@@ -488,12 +508,12 @@ test("endless run warns before the wave 10 boss; historical waves use the shared
 		)
 	end
 	expectEq(#queues[2], 10, "ordinary wave size")
-	expectEq(queues[3][1].kind, "Brute", "wave 3 first-slot miniboss")
-	expectEq(queues[3][10].kind, "Runner", "wave 3 last-slot runner")
-	expectEq(queues[8][1].kind, "Brute", "wave 8 first-slot miniboss")
+	expectEq(queues[4][1].kind, "Brute", "wave 4 first-slot miniboss")
+	expectEq(queues[4][10].kind, "Runner", "wave 4 last-slot runner")
+	expectEq(queues[9][1].kind, "Brute", "wave 9 first-slot miniboss")
 	expectEq(#queues[5], 1, "wave 5 is a single boss")
 	expectEq(#queues[10], 1, "boss replaces the wave")
-	expectEq(queues[10][1].hp, 50485, "wave 10 boss: (4300 + 90) x 11.5")
+	expectEq(queues[10][1].hp, 54050, "wave 10 boss: (4600 + 100) x 11.5")
 end)
 
 test("max 90 alive: spawns wait and are never dropped", function()
@@ -620,4 +640,17 @@ test("Chill slows without stacking, then restores speed and reports movement", f
 	expectNear(enemy.speed, 6, 1e-8, "speed restored")
 	batch = Match.TakeOut(state)
 	expectNear(batch.H[1].Speed, 6, 1e-8, "restoration sent")
+end)
+
+test("gems per wave follow the card table x10 and the Challenge Tier multiplier at its boundaries", function()
+	-- Wave 111 is x1, 112 x2, 499 x2, 500 x3, 1000 x3, 1001 x4, 1500 x4, 1501 x5 (a plain even wave 112+ is a mini-boss wave: 20 base).
+	expectEq(Formulas.WaveGems(111), 60, "111 boss x1")
+	expectEq(Formulas.WaveGems(112), 40, "112 mini x2")
+	expectEq(Formulas.WaveGems(499), 120, "499 boss x2")
+	expectEq(Formulas.WaveGems(500), 60, "500 mini x3")
+	expectEq(Formulas.WaveGems(1000), 60, "1000 mini x3")
+	expectEq(Formulas.WaveGems(1001), 240, "1001 boss x4")
+	expectEq(Formulas.WaveGems(1500), 80, "1500 mini x4")
+	expectEq(Formulas.WaveGems(1501), 300, "1501 boss x5")
+	expectEq(Formulas.RewardGems(1500) - Formulas.RewardGems(1499), 80, "sum steps by the wave gems")
 end)

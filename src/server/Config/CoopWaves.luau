@@ -2,35 +2,33 @@
 -- A wave's regular monsters have Base HP = b + d x n: b is the wave's start (InitialHp on wave 1, then the last regular
 -- monster's Base HP of the wave before), d the flat step for the wave, n the spawn slot 1..10. Actual HP is the Base HP
 -- times the kind's multiplier: Fast (Runner) x0.5, Mini-Boss (Brute) x(5 + 1.5 (k-1)), Boss x(10 + 1.5 (k-1)), where k is
--- how many of that kind have appeared up to and including this wave. The Step values below are placeholders to tune.
+-- how many of that kind have appeared up to and including this wave.
 local CoopWaves = {}
 
 CoopWaves.InitialHp = 100
 local SLOTS = 10 -- regular monsters per wave
 
--- Flat HP added per slot: { from wave, d } ascending; from wave 25 it grows by StepGrowth every StepEvery waves.
-local STEPS = { { 1, 30 }, { 5, 60 }, { 10, 90 }, { 15, 150 }, { 20, 300 }, { 25, 450 } }
-local STEP_EVERY, STEP_GROWTH = 5, 150
+-- Flat HP added per slot (owner's exact Random Dice formula): d(1) = 10 and d(w) = d(w-1) + Delta(w) with
+-- Delta(w) = 10 x ceil(w / 10) for 2 <= w <= 50 (d(10) = 100, d(11) = 120, d(20) = 300, d(50) = 1500) and
+-- 50 x ceil(w / 10) from wave 51 (d(51) = 1800, d(60) = 4500, d(111) = 27600), unbounded. All integers, exact in a double
+-- (wave 1500: b ~ 2.8e10, far below 2^53).
+local FIRST_STEP, LAST_LINEAR_WAVE = 10, 50
 
--- Current-game schedule (randomdice.gg): a boss every 5th wave up to 35, then a boss on odd waves; a mini-boss (brute)
--- on waves 3, 8 ... 33, then on even waves from 36.
+-- Schedule (owner's spec): a boss every 5th wave up to 35, then on odd waves (a boss wave is one enemy, never doubled). A
+-- mini-boss (brute) on waves ending in 4 or 9 up to 35, then on waves ending in 3 or 8; a boss wave wins a clash (43, 53, 63 ...).
+-- Past wave 50 the mini-boss cadence is unspecified: the 36-50 rule simply continues.
 function CoopWaves.IsBoss(wave: number): boolean
 	return if wave <= 35 then wave % 5 == 0 else wave % 2 == 1
 end
 
 function CoopWaves.HasBrute(wave: number): boolean
-	return if wave <= 35 then wave % 5 == 3 else wave % 2 == 0
+	return if wave <= 35 then wave % 5 == 4 else wave % 5 == 3 and not CoopWaves.IsBoss(wave)
 end
 
 function CoopWaves.Step(wave: number): number
-	if wave >= 25 then
-		return 450 + STEP_GROWTH * ((wave - 25) // STEP_EVERY)
-	end
-	local d = STEPS[1][2]
-	for _, s in STEPS do
-		if wave >= s[1] then
-			d = s[2]
-		end
+	local d = FIRST_STEP
+	for w = 2, wave do
+		d += (if w <= LAST_LINEAR_WAVE then 10 else 50) * math.ceil(w / 10)
 	end
 	return d
 end

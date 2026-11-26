@@ -172,9 +172,10 @@ local function snapshot(player: Player)
 	out.BossAt = match.bossAt
 	out.BossVariant = match.nextBossVariant -- the boss that comes next, fixed until it spawns
 	out.BossWave = Match.NextBossWave(match)
+	out.BossPlan = Match.BossPlan(match, 4) -- read-only: upcoming boss waves, all fixed by runId
 	out.Result = match.result
 	if match.phase == "Ended" then -- read-only result-card extras; the client only displays them
-		out.Kills = seat.kills
+		out.Kills = if match.mode == "Duel" then seat.kills else match.kills -- Co-op: the shared lane total
 		out.DurationSec = math.max(0, math.floor(match.lastNow - match.startedAt))
 		local opponent = if match.mode == "Duel" then participants[3 - index] else nil
 		out.OpponentUserId = if opponent and match.bot == nil then opponent.UserId else nil

@@ -8,21 +8,25 @@ This follows the Random Dice Defense scaling model as community data-mining desc
 
 - **Start:** wave 1 has b = 100.
 - **Regular monsters:** Base HP = b + d × n. n is the spawn slot, 1 to 10. Every wave has 10 regular slots.
-- **Step d:** a flat HP added per slot, set per wave. `CoopWaves.Step` uses +30 from wave 1, +60 from wave 5, +90 from wave 10, +150 from wave 15, +300 from wave 20 and +450 from wave 25. From wave 25 it grows by +150 every 5 waves. **These step values are placeholders to be tuned, not confirmed Random Dice numbers.**
+- **Step d (the owner's exact Random Dice formula):** d(1) = 10 and d(w) = d(w-1) + Delta(w), Delta(w) = 10 x ceil(w/10) for waves 2-50 and 50 x ceil(w/10) from wave 51, unbounded. d(10) = 100, d(11) = 120, d(20) = 300, d(21) = 330, d(30) = 600, d(31) = 640, d(40) = 1000, d(41) = 1050, d(50) = 1500, d(51) = 1800, d(60) = 4500, d(61) = 4850, d(70) = 8000, d(80) = 12000, d(111) = 27600. Checkpoints: b(20) = 23600, b(50) = 267600 (10th monster 282600), wave 51 runs 284400 to 300600, b(112) = 8361100, b(1000) = 8.39e9, b(1500) = 2.83e10 (exact in a double). **Owner note:** the worked example "b(50) = 213500" does not follow from the formula; the code implements the formula.
 - **Carry:** the next wave's b is this wave's last regular monster Base HP, b + d × 10.
 - **Fast (Runner):** Base HP × 0.5. On mini-boss waves the last slots are Runners: ceil(wave / 10) of them up to wave 60 (1 at wave 3, 2 at wave 13 ...), then 6 (61–66), 7 (67–74), 8 (75–84) and 9 (85 on). Duel waves have up to 5 Runners instead (see below).
 - **Mini-Boss (Brute):** Base HP × (5 + 1.5 × (k − 1)), where k counts the mini-bosses up to and including this wave. It takes slot 1 of its wave.
 - **Boss:** Base HP × (10 + 1.5 × (k − 1)), where k counts the bosses up to and including this wave. A boss wave is a single boss in slot 1.
 
-Wave 1 example: slots 1 to 10 have HP 130, 160 ... 400. Wave 2 starts at b = 400.
+Wave 1 example: slots 1 to 10 have HP 110, 120 ... 200. Wave 2 starts at b = 200 (b: 100, 200, 400, 700, 1100, 1600, 2200, 2900, 3700, 4600, 5600, 6800 for waves 1-12).
 
 Balance numbers are *tune*. Dice, pips, damage and summon costs are balanced separately ([MVP.md](MVP.md), [DICE_CATALOG.md](DICE_CATALOG.md)).
 
 ## Schedule
 
 - **Bosses:** every 5th wave up to wave 35, then every odd wave from 37.
-- **Mini-bosses:** waves 3, 8 ... 33, then every even wave from 36.
+- **Mini-bosses (owner's spec):** waves ending in 4 or 9 up to wave 35 (4, 9 ... 34); waves ending in 3 or 8 from 36 (38, 48 ...). A boss wave wins a clash (43, 53 ... are boss waves), and the k of the mini-boss formula counts only waves that really spawn one. The spec gives no mini-boss cadence after wave 50: the 36-50 rule continues. A boss wave is always one boss (never doubled).
 - **Spawn count and speed:** `Formulas.WaveCount`, `SpawnInterval` and `SpeedMul` in `src/server/Rules/Formulas.luau`. Spawn timing uses these local formulas.
+
+## Challenge Tiers and gems
+
+Waves 112-499 are Challenge Tier 1, 500-1000 Tier 2, 1001-1500 Tier 3 and 1501+ the Max tier (`Balance.ChallengeTiers`). The owner gave no numbers for the monster HP and speed jump or the shorter boss skill cooldowns, so those factors are 1.0 (**TODO-owner**) and nothing reads them yet. The Gem multiplier is the owner's: gems per cleared wave = the Random Dice card table x 10 (`Balance.GemsPerCard`, `Balance.WaveGems`) x 1 / 2 / 3 / 4 / 5 for waves 1-111 / Tier 1 / 2 / 3 / Max (`Formulas.WaveGems`). A run may report at most `Balance.MaxRunWaves` = 5000 waves (`Quests.SettleRun`).
 
 ## Duel (1v1)
 
