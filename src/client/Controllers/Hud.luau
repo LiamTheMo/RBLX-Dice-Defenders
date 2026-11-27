@@ -416,7 +416,23 @@ local function build()
 	make("UIStroke", { Color = INK, Thickness = 2 }, botText):SetAttribute("Rim", 2)
 	ui.WaitBox, ui.Wait =
 		line(top, { Name = "DuelWait", LayoutOrder = 3, Visible = false }, RatingLogic.WAITING_TEXT, 24)
-	ui.NextWaveBox, ui.NextWave = line(top, { Name = "NextWave", LayoutOrder = 5, Visible = false }, "", 26)
+	ui.NextWaveBox, ui.NextWave = line(
+		top,
+		{ Name = "NextWave", LayoutOrder = 5, Visible = false },
+		"",
+		26,
+		Color3.fromRGB(255, 60, 60)
+	)
+	-- The countdown and the wave dots float on the scene: no panel behind them.
+	local function unframe(strip: Frame)
+		strip.BackgroundTransparency = 1
+		for _, c in strip:GetChildren() do
+			if c:IsA("UIStroke") or c:IsA("UIGradient") then
+				c:Destroy()
+			end
+		end
+	end
+	unframe(ui.NextWaveBox)
 	-- Wave track under the status bar: a dot per wave, the boss waves as portrait circles (rebuilt on a wave change).
 	ui.TrackBox = Chrome.strip(top, {
 		Name = "WaveTrack",
@@ -436,6 +452,7 @@ local function build()
 		SortOrder = Enum.SortOrder.LayoutOrder,
 		Padding = UDim.new(0, 8),
 	}, ui.TrackBox)
+	unframe(ui.TrackBox)
 
 	-- Top right: gear. Draws idle / hover / pressed and does nothing: Settings only exists in the lobby and
 	-- closes itself mid-match. The hit box grows to 44 real px on phones (see rescale).

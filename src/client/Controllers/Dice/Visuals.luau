@@ -1,14 +1,17 @@
 local AssetService = game:GetService("AssetService")
 local EncodingService = game:GetService("EncodingService")
 
-local Data = require(script.Parent.ModelData)
+local Data = require(script.Parent.CommonModelData)
 local Rare = require(script.Parent.RareModelData)
 local Epic = require(script.Parent.EpicModelData)
+local Legendary = require(script.Parent.LegendaryModelData)
+local Mythic = require(script.Parent.MythicModelData)
 
 local Visuals = {}
 
-local AUTHORED_SIZE = 2.5
-local DICE_SIZE = 4 -- every die, studs per side on the board
+-- Packets are in normalized die space (cube +-1.25, edge 2.5); cloneMesh scales them to the 4-stud die (x1.6).
+local NORMALIZED_EDGE = 2.5
+local DICE_SIZE = 4 -- the die is a 4-stud cube (owner 2026-11-26): studs per side on the board
 local PIP = Color3.fromHex("#0E0E0E")
 local WHITE = Color3.new(1, 1, 1)
 local BLACK = Color3.new()
@@ -20,6 +23,12 @@ local EPIC_BODIES = {}
 local EPIC_MARKS = {}
 local EPIC_ORNAMENTS = {}
 local TOP_TEXTURES = {}
+-- Legendary/Mythic dice own their meshes, built lazily so only tiers actually on the board cost editable-mesh memory.
+local LM_DATA = { L01 = Legendary, L02 = Legendary, M01 = Mythic }
+local LM_TIERS = {} -- [typeId][tier] = { Body, Marks }
+local LM_PARTS = {} -- [typeId] = { { Name, Color, Material, Template } }
+local LM_WAIT = {} -- [typeId .. tier] = callbacks waiting on an in-flight build
+local PART_MATERIAL = { Gem = Enum.Material.Neon, Eye = Enum.Material.Neon, EyeL = Enum.Material.Neon, EyeR = Enum.Material.Neon, Drip = Enum.Material.Neon, DripHi = Enum.Material.Neon }
 local iceChips
 local ready = Instance.new("BindableEvent")
 local loading = true
@@ -72,7 +81,7 @@ local function meshTemplate(
 		for i, p in positions do
 			ids[i] = editable:AddVertex(p - center)
 			if paintTop and p.Y == max.Y then
-				topUVs[i] = editable:AddUV(Vector2.new(0.5 + p.X / 2.5, 0.5 + p.Z / 2.5))
+				topUVs[i] = editable:AddUV(Vector2.new(0.5 + p.X / NORMALIZED_EDGE, 0.5 + p.Z / NORMALIZED_EDGE))
 			end
 		end
 
@@ -233,7 +242,7 @@ end)
 
 local function cloneMesh(template, parent: Instance, anchor: BasePart, name: string, color: Color3)
 	local mesh = template.Part:Clone()
-	local scale = anchor.Size.X / AUTHORED_SIZE
+	local scale = anchor.Size.X / NORMALIZED_EDGE
 	mesh.Name = name
 	mesh.Color = color
 	mesh.Size *= scale
@@ -242,11 +251,71 @@ local function cloneMesh(template, parent: Instance, anchor: BasePart, name: str
 	return mesh
 end
 
+-- Builds one die's tier (and, once, its parts) on first use; calls done() when finished or failed.
+local function buildLM(typeId: string, tier: number, done: () -> ())
+	local key = typeId .. tier
+	if LM_WAIT[key] then
+		table.insert(LM_WAIT[key], done)
+		return
+	end
+	LM_WAIT[key] = { done }
+	task.spawn(function()
+		local data = LM_DATA[typeId]
+		local solid = { WHITE, WHITE, WHITE, WHITE }
+		local style = data.Styles[typeId]
+		local bodies, marksData = style.Bodies or data.Bodies, style.Marks or data.Marks
+		if TOP_TEXTURES[typeId] == nil then
+			TOP_TEXTURES[typeId] = topTexture(style.Texture, Color3.fromHex(style.Body), style, true)
+		end
+		local tiers = LM_TIERS[typeId] or {}
+		LM_TIERS[typeId] = tiers
+		if not tiers[tier] then
+			local body = meshTemplate(bodies[tier], solid, true, nil, true)
+			local marks = meshTemplate(marksData[tier], { WHITE })
+			tiers[tier] = if body and marks then { Body = body, Marks = marks } else nil
+		end
+		if not LM_PARTS[typeId] then
+			local parts, complete = {}, true
+			for name, part in data.Parts[typeId] do
+				local template = meshTemplate(part.Mesh, { Color3.fromHex(part.Color) })
+				if template then
+					table.insert(parts, {
+						Name = name,
+						Color = Color3.fromHex(part.Color),
+						Material = PART_MATERIAL[name] or Enum.Material.SmoothPlastic,
+						Template = template,
+					})
+				else
+					complete = false
+				end
+			end
+			if complete then
+				LM_PARTS[typeId] = parts
+			end
+		end
+		local waiting = LM_WAIT[key]
+		LM_WAIT[key] = nil
+		for _, callback in waiting do
+			callback()
+		end
+	end)
+end
+
 local function applyMeshes(anchor: BasePart, visuals: Instance, typeId: string, layout: number): boolean
-	local epic = Epic.Styles[typeId]
+	local lm = LM_DATA[typeId]
+	local epic = Epic.Styles[typeId] or (lm and lm.Styles[typeId])
 	local style = Rare.Styles[typeId]
-	local body = if epic then EPIC_BODIES[layout] elseif style then RARE_BODIES[layout] else BODIES[layout]
-	local marks = if epic then EPIC_MARKS[layout] elseif style then RARE_MARKS[layout] else MARKS[layout]
+	local built = lm and LM_TIERS[typeId] and LM_TIERS[typeId][layout]
+	local body, marks
+	if lm then
+		body, marks = built and built.Body, built and built.Marks
+		if not LM_PARTS[typeId] then
+			return false
+		end
+	else
+		body = if epic then EPIC_BODIES[layout] elseif style then RARE_BODIES[layout] else BODIES[layout]
+		marks = if epic then EPIC_MARKS[layout] elseif style then RARE_MARKS[layout] else MARKS[layout]
+	end
 	local texture = TOP_TEXTURES[typeId]
 	if not (body and marks and texture) then
 		return false
@@ -269,7 +338,11 @@ local function applyMeshes(anchor: BasePart, visuals: Instance, typeId: string, 
 	if style or epic then
 		mark.Material = Enum.Material.Neon
 	end
-	if epic then
+	if lm then
+		for _, part in LM_PARTS[typeId] do
+			cloneMesh(part.Template, visuals, anchor, part.Name, part.Color).Material = part.Material
+		end
+	elseif epic then
 		local ornament = EPIC_ORNAMENTS[typeId]
 		if ornament then
 			cloneMesh(ornament, visuals, anchor, Epic.Ornaments[typeId].Name, WHITE)
@@ -374,7 +447,7 @@ local function applySurfaces(
 				local pip = Instance.new("Frame")
 				pip.Name = "Pip" .. i
 				pip.AnchorPoint = Vector2.new(0.5, 0.5)
-				pip.Position = UDim2.fromScale(0.5 + slot[1] / 2.5, 0.5 - slot[2] / 2.5)
+				pip.Position = UDim2.fromScale(0.5 + slot[1] / NORMALIZED_EDGE, 0.5 - slot[2] / NORMALIZED_EDGE)
 				pip.Size = UDim2.fromScale(0.176, 0.176)
 				pip.BorderSizePixel = 0
 				pip.BackgroundColor3 = pipColor
@@ -403,7 +476,8 @@ function Visuals.Apply(anchor: BasePart, typeId: string, tier: number, color: Co
 	local visuals = Instance.new("Folder")
 	visuals.Name = "Visuals"
 	visuals.Parent = anchor
-	local epic = Epic.Styles[typeId]
+	local lm = LM_DATA[typeId]
+	local epic = Epic.Styles[typeId] or (lm and lm.Styles[typeId])
 	local style = epic or Rare.Styles[typeId] or Data.Styles[typeId]
 	local target: Instance = visuals
 	if style and style.Name then
@@ -421,7 +495,13 @@ function Visuals.Apply(anchor: BasePart, typeId: string, tier: number, color: Co
 	fallback.Name = "SurfaceMarks"
 	fallback.Parent = target
 	applySurfaces(anchor, fallback, tier, color, style, TOP_TEXTURES[typeId], epic ~= nil)
-	if style and loading then
+	if lm then
+		buildLM(typeId, tier, function()
+			if visuals.Parent == anchor and applyMeshes(anchor, target, typeId, tier) then
+				fallback:Destroy()
+			end
+		end)
+	elseif style and loading then
 		ready.Event:Once(function()
 			if visuals.Parent == anchor then
 				if applyMeshes(anchor, target, typeId, tier) then

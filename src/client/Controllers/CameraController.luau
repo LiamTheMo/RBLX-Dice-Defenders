@@ -1,9 +1,7 @@
 -- Camera per phase. During a run (Phase "Playing") a fixed Scriptable camera frames the path and the
--- board (Layout.Camera) and the character's movement controls are off; otherwise the default camera
--- follows the player's character around the lobby map. In Co-op and Duel a player can also hop their character onto
--- the board automatically: movement controls stay on under the fixed camera and the body stands on the arena, where
--- the other player sees it; it goes back to the lobby when the match ends. The client owns its character, so PivotTo
--- replicates.
+-- board (Layout.Camera) and the character is dropped onto the board (Solo, Co-op and Duel) with movement controls on,
+-- so the player can walk and jump around the map. When the run ends the character goes back to the lobby's
+-- LobbySpawn. The client owns its character, so PivotTo replicates.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -19,8 +17,7 @@ local onBoard = false
 local view = Layout.Camera
 local controls: any = nil -- PlayerModule's ControlModule, once loaded
 local bodyOn = false -- the character is standing on the board
-local returnCFrame: CFrame? = nil -- where it was before it hopped on
-local shared = false -- this match has another player (Co-op or Duel)
+local returnCFrame: CFrame? = nil -- fallback return spot if the lobby has no LobbySpawn
 
 local function setControls()
 	if controls then
@@ -42,8 +39,12 @@ local function setBody(on: boolean)
 			local root = character:FindFirstChild("HumanoidRootPart")
 			returnCFrame = if root and root:IsA("BasePart") then root.CFrame else nil
 			character:PivotTo(CFrame.new(view.LookAt + Vector3.new(0, 4, 0))) -- drops onto the board's centre
-		elseif returnCFrame then
-			character:PivotTo(returnCFrame)
+		else
+			local spawn = workspace:FindFirstChild("LobbySpawn", true)
+			local target = if spawn and spawn:IsA("BasePart") then spawn.CFrame + Vector3.yAxis * 3 else returnCFrame
+			if target then
+				character:PivotTo(target)
+			end
 		end
 	end
 	bodyOn = on
@@ -87,8 +88,7 @@ end
 
 local function onState(snapshot)
 	local board = snapshot.Phase == "Playing"
-	shared = snapshot.Mode == "Duel" or snapshot.PlayerCount == 2
-	if bodyOn and not (board and shared) then
+	if bodyOn and not board then
 		setBody(false) -- the match ended: the body goes back to the lobby
 	end
 	local nextView = if snapshot.Mode == "Duel"
@@ -100,7 +100,7 @@ local function onState(snapshot)
 		setControls()
 		apply()
 	end
-	if board and shared and not bodyOn then
+	if board and not bodyOn then
 		setBody(true) -- retried on the next snapshot while the character is still loading
 	end
 end

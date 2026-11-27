@@ -112,6 +112,11 @@ local function dropFlight(v)
 	end
 	releaseParts(v.followers)
 	releaseParts(v.dots)
+	releaseItems(v.ribbons)
+	if v.heart then
+		Fx.Release(v.heart)
+		v.heart = nil
+	end
 	if v.core then
 		Fx.Release(v.core)
 		v.core = nil
@@ -142,6 +147,8 @@ function RarityEffects.Create(style, dot)
 		trails = {},
 		followers = {},
 		dots = {},
+		ribbons = {},
+		heart = nil,
 		items = {},
 		beams = {},
 		began = false,
@@ -211,6 +218,8 @@ local function corePose(v, shot, position: Vector3, t: number, progress: number)
 		cf = CFrame.new(position)
 	elseif aim == "z" then
 		cf = CFrame.lookAt(position, position + dir) * CFrame.Angles(0, 0, spin) * FLIP
+	elseif aim == "nz" then
+		cf = CFrame.lookAt(position, position + dir) * CFrame.Angles(0, 0, spin)
 	elseif aim == "y" then
 		cf = CFrame.lookAt(position, position + dir) * CFrame.Angles(-math.pi / 2, 0, 0) * CFrame.Angles(0, spin, 0)
 	elseif aim == "flat" then
@@ -268,6 +277,17 @@ local function addFlightExtras(v, shot)
 			table.insert(v.dots, part)
 		end
 	end
+	local core = profile.core
+	if core.heart then
+		v.heart = borrow(core.mesh, shot.parent, core.heart.color)
+	end
+	for _, def in profile.ribbons or {} do
+		local part = borrow(def.mesh, shot.parent, def.color)
+		if part == nil then
+			break
+		end
+		table.insert(v.ribbons, { part = part, def = def })
+	end
 	local beam = profile.coreBeam
 	if beam then
 		local handle = Fx.Beam(workspace.Terrain, workspace.Terrain, {
@@ -300,6 +320,25 @@ local function updateFollowers(v, shot, position: Vector3, t: number)
 		part.CFrame = CFrame.lookAt(p, p - dir) * CFrame.Angles(-math.pi / 2, 0, 0)
 		part.Size = meshSize(cfg.mesh) * (cfg.scale * v.k * math.max(1 - phase, 0.01))
 		part.Transparency = 0
+	end
+end
+
+-- Core heart (counter-spinning copy) and the streak ribbons: heads at mesh +Z, so they are flipped to trail the core.
+local function updateRibbons(v, shot, position: Vector3, t: number, progress: number)
+	local cfg = v.profile.core
+	local base = CFrame.lookAt(position, position + shot.travelFrame.LookVector)
+	if v.heart then
+		local spin = if shot.reducedMotion then 0 else (cfg.spin or 0) * t
+		v.heart.CFrame = base * CFrame.Angles(0, 0, -spin)
+		v.heart.Size = v.core.Size * cfg.heart.scale
+		v.heart.Transparency = 0
+	end
+	for _, item in v.ribbons do
+		local def = item.def
+		local long = meshSize(def.mesh).Z * Fx.Sample(def.len, progress)
+		item.part.Size = meshSize(def.mesh) * Vector3.new(1, 1, long / meshSize(def.mesh).Z) * v.k
+		item.part.CFrame = base * CFrame.new((def.x or 0) * v.k, 0, (def.back + long / 2) * v.k) * FLIP
+		item.part.Transparency = 0
 	end
 end
 
@@ -366,6 +405,9 @@ function RarityEffects.Travel(shot, position: Vector3, progress: number)
 	end
 	if v.profile.dots and #v.dots > 0 then
 		updateDots(v, shot, progress)
+	end
+	if v.heart or #v.ribbons > 0 then
+		updateRibbons(v, shot, position, t, progress)
 	end
 	if v.coreBeam then
 		v.coreBeam.a0.Position = shot.from
@@ -544,7 +586,7 @@ local function drawItem(item, age: number, ctx, reduced: boolean): boolean
 			cf = CFrame.new(pos)
 		end
 	elseif layer.orient == "ground" then
-		cf = CFrame.new(origin + UP * 0.05)
+		cf = CFrame.new(origin + UP * (0.05 + (layer.lift or 0))) * CFrame.Angles(0, spin, 0)
 	elseif layer.orient == "upright" then
 		local yaw = (if layer.roll then ctx.roll else 0) + spin
 		cf = CFrame.new(origin + UP * (layer.pivotUp * fy * mul)) * CFrame.Angles(0, yaw, 0)
@@ -851,34 +893,48 @@ end
 
 local function newAura(cell: number, parent: Instance, center: Vector3)
 	local cfg = RarityStyles.Profiles.L01.aura
-	local part = borrow(cfg.mesh, parent, cfg.color, CFrame.new(center))
-	if part == nil then
+	local ring = borrow(cfg.mesh, parent, cfg.color, CFrame.new(center))
+	if ring == nil then
 		return nil
 	end
-	local base = meshSize(cfg.mesh)
-	local aura = { part = part, leaving = nil }
+	local ticks = borrow(cfg.ticks, parent, cfg.tickColor, CFrame.new(center))
+	if ticks == nil then
+		Fx.Release(ring)
+		return nil
+	end
+	local ringSize, ticksSize = meshSize(cfg.mesh) * cfg.diameter, meshSize(cfg.ticks) * cfg.diameter
+	local aura = { leaving = nil }
 	aura.handle = Fx.Run(function()
 		local low = Fx.Tier(auraReducedMotion) == "Low"
+		local now = os.clock()
 		if aura.leaving then
-			local p = (os.clock() - aura.leaving) / cfg.exit
+			local p = (now - aura.leaving) / cfg.exit
 			if p >= 1 then
 				return true
 			end
-			part.Size = base * math.max(1 - p, 0.01)
-			part.Transparency = 0.55 + 0.45 * p
+			local shrink = math.max(1 - p, 0.01)
+			ring.Size, ticks.Size = ringSize * shrink, ticksSize * shrink
+			ring.Transparency = 0.55 + 0.45 * p
+			ticks.Transparency = 0.5 + 0.5 * p
 			return false
 		end
-		local opacity = if low then 0.45 else 0.45 + 0.10 * math.sin(os.clock() * TAU / 1.2)
-		part.Transparency = 1 - opacity
+		local opacity = if low then 0.45 else 0.45 + 0.10 * math.sin(now * TAU / 1.2)
+		ring.Size, ticks.Size = ringSize, ticksSize
+		ring.CFrame = CFrame.new(center + UP * 0.1)
+		ticks.CFrame = CFrame.new(center + UP * 0.14) * CFrame.Angles(0, if low then 0 else now * 0.5, 0)
+		ring.Transparency = 1 - opacity
+		ticks.Transparency = 1 - (opacity + 0.15)
 		return false
 	end, function()
-		Fx.Release(part)
+		Fx.Release(ring)
+		Fx.Release(ticks)
 		if chronoAuras[cell] == aura then
 			chronoAuras[cell] = nil
 		end
 	end, loopLimiter)
 	if aura.handle == nil then
-		Fx.Release(part)
+		Fx.Release(ring)
+		Fx.Release(ticks)
 		return nil
 	end
 	return aura

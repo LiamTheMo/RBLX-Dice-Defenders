@@ -15,12 +15,14 @@
 --   dur       seconds the layer lives
 --   pivotUp   studs from the authored pivot (board / base) up to the mesh's bounding-box centre, at fraction 1
 --   spin      radians per second about the vertical / normal axis (not under reduced motion)
+--   lift      studs above the board for orient = "ground" (orders stacked flat layers without z-fighting)
 --   roll      "random": random spin about the normal, re-rolled at reroll seconds
 --   when      name of a condition on the shot (see RarityEffects.conditions)
 --   count/delay/motion/align: pooled particle layers (shards): motion(i, u, ctx) returns a world position
 local FxCore = require(script.Parent.FxCore)
 
 local Ease = FxCore.Easing
+local TAU = math.pi * 2
 
 local RarityStyles = {}
 
@@ -48,6 +50,31 @@ local function radial(r0: number, r1: number, h0: number, h1: number, arc: numbe
 	end
 end
 RarityStyles.radial = radial
+
+-- Orbit about the hit point (preview "spiral"): radius shrinks 25%, rises `height` per cycle, `turns` turns per layer.
+local function spiral(radius: number, height: number, turns: number, lift: number)
+	return function(i: number, u: number, ctx, n: number?)
+		local phase = i / (n or 1)
+		local angle = (turns * u + phase) * TAU
+		local r = radius * (1 - 0.25 * u)
+		local rise = ((1.5 * u + phase) % 1) * height + lift
+		return ctx.ground + Vector3.new(math.cos(angle) * r, rise, math.sin(angle) * r) * ctx.k
+	end
+end
+
+-- Sparks thrown from the hit (preview "ballistic"): 12-24 outward (z x0.55), 8-14 up, gravity g. Per-spark values
+-- come from the index and ctx.seed, so the position is a pure function of (i, u) as drawItem requires.
+local function ballistic(g: number, dur: number, lift: number)
+	return function(i: number, u: number, ctx, _n: number?)
+		local angle = ctx.seed + i * 2.39996
+		local speed = 12 + 12 * ((i * 0.618) % 1)
+		local up = 8 + 6 * ((i * 0.382 + 0.3) % 1)
+		local t = u * dur
+		local offset =
+			Vector3.new(math.cos(angle) * speed * t, up * t - 0.5 * g * t * t, math.sin(angle) * speed * 0.55 * t)
+		return ctx.ground + (offset + Vector3.new(0, lift, 0)) * ctx.k
+	end
+end
 
 -- Impact layers shared by several dice ---------------------------------------------------------------------
 
@@ -78,7 +105,9 @@ end
 
 -- Profiles ---------------------------------------------------------------------------------------------------
 -- core: the flying projectile. aim = "orb" (position only) | "z" (long axis Z along travel, tip +Z)
+--       | "nz" (same axis, tip -Z, no flip; spin = rad/s about travel; heart = counter-spinning copy)
 --       | "y" (long axis Y along travel) | "flat" (flat arrow, thin axis toward the camera) | "camera".
+-- ribbons: extra meshes behind the core, High tier only: { mesh, color, x, back, len = curve(progress -> Z factor) }.
 -- trails: Trail ribbons on the core (colors start/end, width and length in studs at D=5).
 
 local Profiles = {}
@@ -439,87 +468,172 @@ Profiles.E03 = {
 	},
 }
 
+-- L01 Chrono: layers from Legendary/vfx/L01_layers.json, timings from the tested preview (_LM/vfx_preview/L01.luau).
+-- No windup phase exists in the game, so the preview's windup Hands + 4 sparks are not built (Hands play at impact).
+-- High tier: core + heart + 3 ribbons in flight; Low: core only. Hit: 12 parts (flash, rays, ring, ticks, glow, hands, 6 sparks).
 Profiles.L01 = {
 	core = {
 		mesh = "Chrono_Core",
-		aim = "y",
-		size = Vector3.new(0.7, 1.1, 0.6062),
+		aim = "nz", -- tip along -Z (travel), no FLIP
+		size = Vector3.new(1, 0.866, 1.7),
 		color = hex("00FFF6"),
 		scale = curve({ 0, 0.6 }, { 0.06, 1, "quadOut" }),
-		spin = math.rad(360),
+		spin = 4,
+		heart = { color = hex("E6FFFF"), scale = 0.55 }, -- same mesh, counter-spin
 	},
-	trails = {
-		{ c0 = hex("00FFF6"), c1 = hex("00C4BD"), width = 0.35, length = 3.5, life = 0.18, light = 0.8, offset = 0.2 },
-		{ c0 = hex("00FFF6"), c1 = hex("00C4BD"), width = 0.35, length = 3.5, life = 0.18, light = 0.8, offset = -0.2 },
+	trails = {},
+	ribbons = {
+		{ mesh = "Chrono_Streak", color = hex("00C4BA"), back = 0.9, len = curve({ 0, 0.4 }, { 0.25, 1 }) },
+		{
+			mesh = "Chrono_StreakFlank",
+			color = hex("007F7A"),
+			x = -0.85,
+			back = 1.2,
+			len = curve({ 0, 0.4 }, { 0.25, 1 }),
+		},
+		{
+			mesh = "Chrono_StreakFlank",
+			color = hex("007F7A"),
+			x = 0.85,
+			back = 1.2,
+			len = curve({ 0, 0.4 }, { 0.25, 1 }),
+		},
 	},
 	impact = {
+		star("Fx_Star8", 4.5, hex("E6FFFF"), 0.06, 0.1, 0.4),
+		star("Fx_Star4", 8.0, hex("00FFF6"), 0.06, 0.08, 0.3, { role = "ring" }),
 		{
-			role = "flash",
-			mesh = "Chrono_Flash",
-			orient = "camera",
-			full = 1,
-			scale = curve({ 0, 0.3 }, { 0.1, 1, "quadOut" }, { 0.12, 0 }),
-			colors = { hex("E6FFFF") },
-			dur = 0.12,
-			roll = "random",
+			role = "ring",
+			mesh = "Chrono_Ring",
+			orient = "ground",
+			full = 10.8,
+			scale = curve({ 0, 1 / 3 }, { 0.3, 1, "quadOut" }),
+			opacity = curve({ 0, 1 }, { 0.1, 0.23 }, { 0.3, 0.03 }),
+			colors = { hex("00FFF6") },
+			dur = 0.3,
 		},
 		{
 			role = "ring",
-			mesh = "Chrono_HitRing",
+			mesh = "Chrono_Ticks",
+			orient = "ground",
+			full = 10.8,
+			scale = curve({ 0, 1 / 3 }, { 0.3, 1, "quadOut" }),
+			opacity = curve({ 0, 1 }, { 0.1, 0.5 }, { 0.3, 0.5 }),
+			colors = { hex("E6FFFF") },
+			dur = 0.3,
+			lift = 0.02,
+		},
+		{
+			role = "ring",
+			mesh = "Chrono_GroundGlow",
+			orient = "ground",
+			full = 11,
+			scale = curve({ 0, 7 / 11 }, { 0.3, 1 }),
+			opacity = curve({ 0, 0.55 }, { 0.3, 0 }),
+			colors = { hex("00C4BA") },
+			dur = 0.3,
+			lift = -0.03,
+		},
+		{
+			role = "ring",
+			mesh = "Chrono_Hands",
 			orient = "ground",
 			full = 1,
-			scale = curve({ 0, 0.2 }, { 0.1, 1, "quadOut" }, { 0.3, 1 }),
-			opacity = curve({ 0, 1 }, { 0.3, 0, "quadOut" }),
-			colors = { hex("00C4BD"), hex("007F7A") },
+			scale = curve({ 0, 0.3 }, { 0.07, 0.69 }, { 0.3, 0 }),
+			colors = { hex("FFE9A8") },
 			dur = 0.3,
+			spin = 3, -- preview: 6 rad/s decaying to 1
+			lift = 0.2,
+		},
+		{
+			role = "shard",
+			mesh = "Fx_Star4",
+			orient = "ground",
+			count = 6,
+			full = 0.8,
+			scale = curve({ 0, 1 }, { 0.4, 0.3 }),
+			colors = { hex("E6FFFF"), hex("00FFF6") },
+			alternate = true,
+			dur = 0.4,
+			motion = spiral(4.2, 3, 2, 0.8),
 		},
 	},
-	aura = { mesh = "Chrono_AuraRing", color = hex("00C4BD"), pulse = hex("00FFF6"), exit = 0.2 },
+	-- Support aura under each buffed ally: Ring + Ticks (2 parts), diameter in studs (not scaled by the die).
+	aura = {
+		mesh = "Chrono_Ring",
+		ticks = "Chrono_Ticks",
+		color = hex("00C4BA"),
+		tickColor = hex("E6FFFF"),
+		diameter = 5.4,
+		exit = 0.2,
+	},
 }
 
+-- L02 Forge: Legendary/vfx/L02_layers.json + _LM/vfx_preview/L02.luau. The anvil and sparks stay gated on a confirmed
+-- forge event (owner rule: effects only from server-confirmed events) although layers.json lists them unconditionally.
 Profiles.L02 = {
 	core = {
 		mesh = "Forge_Core",
-		aim = "z",
-		size = Vector3.new(0.8, 0.8, 1.2),
+		aim = "nz",
+		size = Vector3.new(1.5, 1, 2.2),
 		color = hex("FF8A00"),
 		scale = curve({ 0, 0.6 }, { 0.06, 1, "quadOut" }),
+		spin = 4,
 	},
-	trails = {
-		{ c0 = hex("FFD34D"), c1 = hex("C24B00"), width = 0.4, length = 3.5, life = 0.2, light = 0.8 },
-		{ c0 = hex("FFD34D"), c1 = hex("FF8A00"), width = 0.25, length = 2.6, life = 0.2, light = 0.8, offset = 0.15 },
+	trails = {},
+	ribbons = {
+		{
+			mesh = "Forge_Streaks",
+			color = hex("FFD34D"),
+			back = 1.1,
+			len = curve({ 0, 1.2 / 6.5 }, { 0.25, 3.5 / 6.5 }, { 0.75, 1 }),
+		},
 	},
 	impact = {
-		{
-			role = "flash",
-			mesh = "Forge_Flash",
-			orient = "yaw",
-			full = 1,
-			scale = curve({ 0, 0.4 }, { 0.06, 1.2, "quadOut" }, { 0.1, 0 }),
-			colors = { hex("FFF7B2") },
-			dur = 0.1,
-			pivotUp = 1.05,
-		},
+		star("Fx_Star8", 5.4, hex("FFF7B2"), 0.06, 0.1, 1.8 / 5.4),
+		star("Fx_Star6", 5.9, hex("FFD34D"), 0.075, 0.1, 0.33, { role = "ring", delay = 0.015 }),
 		{
 			role = "ring",
 			mesh = "Forge_Ring",
 			orient = "ground",
-			full = 1,
-			scale = curve({ 0, 0.2 }, { 0.1, 1, "quadOut" }, { 0.3, 1 }),
-			opacity = curve({ 0, 0 }, { 0.1, 1 }, { 0.3, 0.1 }),
-			colors = { hex("FF8A00"), hex("C24B00") },
+			full = 12,
+			scale = curve({ 0, 0.5 }, { 0.1, 0.9, "quadOut" }, { 0.3, 1 }),
+			opacity = curve({ 0, 1 }, { 0.1, 0.6 }, { 0.3, 0.1 }),
+			colors = { hex("FF8A00") },
 			dur = 0.3,
+		},
+		{
+			role = "ring",
+			mesh = "Forge_RingRim",
+			orient = "ground",
+			full = 12,
+			scale = curve({ 0, 0.5 }, { 0.1, 0.9, "quadOut" }, { 0.3, 1 }),
+			opacity = curve({ 0, 1 }, { 0.1, 0.6 }, { 0.3, 0.1 }),
+			colors = { hex("FFD34D") },
+			dur = 0.3,
+			lift = 0.01,
+		},
+		{
+			role = "ring",
+			mesh = "Forge_GroundGlow",
+			orient = "ground",
+			full = 10,
+			scale = curve({ 0, 0.7 }, { 0.1, 0.9, "quadOut" }, { 0.3, 1 }),
+			opacity = curve({ 0, 0.65 }, { 0.1, 0.45 }, { 0.3, 0 }),
+			colors = { hex("FF8A00") },
+			dur = 0.3,
+			lift = -0.03,
 		},
 		{
 			role = "support", -- the anvil: only with a confirmed forge event (attack.TransformedCell)
 			mesh = "Forge_Anvil",
 			orient = "upright",
 			full = 1,
-			scale = curve({ 0, 0 }, { 0.1, 1.2, "quadOut" }, { 0.3, 0.8 }),
-			opacity = curve({ 0, 0 }, { 0.1, 1 }, { 0.3, 0.1 }),
-			colors = { hex("FFD34D"), hex("C24B00") },
+			scale = curve({ 0, 0.35 }, { 0.06, 1 }, { 0.1, 1.31 }, { 0.3, 0.55 }),
+			opacity = curve({ 0, 0.6 }, { 0.1, 1 }, { 0.3, 0.13 }),
+			colors = { hex("FFF7B2"), hex("FFD34D"), hex("FF8A00") },
 			dur = 0.3,
-			pivotUp = 0.65,
+			pivotUp = 1.05,
 			when = "forged",
 		},
 		{
@@ -527,83 +641,110 @@ Profiles.L02 = {
 			mesh = "Fx_Spark",
 			orient = "ground",
 			count = 6,
-			full = 1.6,
-			scale = curve({ 0, 1 }, { 0.25, 0.3 }),
+			full = 12,
+			scale = curve({ 0, 1 }, { 0.25, 0.6 }, { 0.35, 0 }),
+			opacity = curve({ 0, 1 }, { 0.15, 0.5 }, { 0.35, 0 }),
 			colors = { hex("FFD34D"), hex("FF8A00") },
 			alternate = true,
-			dur = 0.25,
-			motion = radial(0.2, 2.5, 1.0, 1.9, 0.6, "quadOut"),
+			dur = 0.35,
+			motion = ballistic(22, 0.35, 2.3),
 			align = "y",
 			when = "forged",
 		},
 	},
 }
 
+-- M01 Astral: Mythic/vfx/M01_layers.json + _LM/vfx_preview/M01.luau. Differences: the windup DieSparkle has no hook
+-- (dropped); 6 orbit sparks instead of 7 to keep the hit at 12 parts; Low tier keeps the comet (no per-tier core mesh).
 Profiles.M01 = {
 	core = {
-		mesh = "Astral_Core",
-		aim = "camera",
-		size = Vector3.new(1.6, 0.8, 1.6),
-		color = hex("F7B6FF"),
+		mesh = "Astral_Comet",
+		aim = "z", -- head at mesh +Z: the FLIP branch
+		size = Vector3.new(1.8, 1.8, 4.94),
+		color = Color3.new(1, 1, 1),
 		scale = curve({ 0, 0.5 }, { 0.06, 1 }),
 		twinkle = 0.1,
 	},
 	trails = {
-		{ c0 = hex("B967FF"), c1 = hex("5E6BFF"), width = 0.3, length = 4.5, life = 0.3, light = 0.9 },
-	},
-	coreBeam = { c0 = hex("B967FF"), c1 = hex("82E9FF"), width0 = 0.25, width1 = 0.05, tail = 0.08 },
-	dots = {
-		mesh = "Fx_Orb",
-		count = 5,
-		size = 0.25,
-		spacing = 0.9,
-		colors = { Color3.new(1, 1, 1), hex("F7B6FF") },
+		{
+			c0 = hex("B967FF"),
+			c1 = hex("5E6BFF"),
+			width = 1.2,
+			length = 5.2,
+			life = 0.3,
+			light = 0.8,
+			transparency = 0.2,
+		},
 	},
 	impact = {
-		{
-			role = "flash",
-			mesh = "Fx_Star4",
-			orient = "camera",
-			full = Vector3.new(3, 1.25, 3),
-			scale = curve({ 0, 0.4 }, { 0.05, 1, "quadOut" }, { 0.12, 0 }),
-			opacity = curve({ 0, 1 }, { 0.05, 0.4 }, { 0.1, 0 }),
-			colors = { Color3.new(1, 1, 1) },
-			dur = 0.12,
+		star("Fx_Star8", 4.0, Color3.new(1, 1, 1), 0.03, 0.05, 0.4, {
+			opacity = curve({ 0, 0.95 }, { 0.015, 0.45 }, { 0.025, 0.2 }, { 0.046, 0 }),
 			critical = 1.22,
+		}),
+		{
+			role = "ring",
+			mesh = "Astral_Ring",
+			orient = "ground",
+			full = 10.8,
+			scale = curve({ 0, 0.97 / 1.8 }, { 0.1, 1.52 / 1.8, "quadOut" }, { 0.3, 1 }),
+			opacity = curve({ 0, 0.15 }, { 0.015, 0.55 }, { 0.04, 0.7 }, { 0.1, 0.53 }, { 0.3, 0.1 }),
+			colors = { hex("B967FF") },
+			dur = 0.3,
+		},
+		{
+			role = "ring", -- rim: same mesh, X/Z x1.04, Y x1.25
+			mesh = "Astral_Ring",
+			orient = "ground",
+			full = Vector3.new(10.8 * 1.04, 10.8 * 1.25, 10.8 * 1.04),
+			scale = curve({ 0, 0.97 / 1.8 }, { 0.1, 1.52 / 1.8, "quadOut" }, { 0.3, 1 }),
+			opacity = curve({ 0, 0.15 }, { 0.015, 0.55 }, { 0.04, 0.7 }, { 0.1, 0.53 }, { 0.3, 0.1 }),
+			colors = { hex("F7B6FF") },
+			dur = 0.3,
+			lift = 0.01,
 		},
 		{
 			role = "ring",
-			mesh = "Astral_HitRing",
+			mesh = "Astral_GroundGlow",
 			orient = "ground",
-			full = 1,
-			scale = curve({ 0, 1 }, { 0.1, 1.25, "quadOut" }, { 0.3, 1.4, "quadOut" }),
-			opacity = curve({ 0, 0.3 }, { 0.075, 0.8 }, { 0.3, 0 }),
-			colors = { hex("B967FF"), hex("5E6BFF"), hex("1B0D4A") },
+			full = 8,
+			scale = curve({ 0, 0.75 }, { 0.1, 0.915, "quadOut" }, { 0.3, 1 }),
+			opacity = curve({ 0, 0.6 }, { 0.1, 0.45 }, { 0.3, 0.05 }),
+			colors = { hex("B967FF") },
 			dur = 0.3,
+			lift = -0.03,
 		},
 		{
-			role = "support",
+			role = "support", -- billboard to the camera; shrinks instead of fading
 			mesh = "Astral_Constellation",
-			orient = "upright",
+			orient = "yaw",
 			full = 1,
-			scale = curve({ 0, 0.7 }, { 0.1, 1, "quadOut" }, { 0.3, 1.05 }),
-			opacity = curve({ 0, 0 }, { 0.075, 0.6 }, { 0.3, 0 }),
+			scale = curve({ 0, 0 }, { 0.06, 0 }, { 0.06, 0.7 }, { 0.16, 1, "quadOut" }, { 0.3, 0 }),
 			colors = { hex("82E9FF") },
 			dur = 0.3,
-			pivotUp = 2.1,
-			roll = "random",
+			pivotUp = 1.2,
 		},
 		{
 			role = "support", -- dropped first when the pool is at its cap
 			mesh = "Astral_RayCrown",
 			orient = "upright",
 			full = 1,
-			scale = curve({ 0, 1 }, { 0.3, 1 }),
-			scaleY = curve({ 0, 0 }, { 0.1, 1, "quadOut" }, { 0.3, 1 }),
-			opacity = curve({ 0, 0 }, { 0.1, 0.5 }, { 0.3, 0 }),
+			scale = curve({ 0, 1 }, { 0.3, 1 }, { 0.4, 0 }),
+			scaleY = curve({ 0, 0 }, { 0.06, 0 }, { 0.3, 1, "quadOut" }, { 0.4, 0 }),
 			colors = { hex("B967FF") },
+			dur = 0.4,
+			pivotUp = 3.0,
+		},
+		{
+			role = "shard",
+			mesh = "Fx_Star4",
+			orient = "ground",
+			count = 6,
+			full = 0.7,
+			scale = curve({ 0, 0 }, { 0.06, 1, "quadOut" }, { 0.3, 0 }),
+			colors = { Color3.new(1, 1, 1), hex("F7B6FF") },
+			alternate = true,
 			dur = 0.3,
-			pivotUp = 2.5,
+			motion = spiral(3.5, 2.5, 1, 0.5),
 		},
 	},
 	supportLoad = 0.75, -- constellation / ray crown only borrow while Fx.Live() is under this share of the cap

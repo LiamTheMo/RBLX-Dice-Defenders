@@ -157,8 +157,8 @@ end
 
 -- Fixed top-down-ish views framing each map's route and board (tuned for phones: 844x390 and 667x375).
 Layout.Camera = table.freeze({
-	Position = O + Vector3.new(1, 44.9, 16.4), -- ~65 degrees down (was ~74), a little further back
-	LookAt = O + Vector3.new(1, 3.2, -3),
+	Position = O + Vector3.new(0.1, 44.9, 19.9), -- ~65 degrees down (was ~74), a little further back; slid so the dice board sits at screen centre
+	LookAt = O + Vector3.new(0.1, 3.2, 0.5),
 	FieldOfView = 55,
 })
 

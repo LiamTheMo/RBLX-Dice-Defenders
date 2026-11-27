@@ -3,8 +3,10 @@
 -- in the workspace while a run is playing; between runs players walk the lobby map.
 
 local GuiService = game:GetService("GuiService")
+local Lighting = game:GetService("Lighting")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
 local Display = require(ReplicatedStorage.Shared.Display)
@@ -111,6 +113,19 @@ local function buildWorld()
 		map:PivotTo(map:GetPivot() + Vector3.new(shift, 0, 0))
 	end
 	map.Parent = arena
+	-- The arena's own sea (a clone of the lobby's, so the match never shows the lobby water): scroll its textures
+	-- exactly like Lobby_v3.Effects.Water does. Tweens die with the cloned textures when the arena is destroyed.
+	local sea = map:FindFirstChild("Water")
+	for name, scroll in { Vfx_WaterTexture = { 24, -1 }, Vfx_WaterCaustics = { 16, 1 } } do
+		local tex = sea and sea:FindFirstChild(name)
+		if tex then
+			TweenService:Create(
+				tex,
+				TweenInfo.new(scroll[1], Enum.EasingStyle.Linear, Enum.EasingDirection.In, -1),
+				{ OffsetStudsU = scroll[2] * tex.StudsPerTileU }
+			):Play()
+		end
+	end
 
 	-- Portals sit on the ends of the route and face the board camera (coop camera when two players share the arena, this seat's camera in a duel).
 	local portalsFolder = Instance.new("Folder")
@@ -285,6 +300,61 @@ local function refreshPads()
 	end
 end
 
+-- Per-world look: a map model may carry Lighting properties as attributes (Brightness, Ambient, ClockTime ...) and a
+-- Sky / Atmosphere child. They apply on this client while its arena shows and the lobby's values come back after.
+-- Nothing set: the map just inherits the lobby look. Client-side, so other sessions never see it.
+local LOOK_CLASSES = { "Sky", "Atmosphere" }
+local lookMap: Instance?
+local lookSaved: { [string]: any } = {}
+local lookSwapped: { Instance } = {} -- the lobby's Sky/Atmosphere, parked while the map's own are in use
+local lookAdded: { Instance } = {}
+
+local function restoreLook()
+	for _, inst in lookAdded do
+		inst:Destroy()
+	end
+	for _, inst in lookSwapped do
+		inst.Parent = Lighting
+	end
+	for prop, value in lookSaved do
+		Lighting[prop] = value
+	end
+	lookMap, lookSaved, lookSwapped, lookAdded = nil, {}, {}, {}
+end
+
+local function setLook(map: Instance?)
+	if map == lookMap then
+		return
+	end
+	restoreLook()
+	if map == nil then
+		return
+	end
+	lookMap = map
+	for prop, value in map:GetAttributes() do
+		local ok, current = pcall(function()
+			return Lighting[prop]
+		end)
+		if ok and typeof(current) == typeof(value) then
+			lookSaved[prop] = current
+			Lighting[prop] = value
+		end
+	end
+	for _, class in LOOK_CLASSES do
+		local own = map:FindFirstChildOfClass(class)
+		if own then
+			local old = Lighting:FindFirstChildOfClass(class)
+			if old then
+				old.Parent = nil
+				table.insert(lookSwapped, old)
+			end
+			local copy = own:Clone()
+			copy.Parent = Lighting
+			table.insert(lookAdded, copy)
+		end
+	end
+end
+
 local function render(snapshot)
 	local previous = board
 	playing = snapshot.Phase == "Playing"
@@ -295,7 +365,8 @@ local function render(snapshot)
 		buildWorld()
 	end
 	arena.Parent = if playing then root else nil
-	board = if playing then snapshot.Board or {} else {}
+	setLook(if playing then arena:FindFirstChild("Map") else nil)
+	board =if playing then snapshot.Board or {} else {}
 	local still = SettingsLogic.get("reducedMotion")
 	local now = os.clock()
 	local parts = {}

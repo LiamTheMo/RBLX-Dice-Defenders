@@ -15,7 +15,8 @@ local SIZE_SCALE = ProjectileScale.Flight
 local IMPACT_SCALE = ProjectileScale.Impact
 local IMPACT_BASE = ProjectileScale.FlightLegacy
 local LANE_OFFSET = 0.6 -- C04: studs each side of the shot line at D=5
-local GROUND_Y = 0.47
+local ROUTE_TOP = Layout.Y - 0.8 -- enemies walk 0.8 above the route cap (3.2 in the maps)
+local GROUND_Y = ROUTE_TOP + 0.05 -- flat common layers sit just over it
 local HIT_SECONDS = 0.30 -- R3: hit rings and flash end by +300 ms
 local SLOW_FALLBACK = 0.40 -- slow marker lifetime when the record carries no SlowUntil
 local styles = table.clone(RarityEffects.Styles)
@@ -279,7 +280,7 @@ local function fire(parent, enemy, attack, reducedMotion, style, visualLane, onI
 		local direction = shot.surface - shot.from
 		shot.travelFrame =
 			CFrame.lookAlong(Vector3.zero, if direction.Magnitude > 0.01 then direction else Vector3.zAxis)
-		shot.ground = Vector3.new(shot.center.X, 0.47, shot.center.Z)
+		shot.ground = Vector3.new(shot.center.X, ROUTE_TOP, shot.center.Z)
 	end
 	if shot.dot and not reducedMotion then
 		shot.dot.CFrame = if shot.visuals then shot.travelFrame + shot.from else CFrame.new(shot.from)
