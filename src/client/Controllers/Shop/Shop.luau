@@ -73,7 +73,12 @@ function Shop.new(parent, deps)
 			task.delay(PRESS_COOLDOWN, flight.finish)
 			local vip = d and d.Vip
 			if vip and vip.Offer then
-				pcall(MarketplaceService.PromptGamePassPurchase, MarketplaceService, Players.LocalPlayer, vip.Offer.PassId)
+				pcall(
+					MarketplaceService.PromptGamePassPurchase,
+					MarketplaceService,
+					Players.LocalPlayer,
+					vip.Offer.PassId
+				)
 			else
 				deps.toast("Already owned")
 			end

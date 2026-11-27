@@ -1,7 +1,6 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Chrome = require(script.Parent.Bag.Chrome)
-local Display = require(ReplicatedStorage.Shared.Display)
 local NetClient = require(script.Parent.NetClient)
 local Parts = require(script.Parent.Bag.Parts)
 local UiKit = require(script.Parent.UiKit)
@@ -41,12 +40,8 @@ function TutorialView.new(parent, openMenu, toast)
 				toast(
 					if code == "ContinueCoop"
 						then "Your shared co-op run can keep going."
-						elseif code == "Overflow" then "Make room in your inventory to claim the gift."
 						else "That tutorial action is unavailable right now."
 				)
-			elseif name == "Claim" then
-				local info = code and Display.Dice[code]
-				toast(`Tutorial gift claimed: {if info then info.Name else "Epic die"}, 500 Gems and 5 Dice Shards.`)
 			end
 		end)
 	end
@@ -99,9 +94,10 @@ function TutorialView.new(parent, openMenu, toast)
 				`Tutorial: clear wave {tutorial.TargetWave}   ·   {snap.WavesCompleted or 0}/{tutorial.TargetWave}`
 		elseif tutorial.Stage == "Choose" and playing then
 			text.Text =
-				"Wave 10 cleared. End the run to claim your tutorial gift, or keep playing for more wave rewards."
+				"Wave 10 cleared. End the run to claim your wave 10 reward in Play, or keep playing for more wave rewards."
 			if snap.PlayerCount == 2 then
-				text.Text = "Wave 10 cleared. Keep playing for more rewards and claim your gift when the team run ends."
+				text.Text =
+					"Wave 10 cleared. Keep playing for more rewards and claim your wave 10 reward when the team run ends."
 				title, action = "KEEP GOING", function()
 					request("Continue")
 				end
@@ -115,9 +111,9 @@ function TutorialView.new(parent, openMenu, toast)
 			end
 		elseif tutorial.Stage == "Gift" and lobby then
 			text.Text =
-				`Tutorial gift: a random Epic die, {tutorial.GiftGems} Gems and {tutorial.GiftShards} Dice Shards.`
-			title, action = "CLAIM GIFT", function()
-				request("Claim")
+				`Open Play and claim the wave {tutorial.TargetWave} milestone: a Rare die, {tutorial.GiftGems} Gems and {tutorial.GiftShards} Dice Shards.`
+			title, action = "OPEN PLAY", function()
+				openMenu("Play")
 			end
 		else
 			return

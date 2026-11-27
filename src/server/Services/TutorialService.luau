@@ -27,8 +27,6 @@ local function handle(player: Player, action: string, dieId: string): (boolean, 
 		if ok then
 			code = nil
 		end
-	elseif action == "Claim" then
-		ok, code = Tutorial.Claim(profile, rng)
 	else
 		ok, code = Tutorial.Convert(profile, dieId)
 	end

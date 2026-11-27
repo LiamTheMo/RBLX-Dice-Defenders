@@ -10,7 +10,9 @@
 --     Daily = { Days = {{Day, Chest?, Rewards}} }, Milestones = {{Id, Wave, Reachable, Rewards}},
 --     Achievements = {{Id, Name, Desc, Goal, Badge, Rewards}},
 --     Mastery = { Max, Need = { per level 1..Max-1 }, Milestones = {{Lv, Rewards}} },
---     DieLevel = { Max, Copies = { per level 1..Max-1 }, Gold = { per class }, Crit = { per class percent }, Offset = { [rarity] = class offset } },
+--     DieLevel = { Max, MaxClass, DamageBonus, MaxBy = { [rarity] = cap }, Copies = Common's list, CopiesBy = { [rarity] = { per level } },
+--       Gold = { per class }, Crit = { per class percent }, Offset = { [rarity] = class offset } },
+--     CritChance = account-wide crit chance percent (every die),
 --     Repeat = { PerWave = Rewards, BossWave = Rewards },  -- a boss wave pays BossWave gems instead of PerWave's
 --     Roll = { MaxCount, Pools = {{Id, Name, Prices = {{Count, Gems}}, Odds = {{Rarity, Bp}}, Dice = {{Id, Rarity}},
 --              Pity = {Rarity, Max}, Featured = { ids }}} },
@@ -24,6 +26,7 @@ local Achievements = require(script.Parent.Parent.Config.Achievements)
 local Balance = require(script.Parent.Parent.Config.Balance)
 local Daily = require(script.Parent.Parent.Config.Daily)
 local Dice = require(script.Parent.Parent.Config.Dice)
+local DiceClasses = require(script.Parent.Parent.Config.DiceClasses)
 local Inventory = require(script.Parent.Parent.Config.Inventory)
 local Milestones = require(script.Parent.Parent.Config.Milestones)
 local Progression = require(script.Parent.Parent.Config.Progression)
@@ -73,11 +76,33 @@ local function map(list, row)
 	return out
 end
 
+-- A die's ability numbers for every level (Config/DiceClasses.Stats): { Labels, Suffixes, Values = { [level] = { n, ... } } },
+-- so the Bag can show the current level's numbers and the green "+N" the next level adds. Shots = bolts per attack by level.
+local function classStats(id: string, rarity: string)
+	local labels, suffixes, values, shots = {}, {}, {}, {}
+	for level = 1, Progression.MaxLevel(rarity) do
+		local class = Progression.Class(rarity, level)
+		local list = DiceClasses.Stats(id, class, Progression.DamageMul(rarity, level))
+		shots[level] = DiceClasses.View(id, class).shots or 1 -- Volley's bolts grow with class, and so does its DPS
+		local row = {}
+		for i, stat in list do
+			labels[i], suffixes[i], row[i] = stat[1], stat[3] or "", stat[2]
+		end
+		values[level] = row
+	end
+	return { Labels = labels, Suffixes = suffixes, Values = values, Shots = shots }
+end
+
 function Catalog.Build()
 	local mastery, reward, dieLevel = Progression.Mastery, Balance.Reward, Progression.DieLevel
 	local need = {}
 	for level = 1, mastery.Max - 1 do
 		need[level] = mastery.Need(level)
+	end
+	local maxBy, copiesBy = {}, {}
+	for rarity, list in dieLevel.CopiesBy do
+		maxBy[rarity] = Progression.MaxLevel(rarity)
+		copiesBy[rarity] = table.clone(list)
 	end
 	return {
 		StarterDeck = table.clone(Dice.Deck),
@@ -93,11 +118,13 @@ function Catalog.Build()
 				Rarity = t.rarity,
 				Damage = t.base,
 				Rate = t.rate,
+				Shots = t.shots,
 				AttackSpeed = math.floor(Formulas.Period(id, 1) * 100 + 0.5) / 100,
 				Aura = if t.aura then math.floor(Formulas.Aura(id, 1, 1) * 1000 + 0.5) / 10 else nil,
 				Description = t.description,
 				Stats = if t.stats then table.clone(t.stats) else nil,
 				Targeting = t.targeting or Dice.DefaultTargeting,
+				ClassStats = classStats(id, t.rarity),
 			}
 		end),
 		Materials = rows(Inventory.Materials, function(id, m)
@@ -149,9 +176,14 @@ function Catalog.Build()
 				return { Lv = level, Rewards = Rewards.Lines(mastery.Rewards[level]) }
 			end),
 		},
+		CritChance = Balance.Crit.Chance,
 		DieLevel = {
 			Max = dieLevel.Max,
-			Copies = table.clone(dieLevel.Copies),
+			MaxClass = dieLevel.MaxClass,
+			DamageBonus = dieLevel.DamageBonus,
+			MaxBy = maxBy,
+			Copies = table.clone(dieLevel.CopiesBy.Common),
+			CopiesBy = copiesBy,
 			Gold = table.clone(dieLevel.Gold),
 			Crit = table.clone(dieLevel.Crit),
 			Offset = table.clone(dieLevel.Offset),

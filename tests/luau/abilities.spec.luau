@@ -1,4 +1,4 @@
--- Die abilities (Rules/Abilities): slow cap, freeze, rewind, chain, pierce, poison, burn, timers, Forge, Mirror, Sniper.
+-- Die abilities (Rules/Abilities): slow cap, freeze, rewind, chain, cascade, pierce, poison, burn, timers, Forge, Mirror, Sniper.
 
 local Server = game:GetService("ServerScriptService").Server
 local Match = require(Server.Rules.Match)
@@ -104,21 +104,35 @@ test("Frost freezes a non-boss on its 8th hit and never a boss", function()
 	expectEq(boss.frozen, nil, "bosses do not freeze")
 end)
 
-test("Arc chains to two other enemies on every 4th attack at 60%", function()
+test("Arc hits the front enemy for 90% and the two behind it for 40% and 20% on every hit", function()
 	local state = newState()
 	openWave(state)
 	place(state, 5, "R02")
 	local a = addEnemy(state, "Brute", 1e6, 60)
 	local b = addEnemy(state, "Brute", 1e6, 40)
 	local c = addEnemy(state, "Brute", 1e6, 30)
-	state.board[5].hits = 3
+	local d = addEnemy(state, "Brute", 1e6, 10)
 	runFor(state, 0.1)
-	expectEq(a.maxHp - a.hp, Dice.Types.R02.base, "front takes the full hit")
-	expectEq(b.maxHp - b.hp, math.floor(Dice.Types.R02.base * 0.6), "chain 60%")
-	expectEq(c.maxHp - c.hp, math.floor(Dice.Types.R02.base * 0.6), "chain 60%")
+	local base = Dice.Types.R02.base
+	expectEq(a.maxHp - a.hp, math.floor(base * 0.9), "front 90%")
+	expectEq(b.maxHp - b.hp, math.floor(base * 0.4), "second 40%")
+	expectEq(c.maxHp - c.hp, math.floor(base * 0.2), "third 20%")
+	expectEq(d.maxHp - d.hp, 0, "a fourth enemy is untouched")
 end)
 
-test("Dragon pierces the next three enemies behind the target", function()
+test("Spark chains to one other enemy for 60% on every 4th attack", function()
+	local state = newState()
+	openWave(state)
+	place(state, 5, "C07")
+	local a = addEnemy(state, "Brute", 1e6, 60)
+	local b = addEnemy(state, "Brute", 1e6, 40)
+	state.board[5].hits = 3
+	runFor(state, 0.1)
+	expectEq(a.maxHp - a.hp, Dice.Types.C07.base, "front takes the full hit")
+	expectEq(b.maxHp - b.hp, math.floor(Dice.Types.C07.base * 0.6), "chain 60%")
+end)
+
+test("Wyvern pierces the next three enemies behind the target", function()
 	local state = newState()
 	openWave(state)
 	place(state, 5, "S01")
@@ -145,7 +159,7 @@ test("Venom stacks poison to a cap and passes it to the nearest enemy on death",
 		dot = d
 	end
 	expectEq(dot.stacks, Dice.Types.R04.poison.maxStacks, "capped at 4 stacks")
-	expectEq(dot.dps, 90 * 4, "dps = 90 per stack")
+	expectEq(dot.dps, 75 * 4, "dps = 75 per stack")
 	local next = addEnemy(state, "Brute", 1e7, 60)
 	target.hp = 0
 	Match.Step(state, state.lastNow + DT)
@@ -210,13 +224,17 @@ test("a merge next to Forge keeps the merged type and every 4th adds a free die"
 	expectEq(dice, 2, "Forge plus one free pip-1 die from the 4th merge")
 end)
 
-test("Mirror copies the best adjacent ability on summon and drops it after 10 s", function()
+test("Mirror copies the highest pip count on the board on summon or merge", function()
 	local state = newState()
-	place(state, 2, "R04")
-	place(state, 6, "L01")
-	place(state, 1, "E02")
-	local mirror = state.board[1]
-	require(Server.Rules.Abilities).Copy(state.board, 1, 0)
-	expect(mirror.mirror ~= nil and mirror.mirror.view.rift ~= nil, "copied the Legendary's rift, not the Rare")
-	expect(mirror.mirror.view.base == Dice.Types.E02.base, "keeps Mirror's own stats")
+	place(state, 2, "R04", 3)
+	place(state, 6, "L01", 5)
+	place(state, 1, "E02", 2)
+	local Abilities = require(Server.Rules.Abilities)
+	Abilities.Copy(state.board, 1, 0)
+	expectEq(state.board[1].pip, 5, "took the highest pip")
+	state.board[1].pip = 7
+	Abilities.Copy(state.board, 1, 0)
+	expectEq(state.board[1].pip, 7, "never loses pips")
+	Abilities.Copy(state.board, 2, 0)
+	expectEq(state.board[2].pip, 3, "other dice are untouched")
 end)

@@ -283,20 +283,20 @@ test(
 			return table.concat(out, ",")
 		end
 		local needle = detail(catalog, "C02")
-		expectEq(values(needle), "9,0.57s,Front", "Damage, Attack Speed (s), Targeting (Front by default)")
+		expectEq(values(needle), "9,0.57s,Front,15.75", "Damage, Attack Speed (s), Targeting (Front by default), DPS")
 		expectEq(needle.Description, "placeholder desc", "owned Common: the default description")
 		local frost = detail(catalog, "R01")
-		expectEq(values(frost), "19,1s,Front", "1.0 shows as 1")
+		expectEq(values(frost), "19,1s,Front,19", "1.0 shows as 1")
 		expectEq(frost.Description, "placeholder desc", "owned Rare: the default description")
 		expectEq(detail(nil, "C02").Stats[1].Value, D, "no Catalog yet: dash")
 		meta = { Dice = { { Id = "R05", Level = 1 } }, Deck = {} }
 		local rows = detail(catalog, "R05").Stats
 		expectEq(
 			values(detail(catalog, "R05")),
-			"5,1.25s,Front,12.5%,3 / s",
+			"5,1.25s,Front,4,12.5%,3 / s",
 			"extra stats follow in order; Aura is not a row; a row without a label is skipped"
 		)
-		expectEq(rows[4].Label, "Crit Chance", "label kept")
+		expectEq(rows[5].Label, "Crit Chance", "label kept")
 	end
 )
 
@@ -501,6 +501,43 @@ test("dice upgrade: UPGRADE gates on copies, cap and Catalog; copies show on car
 	expect(button(d, "Lock") == nil and button(d, "Upgrade").Style == "Yellow", "UPGRADE replaces LOCK")
 end)
 
+test("dice detail: ability stats by level, with the green +N an UPGRADE adds", function()
+	local catalog = Catalog.Build()
+	local meta = {
+		Dice = {
+			{ Id = "C06", Level = 2, Copies = 50 },
+			{ Id = "E02", Level = 1, Copies = 5 },
+			{ Id = "S01", Level = 5, Copies = 3 },
+		},
+		Deck = {},
+		Gold = 1e9,
+	}
+	local function rows(id)
+		for _, it in DiceTab.GetItems(meta, catalog) do
+			if it.Id == id then
+				local out = {}
+				for _, st in DiceTab.Detail(it).Stats do
+					out[st.Label] = st
+				end
+				return out
+			end
+		end
+		error("no die " .. id)
+	end
+	local chill = rows("C06")
+	expectEq(chill["Chill Chance"].Value, "16%", "Chill's slow at level 2")
+	expectEq(chill["Chill Chance"].Gain, "+1%", "next level adds 1%")
+	expectEq(chill["Chill Time"].Value, "1.55s", "Chill's duration at level 2")
+	expectEq(chill["Chill Time"].Gain, "+0.05s", "next level adds 0.05 s")
+	expect(chill.Damage.Gain ~= nil and string.sub(chill.Damage.Gain, 1, 1) == "+", "damage grows each level")
+	expect(chill.DPS.Gain ~= nil, "so does DPS")
+	expect(rows("E02")["Pull Every"] == nil, "Mirror has no ability numbers to show")
+	local wyvern = rows("S01") -- level 5 is its cap
+	expectEq(wyvern.Pierce.Value, "5", "Wyvern at class 15 pierces 5")
+	expectEq(wyvern.Pierce.Gain, nil, "no gain past the cap")
+	expectEq(wyvern.Damage.Gain, nil, "no damage gain past the cap")
+end)
+
 test("only owned Config dice are listed; removed ids are not", function()
 	local catalog = Catalog.Build()
 	local function find(meta, id)
@@ -515,7 +552,7 @@ test("only owned Config dice are listed; removed ids are not", function()
 	expect(find({ Dice = {} }, "E05") == nil, "retired Gravity ID never listed")
 	local chill = find({ Dice = { { Id = "C06", Level = 1 } } }, "C06")
 	expect(
-		chill ~= nil and DiceTab.Detail(chill).Description == "Hits slow enemies by 15% for 1.5 seconds.",
+		chill ~= nil and DiceTab.Detail(chill).Description == "Hits slow enemies for a short time.",
 		"Chill ability visible"
 	)
 end)

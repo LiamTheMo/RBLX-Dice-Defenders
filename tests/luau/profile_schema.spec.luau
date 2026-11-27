@@ -736,7 +736,12 @@ test("v6 -> v8 keeps every v6 value and drops stray Locked and Equipped; frozen 
 	end
 	for key in ProfileSchema.Default() do
 		expect(
-			key == "Teams" or key == "RollPity" or key == "Purchases" or key == "Receipts" or key == "Rating" or fields[key] ~= nil,
+			key == "Teams"
+				or key == "RollPity"
+				or key == "Purchases"
+				or key == "Receipts"
+				or key == "Rating"
+				or fields[key] ~= nil,
 			"the v6 sample covers " .. key
 		)
 	end

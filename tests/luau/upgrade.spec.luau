@@ -1,4 +1,4 @@
--- Rules/Upgrade.Die: spare copies of a die buy +1 level at Progression.DieLevel.Copies[level]. Every
+-- Rules/Upgrade.Die: spare copies of a die buy +1 level at Progression.DieLevel.CopiesBy[rarity][level]. Every
 -- rejection leaves the profile deep-equal; success is one write; Catalog carries a read-only copy.
 
 local Server = game:GetService("ServerScriptService").Server
@@ -7,6 +7,7 @@ local Roll = require(Server.Rules.Roll)
 local Catalog = require(Server.Rules.Catalog)
 local ProfileSchema = require(Server.Rules.ProfileSchema)
 local Progression = require(Server.Config.Progression)
+local Dice = require(Server.Config.Dice)
 
 local DL = Progression.DieLevel
 
@@ -24,22 +25,45 @@ local function refused(p, id, code, label)
 	expectEq(snap(p), before, label .. " leaves the profile deep-equal")
 end
 
-test("the cost table: Max 12, Max - 1 whole copy costs and gold / crit for every class a rarity reaches", function()
-	expectEq(DL.Max, 12, "Max")
-	expectEq(#DL.Copies, DL.Max - 1, "one cost per level-up")
-	for level, cost in DL.Copies do
-		expect(cost % 1 == 0 and cost >= 1, "cost " .. level)
+test("the cost table: every die tops out at class 15; copies and gold per rarity match the design totals", function()
+	expectEq(DL.Max, 15, "Max")
+	expectEq(DL.MaxClass, 15, "class cap")
+	local wantCopies = { Common = 456, Rare = 145, Epic = 53, Legendary = 19, Mythic = 6, Secret = 4 }
+	local wantGold = { Common = 62090, Rare = 62075, Epic = 62000, Legendary = 61700, Mythic = 60500, Secret = 56000 }
+	for rarity, offset in DL.Offset do
+		expectEq(Progression.MaxLevel(rarity), 15 - offset, rarity .. " level cap")
+		expectEq(#DL.CopiesBy[rarity], Progression.MaxLevel(rarity) - 1, rarity .. " one cost per level-up")
+		local copies, gold = 0, 0
+		for level, cost in DL.CopiesBy[rarity] do
+			expect(cost % 1 == 0 and cost >= 1, rarity .. " cost " .. level)
+			copies += cost
+			gold += Progression.GoldCost(rarity, level) :: number
+		end
+		expectEq(copies, wantCopies[rarity], rarity .. " total copies")
+		expectEq(gold, wantGold[rarity], rarity .. " total gold")
 	end
-	local top = 0
-	for _, offset in DL.Offset do
-		top = math.max(top, offset)
-	end
-	expect(#DL.Gold >= DL.Max - 1 + top and #DL.Crit >= DL.Max - 1 + top, "curves cover the highest-offset rarity")
+	expectEq(#DL.Gold, 14, "gold for classes 1..14")
+	expectEq(#DL.Crit, 14, "crit for classes 1..14")
 	for class = 1, #DL.Gold do
 		expect(DL.Gold[class] >= 1 and DL.Gold[class] % 1 == 0, "gold " .. class)
 		expect(DL.Crit[class] > 0, "crit " .. class)
 		expect(class == 1 or DL.Gold[class] >= DL.Gold[class - 1], "gold never falls " .. class)
 	end
+end)
+
+test("class, level cap and damage growth: +50% by class 15 for every rarity", function()
+	expectEq(Progression.Class("Common", 1), 1, "Common starts at class 1")
+	expectEq(Progression.Class("Rare", 1), 3, "Rare starts at class 3")
+	expectEq(Progression.Class("Secret", 1), 11, "Secret starts at class 11")
+	expectEq(Progression.Class("Secret", 99), 15, "a stored level above the cap clamps to class 15")
+	for rarity in DL.Offset do
+		expectEq(Progression.DamageMul(rarity, 1), 1, rarity .. " level 1")
+		expect(
+			math.abs(Progression.DamageMul(rarity, Progression.MaxLevel(rarity)) - 6) < 1e-9,
+			rarity .. " tops out at x6"
+		)
+	end
+	expect(math.abs(Progression.DamageMul("Common", 8) - 3.5) < 1e-9, "Common halfway: 7 of 14 steps")
 end)
 
 test("rarer dice start further up the gold and crit curves", function()
@@ -72,7 +96,7 @@ end)
 
 test("copies exactly at the cost level up; one below is Insufficient", function()
 	for level = 1, DL.Max - 1 do
-		local cost = DL.Copies[level]
+		local cost = DL.CopiesBy.Common[level]
 		local gold = Progression.GoldCost("Common", level)
 		local p2 = profile(level, cost, gold)
 		local ok, code = Upgrade.Die(p2, "C01")
@@ -88,7 +112,7 @@ end)
 
 test("a full climb 1 -> Max spends exactly the table total, then MaxLevel", function()
 	local total = 0
-	for _, cost in DL.Copies do
+	for _, cost in DL.CopiesBy.Common do
 		total += cost
 	end
 	local goldTotal = 0
@@ -136,16 +160,22 @@ end)
 test("Catalog.Build().DieLevel equals the config and is a clone", function()
 	local c = Catalog.Build().DieLevel
 	expectEq(c.Max, DL.Max, "Max")
-	expectEq(snap(c.Copies), snap(DL.Copies), "Copies")
-	expect(c.Copies ~= DL.Copies and not table.isfrozen(c.Copies), "nothing shared with the config")
-	c.Copies[1] = 999
-	expect(DL.Copies[1] ~= 999, "mutating the clone leaves the config")
+	expectEq(snap(c.Copies), snap(DL.CopiesBy.Common), "Copies is the Common list")
+	expectEq(snap(c.CopiesBy), snap(DL.CopiesBy), "CopiesBy")
+	expectEq(c.MaxBy.Rare, 13, "MaxBy.Rare")
+	expectEq(c.MaxClass, 15, "MaxClass")
+	expect(c.CopiesBy.Common ~= DL.CopiesBy.Common and not table.isfrozen(c.CopiesBy.Common), "nothing shared")
+	c.CopiesBy.Common[1] = 999
+	expect(DL.CopiesBy.Common[1] ~= 999, "mutating the clone leaves the config")
 end)
 
 test("interleaving Roll.Buy and Upgrade.Die keeps Copies >= 0, Level <= Max and spends exactly the cost", function()
-	local cum = { 0 } -- cum[level] = copies spent to reach `level`
-	for level = 2, DL.Max do
-		cum[level] = cum[level - 1] + DL.Copies[level - 1]
+	local cum = {} -- cum[rarity][level] = copies spent to reach `level`
+	for rarity, list in DL.CopiesBy do
+		cum[rarity] = { 0 }
+		for level = 2, Progression.MaxLevel(rarity) do
+			cum[rarity][level] = cum[rarity][level - 1] + list[level - 1]
+		end
 	end
 	local p = ProfileSchema.Default()
 	p.Gems = 100000
@@ -154,8 +184,9 @@ test("interleaving Roll.Buy and Upgrade.Die keeps Copies >= 0, Level <= Max and 
 	local function held() -- per die: copies still held plus copies sunk into levels
 		local out = {}
 		for id, e in p.Dice do
-			expect(e.Copies >= 0 and e.Level >= 1 and e.Level <= DL.Max, id .. " in range")
-			out[id] = e.Copies + cum[e.Level]
+			local rarity = Dice.Types[id].rarity
+			expect(e.Copies >= 0 and e.Level >= 1 and e.Level <= Progression.MaxLevel(rarity), id .. " in range")
+			out[id] = e.Copies + cum[rarity][e.Level]
 		end
 		return out
 	end

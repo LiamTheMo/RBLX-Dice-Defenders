@@ -548,7 +548,9 @@ local function startMatch(player, partner): (boolean, string?)
 		profile.Deck,
 		otherProfile and otherProfile.Deck,
 		Upgrade.CritBonus(profile),
-		otherProfile and Upgrade.CritBonus(otherProfile)
+		otherProfile and Upgrade.CritBonus(otherProfile),
+		Upgrade.Levels(profile),
+		otherProfile and Upgrade.Levels(otherProfile)
 	)
 	flush(true)
 	return true, nil
@@ -793,6 +795,7 @@ local function handleClaimQuest(player: Player, id: string): (boolean, string?)
 	end
 	local ok, code = Claims.Claim(profile, id, os.time())
 	if ok then
+		Tutorial.Claimed(profile, id)
 		ProfileService.MarkChanged(player)
 	end
 	return ok, code

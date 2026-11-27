@@ -9,65 +9,19 @@ local Dice = require(script.Parent.Parent.Config.Dice)
 local Abilities = {}
 
 local SLOW_CAP, BOSS_SLOW_CAP = 0.60, 0.50
-local RARITY_RANK = { Common = 1, Rare = 2, Epic = 3, Legendary = 4, Mythic = 5, Secret = 6 }
--- Perk keys a Mirror can borrow (aura, forge and singularity are positional or global, so never copied).
-local COPYABLE = {
-	"slow",
-	"slowDuration",
-	"slowChance",
-	"freezeEvery",
-	"freezeFor",
-	"chainEvery",
-	"chainCount",
-	"chainMul",
-	"poison",
-	"burn",
-	"detonate",
-	"pull",
-	"rift",
-	"pierce",
-	"wyrmfire",
-}
 
--- The ability view of a die at `now`: its own config, or the Mirror view while a copy is active.
-function Abilities.Of(die, now: number)
-	local m = die.mirror
-	if m and now < m.endsAt then
-		return m.view
-	end
-	return Dice.Types[die.type]
-end
-
--- Mirror: copy the perk set of the highest-rarity adjacent die (not another Mirror, not Astral) for mirror.duration.
-function Abilities.Copy(board, cell: number, now: number)
+-- Mirror: on summon or merge the die takes the highest pip count on the board (never fewer than it already has).
+function Abilities.Copy(board, cell: number, _now: number)
 	local die = board[cell]
 	local own = die and Dice.Types[die.type]
 	if not (own and own.mirror) then
 		return
 	end
-	local best, bestRank
-	for _, n in Board.Neighbours(cell) do
-		local other = board[n]
-		local cfg = other and Dice.Types[other.type]
-		if cfg and not cfg.mirror and not cfg.singularity then
-			local rank = RARITY_RANK[cfg.rarity]
-			for _, key in COPYABLE do
-				if cfg[key] ~= nil and (bestRank == nil or rank > bestRank) then
-					best, bestRank = cfg, rank
-					break
-				end
-			end
+	for other, neighbour in board do
+		if other ~= cell and neighbour and neighbour.pip > die.pip then
+			die.pip = neighbour.pip
 		end
 	end
-	if not best then
-		die.mirror = nil
-		return
-	end
-	local view = table.clone(own)
-	for _, key in COPYABLE do
-		view[key] = best[key]
-	end
-	die.mirror = { endsAt = now + own.mirror.duration, view = view }
 end
 
 -- Enemy status helpers ------------------------------------------------------------
@@ -113,7 +67,12 @@ function Abilities.OnHit(env, state, die, ab, target, now: number): boolean
 		return false
 	end
 	local slowed = false
-	if ab.slow and (ab.slowChance == nil or state.rng:NextNumber() < ab.slowChance) then
+	if
+		ab.slow
+		and ab.slow > 0
+		and (ab.slowKinds == nil or ab.slowKinds[target.kind])
+		and (ab.slowChance == nil or state.rng:NextNumber() < ab.slowChance)
+	then
 		Abilities.Slow(env, state, target, ab.slow, ab.slowDuration, now)
 		slowed = true
 	end
@@ -150,6 +109,20 @@ function Abilities.OnAttack(env, state, die, ab, first, amount: number, reach)
 			env.damage(state, pool[at], math.max(1, math.floor(amount * ab.chainMul)))
 			pool[at] = pool[#pool]
 			pool[#pool] = nil
+		end
+	end
+	if ab.cascade then
+		local behind = {}
+		for _, e in enemies do
+			if e ~= first and reach(e) and e.dist <= first.dist then
+				table.insert(behind, e)
+			end
+		end
+		table.sort(behind, function(a, b)
+			return a.dist > b.dist
+		end)
+		for i = 2, math.min(#ab.cascade, #behind + 1) do
+			env.damage(state, behind[i - 1], math.max(1, math.floor(amount * ab.cascade[i])))
 		end
 	end
 	if ab.pierce then

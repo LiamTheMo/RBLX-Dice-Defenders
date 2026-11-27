@@ -106,16 +106,16 @@ test("wave formulas", function()
 end)
 
 test("perk damage: hitDamage = max(1, floor(base * perk * tierMul)) plus flat, no pip term", function()
-	expectEq(Formulas.HitDamage("C01", "Grunt"), 315, "pebble vs grunt (x1.05)")
-	expectEq(Formulas.HitDamage("C01", "Runner"), 300, "pebble vs runner (no perk)")
-	expectEq(Formulas.HitDamage("C03", "Brute"), 638, "hammer vs armored x1.12")
-	expectEq(Formulas.HitDamage("C03", "Grunt"), 570, "hammer vs grunt")
-	expectEq(Formulas.HitDamage("C03", "Boss"), 570, "boss is not armored")
-	expectEq(Formulas.HitDamage("C05", "Boss"), 420, "longshot has no boss penalty")
-	expectEq(Formulas.HitDamage("C05", "Grunt"), 420, "longshot vs grunt")
-	expectEq(Formulas.HitDamage("C04", "Grunt"), 130, "Twinshot base damage per projectile")
-	expectEq(Formulas.HitDamage("C02", "Grunt"), 170, "needle plain")
-	expectEq(Formulas.HitDamage("C02", "Grunt", 150), 320, "needle with proc")
+	expectEq(Formulas.HitDamage("C01", "Grunt"), 157, "pebble vs grunt (x1.05)")
+	expectEq(Formulas.HitDamage("C01", "Runner"), 150, "pebble vs runner (no perk)")
+	expectEq(Formulas.HitDamage("C03", "Brute"), 319, "hammer vs armored x1.12")
+	expectEq(Formulas.HitDamage("C03", "Grunt"), 285, "hammer vs grunt")
+	expectEq(Formulas.HitDamage("C03", "Boss"), 285, "boss is not armored")
+	expectEq(Formulas.HitDamage("C05", "Boss"), 210, "longshot has no boss penalty")
+	expectEq(Formulas.HitDamage("C05", "Grunt"), 210, "longshot vs grunt")
+	expectEq(Formulas.HitDamage("C04", "Grunt"), 65, "Twinshot base damage per projectile")
+	expectEq(Formulas.HitDamage("C02", "Grunt"), 85, "needle plain")
+	expectEq(Formulas.HitDamage("C02", "Grunt", 150), 235, "needle with proc")
 	expectEq(Formulas.HitDamage("C04", "Grunt") >= 1, true, "never below 1")
 end)
 
@@ -350,7 +350,7 @@ test("Global First: the alive enemy closest to the exit is hit, wherever it is",
 	expect(#batch.H >= 1 and batch.H[1].Id == front.id, "hp record")
 end)
 
-test("Needle: every 6th hit of that die adds 150 flat damage", function()
+test("Needle: every 6th hit of that die adds 75 flat damage", function()
 	local state = newState()
 	openWave(state)
 	place(state, 5, "C02", 1)
@@ -374,7 +374,7 @@ test("Needle: every 6th hit of that die adds 150 flat damage", function()
 	end
 	expect(#deltas >= 12, "enough hits: " .. #deltas)
 	for i, d in deltas do
-		expectEq(d, if i % 6 == 0 then 320 else 170, "hit " .. i)
+		expectEq(d, if i % 6 == 0 then 160 else 85, "hit " .. i)
 	end
 end)
 
@@ -394,19 +394,24 @@ test("Twinshot targets the front and uniformly samples the living enemies", func
 		expectEq(shot.SharedTarget, true, "shared target uses two impact offsets")
 	end
 
-	for roll = 1, 3 do
+	-- the second shot picks a different living enemy with Twinshot's chance (50% at class 1), else joins the front enemy
+	for roll = 1, 2 do
 		local state = newState()
 		openWave(state)
 		place(state, 5, "C04", 1)
+		state.critChance = 0
 		local rear = addEnemy(state, "Brute", 5000, 40)
 		addEnemy(state, "Brute", 0, 62)
 		local front = addEnemy(state, "Brute", 5000, 56)
 		local middle = addEnemy(state, "Brute", 5000, 50)
-		local candidates = { rear, front, middle }
+		local others = { rear, middle } -- the living enemies except the front, in enemy order
 		state.rng = {
+			NextNumber = function()
+				return 0.25 -- under the 50% chance: a different enemy
+			end,
 			NextInteger = function(_, min, max)
 				expectEq(min, 1, "first living index")
-				expectEq(max, #candidates, "includes every living enemy, skips the dead")
+				expectEq(max, #others, "every living enemy but the front, the dead skipped")
 				return roll
 			end,
 		}
@@ -414,17 +419,44 @@ test("Twinshot targets the front and uniformly samples the living enemies", func
 		local fired = Match.TakeOut(state).F
 		expectEq(#fired, 2, "two actual attack records")
 		expectEq(fired[1].Id, front.id, "first shot always targets the front")
-		expectEq(fired[2].Id, candidates[roll].id, "second shot can select any living enemy")
-		expectEq(fired[2].Distance, candidates[roll].dist, "random target impact distance")
-		expectEq(fired[2].SharedTarget, if roll == 2 then true else nil, "only shared targets offset their impacts")
-		for i, enemy in candidates do
-			expectEq(
-				enemy.maxHp - enemy.hp,
-				(if enemy == front then 130 else 0) + (if i == roll then 130 else 0),
-				"damage"
-			)
-		end
+		expectEq(fired[2].Id, others[roll].id, "second shot picks another living enemy")
+		expectEq(fired[2].Distance, others[roll].dist, "random target impact distance")
+		expectEq(fired[2].SharedTarget, nil, "a different target offsets nothing")
+		expectEq(front.maxHp - front.hp, 65, "front took one shot")
+		expectEq(others[roll].maxHp - others[roll].hp, 65, "the picked enemy took the other")
 	end
+
+	local state = newState()
+	openWave(state)
+	place(state, 5, "C04", 1)
+	state.critChance = 0
+	local front = addEnemy(state, "Brute", 5000, 56)
+	addEnemy(state, "Brute", 5000, 40)
+	state.rng = {
+		NextNumber = function()
+			return 0.75 -- over the chance: both shots hit the front enemy
+		end,
+		NextInteger = function()
+			return 1
+		end,
+	}
+	Match.Step(state, state.lastNow + DT)
+	local fired = Match.TakeOut(state).F
+	expectEq(fired[2].Id, front.id, "over the chance the second shot joins the first")
+	expectEq(fired[2].SharedTarget, true, "shared target")
+end)
+
+test("a new enemy cannot be hit until Balance.SpawnGrace has passed", function()
+	local state = newState()
+	openWave(state)
+	place(state, 5, "C03", 1)
+	state.critChance = 0
+	local enemy = addEnemy(state, "Brute", 1e9, 5)
+	enemy.bornAt = state.lastNow -- just spawned
+	runFor(state, Balance.SpawnGrace - 0.2)
+	expectEq(enemy.hp, enemy.maxHp, "untouched during the grace")
+	runFor(state, 0.5)
+	expect(enemy.hp < enemy.maxHp, "hit once the grace is over")
 end)
 
 test("cooldown does not bank while idle, and a die fires at most twice per tick", function()
@@ -455,6 +487,7 @@ end)
 
 test("endless run warns before the wave 10 boss; historical waves use the shared queue", function()
 	local state = newState()
+	state.critChance = 0 -- a crit can kill the boss in the step it spawns, which this spec samples
 	for cell = 1, 15 do
 		place(state, cell, if cell % 2 == 0 then "C03" else "C05", 7)
 	end
@@ -611,7 +644,11 @@ test("stat-only dice: one pip-1 hit deals exactly base, with no perk", function(
 			place(state, 5, id, 1)
 			local brute = addEnemy(state, "Brute", 5000, 56)
 			runFor(state, 0.1)
-			expectEq(brute.maxHp - brute.hp, cfg.base * (cfg.shots or 1), id .. " first hit")
+			expectEq(
+				brute.maxHp - brute.hp,
+				if cfg.cascade then math.floor(cfg.base * cfg.cascade[1]) else cfg.base * (cfg.shots or 1),
+				id .. " first hit"
+			)
 		end
 	end
 end)

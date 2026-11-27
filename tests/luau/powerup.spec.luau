@@ -75,7 +75,7 @@ test("tier multiplier and damage: 1 + DamagePerTier x (tier - 1), floored, never
 		expectEq(Formulas.HitDamage("C03", "Grunt", nil, tier), expected, "hammer tier " .. tier)
 	end
 	expect(Formulas.HitDamage("C03", "Grunt", nil, PU.Max) > Formulas.HitDamage("C03", "Grunt", nil, 1), "grows")
-	expectEq(Formulas.HitDamage("C02", "Grunt", 150, 1), 320, "flat proc added after")
+	expectEq(Formulas.HitDamage("C02", "Grunt", 150, 1), 235, "flat proc added after")
 	expectEq(
 		Formulas.HitDamage("C02", "Grunt", 150, PU.Max) - Formulas.HitDamage("C02", "Grunt", nil, PU.Max),
 		150,
@@ -269,10 +269,14 @@ test("Singularity applies only to the sole Astral on a board", function()
 		math.floor(Dice.Types.M01.base * 10 * 1.1),
 		"crit stacks with Power Up"
 	)
-	expectEq(Formulas.HitDamage("C01", "Grunt", nil, 1, true, true), 315, "other dice keep their own damage")
+	expectEq(
+		Formulas.HitDamage("C01", "Grunt", nil, 1, true, true),
+		315,
+		"a crit doubles any die; only Astral gets the x5"
+	)
 end)
 
-test("Singularity crits on ten of one hundred tickets and skips the RNG when inactive", function()
+test("every die crits on 3 of 100 tickets; a lone Astral on 10", function()
 	local ticket, draws = 10, 0
 	local rng = {
 		NextInteger = function(_, low, high)
@@ -282,10 +286,14 @@ test("Singularity crits on ten of one hundred tickets and skips the RNG when ina
 			return ticket
 		end,
 	}
-	expect(Formulas.SingularityCrit("M01", true, rng), "ticket ten crits")
+	expect(Formulas.SingularityCrit("M01", true, rng), "ticket ten crits a lone Astral")
 	ticket = 11
 	expect(not Formulas.SingularityCrit("M01", true, rng), "ticket eleven misses")
-	expect(not Formulas.SingularityCrit("M01", false, rng), "inactive")
-	expect(not Formulas.SingularityCrit("C01", true, rng), "other dice never crit from this ability")
-	expectEq(draws, 2, "unrelated combat keeps the existing RNG stream")
+	expect(not Formulas.SingularityCrit("M01", false, rng), "Astral off Singularity uses the account chance")
+	ticket = 3
+	expect(Formulas.SingularityCrit("C01", false, rng), "ticket three crits any die")
+	expect(Formulas.SingularityCrit("M01", false, rng), "and an Astral that is not alone")
+	ticket = 4
+	expect(not Formulas.SingularityCrit("C01", true, rng), "ticket four misses")
+	expectEq(draws, 6, "one draw per shot")
 end)

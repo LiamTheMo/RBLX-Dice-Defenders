@@ -1,20 +1,22 @@
 local Dice = require(script.Parent.Parent.Config.Dice)
-local RollConfig = require(script.Parent.Parent.Config.Roll)
 local Economy = require(script.Parent.Economy)
 local Rewards = require(script.Parent.Rewards)
+local Milestones = require(script.Parent.Parent.Config.Milestones)
 
 local Tutorial = {}
 
 Tutorial.RollCost = 100
 Tutorial.TargetWave = 10
-Tutorial.GiftGems = 500
-Tutorial.GiftShards = 5
+-- The gift is the wave-10 play milestone, claimed in the Play menu like any other.
+Tutorial.GiftMilestone = "P10"
+local gift = Milestones.ById[Tutorial.GiftMilestone].Reward
+Tutorial.GiftGems = gift.Gems
+Tutorial.GiftShards = gift.Materials.DieShard
 
 local STARTERS = Dice.Deck
-local EPICS = RollConfig.ById.Standard.ByRarity.Epic
 local STAGES = { Play = true, Choose = true, Gift = true, Done = true }
 
-assert(#STARTERS == 5 and #EPICS > 0, "Tutorial needs five starters and an Epic reward pool")
+assert(#STARTERS == 5, "Tutorial needs five starters")
 
 function Tutorial.Restore(stored, owned)
 	if type(stored) ~= "table" then
@@ -48,7 +50,7 @@ function Tutorial.Shape(action: any, dieId: any): boolean
 	if action == "Convert" then
 		return #dieId >= 1 and #dieId <= 8
 	end
-	return dieId == "" and (action == "Roll" or action == "End" or action == "Continue" or action == "Claim")
+	return dieId == "" and (action == "Roll" or action == "End" or action == "Continue")
 end
 
 function Tutorial.View(profile)
@@ -89,7 +91,7 @@ function Tutorial.Finish(profile): boolean
 	if not Tutorial.CanFinish(profile) then
 		return false
 	end
-	profile.Tutorial.Stage = "Gift"
+	profile.Tutorial.Stage = if profile.Milestones[Tutorial.GiftMilestone] then "Done" else "Gift"
 	return true
 end
 
@@ -120,21 +122,13 @@ function Tutorial.Roll(profile, rng)
 	return true, nil, { Pool = "Tutorial", Results = { { Id = id, Rarity = Dice.Types[id].rarity, New = isNew } } }
 end
 
-function Tutorial.Claim(profile, rng): (boolean, string?)
-	if not profile.Tutorial or profile.Tutorial.Stage ~= "Gift" then
-		return false, "WrongTutorialStep"
-	end
-	local id = EPICS[rng:NextInteger(1, #EPICS)]
-	local ok, code = Rewards.Apply(profile, {
-		Dice = { [id] = 1 },
-		Gems = Tutorial.GiftGems,
-		Materials = { DieShard = Tutorial.GiftShards },
-	})
-	if not ok then
-		return false, code
+-- Called after any successful claim: taking the wave-10 milestone ends the tutorial.
+function Tutorial.Claimed(profile, id: string): boolean
+	if id ~= Tutorial.GiftMilestone or not profile.Tutorial or profile.Tutorial.Stage ~= "Gift" then
+		return false
 	end
 	profile.Tutorial.Stage = "Done"
-	return true, id
+	return true
 end
 
 function Tutorial.Convert(profile, id: string): (boolean, string?)

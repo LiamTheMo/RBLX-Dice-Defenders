@@ -70,7 +70,7 @@ test(
 		end
 		expect(
 			STANDARD.ByRarity.Mythic[1] == "M01" and STANDARD.ByRarity.Secret[1] == "S01",
-			"Astral and Dragon are drawable"
+			"Astral and Wyvern are drawable"
 		)
 		for _, id in STANDARD.Featured do
 			expect(
@@ -169,7 +169,7 @@ test("pity: with no Legendary in 79 rolls the 80th is Legendary; any Legendary r
 	for bp, want in bands do
 		expectEq(Roll.Draw(0, STANDARD, 1, fixed(bp))[1].Rarity, want, "band at " .. bp)
 	end
-	expectEq(Roll.Draw(0, STANDARD, 1, fixed(10000))[1].Id, "S01", "last ticket grants Dragon")
+	expectEq(Roll.Draw(0, STANDARD, 1, fixed(10000))[1].Id, "S01", "last ticket grants Wyvern")
 end)
 
 test("ROLL 10 with seed S equals ten single draws with seed S", function()
@@ -206,26 +206,29 @@ test("Price: 100 per roll, VIP 10% off; ROLL MAX buys up to 50 at once", functio
 	refused(profile(4499), "Standard", 50, true, "Insufficient", "VIP still short by one")
 end)
 
-test("Buy: one roll costs exactly 100 Gems, ten cost 1000; Stats.Rolls and RollPity follow; RollResult shape", function()
-	local p = profile(1100)
-	local ok, code, result = Roll.Buy(p, "Standard", 1, true, Random.new(3))
-	expect(ok and code == nil, "ok " .. tostring(code))
-	expectEq(p.Gems, 1000, "100 Gems once")
-	expectEq(p.Stats.Rolls, 1, "one roll counted")
-	expect(result.Pool == "Standard" and #result.Results == 1 and result.Pity == p.RollPity.Standard, "payload")
-	local r = result.Results[1]
-	expect(type(r.Id) == "string" and r.Rarity == Dice.Types[r.Id].rarity and type(r.New) == "boolean", "row")
-	local ok10, _, ten = Roll.Buy(p, "Standard", 10, true, Random.new(4))
-	expect(ok10 and #ten.Results == 10, "ten results")
-	expectEq(p.Gems, 0, "1000 Gems once")
-	expectEq(p.Stats.Rolls, 11, "eleven rolls counted")
-	local copies = 0
-	for _, die in p.Dice do
-		copies += 1 + die.Copies
+test(
+	"Buy: one roll costs exactly 100 Gems, ten cost 1000; Stats.Rolls and RollPity follow; RollResult shape",
+	function()
+		local p = profile(1100)
+		local ok, code, result = Roll.Buy(p, "Standard", 1, true, Random.new(3))
+		expect(ok and code == nil, "ok " .. tostring(code))
+		expectEq(p.Gems, 1000, "100 Gems once")
+		expectEq(p.Stats.Rolls, 1, "one roll counted")
+		expect(result.Pool == "Standard" and #result.Results == 1 and result.Pity == p.RollPity.Standard, "payload")
+		local r = result.Results[1]
+		expect(type(r.Id) == "string" and r.Rarity == Dice.Types[r.Id].rarity and type(r.New) == "boolean", "row")
+		local ok10, _, ten = Roll.Buy(p, "Standard", 10, true, Random.new(4))
+		expect(ok10 and #ten.Results == 10, "ten results")
+		expectEq(p.Gems, 0, "1000 Gems once")
+		expectEq(p.Stats.Rolls, 11, "eleven rolls counted")
+		local copies = 0
+		for _, die in p.Dice do
+			copies += 1 + die.Copies
+		end
+		expectEq(copies, 5 + 11, "every roll is one die: starters + 11")
+		refused(p, "Standard", 1, true, "Insufficient", "now broke")
 	end
-	expectEq(copies, 5 + 11, "every roll is one die: starters + 11")
-	refused(p, "Standard", 1, true, "Insufficient", "now broke")
-end)
+)
 
 test("Buy rejections in order leave Gems, dice, pity and stats deep-equal", function()
 	local rich = profile(5000)
@@ -242,7 +245,7 @@ test("Buy rejections in order leave Gems, dice, pity and stats deep-equal", func
 	refused(rich, "Standard", 10, nil, "Restricted", "unknown policy (nil) fails closed")
 	refused(profile(99), "Standard", 1, true, "Insufficient", "99 Gems for one")
 	refused(profile(999), "Standard", 10, true, "Insufficient", "999 Gems for ten")
-		refused(profile(4999), "Standard", 50, true, "Insufficient", "4999 Gems for fifty")
+	refused(profile(4999), "Standard", 50, true, "Insufficient", "4999 Gems for fifty")
 	refused(profile(0), "Nope", 5, false, "UnknownPool", "pool checked first")
 	refused(profile(0), "Standard", 51, false, "UnknownPrice", "then the price")
 	refused(profile(0), "Standard", 1, false, "Restricted", "then the policy")

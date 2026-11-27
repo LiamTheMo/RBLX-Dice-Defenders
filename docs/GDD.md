@@ -20,7 +20,7 @@ World 1 is the Verdant Trial (a toy-diorama meadow). Its enemies are Grunts, Run
 
 Solo and Co-op run in the lobby place. A Duel runs in a reserved server (a same-server bot Duel in Studio or when teleporting is unavailable).
 
-A new profile first plays the tutorial: five free starter rolls (500 tutorial Gems, `Rules/Tutorial`), then a Solo run to wave 10, then a choice to end or keep playing, then a gift of one random Epic die, 500 Gems and 5 Dice Shards. Solo and Co-op need five equipped dice (`Deck.IsReady`).
+A new profile first plays the tutorial: five free starter rolls (500 tutorial Gems, `Rules/Tutorial`), then a Solo run to wave 10, then a choice to end or keep playing, then the wave 10 play milestone, which the player claims in the Play menu: a Frost die, 500 Gems and 5 Dice Shards. Solo and Co-op need five equipped dice (`Deck.IsReady`).
 
 ## 3. A match
 
@@ -36,9 +36,9 @@ A new profile first plays the tutorial: five free starter rolls (500 tutorial Ge
 
 ## 4. Dice, levels and rarities
 
-Rarities, in order: Common, Rare, Epic, Legendary, Mythic, Secret. The roster is 7 Common, 5 Rare, 3 Epic, 2 Legendary, 1 Mythic (Astral) and 1 Secret (Dragon); see [DICE_CATALOG.md](DICE_CATALOG.md). Starter deck: Pebble, Needle, Hammer, Twinshot, Longshot.
+Rarities, in order: Common, Rare, Epic, Legendary, Mythic, Secret. The roster is 7 Common, 5 Rare, 3 Epic, 2 Legendary, 1 Mythic (Astral) and 1 Secret (Wyvern); see [DICE_CATALOG.md](DICE_CATALOG.md). Starter deck: Pebble, Needle, Hammer, Twinshot, Longshot.
 
-Die levels run 1 to 12 and cost spare copies and Gold (`Config/Progression.DieLevel`). They give no damage. Each level step adds crit damage percent to the whole account, which only the Mythic Astral's crit uses today. In Duels the crit bonus is 0 for both seats.
+Die levels cost spare copies and Gold (`Config/Progression.DieLevel`). Hit damage grows evenly to x6 at a die's top level. Each level step also adds crit damage percent to the whole account (every die's crit uses it, Astral's Singularity too). In Duels the crit bonus is 0 for both seats.
 
 Mastery: after a run every owned die in the match deck gains Mastery XP equal to the waves completed (curve in `Progression.Mastery`, max level 20; levels 5 / 10 / 15 / 20 pay Gems and an XP Tome once per die).
 
@@ -49,7 +49,7 @@ Mastery: after a run every owned die in the match deck gains Mastery XP equal to
 | Gold | Run reward (5 per wave), daily login, quests, milestones, Duel win streaks, sales | Die level-ups, Shop |
 | Gems | Run reward (Random Dice card schedule x10, see BALANCING.md), quests, achievements, milestones, daily login, codes | Rolls, Shop |
 | Verdant Fragments | 1 per wave cleared, Shop | Materials; sell price 2 each |
-| Dice Shard | Tutorial gift | One shard becomes one spare copy of an owned die |
+| Dice Shard | Wave 10 milestone (tutorial) | One shard becomes one spare copy of an owned die |
 | XP / account level | 10 per wave, XP Tomes (100 XP) | Levels 1 to 50 (`Progression.Account`) |
 | MP | Kills | Match only, never saved |
 

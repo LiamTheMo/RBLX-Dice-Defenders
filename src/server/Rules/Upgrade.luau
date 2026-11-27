@@ -24,6 +24,7 @@ function Upgrade.Die(profile: any, id: any): (boolean, string?)
 	if entry == nil then
 		return false, "NotOwned"
 	end
+	local rarity = Dice.Types[id].rarity
 	local max = Progression.DieLevel.Max
 	if
 		type(entry) ~= "table"
@@ -34,10 +35,10 @@ function Upgrade.Die(profile: any, id: any): (boolean, string?)
 	then
 		return false, "BadAmount"
 	end
-	if entry.Level >= max then
+	if entry.Level >= Progression.MaxLevel(rarity) then
 		return false, "MaxLevel"
 	end
-	local ok, copies = Economy.Sum(entry.Copies, -Progression.DieLevel.Copies[entry.Level])
+	local ok, copies = Economy.Sum(entry.Copies, -Progression.CopiesFor(rarity, entry.Level))
 	if not ok then
 		return false, copies
 	end
@@ -50,6 +51,24 @@ function Upgrade.Die(profile: any, id: any): (boolean, string?)
 	return true, nil
 end
 
+-- Level of every owned die by type id (the match plays each die at its class).
+function Upgrade.Levels(profile: any): { [string]: number }
+	local levels = {}
+	local owned = profile.Dice
+	if type(owned) == "table" then
+		for id, entry in owned do
+			if
+				Dice.Types[id]
+				and type(entry) == "table"
+				and Validate.IsInt(entry.Level, 1, Progression.DieLevel.Max)
+			then
+				levels[id] = entry.Level
+			end
+		end
+	end
+	return levels
+end
+
 -- Crit damage percent the whole account has earned from die levels (summed over every owned die).
 function Upgrade.CritBonus(profile: any): number
 	local total = 0
@@ -60,7 +79,7 @@ function Upgrade.CritBonus(profile: any): number
 	for id, entry in owned do
 		local cfg = Dice.Types[id]
 		if cfg and type(entry) == "table" and Validate.IsInt(entry.Level, 1, Progression.DieLevel.Max) then
-			total += Progression.CritOf(cfg.rarity, entry.Level)
+			total += Progression.CritOf(cfg.rarity, Progression.Clamp(cfg.rarity, entry.Level))
 		end
 	end
 	return total

@@ -197,8 +197,7 @@ local function fire(record)
 	local effectsEnabled = SettingsLogic.get("projectileEffects")
 	local handled, hasImpact
 	if effectsEnabled then
-		handled, hasImpact =
-			Projectiles.Fire(tracerFolder, e, record, SettingsLogic.get("reducedMotion"), playHitSound)
+		handled, hasImpact = Projectiles.Fire(tracerFolder, e, record, SettingsLogic.get("reducedMotion"), playHitSound)
 	end
 	if not hasImpact then
 		playHitSound()

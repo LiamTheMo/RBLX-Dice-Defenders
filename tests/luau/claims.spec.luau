@@ -286,7 +286,7 @@ test("milestones: P10 pays once after BestWave >= 10; every milestone is claimab
 	p.BestWave = 10
 	local gems = p.Gems
 	expect(Claims.Claim(p, "P10", N), "P10 claimed")
-	expectEq(p.Gems, gems + 50, "50 Gems")
+	expectEq(p.Gems, gems + 500, "500 Gems")
 	expectEq(p.Dice.R01 and p.Dice.R01.Level, 1, "the tutorial's Frost die unlocked")
 	expectEq(p.Milestones.P10, true, "flag written")
 	reject(p, "P10", N, "AlreadyClaimed", "P10 twice")

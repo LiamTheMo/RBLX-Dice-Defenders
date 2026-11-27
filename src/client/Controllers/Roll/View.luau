@@ -448,7 +448,8 @@ function View:_drawButtons(L, z: number, y: number)
 		Draw.icon(die, d, bwi * 0.18, bh / 2, dw, dh)
 		die.ImageColor3 = if on then Color3.new(1, 1, 1) else rgb(190, 190, 203)
 		local cx = bwi * 0.64
-		local busy = rolling and (if isMax then rolling.Max == true else rolling.Max ~= true and rolling.Count == st.Count)
+		local busy = rolling
+			and (if isMax then rolling.Max == true else rolling.Max ~= true and rolling.Count == st.Count)
 		local text = if busy
 			then ROLLING
 			elseif isMax then (if st.Count > 1 then `ROLL MAX x{st.Count}` else "ROLL MAX")

@@ -40,7 +40,7 @@ return {
 	},
 	Styles = {
 		S01 = {
-			Name = "Dragon",
+			Name = "Wyvern",
 			Body = "#D8190F",
 			Bevel = "#FDC51A",
 			Pip = "#FFE7A0",

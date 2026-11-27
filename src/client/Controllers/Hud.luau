@@ -416,13 +416,8 @@ local function build()
 	make("UIStroke", { Color = INK, Thickness = 2 }, botText):SetAttribute("Rim", 2)
 	ui.WaitBox, ui.Wait =
 		line(top, { Name = "DuelWait", LayoutOrder = 3, Visible = false }, RatingLogic.WAITING_TEXT, 24)
-	ui.NextWaveBox, ui.NextWave = line(
-		top,
-		{ Name = "NextWave", LayoutOrder = 5, Visible = false },
-		"",
-		26,
-		Color3.fromRGB(255, 60, 60)
-	)
+	ui.NextWaveBox, ui.NextWave =
+		line(top, { Name = "NextWave", LayoutOrder = 5, Visible = false }, "", 26, Color3.fromRGB(255, 60, 60))
 	-- The countdown and the wave dots float on the scene: no panel behind them.
 	local function unframe(strip: Frame)
 		strip.BackgroundTransparency = 1

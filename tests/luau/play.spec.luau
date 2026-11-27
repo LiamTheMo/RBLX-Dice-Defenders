@@ -96,7 +96,7 @@ test("milestones: one row per Catalog milestone, states from Meta", function()
 	expectEq(rows[1].Icon, "IconGalaxyDie", "P10 icon: the die beats Gems")
 	expectEq(rows[2].Icon, "IconGalaxyDie", "P20 icon: the die")
 	expectEq(rows[4].Icon, "Gem", "P40 icon: the HUD gem")
-	expectEq(table.concat(rows[1].Full, "|"), "+50 GEMS|+1 FROST DIE", "P10 rewards: the tutorial's gems and Rare die")
+	expectEq(table.concat(rows[1].Full, "|"), "+500 GEMS|+5 DICE SHARDS|+1 FROST DIE", "P10 rewards: the tutorial's gems and Rare die")
 	expectEq(table.concat(rows[2].Lines, "|"), "+100 GOLD|+1 FROST", "P20 beside the icon")
 	expectEq(table.concat(rows[2].Full, "|"), "+100 GOLD|+1 FROST DIE", "P20 phones")
 

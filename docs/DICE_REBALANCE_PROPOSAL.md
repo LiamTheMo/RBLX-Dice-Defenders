@@ -121,7 +121,7 @@ Trigger types are in brackets. Every proc has an internal cooldown, and a proc c
 | Prism (new) | Relay | [timer] every 12 s re-triggers the ability of each adjacent die once (timers reset to ready; counters complete). Makes Gravity, Chrono, Emberstorm, Tether and Mint fire far more often |
 | Vault (new) | Hoard | [wave start] +5% interest on unspent MP (capped at +250). While on the board, Power Up costs 15% less |
 | Astral (Mythic) | Solo carry | Unchanged Singularity: with exactly one Astral on the board it deals 5x, and 10% of those hits deal 10x. The only die that keeps a built-in multiplier. Its base is a normal Mythic line (8000 per pip, between Legendary 6500 and Dragon 9000) because the one-per-board rule is the cost |
-| Dragon (Secret) | Lane sweep | Shots pierce: each also hits the next 3 enemies behind the target at full damage. [timer] every 12 s Wyrmfire burns the whole lane for 6 s at 0.4% of max HP per second (bosses 0.1%) |
+| Wyvern (Secret) | Lane sweep | Shots pierce: each also hits the next 3 enemies behind the target at full damage. [timer] every 12 s Wyrmfire burns the whole lane for 6 s at 0.4% of max HP per second (bosses 0.1%) |
 
 ## 4. Strategies and how far they reach
 

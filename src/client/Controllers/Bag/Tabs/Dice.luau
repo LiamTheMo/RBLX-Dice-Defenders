@@ -4,6 +4,7 @@
 local Sprites = require(script.Parent.Parent.Parent.Sprites)
 local BagLogic = require(script.Parent.Parent.BagLogic)
 local Display = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Display"))
+local NumberFormat = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("NumberFormat"))
 
 local Dice = {}
 
@@ -37,7 +38,7 @@ end
 -- The account's total crit damage, shown beside the inventory's sort box: the starter 100% (a crit hits for 2x) plus the
 -- crit every die level-up has earned (the server sums the same curve). Nil until the catalogue's curve has loaded.
 local BASE_CRIT = 100
-local BASE_CRIT_CHANCE = 5
+local BASE_CRIT_CHANCE = 3 -- the account-wide chance for every die; the Catalog's CritChance replaces it
 function Dice.Count(meta, catalog): string?
 	local DL = catalog and catalog.DieLevel
 	if type(DL) ~= "table" or type(DL.Crit) ~= "table" or meta == nil then
@@ -54,10 +55,10 @@ function Dice.Count(meta, catalog): string?
 		end
 	end
 	-- two rows of "label<TAB>number" (the toolbar left-aligns the labels, right-aligns the numbers): the total in deep
-	-- tangerine, the starter 5% crit chance (display only: no crit-chance upgrade exists yet) under it
+	-- tangerine, the account-wide crit chance (the same for every die) under it
 	return ('Crit Damage\t<font color="#FF7A00">%g%%</font>\nCrit Chance\t<font color="#FFC21A">%g%%</font>'):format(
 		total,
-		BASE_CRIT_CHANCE
+		if type(catalog.CritChance) == "number" then catalog.CritChance else BASE_CRIT_CHANCE
 	)
 end
 Dice.CountGain = true -- the toolbar keeps room beside the total for the green "+N%" an UPGRADE hover previews
@@ -102,15 +103,40 @@ function Dice.GetItems(meta, catalog)
 		if info then
 			local equipped = inDeck(meta, die.Id)
 			local s = stats[die.Id]
-			local cost = costs[die.Level]
+			-- per-rarity cap and copy costs (every die tops out at class 15); older catalogues carry one shared list
+			local rarityCap = if ok and DL.MaxBy and whole(DL.MaxBy[info.Rarity]) then DL.MaxBy[info.Rarity] else cap
+			local rarityCosts = if ok
+					and DL.CopiesBy
+					and type(DL.CopiesBy[info.Rarity]) == "table"
+				then DL.CopiesBy[info.Rarity]
+				else costs
+			local cost = rarityCosts[die.Level]
+			-- hit damage grows evenly to +DamageBonus at the cap
+			local function growthAt(level: number): number
+				return if rarityCap
+						and rarityCap > 1
+						and type(DL.DamageBonus) == "number"
+					then 1 + DL.DamageBonus * (math.min(level, rarityCap) - 1) / (rarityCap - 1)
+					else 1
+			end
+			local growth = growthAt(die.Level)
 			local spare = if type(die.Copies) == "number" then die.Copies else 0
 			table.insert(items, {
 				Id = die.Id,
 				Name = info.Name,
 				Rarity = info.Rarity,
-				Damage = s and s.Damage,
+				Damage = if s and type(s.Damage) == "number" then math.floor(s.Damage * growth + 1e-9) else nil,
 				AttackSpeed = s and s.AttackSpeed,
+				Rate = s and s.Rate,
+				Shots = s and s.Shots,
 				ExtraStats = s and s.Stats,
+				ClassStats = s and s.ClassStats,
+				DamageNext = if s
+						and type(s.Damage) == "number"
+						and rarityCap
+						and die.Level < rarityCap
+					then math.floor(s.Damage * growthAt(die.Level + 1) + 1e-9)
+					else nil,
 				Targeting = s and s.Targeting,
 				Ability = s and s.Description,
 				Level = die.Level,
@@ -123,7 +149,7 @@ function Dice.GetItems(meta, catalog)
 				Footer = "Lv. " .. tostring(die.Level),
 				Count = "x" .. BagLogic.formatCount(spare), -- spare copies (the first copy unlocks the die)
 				Copies = spare,
-				LevelMax = cap,
+				LevelMax = rarityCap,
 				LevelCost = if type(cost) == "number" then cost else nil,
 				LevelGold = curve(goldCurve, info.Rarity, die.Level),
 				CritGain = curve(critCurve, info.Rarity, die.Level),
@@ -143,18 +169,66 @@ local DASH = "\u{2013}"
 local DEFAULT_DESC = "placeholder desc" -- shown for dice with no ability text yet
 local DEFAULT_TARGETING = "Front" -- every die targets the front enemy until its Config entry says otherwise
 local function num(v, suffix: string?): string
-	return if type(v) == "number" then string.format("%g", v) .. (suffix or "") else DASH
+	return if type(v) == "number" then NumberFormat.Compact(v) .. (suffix or "") else DASH
 end
-local function stats(item)
+-- The green "+N" an UPGRADE adds to a stat: nil when the next level changes nothing. Only % and s units are shown.
+local function gainText(now, nxt, suffix: string?): string?
+	if type(now) ~= "number" or type(nxt) ~= "number" or math.abs(nxt - now) < 1e-9 then
+		return nil
+	end
+	local unit = if suffix == "%" or suffix == "s" or suffix == "%/s" then suffix else ""
+	return (if nxt > now then "+" else "-") .. NumberFormat.Compact(math.abs(nxt - now)) .. unit
+end
+
+-- `preview`: the next level exists and can be previewed (loaded, owned, below the cap).
+local function stats(item, preview: boolean?)
+	local cs = if type(item.ClassStats) == "table" then item.ClassStats else nil
+	local level = item.Level
+	local function classValue(row: number, at: number): number?
+		local values = cs and cs.Values and cs.Values[at]
+		return if values then values[row] else nil
+	end
+	local shotsNow = (cs and cs.Shots and cs.Shots[level]) or item.Shots or 1
+	local shotsNext = (cs and cs.Shots and cs.Shots[level + 1]) or shotsNow
+	local dpsNow = if type(item.Damage) == "number" and type(item.Rate) == "number"
+		then item.Damage * shotsNow * item.Rate
+		else nil
+	local dpsNext = if type(item.DamageNext) == "number" and type(item.Rate) == "number"
+		then item.DamageNext * shotsNext * item.Rate
+		else nil
 	local list = {
-		{ Icon = "IconSword", Label = "Damage", Value = num(item.Damage) },
+		{
+			Icon = "IconSword",
+			Label = "Damage",
+			Value = num(item.Damage),
+			Gain = if preview then gainText(item.Damage, item.DamageNext) else nil,
+		},
 		{ Icon = "IconHourglass", Label = "SPA", Value = num(item.AttackSpeed, "s") },
 		{
 			Icon = "IconDice",
 			Label = "Target",
 			Value = if type(item.Targeting) == "string" then item.Targeting else DEFAULT_TARGETING,
 		},
+		{
+			Icon = "IconSword",
+			Label = "DPS",
+			Value = if dpsNow then NumberFormat.Compact(dpsNow) else DASH,
+			Gain = if preview then gainText(dpsNow, dpsNext) else nil,
+		},
 	}
+	-- the die's own ability numbers by level (Catalog ClassStats), in the same order as Config/DiceClasses.Stats
+	for row, label in if cs and type(cs.Labels) == "table" then cs.Labels else {} do
+		local now = classValue(row, level)
+		if now ~= nil then
+			local suffix = if type(cs.Suffixes) == "table" then cs.Suffixes[row] else nil
+			table.insert(list, {
+				Icon = "IconDice",
+				Label = label,
+				Value = num(now, suffix),
+				Gain = if preview then gainText(now, classValue(row, level + 1), suffix) else nil,
+			})
+		end
+	end
 	for _, st in if type(item.ExtraStats) == "table" then item.ExtraStats else {} do
 		if type(st) == "table" and type(st.Label) == "string" and st.Value ~= nil then
 			table.insert(list, {
@@ -213,7 +287,7 @@ function Dice.Detail(item)
 			then item.Ability
 			elseif locked then item.Note
 			else DEFAULT_DESC,
-		Stats = stats(item),
+		Stats = stats(item, loaded and not locked and not atMax),
 		-- the crit damage the next level adds: the toolbar's Crit Damage total shows it in green while UPGRADE is hovered or held
 		Preview = if loaded
 				and not locked

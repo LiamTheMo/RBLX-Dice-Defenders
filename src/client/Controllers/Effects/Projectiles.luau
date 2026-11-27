@@ -248,7 +248,7 @@ local function fire(parent, enemy, attack, reducedMotion, style, visualLane, onI
 	shot.slowed = attack.Slowed
 	shot.slowUntil = attack.SlowUntil
 	shot.boosted = attack.Boosted and not reducedMotion
-	shot.flight = if reducedMotion or style.impactOnly then 0 else (center - from).Magnitude / style.speed
+	shot.flight = if style.impactOnly then 0 else (center - from).Magnitude / style.speed
 	shot.elapsed = 0
 	shot.impact = nil
 	shot.onImpact = onImpact
@@ -266,7 +266,7 @@ local function fire(parent, enemy, attack, reducedMotion, style, visualLane, onI
 			local cell = Layout.CellPosition(shot.effectCell, attack.Seat, attack.Arena or attack.PlayerCount)
 			shot.center = cell + Vector3.yAxis * 2
 			shot.halfSize = DiceVisuals.Size(attack.Type) / 2
-			shot.flight = if reducedMotion then 0 else (shot.center - from).Magnitude / style.speed
+			shot.flight = (shot.center - from).Magnitude / style.speed
 		end
 	end
 	if not (shot.visuals and shot.effectCell) and enemy.hp > 0 then
@@ -282,7 +282,7 @@ local function fire(parent, enemy, attack, reducedMotion, style, visualLane, onI
 			CFrame.lookAlong(Vector3.zero, if direction.Magnitude > 0.01 then direction else Vector3.zAxis)
 		shot.ground = Vector3.new(shot.center.X, ROUTE_TOP, shot.center.Z)
 	end
-	if shot.dot and not reducedMotion then
+	if shot.dot then
 		shot.dot.CFrame = if shot.visuals then shot.travelFrame + shot.from else CFrame.new(shot.from)
 		shot.dot.Parent = parent
 		startTrails(shot)
@@ -344,7 +344,8 @@ local function fireCommon(
 	local lane = up * ((attack.Lane or 0) * LANE_OFFSET * scale)
 	local hitOffset = if attack.SharedTarget or attack.Lane ~= nil then lane else Vector3.zero
 	from += lane
-	local flight = if reducedMotion then 0 else (center - from).Magnitude / style.speed
+	-- Reduced Motion softens flashes; the shot itself still flies (a phone with the OS setting on must still see it).
+	local flight = (center - from).Magnitude / style.speed
 	if enemy.hp > 0 then
 		local arrival = workspace:GetServerTimeNow() + flight
 		center = Layout.PositionAt(enemy.speed * (arrival - enemy.spawnAt), enemy.seat, enemy.playerCount)
@@ -473,7 +474,7 @@ local function fireCommon(
 		return true, false
 	end
 	activeShots[token] = handle
-	if not reducedMotion then
+	do
 		for i, def in style.cores do
 			if Fx.LayerAllowed(tier, def.layer) then
 				local part = Fx.Part(def.mesh, {
@@ -495,13 +496,7 @@ local function fireCommon(
 	return true, true
 end
 
-function Projectiles.Fire(
-	parent: Folder,
-	enemy,
-	attack,
-	reducedMotion: boolean,
-	onImpact: () -> ()
-): (boolean, boolean)
+function Projectiles.Fire(parent: Folder, enemy, attack, reducedMotion: boolean, onImpact: () -> ()): (boolean, boolean)
 	local common = ProjectileStyles[attack.Type]
 	if common then
 		if attack.Distance == nil then

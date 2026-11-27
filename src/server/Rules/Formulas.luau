@@ -109,8 +109,8 @@ function Formulas.PowerUpCost(tier: number): number?
 end
 
 -- Attack-speed bonus (a fraction) a die gives each orthogonal neighbour; 0 for a die without an aura.
-function Formulas.Aura(typeId: string, pip: number, tier: number): number
-	local aura = Dice.Types[typeId].aura
+function Formulas.Aura(typeId: string, pip: number, tier: number, cfg: any?): number
+	local aura = (cfg or Dice.Types[typeId]).aura
 	if aura == nil then
 		return 0
 	end
@@ -130,9 +130,15 @@ function Formulas.HasSingularity(board): boolean
 	return found
 end
 
-function Formulas.SingularityCrit(typeId: string, active: boolean, rng: any): boolean
+-- Whether a shot crits: every die has the account-wide Balance.Crit.Chance; a lone Astral (Singularity) uses its own
+-- higher chance instead.
+function Formulas.SingularityCrit(typeId: string, active: boolean, rng: any, accountChance: number?): boolean
 	local ability = Dice.Types[typeId].singularity
-	return active and ability ~= nil and rng:NextInteger(1, 100) <= ability.critChance
+	local chance = accountChance or Balance.Crit.Chance
+	if active and ability ~= nil then
+		chance = math.max(chance, ability.critChance)
+	end
+	return rng:NextInteger(1, 100) <= chance
 end
 
 -- Damage of one shot: base x perks x Power Up x active ability, rounded down.
@@ -144,9 +150,11 @@ function Formulas.HitDamage(
 	tier: number?,
 	singularity: boolean?,
 	critical: boolean?,
-	critBonus: number? -- account crit damage percent from die levels (Upgrade.CritBonus), added to the crit multiplier
+	critBonus: number?, -- account crit damage percent from die levels (Upgrade.CritBonus), added to the crit multiplier
+	classCfg: any?, -- the die's config at its class (Config/DiceClasses); the plain entry when nil
+	classMul: number? -- Progression.DamageMul of the die's level (1 at level 1)
 ): number
-	local cfg = Dice.Types[typeId]
+	local cfg = classCfg or Dice.Types[typeId]
 	local enemy = Enemies.Kinds[kind]
 	local perk = 1
 	if cfg.vsKind and cfg.vsKind[kind] then
@@ -155,11 +163,16 @@ function Formulas.HitDamage(
 	if cfg.vsArmored and enemy.armored then
 		perk *= cfg.vsArmored
 	end
-	if singularity and cfg.singularity then
-		perk *= cfg.singularity.damage * (if critical then cfg.singularity.critDamage + (critBonus or 0) / 100 else 1)
+	local lone = singularity and cfg.singularity
+	if lone then
+		perk *= cfg.singularity.damage
+	end
+	if critical then
+		perk *= (if lone then cfg.singularity.critDamage else Balance.Crit.Damage) + (critBonus or 0) / 100
 	end
 	-- 1e-9 keeps an exact product such as 10 x 1.3 from flooring one short on float noise.
-	return math.max(1, math.floor(cfg.base * perk * Formulas.TierMul(tier or 1) + 1e-9)) + (procFlat or 0)
+	return math.max(1, math.floor(cfg.base * perk * Formulas.TierMul(tier or 1) * (classMul or 1) + 1e-9))
+		+ (procFlat or 0)
 end
 
 return Formulas

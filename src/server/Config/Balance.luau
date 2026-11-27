@@ -21,6 +21,11 @@ Balance.PipRate = table.freeze({ 1, 2, 3, 4, 5, 6, 7 })
 Balance.PowerUp = table.freeze({ Max = 5, Costs = table.freeze({ 100, 200, 400, 700 }), DamagePerTier = 0.10 })
 -- Most attack-speed bonus (fraction) one die receives from adjacent aura dice combined (Dice `aura`) (*tune*).
 Balance.AuraCap = 0.30
+-- Account-wide crit (every die, every player): Chance is a percent per shot; Damage the starter multiplier (a crit hits for
+-- 2x) before the crit damage earned from die levels (Upgrade.CritBonus). Astral's Singularity keeps its own, higher chance.
+Balance.Crit = table.freeze({ Chance = 3, Damage = 2 })
+-- Seconds a new enemy cannot be hit, so a strong board never kills it before the player sees it spawn and walk in (*tune*).
+Balance.SpawnGrace = 1.0
 
 Balance.SummonCost = table.freeze({ base = 10, step = 10 }) -- MP: base + step * summons so far
 -- Run reward (*tune*): per wave cleared.

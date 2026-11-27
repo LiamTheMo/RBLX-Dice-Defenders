@@ -6,7 +6,7 @@ local function milestone(id: string, wave: number, reward)
 end
 
 local List = table.freeze({
-	milestone("P10", 10, { Gems = 50, Dice = table.freeze({ R01 = 1 }) }), -- the tutorial goal: reach wave 10
+	milestone("P10", 10, { Gems = 500, Dice = table.freeze({ R01 = 1 }), Materials = table.freeze({ DieShard = 5 }) }), -- the tutorial goal: reach wave 10, then claim this in Play
 	milestone("P20", 20, { Gold = 100, Dice = table.freeze({ R01 = 1 }) }),
 	milestone("P30", 30, { Gold = 300, Items = table.freeze({ XpTome = 2 }) }),
 	milestone("P40", 40, { Gems = 60 }),

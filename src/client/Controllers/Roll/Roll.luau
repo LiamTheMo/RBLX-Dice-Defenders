@@ -90,7 +90,7 @@ function Roll.new(parent, deps)
 			view:SetButtons({
 				{ Count = 1, Price = starter.RollCost, Enabled = true },
 				{ Count = 10, Price = "-", Enabled = false },
-					{ Count = 0, Price = "-", Enabled = false, Max = true },
+				{ Count = 0, Price = "-", Enabled = false, Max = true },
 			})
 			view:SetVip(nil)
 			view:SetNotice("starter")
@@ -141,7 +141,11 @@ function Roll.new(parent, deps)
 					render()
 				end
 			elseif a.show == "rolling" then
-				view:SetRolling({ Count = pressed, Max = pressedMax, Still = SettingsLogic.get("reducedMotion") == true })
+				view:SetRolling({
+					Count = pressed,
+					Max = pressedMax,
+					Still = SettingsLogic.get("reducedMotion") == true,
+				})
 			elseif a.show == "reveal" then
 				deps.toast(RollLogic.resultToast(a.result.Results))
 				result = a.result

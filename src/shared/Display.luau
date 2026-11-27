@@ -23,7 +23,7 @@ Display.Dice = table.freeze({
 	L01 = table.freeze({ Name = "Chrono", Rarity = "Legendary", Color = Color3.fromHex("#266E73") }),
 	L02 = table.freeze({ Name = "Forge", Rarity = "Legendary", Color = Color3.fromHex("#AE5F04") }),
 	M01 = table.freeze({ Name = "Astral", Rarity = "Mythic", Color = Color3.fromHex("#46459B") }),
-	S01 = table.freeze({ Name = "Dragon", Rarity = "Secret", Color = Color3.fromHex("#D8190F") }),
+	S01 = table.freeze({ Name = "Wyvern", Rarity = "Secret", Color = Color3.fromHex("#D8190F") }),
 })
 
 -- Catalogue dice with no server config yet: shown as "Not available yet".

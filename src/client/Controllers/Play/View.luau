@@ -29,8 +29,6 @@ local GREY = Color3.fromRGB(150, 150, 160)
 local ORANGE = Color3.fromRGB(248, 130, 20)
 local GLOW_IN = Color3.fromRGB(253, 239, 10)
 local GLOW_OUT = Color3.fromRGB(245, 119, 3)
-local DISABLED_TINT = Color3.new(0.5, 0.5, 0.55)
-local PRESS_TINT = Color3.new(0.82, 0.82, 0.86)
 
 local function whole(size: Vector2) -- sprite record whose ink is the whole (tight) export
 	return { Size = size, Ink = Rect.new(0, 0, size.X, size.Y) }
@@ -126,27 +124,21 @@ local function scroll(parent, name, x, y, w, h)
 	}, parent)
 end
 
--- Selected card bloom from live strokes: frames hugging the card, yellow inside to orange outside, fading out.
+-- Selected card outline: one live stroke hugging the card (rounded like the art).
 local function bloom(host, x, y, w, h, radius, z)
-	local n, step = 5, 2.2
-	for i = 1, n do
-		local t = (i - 1) / (n - 1)
-		local e = 3 + (i - 1) * step
-		local f = make("Frame", {
-			Name = "Glow",
-			BackgroundTransparency = 1,
-			Position = UDim2.fromOffset(x - e, y - e),
-			Size = UDim2.fromOffset(w + 2 * e, h + 2 * e),
-			ZIndex = z,
-		}, host)
-		make("UICorner", { CornerRadius = UDim.new(0, radius + e) }, f)
-		make("UIStroke", {
-			Color = GLOW_IN:Lerp(GLOW_OUT, t),
-			Transparency = 0.02 + 0.5 * t,
-			Thickness = 2.4,
-			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-		}, f)
-	end
+	local f = make("Frame", {
+		Name = "Selected",
+		BackgroundTransparency = 1,
+		Position = UDim2.fromOffset(x, y),
+		Size = UDim2.fromOffset(w, h),
+		ZIndex = z + 2,
+	}, host)
+	make("UICorner", { CornerRadius = UDim.new(0, radius) }, f)
+	make("UIStroke", {
+		Color = GLOW_IN:Lerp(GLOW_OUT, 0.4),
+		Thickness = 3,
+		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+	}, f)
 end
 
 -- The big green button (Play_Start art, live label): normal / hover / pressed (Parts.interact) and disabled (dim).
@@ -158,60 +150,33 @@ local function bigButton(
 	cx: number,
 	cy: number,
 	z: number,
-	sizeText: string?
+	sizeText: string? -- the widest label a live button can show (the Duel timer); also means no play arrow
 )
-	-- The art keeps its aspect, so its real box is the largest START_ASP rectangle inside w x h; the label is laid out in that box.
-	local aw = math.min(w, h * START_ASP)
-	w, h = aw, aw / START_ASP
-	local btn = make("ImageButton", {
+	w = round(w)
+	h = math.min(round(h), round(w / START_ASP)) -- the old art's proportions: a slim pill, not a slab
+	local size = fitSize(sizeText or text, w * (if sizeText then 0.8 else 0.55), math.floor(h * 0.5), 8)
+	local btn = Parts.button(parent, {
 		Name = "Start",
-		BackgroundTransparency = 1,
-		Image = PlaySprites.Start.Image,
-		ScaleType = Enum.ScaleType.Stretch,
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromOffset(round(cx), round(cy)),
+		Style = "Green",
+		Label = text,
+		Icon = if sizeText then nil else PlaySprites.PlayArrow,
+		TextSize = size,
 		Size = UDim2.fromOffset(w, h),
-		ZIndex = z,
-	}, parent)
-	make("UIAspectRatioConstraint", { AspectRatio = START_ASP }, btn)
-	local size = fitSize(sizeText or text, w * 0.56, math.floor(h * 0.62), 8) -- sizeText: the widest label a live button can show
-	local l = label(btn, {
-		Name = "Label",
-		Text = text,
-		Size = size,
-		Fixed = true,
-		X = w * 0.6,
-		Y = h * 0.47,
-		W = w * 0.58,
-		Z = z + 1,
-		Stroke = math.max(2, round(size / 12)),
 	})
-	local function look(state: string)
-		local on = btn:GetAttribute("Enabled") ~= false
-		btn.ImageColor3 = if not on then DISABLED_TINT elseif state == "Pressed" then PRESS_TINT else WHITE
-		btn.ImageTransparency = if on then 0 else 0.4
-		l.TextTransparency = if on then 0 else 0.45
-		l.UIStroke.Transparency = if on then 0 else 0.45
+	btn.AnchorPoint = Vector2.new(0.5, 0.5)
+	btn.Position = UDim2.fromOffset(round(cx), round(cy))
+	btn.ZIndex = z
+	btn.Label.ZIndex = z + 1 -- children were made at the default ZIndex: lift them above the button body
+	local ic = btn:FindFirstChild("Icon")
+	if ic then
+		ic.ZIndex = z + 1
 	end
-	local refresh = Parts.interact(btn, look)
-	-- The art keeps its aspect (it cannot grow), so a transparent hit box >= 46 real px tall takes the tap, like the Shell's close X.
-	local hit = make("TextButton", {
-		Name = "Hit",
-		BackgroundTransparency = 1,
-		Text = "",
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.new(1, 0, 0, math.max(h, math.ceil(46 / K))),
-		ZIndex = z + 2,
-		Selectable = false,
-	}, btn)
-	UiKit.wire(hit, function(state)
-		btn:SetAttribute("DebugState", if state == "Normal" then nil else state)
-	end)
-	return hit, function(on: boolean)
-		btn:SetAttribute("Enabled", on)
-		refresh()
-	end, l
+	btn:SetAttribute("TextFixed", size) -- one size even when the label changes
+	btn.Label.TextSize = size
+	btn.Label.TextTruncate = Enum.TextTruncate.None
+	return btn, function(on: boolean)
+		Parts.setButton(btn, { Enabled = on })
+	end, btn.Label
 end
 
 local View = {}
@@ -328,16 +293,18 @@ function View:_buildLeft(pnl)
 			ZIndex = list.ZIndex + 3,
 		}, list)
 		make("UICorner", { CornerRadius = UDim.new(0, cw * 0.05) }, card)
+		local banner = PlaySprites[BANNER[wd.Id]]
 		local art = make("ImageLabel", {
 			Name = "Art",
 			BackgroundTransparency = 1,
-			Image = PlaySprites[BANNER[wd.Id]].Image,
-			AnchorPoint = Vector2.new(0.5, 0), -- top-anchored: the key art (Frost's die) sits in the banner's top half, the card clips the bottom
-			Position = UDim2.fromScale(0.5, 0),
-			Size = UDim2.fromOffset(cw, cw / ASP),
+			Image = banner.Image,
+			-- top crop of the banner (the key art, Frost's die, sits in its top half) so the art itself carries the rounded corners
+			ImageRectOffset = Vector2.zero,
+			ImageRectSize = Vector2.new(banner.Size.X, banner.Size.Y * math.min(1, ch / (cw / ASP))),
+			Size = UDim2.fromOffset(cw, ch),
 			ZIndex = card.ZIndex,
 		}, card)
-		make("UIAspectRatioConstraint", { AspectRatio = ASP }, art)
+		make("UICorner", { CornerRadius = UDim.new(0, cw * 0.05) }, art)
 		if wd.Id == sel then
 			bloom(list, x, y, cw, ch, cw * 0.05, list.ZIndex + 2)
 		end
@@ -381,7 +348,7 @@ end
 local function buildRow(list, row, y: number, w: number, h: number, R, onClaim, hitMin: number)
 	local strip = Chrome.strip(list, {
 		Name = "Row" .. row.Wave,
-		Position = UDim2.fromOffset(0, y),
+		Position = UDim2.fromOffset(4, y), -- inset: the strip stroke is half outside the strip, the list would clip it
 		Size = UDim2.fromOffset(w, h),
 		ZIndex = list.ZIndex + 1,
 	})
@@ -393,26 +360,29 @@ local function buildRow(list, row, y: number, w: number, h: number, R, onClaim, 
 	local tint = if row.State == "Soon" then GREY else WHITE
 	local bd = R.bd
 	local badge = if claimed then Shared.Tick elseif claim then PlaySprites.Trophy else Shared.Padlock
-	local b = icon(strip, badge, 10 + bd / 2, h / 2, bd, bd, z)
+	local b = icon(strip, badge, R.badgeX or 10 + bd / 2, h / 2, bd, bd, z)
 	b.Name = "Badge"
-	label(strip, {
-		Name = "Wave",
-		Text = "WAVE " .. row.Wave,
-		Size = R.wave,
-		Fixed = true,
-		AX = 0,
-		X = R.waveX,
-		Y = h / 2,
-		W = R.waveW + 8,
-		Color = tint,
-		Z = z,
-	})
+	local claimInSlot = claim and not R.noIcon -- the button takes the WAVE text's place; the reward icon stays
+	if not claimInSlot then
+		label(strip, {
+			Name = "Wave",
+			Text = "WAVE " .. row.Wave,
+			Size = R.wave,
+			Fixed = true,
+			AX = 0,
+			X = R.waveX,
+			Y = h / 2,
+			W = R.waveW + 8,
+			Color = tint,
+			Z = z,
+		})
+	end
 	if claim then
 		local hit = make("ImageButton", {
 			Name = "Claim",
 			BackgroundTransparency = 1,
 			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.fromOffset(round(if R.noIcon then w - 49 else R.ix), round(h / 2)),
+			Position = UDim2.fromOffset(round(if R.noIcon then w - 49 else R.waveX + R.slot / 2), round(h / 2)),
 			Size = UDim2.fromOffset(78, math.max(h, hitMin)),
 			ZIndex = z + 1,
 		}, strip)
@@ -435,10 +405,9 @@ local function buildRow(list, row, y: number, w: number, h: number, R, onClaim, 
 				onClaim(row)
 			end
 		end)
-	else
-		if not R.noIcon then
-			icon(strip, ICON[row.Icon] or PlaySprites.Crystals, R.ix, h / 2, 46, math.min(46, h - 10), z)
-		end
+	end
+	if not R.noIcon then
+		icon(strip, ICON[row.Icon] or PlaySprites.Crystals, R.ix, h / 2, 46, math.min(46, h - 10), z)
 	end
 	Chrome.divider(strip, {
 		Name = "Divider",
@@ -474,7 +443,7 @@ local function rowRoles(rows, w: number, h: number, hasClaim: boolean, phone: bo
 	for _, r in rows do
 		maxLines = math.max(maxLines, #r.Lines)
 	end
-	local half = if hasClaim then 39 else 23
+	local half = 23
 	local cmax = math.max(8, math.min(17, math.floor((h - 8) / maxLines) - 1)) -- reward lines fit the row height
 	local function try(a: number, c: number, withIcon: boolean)
 		local ww, wr = 0, 0
@@ -484,22 +453,46 @@ local function rowRoles(rows, w: number, h: number, hasClaim: boolean, phone: bo
 				wr = math.max(wr, measure(str, c))
 			end
 		end
-		wr += 6
+		local raw = wr
+		wr += 14 -- slack: the stroked text is wider than measured, so it never touches the divider or the frame
+		local ws = if hasClaim then math.max(ww, 76) else ww -- the CLAIM button sits in the WAVE slot
+		if withIcon then -- badge | WAVE or CLAIM | icon | divider | rewards, the free width split into equal gaps (both ends too)
+			local g = (w - (bd + ws + 46 + 3 + raw)) / 6
+			if g < 6 then
+				return nil
+			end
+			local dxe = 4 * g + bd + ws + 46
+			return {
+				bd = bd,
+				badgeX = g + bd / 2,
+				waveX = 2 * g + bd,
+				waveW = ww,
+				slot = ws,
+				wave = a,
+				line = c,
+				wr = wr,
+				dx = dxe,
+				ix = 3 * g + bd + ws + 23,
+				tx = dxe + 3 + g + raw / 2,
+				noIcon = false,
+			}
+		end
 		local dx = w - 10 - wr - 12
-		local ix = (waveX + ww + dx) / 2
-		if dx - (waveX + ww) < 6 or (withIcon and ix - half < waveX + ww + 6) then
+		local ix = (waveX + ws + dx) / 2
+		if dx - (waveX + ws) < 6 or (withIcon and ix - half < waveX + ws + 6) then
 			return nil
 		end
 		return {
 			bd = bd,
 			waveX = waveX,
 			waveW = ww,
+			slot = ws,
 			wave = a,
 			line = c,
 			wr = wr,
 			dx = dx,
 			ix = ix,
-			tx = dx + 9 + wr / 2,
+			tx = (dx + w - 5) / 2, -- centred between the divider and the frame
 			noIcon = not withIcon,
 		}
 	end
@@ -526,6 +519,7 @@ local function rowRoles(rows, w: number, h: number, hasClaim: boolean, phone: bo
 			bd = bd,
 			waveX = waveX,
 			waveW = 60,
+			slot = 76,
 			wave = 10,
 			line = 8,
 			wr = 70,
@@ -555,13 +549,13 @@ function View:_buildMid(pnl)
 	local pitch = 65
 	local hitMin = math.ceil(44 / K)
 	for i, row in rows do
-		buildRow(list, row, 1 + (i - 1) * pitch, rw, rh, R, function(r)
+		buildRow(list, row, 3 + (i - 1) * pitch, rw, rh, R, function(r)
 			if self._onClaim then
 				self._onClaim(r)
 			end
 		end, hitMin)
 	end
-	list.CanvasSize = UDim2.fromOffset(0, 4 + (n - 1) * pitch + rh)
+	list.CanvasSize = UDim2.fromOffset(0, 8 + (n - 1) * pitch + rh)
 	self._scrolls.Rows = list
 end
 

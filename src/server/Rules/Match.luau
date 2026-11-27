@@ -11,6 +11,8 @@
 -- a virtual clock that trails `now` after a hitch (never jumps).
 local Balance = require(script.Parent.Parent.Config.Balance)
 local Dice = require(script.Parent.Parent.Config.Dice)
+local DiceClasses = require(script.Parent.Parent.Config.DiceClasses)
+local Progression = require(script.Parent.Parent.Config.Progression)
 local CoopWaves = require(script.Parent.Parent.Config.CoopWaves)
 local Enemies = require(script.Parent.Parent.Config.Enemies)
 local Board = require(script.Parent.Board)
@@ -50,10 +52,11 @@ local function tiersFor(deck: { string })
 	return tiers
 end
 
-local function newSeat(deck: { string }, critBonus: number?)
+local function newSeat(deck: { string }, critBonus: number?, levels: { [string]: number }?)
 	return {
 		deck = table.clone(deck),
 		critBonus = critBonus or 0, -- crit damage percent from this player's die levels
+		levels = levels or {}, -- this player's die levels by type id (a missing die plays at level 1)
 		tiers = tiersFor(deck),
 		mp = Balance.StartMP,
 		kills = 0, -- enemies killed on this seat's lane (state.kills is seat one's, and the lane total in Co-op)
@@ -70,7 +73,9 @@ function Match.New(
 	deck: { string },
 	partnerDeck: { string }?,
 	critBonus: number?,
-	partnerCritBonus: number?
+	partnerCritBonus: number?,
+	levels: { [string]: number }?,
+	partnerLevels: { [string]: number }?
 )
 	-- Keep the primary seat on the original state for solo callers.
 	local state = {
@@ -78,11 +83,15 @@ function Match.New(
 		mode = if partnerDeck then "Coop" else "Solo",
 		runId = runId,
 		rng = rng,
+		-- Crits roll on their own stream so they never shift the main one (spawns, targets); critChance is the account-wide
+		-- percent every die uses (Balance.Crit.Chance; a spec may zero it for exact damage).
+		critRng = Random.new(runId),
+		critChance = Balance.Crit.Chance,
 		phase = "Playing",
 		result = nil,
 		lives = Balance.StartLives,
 		playerCount = if partnerDeck then 2 else 1,
-		partner = if partnerDeck then newSeat(partnerDeck, partnerCritBonus) else nil,
+		partner = if partnerDeck then newSeat(partnerDeck, partnerCritBonus, partnerLevels) else nil,
 		wave = 0,
 		wavesCompleted = 0,
 		waveState = "Prep",
@@ -102,7 +111,7 @@ function Match.New(
 		rewardGranted = false,
 		out = newOut(),
 	}
-	for key, value in newSeat(deck, critBonus) do
+	for key, value in newSeat(deck, critBonus, levels) do
 		state[key] = value
 	end
 	return state
@@ -115,6 +124,17 @@ function Match.NewDuel(runId: number, rng: any, now: number, deckA: { string }, 
 	state.mode = "Duel"
 	state.partner.lives = Balance.StartLives
 	return state
+end
+
+-- A die type's config for this seat: the plain entry at the player's class (Config/DiceClasses), and its level's
+-- hit-damage multiplier (Progression.DamageMul).
+function Match.DieCfg(seat, typeId: string)
+	local rarity = Dice.Types[typeId].rarity
+	return DiceClasses.View(typeId, Progression.Class(rarity, seat.levels[typeId] or 1))
+end
+
+function Match.ClassMul(seat, typeId: string): number
+	return Progression.DamageMul(Dice.Types[typeId].rarity, seat.levels[typeId] or 1)
 end
 
 function Match.Seat(state, index: number?)
@@ -248,7 +268,7 @@ end
 -- Aura attack-speed bonus (fraction) per occupied cell, recomputed from the board: every aura die adds its
 -- bonus to each orthogonal neighbour; a die's total is capped at Balance.AuraCap.
 local function auraFrom(state, die): number
-	return Formulas.Aura(die.type, die.pip, state.tiers[die.type] or 1)
+	return Formulas.Aura(die.type, die.pip, state.tiers[die.type] or 1, Match.DieCfg(state, die.type))
 end
 
 function Match.Auras(state): { [number]: number }
@@ -317,7 +337,7 @@ function Match.TryMerge(state, from: any, to: any, index: number?): (boolean, st
 	local now = state.lastNow
 	Abilities.Copy(board, to, now)
 	if forge then
-		local cfg = Dice.Types[forge.type].forge
+		local cfg = Match.DieCfg(seat, forge.type).forge
 		forge.merges = (forge.merges or 0) + 1
 		local empty = Board.EmptyCells(board)
 		if forge.merges % cfg.every == 0 and #empty > 0 and now >= (forge.freeAt or -math.huge) + cfg.gap then
@@ -441,6 +461,7 @@ local function spawnDuelBosses(state, now: number)
 			maxHp = hp,
 			speed = Enemies.Kinds.Boss.speed * speedMul,
 			spawnAt = now,
+			bornAt = now,
 			dist = 0,
 			seat = index,
 			ability = BossAbilities.New(variant, now),
@@ -487,6 +508,7 @@ local function spawn(state, now: number)
 					then Enemies.Kinds.Grunt.speed * 1.5
 					else Enemies.Kinds[entry.kind].speed) * speedMul,
 				spawnAt = state.nextSpawnAt,
+				bornAt = state.nextSpawnAt,
 				dist = 0,
 				seat = index,
 				ability = if variant then BossAbilities.New(variant, state.nextSpawnAt) else nil,
@@ -636,6 +658,7 @@ local function spawnPending(state, now: number)
 			maxHp = hp,
 			speed = speed,
 			spawnAt = p.at - p.dist / speed,
+			bornAt = p.at,
 			dist = p.dist,
 			seat = p.seat,
 		}
@@ -774,8 +797,10 @@ local function attack(state, seat, index: number, now: number)
 	local restrictLane = state.partner ~= nil
 	local duel = state.mode == "Duel"
 	-- A Duel die only sees its own lane; Co-op also shares the stretch past the junction.
+	-- A new enemy is out of reach for Balance.SpawnGrace seconds (bornAt is nil only for enemies a spec builds by hand).
 	local function reachable(enemy): boolean
 		return enemy.hp > 0
+			and (enemy.bornAt == nil or now - enemy.bornAt >= Balance.SpawnGrace)
 			and (not restrictLane or enemy.seat == index or (not duel and enemy.dist >= Layout.CoopJunction))
 	end
 	for cell = 1, Balance.BoardCells do
@@ -783,8 +808,9 @@ local function attack(state, seat, index: number, now: number)
 		if die and die.lockedBy then
 			die.cd = math.max(die.cd, now) -- a locked die neither fires nor banks shots
 		elseif die then
-			local cfg = Dice.Types[die.type]
-			local ab = Abilities.Of(die, now)
+			local cfg = Match.DieCfg(seat, die.type)
+			local classMul = Match.ClassMul(seat, die.type)
+			local ab = cfg
 			Abilities.Timers(abilityEnv, state, die, ab, now, reachable)
 			local tier = seat.tiers[die.type] or 1 -- a die off the deck (only a spec places one) is tier 1
 			local period = Formulas.Period(die.type, die.pip, auras[cell])
@@ -829,18 +855,31 @@ local function attack(state, seat, index: number, now: number)
 							else
 								targets[shot] = first
 							end
+						elseif cfg.diffChance then
+							-- Twinshot: the extra shot picks another enemy with diffChance, else it joins the first
+							local others = {}
+							for _, enemy in pool do
+								if enemy ~= first then
+									table.insert(others, enemy)
+								end
+							end
+							targets[shot] = if #others > 0 and state.rng:NextNumber() < cfg.diffChance
+								then others[state.rng:NextInteger(1, #others)]
+								else first
 						else
-							targets[shot] = pool[state.rng:NextInteger(1, #pool)] -- may repeat the first (Twinshot)
+							targets[shot] = pool[state.rng:NextInteger(1, #pool)] -- may repeat the first
 						end
 					end
 				end
 				die.hits += 1
-				local flat = if cfg.procEvery and die.hits % cfg.procEvery == 0 then cfg.procFlat else 0
+				local flat = if cfg.procEvery and die.hits % cfg.procEvery == 0
+					then math.floor(cfg.procFlat * classMul + 1e-9)
+					else 0
 				local supportCells = if die.type == "R05" then Match.SupportCells(seat, die.type, cell) else nil
 				local lastAmount = 0
 				for shot = 1, shots do
 					local target = targets[shot] or first
-					local critical = Formulas.SingularityCrit(die.type, singularity, state.rng)
+					local critical = Formulas.SingularityCrit(die.type, singularity, state.critRng, state.critChance)
 					local amount = Formulas.HitDamage(
 						die.type,
 						target.kind,
@@ -848,9 +887,14 @@ local function attack(state, seat, index: number, now: number)
 						tier,
 						singularity,
 						critical,
-						seat.critBonus
+						seat.critBonus,
+						cfg,
+						classMul
 					)
-					lastAmount = amount
+					lastAmount = amount -- the cascade and pierce hits scale from the full hit
+					if ab.cascade then
+						amount = math.max(1, math.floor(amount * ab.cascade[1]))
+					end
 					damage(state, target, amount)
 					local slowed = Abilities.OnHit(abilityEnv, state, die, ab, target, now)
 					table.insert(state.out.F, {

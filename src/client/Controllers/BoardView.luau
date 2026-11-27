@@ -366,7 +366,7 @@ local function render(snapshot)
 	end
 	arena.Parent = if playing then root else nil
 	setLook(if playing then arena:FindFirstChild("Map") else nil)
-	board =if playing then snapshot.Board or {} else {}
+	board = if playing then snapshot.Board or {} else {}
 	local still = SettingsLogic.get("reducedMotion")
 	local now = os.clock()
 	local parts = {}
