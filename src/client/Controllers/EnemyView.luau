@@ -38,9 +38,23 @@ local tracerFolder: Folder
 local chronoCells
 local chronoSeat, chronoPlayerCount
 
+-- Spawn pop-in: the same ease-out expand the board dice use (BoardView MIN_DIE_SCALE / EXPAND_TIME).
+local MIN_SCALE = 0.001
+local EXPAND_TIME = 0.25
+
+local function setScale(e, s: number)
+	if e.rig then
+		e.rig.model:ScaleTo(s)
+	else
+		e.part.Size = Vector3.one * e.size * s
+	end
+	e.scale = s
+end
+
 local function remove(id: number)
 	local e = enemies[id]
 	if e then
+		Projectiles.CancelTarget(e.part) -- shots still in the air at a gone enemy vanish with it
 		e.part:Destroy()
 		enemies[id] = nil
 	end
@@ -48,6 +62,30 @@ end
 
 local function clear()
 	for id in table.clone(enemies) do
+		remove(id)
+	end
+end
+
+-- Shots land on the server's flight clock: until then their damage is "in the air" and the bar still counts it.
+-- Lands the shots whose time has come (damage number, bar drop); a killed enemy leaves when the landed damage has
+-- used up its hit points, which also drops every shot still flying at it (a closer die landed the lethal hit first).
+local function settle(id: number, e, now: number)
+	local flying = e.flying
+	for i = #flying, 1, -1 do
+		local shot = flying[i]
+		if shot.at <= now then
+			table.remove(flying, i)
+			DamageText.Add(id, e.part.Position, shot.amount, shot.critical)
+		end
+	end
+	local airborne = 0
+	for _, shot in flying do
+		airborne += shot.amount
+	end
+	local hp = math.max(0, e.hp - e.over + airborne)
+	e.fill.Size = UDim2.fromScale(math.clamp(hp / e.maxHp, 0, 1), 1)
+	e.hpText.Text = DamageText.Format(math.ceil(hp))
+	if e.dead and (hp <= 0 or #flying == 0) then
 		remove(id)
 	end
 end
@@ -117,12 +155,22 @@ local function spawn(record)
 		speed = record.Speed,
 		maxHp = record.MaxHp,
 		hp = record.Hp,
+		over = 0, -- hp the counted shots overshoot 0 by (the server clamps Hp at 0)
+		flying = {}, -- { at = server time of landing, amount, critical } per shot still in the air
+		dead = false, -- the server removed it; it leaves once the shots that kill it have landed
 		lift = size / 2,
 		rig = rig,
 		variant = record.Variant,
 		seat = record.Seat,
 		playerCount = record.Arena or record.PlayerCount, -- the layout arena key
+		size = size,
+		scale = 1,
+		born = if SettingsLogic.get("reducedMotion") then nil else os.clock(),
 	}
+	local e = enemies[record.Id]
+	if e.born then
+		setScale(e, MIN_SCALE)
+	end
 end
 
 local function tracer()
@@ -191,10 +239,18 @@ local function fire(record)
 	if e == nil then
 		return
 	end
-	if record.Damage then
-		DamageText.Add(record.Id, e.part.Position, record.Damage, record.Critical)
-	end
 	local effectsEnabled = SettingsLogic.get("projectileEffects")
+	if record.Damage then
+		if effectsEnabled and record.Flight then
+			table.insert(e.flying, {
+				at = workspace:GetServerTimeNow() + record.Flight,
+				amount = record.Damage,
+				critical = record.Critical,
+			})
+		else
+			DamageText.Add(record.Id, e.part.Position, record.Damage, record.Critical)
+		end
+	end
 	local handled, hasImpact
 	if effectsEnabled then
 		handled, hasImpact = Projectiles.Fire(tracerFolder, e, record, SettingsLogic.get("reducedMotion"), playHitSound)
@@ -224,19 +280,21 @@ local function onBatch(batch)
 	for _, record in batch.S or {} do
 		spawn(record)
 	end
+	-- F before H: a shot is in the air before the bar learns the server's new hp, and the projectile still
+	-- leads a target that is alive on screen.
+	for _, record in batch.F or {} do
+		fire(record)
+	end
+	local now = workspace:GetServerTimeNow()
 	for _, record in batch.H or {} do
 		local e = enemies[record.Id]
 		if e then
-			e.hp = record.Hp
-			e.fill.Size = UDim2.fromScale(math.clamp(record.Hp / e.maxHp, 0, 1), 1)
-			e.hpText.Text = DamageText.Format(math.ceil(record.Hp))
+			e.hp, e.over = record.Hp, record.Over or 0
 			if record.Speed and record.SpawnAt then
 				e.speed, e.spawnAt = record.Speed, record.SpawnAt
 			end
+			settle(record.Id, e, now)
 		end
-	end
-	for _, record in batch.F or {} do
-		fire(record)
 	end
 	for _, record in batch.A or {} do
 		local e = enemies[record.Id]
@@ -245,17 +303,37 @@ local function onBatch(batch)
 		end
 	end
 	for _, record in batch.R or {} do
-		remove(record.Id)
+		local e = enemies[record.Id]
+		if e and record.Why == "Kill" then
+			e.dead = true
+			settle(record.Id, e, now)
+		else
+			remove(record.Id)
+		end
 	end
 end
 
 local function onFrame(dt: number)
 	local now = workspace:GetServerTimeNow()
 	local still = SettingsLogic.get("reducedMotion")
-	for _, e in enemies do
+	for id, e in enemies do
+		if #e.flying > 0 then
+			settle(id, e, now)
+			if not enemies[id] then
+				continue
+			end
+		end
 		local dist = e.speed * (now - e.spawnAt)
 		local p = Layout.PositionAt(dist, e.seat, e.playerCount)
-		e.part.Position = p + Vector3.new(0, e.lift, 0)
+		if e.born then
+			local t = math.min(1, (os.clock() - e.born) / EXPAND_TIME)
+			setScale(e, 1 - (1 - MIN_SCALE) * (1 - t) ^ 2)
+			if t == 1 then
+				e.born = nil
+			end
+		end
+		-- a rig's invisible box keeps its full size (health bar, hit point); only a cube grows from the ground
+		e.part.Position = p + Vector3.new(0, e.lift * (if e.rig then 1 else e.scale), 0)
 		if e.rig then
 			local ahead = Layout.PositionAt(dist + 1, e.seat, e.playerCount)
 			-- a running boss ability clip overrides the walk pose (the server holds the boss still meanwhile)

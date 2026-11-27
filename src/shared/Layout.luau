@@ -180,9 +180,10 @@ function Layout.CoopCameraFor(seat: number?)
 end
 
 -- Yaw (radians) to turn dice by so their faces read upright for a viewer on `seat`: the seat-1 camera in co-op
--- and duel looks along +z, the opposite of the default view.
+-- and duel looks along +z, the opposite of the default view. The uploaded models face the other way, so every die
+-- carries one extra half turn (owner 2026-11-27: Solo showed the top designs upside down).
 function Layout.DiceYaw(arenaKey: (number | string)?, seat: number?): number
-	return if arenaOf(arenaKey) ~= "Solo" and seat == 1 then math.pi else 0
+	return (if arenaOf(arenaKey) ~= "Solo" and seat == 1 then math.pi else 0) + math.pi
 end
 
 -- Duel cameras: a player's own board is at the bottom of the screen. Seat 2 sits on the +z side looking toward -z,

@@ -1,3 +1,4 @@
+local ContentProvider = game:GetService("ContentProvider")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Data = require(script.Parent.CommonModelData)
@@ -19,6 +20,34 @@ local WHITE = Color3.new(1, 1, 1)
 local BLACK = Color3.new()
 local LM_STYLES = { Legendary, Mythic, Secret }
 local MODEL_WAIT = 60 -- seconds a die waits for its model before keeping the flat fallback
+
+-- A cloned model's mesh and top texture arrive asynchronously, so a die that swaps in the moment its model exists shows
+-- a bare body first and the design a beat later. Every model is preloaded once and swaps in only when it is ready.
+local ready = {} -- model -> true once its meshes and textures are in memory
+local warmed = {} -- typeId -> true
+
+function Visuals.Warm(typeId: string)
+	if warmed[typeId] then
+		return
+	end
+	warmed[typeId] = true
+	task.spawn(function()
+		local folder = ReplicatedStorage:WaitForChild("DiceModels", MODEL_WAIT)
+		if not folder then
+			return
+		end
+		for tier = 1, 7 do
+			task.spawn(function()
+				local model = folder:WaitForChild(typeId .. "_" .. tier, MODEL_WAIT)
+				if model then
+					-- shortcut: a failed fetch still marks the model ready, so a bad asset never hides its die
+					pcall(ContentProvider.PreloadAsync, ContentProvider, { model })
+					ready[model] = true
+				end
+			end)
+		end
+	end)
+end
 
 function Visuals.Size(_typeId: string): number
 	return DICE_SIZE
@@ -195,8 +224,9 @@ function Visuals.Apply(anchor: BasePart, typeId: string, tier: number, color: Co
 		variant.Parent = visuals
 		target = variant
 	end
+	Visuals.Warm(typeId)
 	local model = findModel(typeId, tier)
-	if model then
+	if model and ready[model] then
 		applyModel(anchor, target, model, typeId)
 		return
 	end
@@ -208,6 +238,10 @@ function Visuals.Apply(anchor: BasePart, typeId: string, tier: number, color: Co
 	task.spawn(function()
 		local folder = ReplicatedStorage:WaitForChild("DiceModels", MODEL_WAIT)
 		local arrived = folder and folder:WaitForChild(typeId .. "_" .. tier, MODEL_WAIT)
+		local deadline = os.clock() + MODEL_WAIT
+		while arrived and not ready[arrived] and os.clock() < deadline do
+			task.wait(0.05)
+		end
 		if arrived and visuals.Parent == anchor then
 			applyModel(anchor, target, arrived :: Model, typeId)
 			fallback:Destroy()

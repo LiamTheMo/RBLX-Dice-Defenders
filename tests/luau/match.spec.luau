@@ -378,6 +378,37 @@ test("Needle: every 6th hit of that die adds 75 flat damage", function()
 	end
 end)
 
+test("every projectile carries the server's flight time and a slower die flies longer; overkill is reported", function()
+	local ProjectileFlight = require(game:GetService("ReplicatedStorage").Shared.ProjectileFlight)
+	local flights = {}
+	for _, id in { "C02", "C03" } do -- Needle 170 studs/s, Hammer 145
+		local state = newState()
+		openWave(state)
+		place(state, 5, id, 1)
+		local enemy = addEnemy(state, "Brute", 1e6, 55)
+		Match.Step(state, state.lastNow + DT)
+		local shot = Match.TakeOut(state).F[1]
+		expectEq(
+			shot.Flight,
+			ProjectileFlight.Seconds(id, 5, 1, enemy.seat, enemy.dist, state.mode or state.playerCount),
+			id .. " flight comes from the shared formula"
+		)
+		expect(shot.Flight > 0 and shot.Flight < 1, id .. " flight is a fraction of a second")
+		flights[id] = shot.Flight
+	end
+	expect(flights.C03 > flights.C02, "the slower die's shot stays in the air longer")
+
+	local state = newState()
+	openWave(state)
+	place(state, 5, "C03", 7) -- Hammer pip 7 hits far harder than 1 hp
+	local enemy = addEnemy(state, "Grunt", 1, 55)
+	Match.Step(state, state.lastNow + DT)
+	local record = Match.TakeOut(state).H[1]
+	expectEq(record.Hp, 0, "hp is clamped at 0 on the wire")
+	expect(record.Over ~= nil and record.Over > 0, "the overshoot rides along so the client can find the lethal landing")
+	expectEq(record.Id, enemy.id, "record belongs to the enemy")
+end)
+
 test("Twinshot targets the front and uniformly samples the living enemies", function()
 	local solo = newState()
 	openWave(solo)

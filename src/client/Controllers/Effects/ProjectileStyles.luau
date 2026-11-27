@@ -4,6 +4,7 @@
 -- Mesh keys are FxMeshes keys. `uniform` layers (orbs) set Size = one * size; the rest multiply the mesh's authored
 -- Size by `size` (rings: final diameter, stars/flashes: scale factor).
 
+local ProjectileFlight = require(game:GetService("ReplicatedStorage").Shared.ProjectileFlight)
 local Fx = require(script.Parent.FxLib)
 
 local E = Fx.Easing
@@ -146,32 +147,38 @@ end
 
 local Styles: { [string]: Style } = {
 	-- C01: matte pebble, no trail; flash and a ground ring.
-	C01 = style("Pebble", 140, { core(ORB, "#BEBEBE", 1.2, { uniform = true, material = PLASTIC }) }, nil, {
-		hit({
-			mesh = ORB,
-			color = "#D9D9D9",
-			uniform = true,
-			size = 1.2,
-			layer = "flash",
-			orient = "camera",
-			sizeKeys = { key(0, 1), key(0.06, 1.3) },
-			transKeys = { key(0, 0), key(0.06, 1) },
-		}),
-		hit({
-			mesh = "Fx_Ring",
-			color = "#8F8F8F",
-			material = PLASTIC,
-			size = 4.2,
-			layer = "ring",
-			orient = "ground",
-			sizeKeys = { key(0, 0.2), key(0.1, 1, E.quadOut), key(0.3, 1) },
-			transKeys = { key(0, 0), key(0.1, 0.65), key(0.3, 1, E.quadOut) },
-		}),
-	}),
+	C01 = style(
+		"Pebble",
+		ProjectileFlight.Speed.C01,
+		{ core(ORB, "#BEBEBE", 1.2, { uniform = true, material = PLASTIC }) },
+		nil,
+		{
+			hit({
+				mesh = ORB,
+				color = "#D9D9D9",
+				uniform = true,
+				size = 1.2,
+				layer = "flash",
+				orient = "camera",
+				sizeKeys = { key(0, 1), key(0.06, 1.3) },
+				transKeys = { key(0, 0), key(0.06, 1) },
+			}),
+			hit({
+				mesh = "Fx_Ring",
+				color = "#8F8F8F",
+				material = PLASTIC,
+				size = 4.2,
+				layer = "ring",
+				orient = "ground",
+				sizeKeys = { key(0, 0.2), key(0.1, 1, E.quadOut), key(0.3, 1) },
+				transKeys = { key(0, 0), key(0.1, 0.65), key(0.3, 1, E.quadOut) },
+			}),
+		}
+	),
 	-- C02: silver dot, trail from 25% of the flight, 4-point sparkle (x1.25 on the sixth-hit flag), no ring.
 	C02 = style(
 		"Needle",
-		170,
+		ProjectileFlight.Speed.C02,
 		{ core(ORB, "#FFFFFF", 1.1, { uniform = true }) },
 		trail("#BFBFBF", 1.1, 0.13, 7, 0.6, 0.6, 0.25),
 		{
@@ -190,7 +197,7 @@ local Styles: { [string]: Style } = {
 	-- C03: amber hammer, long trail, 3-spike burst fanning forward, pale hub; no ring.
 	C03 = style(
 		"Hammer",
-		145,
+		ProjectileFlight.Speed.C03,
 		{ core(ORB, "#FFC34D", 1.3, { uniform = true }) },
 		trail("#FFD079", 1.3, 0.12, 5.5, 0.8, 0.65, 0),
 		{
@@ -218,7 +225,7 @@ local Styles: { [string]: Style } = {
 	-- C04: one ivory core per shot record (the server sends two, Lane +-1), short trail, 3-prong flash.
 	C04 = style(
 		"Twinshot",
-		155,
+		ProjectileFlight.Speed.C04,
 		{ core(ORB, "#FFF8E8", 0.45, { uniform = true, fadeIn = 0.4 }) },
 		trail("#FFF8E8", 0.35, 0.12, 1, 0.5, 0.5, 0),
 		{
@@ -236,7 +243,7 @@ local Styles: { [string]: Style } = {
 	-- C05: small green orb with a white core, no trail; round flash and a thin ground ring.
 	C05 = style(
 		"Longshot",
-		165,
+		ProjectileFlight.Speed.C05,
 		{
 			core(ORB, "#66FF33", 0.5, { uniform = true }),
 			core(ORB, "#FFFFFF", 0.25, { uniform = true, layer = "support" }),
@@ -267,7 +274,7 @@ local Styles: { [string]: Style } = {
 	-- C06: cyan orb with a trail, 4-point flash; the slow ring lives in Projectiles' marker code.
 	C06 = style(
 		"Chill",
-		150,
+		ProjectileFlight.Speed.C06,
 		{
 			core(ORB, "#6CE0FF", 0.5, { uniform = true }),
 			core(ORB, "#E8FFFF", 0.25, { uniform = true, layer = "support" }),
@@ -286,7 +293,7 @@ local Styles: { [string]: Style } = {
 		}
 	),
 	-- C07: yellow icosphere, no trail (sheet default off); 8-point flash + white hub (x1.4) and a ground ring (x1.15).
-	C07 = style("Spark", 160, { core("Spark_Core", "#FFF066", 0.5, { uniform = true }) }, nil, {
+	C07 = style("Spark", ProjectileFlight.Speed.C07, { core("Spark_Core", "#FFF066", 0.5, { uniform = true }) }, nil, {
 		hit({
 			mesh = "Fx_Star8",
 			color = "#FFF066",

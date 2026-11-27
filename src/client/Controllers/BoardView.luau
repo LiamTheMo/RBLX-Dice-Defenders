@@ -535,6 +535,9 @@ end
 
 function BoardView.Start()
 	buildWorld()
+	for typeId in Display.Dice do
+		DiceVisuals.Warm(typeId) -- fetch every die model and top texture now, so a die never pops in half-drawn
+	end
 	RunService.RenderStepped:Connect(stepAnimations)
 	UserInputService.InputBegan:Connect(onInput)
 	UserInputService.InputChanged:Connect(onInputChanged)

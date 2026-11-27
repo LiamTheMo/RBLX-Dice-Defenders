@@ -248,7 +248,7 @@ local function fire(parent, enemy, attack, reducedMotion, style, visualLane, onI
 	shot.slowed = attack.Slowed
 	shot.slowUntil = attack.SlowUntil
 	shot.boosted = attack.Boosted and not reducedMotion
-	shot.flight = if style.impactOnly then 0 else (center - from).Magnitude / style.speed
+	shot.flight = if style.impactOnly then 0 else attack.Flight or (center - from).Magnitude / style.speed -- the server's clock
 	shot.elapsed = 0
 	shot.impact = nil
 	shot.onImpact = onImpact
@@ -333,6 +333,7 @@ local function fireCommon(
 	local token = {}
 	local cores, trails, parts = {}, {}, {}
 	local elapsed, impacted = 0, false
+	local entry = { target = enemy.part, flying = true } -- CancelTarget drops it while it is still in the air
 
 	local distance = attack.Distance
 	local center = Layout.PositionAt(distance, enemy.seat, enemy.playerCount) + Vector3.yAxis * enemy.lift
@@ -345,7 +346,7 @@ local function fireCommon(
 	local hitOffset = if attack.SharedTarget or attack.Lane ~= nil then lane else Vector3.zero
 	from += lane
 	-- Reduced Motion softens flashes; the shot itself still flies (a phone with the OS setting on must still see it).
-	local flight = (center - from).Magnitude / style.speed
+	local flight = attack.Flight or (center - from).Magnitude / style.speed -- the server's clock
 	if enemy.hp > 0 then
 		local arrival = workspace:GetServerTimeNow() + flight
 		center = Layout.PositionAt(enemy.speed * (arrival - enemy.spawnAt), enemy.seat, enemy.playerCount)
@@ -414,6 +415,7 @@ local function fireCommon(
 				return false
 			end
 			impacted = true
+			entry.flying = false
 			if onImpact then
 				onImpact()
 			end
@@ -473,7 +475,8 @@ local function fireCommon(
 	if not handle then
 		return true, false
 	end
-	activeShots[token] = handle
+	entry.handle = handle
+	activeShots[token] = entry
 	do
 		for i, def in style.cores do
 			if Fx.LayerAllowed(tier, def.layer) then
@@ -596,9 +599,26 @@ function Projectiles.Step(dt: number, reducedMotion: boolean?)
 	end
 end
 
+-- Drops every shot still flying at `target` (its enemy is gone: a closer die landed the killing hit first).
+-- Shots that already hit keep playing their impact.
+function Projectiles.CancelTarget(target: BasePart)
+	for _, entry in activeShots do
+		if entry.flying and entry.target == target then
+			entry.handle.cancel()
+		end
+	end
+	for _, style in styles do
+		for _, shot in style.pool do
+			if shot.parent and shot.target == target and not shot.impact then
+				release(shot)
+			end
+		end
+	end
+end
+
 function Projectiles.Clear(keepSlowMarkers: boolean?)
-	for _, handle in activeShots do
-		handle.cancel()
+	for _, entry in activeShots do
+		entry.handle.cancel()
 	end
 	for _, style in styles do
 		for _, shot in style.pool do

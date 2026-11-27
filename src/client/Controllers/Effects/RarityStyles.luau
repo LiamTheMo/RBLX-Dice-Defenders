@@ -19,6 +19,7 @@
 --   roll      "random": random spin about the normal, re-rolled at reroll seconds
 --   when      name of a condition on the shot (see RarityEffects.conditions)
 --   count/delay/motion/align: pooled particle layers (shards): motion(i, u, ctx) returns a world position
+local ProjectileFlight = require(game:GetService("ReplicatedStorage").Shared.ProjectileFlight)
 local FxCore = require(script.Parent.FxCore)
 
 local Ease = FxCore.Easing
@@ -774,7 +775,7 @@ local function style(
 		burstColor = hex(flash),
 		profile = Profiles[profile],
 		pool = {},
-		speed = 150,
+		speed = ProjectileFlight.DefaultSpeed,
 		size = 0.19,
 	}
 end

@@ -19,6 +19,7 @@ local Board = require(script.Parent.Board)
 local Economy = require(script.Parent.Economy)
 local Formulas = require(script.Parent.Formulas)
 local Layout = require(game:GetService("ReplicatedStorage").Shared.Layout)
+local ProjectileFlight = require(game:GetService("ReplicatedStorage").Shared.ProjectileFlight)
 local Bosses = require(game:GetService("ReplicatedStorage").Shared.Bosses)
 local BossAbilities = require(script.Parent.BossAbilities)
 local Abilities = require(script.Parent.Abilities)
@@ -535,7 +536,14 @@ end
 
 local function updateEnemy(state, enemy)
 	local out = state.out
-	local record = { Id = enemy.id, Hp = math.max(0, enemy.hp), Speed = enemy.speed, SpawnAt = enemy.spawnAt }
+	-- Over: how far the shots counted so far overshoot 0 hp, so the client can tell which landing is the lethal one.
+	local record = {
+		Id = enemy.id,
+		Hp = math.max(0, enemy.hp),
+		Over = if enemy.hp < 0 then -enemy.hp else nil,
+		Speed = enemy.speed,
+		SpawnAt = enemy.spawnAt,
+	}
 	local index = out.Hidx[enemy.id]
 	if index then
 		out.H[index] = record
@@ -905,6 +913,17 @@ local function attack(state, seat, index: number, now: number)
 						Id = target.id,
 						Type = die.type,
 						Distance = if showProjectile then target.dist else nil,
+						-- Seconds the shot is in the air; the client lands the hit (HP bar, damage number) on this clock.
+						Flight = if showProjectile
+							then ProjectileFlight.Seconds(
+								die.type,
+								cell,
+								index,
+								target.seat,
+								target.dist,
+								state.mode or state.playerCount
+							)
+							else nil,
 						Boosted = if showProjectile and flat > 0 then true else nil,
 						Critical = if critical then true else nil,
 						Damage = amount, -- floating damage number (display only)
