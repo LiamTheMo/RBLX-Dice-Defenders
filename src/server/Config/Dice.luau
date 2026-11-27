@@ -210,4 +210,149 @@ Dice.Types = table.freeze({
 	}),
 })
 
+-- Designed dice (docs/NEW_DICE_ART_PROMPT.md) with no art and no ability code yet. Deliberately NOT in Dice.Types:
+-- Roll, Bot, Claims and the profile schema iterate Types, so a die there can be rolled before the client can draw it.
+-- Per-pip DPS at level 1 (base x shots x rate) is the comment on each row. To release one: build its art, add the rule in
+-- Rules/Abilities (+ a DiceClasses scale), move its entry into Types, and add Display + DiceAssets rows. Rule tables
+-- (wager, root, splash, mark, killMp, pctHit, tether, mint, surge, growth, link, relay, vault, eclipse, doom) are
+-- the intended data shape, read by nothing yet; mint every/mp are *tune* placeholders.
+Dice.Pending = table.freeze({
+	C08 = frozen({ -- 150
+		name = "Anvil",
+		rarity = "Common",
+		base = 273,
+		rate = 0.55,
+		vsKind = frozen({ Brute = 1.6, Boss = 1.6 }),
+		description = "Slow, heavy hits that deal 60% more damage to Brutes and Bosses.",
+	}),
+	C09 = frozen({ -- 150 average
+		name = "Wager",
+		rarity = "Common",
+		base = 150,
+		rate = 1.00,
+		wager = frozen({ min = 0.4, max = 2.6 }),
+		description = "Every hit rolls between 40% and 260% of its damage, 100% on average.",
+	}),
+	C10 = frozen({ -- 130
+		name = "Shackle",
+		rarity = "Common",
+		base = 130,
+		rate = 1.00,
+		root = frozen({ chance = 0.08, duration = 1.5, oncePerEnemy = true }),
+		description = "Hits have a small chance to root a normal enemy for 1.5 s, once per enemy.",
+	}),
+	C11 = frozen({ -- 145
+		name = "Blast",
+		rarity = "Common",
+		base = 145,
+		rate = 1.00,
+		splash = frozen({ radius = 8, mul = 0.5 }),
+		description = "Hits splash enemies within 8 studs for 50% of the damage.",
+	}),
+	R06 = frozen({ -- 500
+		name = "Hex",
+		rarity = "Rare",
+		base = 500,
+		rate = 1.00,
+		mark = frozen({ perStack = 0.08, maxStacks = 3, bossMul = 0.5 }),
+		description = "Hits mark an enemy: it takes +8% damage from every die per stack, up to 3 stacks (bosses half).",
+	}),
+	R07 = frozen({ -- 500
+		name = "Tithe",
+		rarity = "Rare",
+		base = 500,
+		rate = 1.00,
+		killMp = 0.25,
+		description = "Enemies it kills pay 25% more MP.",
+	}),
+	E11 = frozen({ -- 2800
+		name = "Reaper",
+		rarity = "Epic",
+		base = 2800,
+		rate = 1.00,
+		pctHit = frozen({ every = 4, pct = 0.03, bossMul = 0.25 }),
+		description = "Every 4th hit deals 3% of the enemy's current health (a quarter of that on bosses).",
+	}),
+	E12 = frozen({ -- 2900
+		name = "Tether",
+		rarity = "Epic",
+		base = 2900,
+		rate = 1.00,
+		tether = frozen({ count = 3, share = 0.3 }),
+		description = "Marks 3 enemies; damage dealt to one is shared with the others at 30%.",
+	}),
+	E13 = frozen({ -- 2900
+		name = "Mint",
+		rarity = "Epic",
+		base = 2900,
+		rate = 1.00,
+		mint = frozen({ every = 10, mp = 10, maxPerBoard = 3 }),
+		description = "Pays MP on a timer. At most 3 Mints per board.",
+	}),
+	E14 = frozen({ -- 2700
+		name = "Surge",
+		rarity = "Epic",
+		base = 2700,
+		rate = 1.00,
+		surge = frozen({ every = 8, duration = 6, speed = 0.5 }),
+		description = "Every 8 s a random die on the board gets +50% attack speed for 6 s.",
+	}),
+	L07 = frozen({ -- 16000
+		name = "Sunder",
+		rarity = "Legendary",
+		base = 16000,
+		rate = 1.00,
+		pctHit = frozen({ every = 5, pct = 0.02, bossPct = 0.005 }),
+		description = "Every 5th hit deals 2% of the enemy's current health (0.5% on bosses).",
+	}),
+	L08 = frozen({ -- 13000 at the start of a match
+		name = "Overgrowth",
+		rarity = "Legendary",
+		base = 13000,
+		rate = 1.00,
+		growth = frozen({ perWave = 0.02, max = 2.0 }),
+		description = "+2% damage for every wave cleared this match, up to +200%.",
+	}),
+	L09 = frozen({ -- 17000
+		name = "Nexus",
+		rarity = "Legendary",
+		base = 17000,
+		rate = 1.00,
+		link = frozen({ count = 6, bossLinked = false, bruteShare = 0.5 }),
+		description = "Links 6 enemies and shares damage between them. Bosses are never linked; Brutes share half.",
+	}),
+	L10 = frozen({ -- 16000
+		name = "Prism",
+		rarity = "Legendary",
+		base = 16000,
+		rate = 1.00,
+		relay = frozen({ every = 12, eclipseGap = 10 }),
+		description = "Every 12 s re-triggers the timer abilities of adjacent dice (Eclipse at most once per 10 s).",
+	}),
+	L11 = frozen({ -- 16000
+		name = "Vault",
+		rarity = "Legendary",
+		base = 16000,
+		rate = 1.00,
+		vault = frozen({ interest = 0.05, powerUpDiscount = 0.15 }),
+		description = "+5% MP interest, and Power Up costs 15% less.",
+	}),
+	M02 = frozen({ -- 8500
+		name = "Eclipse",
+		rarity = "Mythic",
+		base = 8500,
+		rate = 1.00,
+		eclipse = frozen({ every = 15, duration = 5, bonus = 0.5, bossBonus = 0.25 }),
+		description = "Every 15 s, for 5 s, all enemies take +50% damage (+25% on bosses).",
+	}),
+	S02 = frozen({ -- 19000
+		name = "Doomsday",
+		rarity = "Secret",
+		base = 19000,
+		rate = 1.00,
+		doom = frozen({ every = 30, pct = 0.10, bossPct = 0.025 }),
+		description = "Every 30 s deals 10% of current health to every enemy (2.5% on bosses).",
+	}),
+})
+
 return table.freeze(Dice)
