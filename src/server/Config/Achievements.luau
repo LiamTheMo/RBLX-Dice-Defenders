@@ -1,4 +1,4 @@
--- Achievements (docs/MVP.md): claimable once when the derived Stat reaches Goal.
+-- Achievements (docs/_archive/MVP.md): claimable once when the derived Stat reaches Goal.
 --   Stat  = RunsPlayed | TrialCleared | Kills (Stats.Kills) | Level (account level)
 --           | DiceOwned (different dice owned); Rules/Claims derives the progress
 --   Badge = Quest Log sprite key (QuestSprites) for display

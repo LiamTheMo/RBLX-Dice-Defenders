@@ -57,9 +57,7 @@ local PURPLE_TOP, PURPLE_BOT = Color3.fromRGB(170, 60, 240), Color3.fromRGB(115,
 -- Full tier: slider track left edge per row (row px = mockup x - 318) where the mockups differ from the Audio 535.
 local TRACK_LEFT = { uiScale = 515, effectScale = 587 }
 
-local function round(n: number): number
-	return math.floor(n + 0.5)
-end
+local round = UiKit.round
 
 local K = 1 -- real px per design px under the shell's UIScales (set per build)
 

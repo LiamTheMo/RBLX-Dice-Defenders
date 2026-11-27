@@ -378,14 +378,6 @@ function Shell:SetDetailWidth(w: number?)
 	end
 end
 
--- The Dice footer strip shows/hides: the left column gives it room (full tier) or fills again.
-function Shell:SetFooter(on: boolean)
-	if self._footerOn ~= on then
-		self._footerOn = on
-		self:Fit()
-	end
-end
-
 -- The action row above the detail panel shows/hides (Full tier only; phones keep the full-height panel).
 function Shell:SetTopBar(on: boolean)
 	if self._topOn ~= on then

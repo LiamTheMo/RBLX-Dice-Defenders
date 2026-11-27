@@ -1,3 +1,5 @@
+-- Solo / Co-op lane HP and seats, and the tutorial roll unlock + checkpoint gift.
+
 local Server = game:GetService("ServerScriptService").Server
 local CoopWaves = require(Server.Config.CoopWaves)
 local Dice = require(Server.Config.Dice)

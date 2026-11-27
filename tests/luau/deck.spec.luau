@@ -4,7 +4,6 @@ local Server = game:GetService("ServerScriptService").Server
 local Deck = require(Server.Rules.Deck)
 local Quests = require(Server.Config.Quests)
 
-local NAN, INF = 0 / 0, math.huge
 local OWNED = { C01 = {}, C02 = {}, C03 = {}, C04 = {}, C05 = {} }
 local GOOD = { "C01", "C02", "C03", "C04", "C05" }
 

@@ -1,96 +1,72 @@
-# Dice Catalog — launch roster and mechanics
+# Dice catalog
 
-**Current roster:** 7 Common, 5 Rare, 3 Epic, 2 Legendary, 1 Mythic (Astral), and 1 Secret (Dragon). The starter deck uses the first five Commons. Standard rolls award Astral at 0.1% and Dragon at 0.01% before pity.
+The source of truth is `src/server/Config/Dice.luau`. Display names, colours and rarities for the client are in `src/shared/Display.luau`. Dice ids are stable and shared by art, config and saved profiles.
 
-Profile v12 retires the ten dice outside the model roster. Existing copies, levels, and mastery move to replacements of the same rarity. If a replacement is already equipped, the retired slot uses an unused starter die.
+**Roster:** 7 Common, 5 Rare, 3 Epic, 2 Legendary, 1 Mythic (Astral) and 1 Secret (Dragon), 19 dice. The starter deck is C01 to C05.
 
-Profile v13 moves Mirror to E02 and Gravity to E03. Saved dice, equipped slots, and mastery follow their original die.
+## Rules in code
 
-The tables below contain the original design notes. Current combat values live in the server configuration.
+- A loadout holds up to five distinct dice; a match needs five equipped dice per player and summons from them with equal probability.
+- Attacks per second = `rate x pip` (pips 1 to 7, `Balance.PipRate`). Damage per hit has no pip term. Each pip is its own shooter; `Balance.MaxAttacksPerTick` (8) bounds attacks per die per simulation step.
+- Hit damage = `max(1, floor(base x perks x Power Up multiplier))` plus any flat proc. Power Up: tier 1 to 5, +10% of base per tier, costs 100 / 200 / 400 / 700 MP, match only.
+- Perks in code: `vsKind` (damage multiplier against one enemy kind), `vsArmored` (against armored enemies; only Brutes are armored), `shots`, `procEvery` and `procFlat` (every Nth hit of a die instance adds flat damage), `slow` and `slowDuration`, `aura` and `singularity`.
+- Merge: same type, same pip 1 to 6, new type re-rolled from the deck.
+- Die levels (1 to 12) cost copies and Gold and add account crit damage only; see GDD.md. They do not raise damage.
+- Rare, Epic and Legendary dice are stat-only: base x rate is set to about 19 / 21 / 25 damage per second per rarity tier, so rarity is a modest power step. Their named effects in the old design notes are not built and are listed under Proposed below.
 
-## Universal dice rules
-- Loadouts can hold up to five unique dice. A match requires five equipped dice per player and samples the five with equal probability. A die's visual asset and game definition share a stable unique ID.
-- Pips: attacks per second = rate x `Balance.PipRate[pip]` ({1,...,7}, *tune*); damage per hit has no pip term. Power Up (in match, per deck die type, tier 1-5): +10% of base hit damage per tier above 1, costs 100 / 200 / 400 / 700 MP (*tune*). Aura dice (`aura = {base, perPip, perTier}`) give orthogonal neighbours attack speed, total per die capped at 30% (*tune*): Beacon gives 6% at base. All of this is implemented; `docs/BALANCING.md` has the figures. Ability-specific proc rates are normalized to attack rate to avoid rapid fire exploiting chances.
-- Dice merge only with identical type and pips 1–6; rerolls type from deck at target with pip+1. Merge-bonus abilities trigger exactly once per server merge transaction.
-- Levels 1–7 are persistent (cap is one constant, *tune*); +3% base damage per level is a proposal, not implemented (level has no combat effect yet), with role-specific alternatives. In-run power tiers are separate.
-- **Status policy:** slow cap 45%; vulnerability cap 25%; armor shred cap 30%; on-hit proc coefficients damp very high-frequency attacks; unique effect IDs avoid multiplicative duplicates.
-- Support dice can deal minimal damage but contribute meaningful utility. No rarity provides unconditional superiority over a well-built deck.
-- All procs have explicit internal cooldowns (ICDs) or event budgets; multi-projectile attacks use per-volley rather than per-hit rolls unless specified.
+## Common
 
-## Common — 7
-| ID / name | Base damage | Attacks/s | Signature and trigger | Intended use |
-|---|---:|---:|---|---|
-| C01 **Pebble** | 16 | 1.00 | Always: stable first-target single shot; +5% damage vs Grunts | Consistent baseline |
-| C02 **Needle** | 9 | 1.75 | On-hit: every 6th hit adds 8 true damage (one stack per dice instance) | Fast single-target |
-| C03 **Hammer** | 30 | 0.55 | Always: +12% against armored targets; slower turn speed | Heavy / armor soft-counter |
-| C04 **Twinshot** | 6 per projectile | 0.95 | One shot hits the front enemy and one hits a random living enemy, including the front enemy | Random secondary coverage |
-| C05 **Longshot** | 22 | 0.72 | Always: -10% vs bosses (the +25% range perk is moot under global targeting; replacement TBD) | Replacement perk TBD |
-| C06 **Chill** | 14 | 1.00 | Hits slow enemies by 15% for 1.5 seconds. Repeated hits refresh the slow. | Tempo |
-| C07 **Spark** | 12 | 1.15 | Every fourth hit adds 5 damage. | Single-target burst |
+| ID | Name | Base damage | Attacks/s | Perk |
+|---|---|---:|---:|---|
+| C01 | Pebble | 16 | 1.00 | +5% damage against Grunts |
+| C02 | Needle | 9 | 1.75 | Every 6th hit of that die adds 8 flat damage |
+| C03 | Hammer | 30 | 0.55 | +12% against armored enemies |
+| C04 | Twinshot | 6 per shot | 0.95 | Two shots: one at the front enemy, one at a random living enemy (may be the same) |
+| C05 | Longshot | 22 | 0.72 | -10% against bosses. Its old +25% range perk is moot because every die can hit anywhere; replacement perk undecided |
+| C06 | Chill | 14 | 1.00 | Hits slow the enemy by 15% for 1.5 s; repeats refresh |
+| C07 | Spark | 12 | 1.15 | Every 4th hit adds 5 flat damage |
 
-## Rare — 5
-| ID / name | Damage | Attacks/s | Signature and trigger | Intended use |
-|---|---:|---:|---|---|
-| R01 **Frost** | 12 | 1.00 | On-hit 22% per attack: 18% slow for 2.5 s; repeated hits refresh, not stack | Tempo / runners |
-| R02 **Arc** | 12 | 0.90 | Every 4th attack: lightning chains to 2 additional enemies at 65% then 45% damage; unique targets | Cluster clear |
-| R03 **Volley** | 8 | 1.15 | Every attack: 3 distinct-target bolts at 65% damage; single-target bolts consolidate at 55% | Multi-target burst |
-| R04 **Venom** | 11 | 0.85 | On-hit 30%: poison 5 dmg/s for 5 s; up to 3 stacks per target across sources | DoT sustain / bosses |
-| R05 **Beacon** | 6 | 0.85 | Implemented: orthogonally adjacent dice +6% attack speed (+1% per extra pip and per Power Up tier), each die's total capped at 30%; no isolation penalty | Positional support |
+## Rare, Epic, Legendary, Mythic, Secret
 
-## Epic — 3
-| ID / name | Damage | Attacks/s | Signature and trigger | Intended use |
-|---|---:|---:|---|---|
-| E01 **Emberstorm** | 13 | 0.75 | On-hit: applies Burn (6 dmg/s × 4 s). Every 6 s detonates burning enemies in a small radius for 45% attack damage, max 8 targets | Area/DoT engine |
-| E02 **Mirror** | 7 | 1.00 | On summon and after merging INTO a Mirror: copy 35% of damage of strongest orthogonal neighbor for 8 s, not proc effects; refresh only on qualifying event | Board puzzle / carry amplifier |
-| E03 **Gravity** | 14 | 0.70 | Every 7 s pull up to 5 normal enemies back 0.6 path units, boss immune; if 3+ dice in its column, cooldown 5.5 s; no chain of pulls within 1.5 s | Spatial control |
+| ID | Name | Rarity | Base damage | Attacks/s | Effect |
+|---|---|---|---:|---:|---|
+| R01 | Frost | Rare | 19 | 1.00 | none yet |
+| R02 | Arc | Rare | 21 | 0.90 | none yet |
+| R03 | Volley | Rare | 17 | 1.15 | none yet |
+| R04 | Venom | Rare | 23 | 0.85 | none yet |
+| R05 | Beacon | Rare | 23 | 0.85 | Aura: +6% attack speed to the four orthogonal neighbours, +1% per extra pip and +1% per Power Up tier above 1; each die's total capped at +30% (`Balance.AuraCap`) |
+| E01 | Emberstorm | Epic | 28 | 0.75 | none yet |
+| E02 | Mirror | Epic | 21 | 1.00 | none yet |
+| E03 | Gravity | Epic | 30 | 0.70 | none yet |
+| L01 | Chrono | Legendary | 30 | 0.85 | none yet |
+| L02 | Forge | Legendary | 34 | 0.75 | none yet |
+| M01 | Astral | Mythic | 140 | 0.80 | Singularity: with exactly one Astral on your board it deals 5x damage, and 10% of its hits crit for 10x (plus the account crit bonus from die levels) |
+| S01 | Dragon | Secret | 36 | 0.80 | none yet |
 
-## Legendary — 2
-| ID / name | Damage | Attacks/s | Signature and trigger | Intended use |
-|---|---:|---:|---|---|
-| L01 **Chrono** | 9 | 0.85 | Always: nearby same-row dice have 10% shorter ability ICDs (max 15% effective from all Chronos), but Chrono itself has -30% projectile damage | Ability engine / alignment |
-| L02 **Forge** | 14 | 0.75 | On 3rd merge consumed anywhere on own board: transform one random 1–3 pip die into a random deck type of same pip and +25% output for 8 s; ICD 15 s, cannot retrigger itself | Merge economy / reroll control |
+The Roll menu features Chrono, Astral and Forge. Standard roll odds are in BALANCING.md (Astral 0.1%, Dragon 0.01%, before pity).
 
-## Mythic — 1
-| ID / name | Damage | Attacks/s | Signature and trigger | Intended use |
-|---|---:|---:|---|---|
-| M01 **Astral** | 140 | 0.80 | Implemented: Singularity activates while exactly one Astral occupies your board. That Astral hits for 5× damage, with a 10% chance to crit for 10× damage. | One Astral per board |
+Retired ids: profile v12 retired ten earlier dice and moved saved copies, levels and mastery to same-rarity replacements; v13 moved Mirror to E02 and Gravity to E03. Saves follow the die, not the number.
 
-**Mythic parity guardrail:** M01 should not exceed best available Legendary-centered decks by >10–15% sustained boss DPS on comparable investment during target-wave tests. It should lose to specialized Epic setups on relevant maps, making it a desirable *option*, not a necessity.
+## Proposed: planned abilities (not built)
 
-## Planned synergies and counterplay
-- Frost + Gravity + Emberstorm: cluster slow enemies for burn detonations; bosses resist displacement.
-- Beacon + Needle/Volley: physical adjacency matters more than raw rarity; Beacon cap prevents stacking monopoly.
-- Chrono + Gravity: longer stalls until enemy fast-resistances and ICD caps; Chrono has low standalone DPS.
-- Astral + other attackers: keep one Astral and fill the other cells with different dice to maintain Singularity.
-- New world modifiers (e.g. Burn resistance, high mobility, armored squads, lane splits) should change optimal decks; communicate modifiers *before* deck lock.
+These were the original design notes for the stat-only dice. Treat them as ideas.
 
-## Acquisition and leveling (proposed)
-| Tier | First attainable | Repeatable route |
-|---|---|---|
-| Common | All five tutorial starters | Gold shop, common chest, copies |
-| Rare | Guaranteed choice on Wave 20 first-clear | Gold shop, rare chest, world fragments |
-| Epic | One guaranteed Epic choice on Wave 60 first-clear | World boss fragments, crafting, chest pity |
-| Legendary | Wave 100 first-clear **choice of a Legendary blueprint** (not complete die) | Long-term crafting, rare premium/free chest pity |
-| Mythic | Post-clear mastery quest ending in guaranteed Astral schematic | Repeated world mastery crafting; optional high-tier chest at disclosed low chance |
-| Secret | Standard rolls | Dragon at 0.01% before pity |
+| Die | Idea |
+|---|---|
+| Frost | 22% chance per attack to slow 18% for 2.5 s |
+| Arc | Every 4th attack chains lightning to 2 more enemies |
+| Volley | Three bolts at three distinct enemies at reduced damage |
+| Venom | 30% chance to poison (5 damage/s for 5 s, up to 3 stacks) |
+| Emberstorm | Applies Burn; every 6 s detonates burning enemies nearby |
+| Mirror | On summon or merge into it, copies part of the strongest neighbour's damage for 8 s |
+| Gravity | Every 7 s pulls up to 5 normal enemies back; bosses immune |
+| Chrono | Shortens nearby same-row dice ability cooldowns; low own damage |
+| Forge | On the 3rd merge consumed, transforms a low-pip die for a short boost |
 
-**Persistent leveling proposal:** Levels 1–7, +3% baseline role-specific stat/level (not implemented); level-ups spend spare copies of the same die (1, 1, 1, 2, 2, 3 for 1→2 … 6→7, *tune*), no Gold cost yet; unlock any dice's defining ability immediately at acquisition, not paywalled behind upgrading. All players receive the exact same **ability rules** at any level; levels change output, not feature ownership. Crafting guarantees targeted unlocks given time investment. Details in BALANCING.md.
+Design guardrails for any of these: status caps (slow 45%, vulnerability 25%, armor shred 30%), internal cooldowns on every proc, a cap on nested procs, and no rarity being unconditionally better than a well-built deck. The Mythic should not beat the best Legendary-centred decks by more than 10 to 15% on comparable investment.
 
-## Ability implementation contract
-```lua
--- Data-only proposal; server validates events and performs effects
-DiceDefinition = {
-    Id = "R01", Rarity = "Rare", BaseDamage = 12, AttacksPerSecond = 1.0,
-    TargetPolicy = "First",
-    Ability = {
-        Trigger = "OnHit", Chance = 0.22, InternalCooldown = 0,
-        Effect = "Slow", Magnitude = 0.18, Duration = 2.5,
-        StackGroup = "Slow", Cap = 0.45,
-        ProcCoefficient = 1.0
-    }
-}
-```
-Trigger events: OnHit, OnKill, OnMergeConsumed, OnMergeProduced, OnSummon, OnTimer, OnWaveStart, OnBossSpawn, OnAdjacentChanged, OnPipChanged, OnBoardFull, OnMapTagActive, OnEnemyThreshold. **Immutable run seed** + server RNG produce outcomes; apply ordering: validate event → compute conditions → cap & cooldown → activate → enqueue effects → publish FX. Max **3 nested proc generations** and **24 effect events per dice per server tick** initially; throttled FX must not throttle damage truth.
+Synergy ideas: slow plus pull plus burn detonation; Beacon next to fast shooters (the aura cap prevents stacking); keep one Astral and fill the rest of the board with other dice.
 
-## Dice asset deliverables (mandatory for each new die)
-One original AI-generated icon/portrait and rarity treatment; orthographic top/front/side/back views and 3/4 isometric beauty view; **one large clean modeling-breakdown sheet** with separated/exploded base cube, bevels, pip/star inlays, face details, projectiles, glow meshes, moving parts, labeled material/colors, proportions and approximate Roblox studs; silhouette verification at tiny size. See ART_PIPELINE.md for export contract and no-splicing rule.
+## Asset deliverables
+
+Each die needs UI art, a 3D breakdown sheet and a model; see [ART_PIPELINE.md](ART_PIPELINE.md). In code, per-rarity model data is in `src/client/Controllers/Dice/*ModelData.luau`.

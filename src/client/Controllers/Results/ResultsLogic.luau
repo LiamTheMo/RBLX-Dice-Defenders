@@ -40,12 +40,7 @@ local RatingLogic = require(script.Parent.Parent.RatingLogic)
 
 local ResultsLogic = {}
 
-local function whole(n: any): number
-	if type(n) ~= "number" or n ~= n or n == math.huge or n == -math.huge then
-		return 0
-	end
-	return math.floor(n)
-end
+local whole = RatingLogic.whole
 
 -- 1234567 -> "1,234,567"; junk -> "0".
 function ResultsLogic.commas(n: any): string

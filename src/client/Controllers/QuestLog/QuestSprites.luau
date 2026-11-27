@@ -1,5 +1,5 @@
 -- Quest Log sprite asset ids: the one place to swap Quest Log art.
--- Source PNGs: Assets/UI/quest menu/export/Quest_<Name>.png, cut from the sheets by tools/slice_quest.py (Size, Ink and Slice below
+-- Source PNGs: Assets/UI/old/quest menu/export/Quest_<Name>.png (old cutter tools/slice_quest.py; new-art ids come from Assets/UI/new/quests menu/export via tools/slice_quests.py) (Size, Ink and Slice below
 -- are copied from its export/manifest.json; all are export pixels). Same entry format as BagSprites.
 -- Images must be owned by the experience's group (33284082). An empty id renders blank; never guess an id.
 -- Slice = SliceCenter for 9-slice sprites only; no Slice = ornate art, draw unsliced by its aspect.

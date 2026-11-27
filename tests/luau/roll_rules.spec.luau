@@ -10,25 +10,6 @@ local ProfileSchema = require(Server.Rules.ProfileSchema)
 
 local STANDARD = RollConfig.ById.Standard
 
--- Deterministic dump (sorted keys) for deep-equality checks.
-local function snap(value)
-	if type(value) ~= "table" then
-		return tostring(value)
-	end
-	local keys = {}
-	for k in value do
-		table.insert(keys, k)
-	end
-	table.sort(keys, function(a, b)
-		return tostring(a) < tostring(b)
-	end)
-	local parts = {}
-	for _, k in keys do
-		table.insert(parts, type(k) .. ":" .. tostring(k) .. "=" .. snap(value[k]))
-	end
-	return "{" .. table.concat(parts, ",") .. "}"
-end
-
 -- An rng whose rarity roll (1..10000) is always `bp` and whose die pick is always the first die of the rarity.
 local function fixed(bp)
 	return {

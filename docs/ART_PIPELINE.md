@@ -1,6 +1,8 @@
 # UI, Dice Art, 3D Modeling and Asset Production Contract
 **Status:** mandatory visual-pipeline requirement. This is an asset-production specification, not a claim that images are already created.
 
+Source art, models, audio and references live in `Assets/`, which is gitignored and local to the owner's machine (it is not in the repository). Per-die model data used in game is in `src/client/Controllers/Dice/*ModelData.luau`; asset build scripts are in `tools/`.
+
 ## Non-negotiable generation rule
 - **All new UI art** must be generated through ChatGPT image generation: full panels, buttons, frames, rarity borders, symbols, icons, bars, backgrounds, prompts, overlays, currency art, shop/chest imagery, HUD elements and gameplay cards.
 - Do **not** stitch unrelated stock/old sprites together or construct a "new" design by splicing existing sprites. **Exception:** existing internally owned assets may be cleanly edited or extended if doing so introduces no distortion, clipped detail, seams, copyright uncertainty or inconsistent appearance.
@@ -8,7 +10,7 @@
 - Generated image ≠ final Roblox model. Artists model in Blender/Meshy/etc. from original references; final exported mesh/texture assets validated independently.
 
 ## Art direction (proposed)
-Playful readable collectible dice (toy-like bevels, chunky pips, distinctive silhouette). Vibrant magical effects with restrained screen clutter; readable at 48–64px and in a 15-cell phone landscape board. Each rarity adds a recognizable non-color visual language: Common plain etched corners, Rare patterned rim, Epic luminous runes, Legendary floating accent, Mythic celestial rings, Secret masked unknown motif (no launch Secret assets required). Glow should not obscure pip count; 7-pip is a large **star**, visually unmistakable.
+Playful readable collectible dice (toy-like bevels, chunky pips, distinctive silhouette). Vibrant magical effects with restrained screen clutter; readable at 48–64px and in a 15-cell phone landscape board. Each rarity adds a recognizable non-color visual language: Common plain etched corners, Rare patterned rim, Epic luminous runes, Legendary floating accent, Mythic celestial rings, Secret masked unknown motif (Dragon is the only Secret die so far). Glow should not obscure pip count; 7-pip is a large **star**, visually unmistakable.
 
 ## Required dice asset package — 19 release dice
 Per each stable ID C01–C07, R01–R05, E01, E02, E03, L01, L02, M01, S01:
@@ -20,7 +22,7 @@ Per each stable ID C01–C07, R01–R05, E01, E02, E03, L01, L02, M01, S01:
 6. **QA:** compare modeled object to generated reference; rotate through all orientations; verify star and pip visibility at match scale and team 2-player scale; no clipping/holes/overlap, no unintended seams; ensure fx pooling and phone performance.
 
 ## UI generated asset checklist
-- Lobby home, world selection, stage card (Wave 100 goal), matchmaking solo/duo/experimental squad, Infinite access/season leaderboard.
+- Lobby home, world selection, stage card, Play menu (Solo, Co-op, Duel queue). Proposed, not built: Infinite access and a season leaderboard.
 - HUD wave/boss/progress, 15-cell board, spawn button and MP meter, dice detail tooltip, in-match upgrade strip, shared lives/team portraits, pause/reconnect.
 - Match HUD art (status bar, divider, hearts, blank upgrade tile) is cut from `Assets/UI/new/game hud/game-hud-without-text.png` by `tools/slice_game_hud.py`; the summon pill and gear reuse `SharedSprites.PillPurple` and `Sprites.Hud.Gear`; dice and text are drawn in code.
 - Collection rarity filters, dice cards, locked state, detail/compare, level/copies, crafting.

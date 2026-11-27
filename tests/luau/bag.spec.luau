@@ -7,25 +7,6 @@ local Economy = require(Server.Rules.Economy)
 local ProfileSchema = require(Server.Rules.ProfileSchema)
 local Inventory = require(Server.Config.Inventory)
 
--- Deterministic dump (sorted keys) for deep-equality checks.
-local function snap(value)
-	if type(value) ~= "table" then
-		return tostring(value)
-	end
-	local keys = {}
-	for k in value do
-		table.insert(keys, k)
-	end
-	table.sort(keys, function(a, b)
-		return tostring(a) < tostring(b)
-	end)
-	local parts = {}
-	for _, k in keys do
-		table.insert(parts, type(k) .. ":" .. tostring(k) .. "=" .. snap(value[k]))
-	end
-	return "{" .. table.concat(parts, ",") .. "}"
-end
-
 local function profile()
 	local p = ProfileSchema.Default()
 	p.Gold = 100

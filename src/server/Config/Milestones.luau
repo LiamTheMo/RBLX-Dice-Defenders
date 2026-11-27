@@ -1,4 +1,4 @@
--- Play first-time milestones (docs/MVP.md): claimable once when BestWave >= Wave.
+-- Play first-time milestones (docs/_archive/MVP.md): claimable once when BestWave >= Wave.
 -- Runs are endless, so every milestone wave is Reachable. Ids key saved flags: never reuse.
 -- Rewards are Rules/Rewards bundles *tune*.
 local function milestone(id: string, wave: number, reward)

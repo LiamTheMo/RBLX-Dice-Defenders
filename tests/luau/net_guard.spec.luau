@@ -5,7 +5,6 @@ local Server = game:GetService("ServerScriptService").Server
 local RemoteGuard = require(Server.Infrastructure.RemoteGuard)
 local Balance = require(Server.Config.Balance)
 
-local NAN, INF = 0 / 0, math.huge
 local P = table.pack
 
 -- A SaveSettings patch of n well-formed entries with distinct keys.

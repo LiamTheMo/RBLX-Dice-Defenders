@@ -1,4 +1,4 @@
--- The Shop rules (docs/MVP.md "Shop"). Pure, no yields. Buy: a Gold or Gems offer for the Buy remote, ONE Rewards.Apply
+-- The Shop rules (docs/_archive/MVP.md "Shop"). Pure, no yields. Buy: a Gold or Gems offer for the Buy remote, ONE Rewards.Apply
 -- bundle (the price as a negative counter plus the grant), then Purchases. Receipt/Process: a Robux offer granted by a
 -- Marketplace receipt, exactly once per PurchaseId (Profile.Receipts, newest Config/Shop.MaxReceipts). Prices and grants
 -- come from Config/Shop: the client sends only an offer id.

@@ -1,4 +1,4 @@
--- Persisted player profile, v10 (docs/MVP.md "Profile"). Pure: no Instances.
+-- Persisted player profile, v10 (docs/_archive/MVP.md "Profile"). Pure: no Instances.
 -- Default() builds a new profile; Migrate() validates stored data. The store
 -- metadata (profileRevision, sessionLease) rides along but is not gameplay data.
 

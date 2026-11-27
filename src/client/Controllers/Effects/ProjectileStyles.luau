@@ -1,6 +1,6 @@
 --!strict
 -- Layer tables for the seven Common dice (C01-C07), transcribed from Assets/Models/Dice/Common/vfx/C0N_layers.json.
--- Sizes are for a 5-stud die; CommonProjectiles multiplies them by Fx.Scale(dieSize). Times are seconds from the hit.
+-- Sizes are for a 5-stud die; Projectiles multiplies them by Fx.Scale(dieSize). Times are seconds from the hit.
 -- Mesh keys are FxMeshes keys. `uniform` layers (orbs) set Size = one * size; the rest multiply the mesh's authored
 -- Size by `size` (rings: final diameter, stars/flashes: scale factor).
 
@@ -264,7 +264,7 @@ local Styles: { [string]: Style } = {
 			}),
 		}
 	),
-	-- C06: cyan orb with a trail, 4-point flash; the slow ring lives in CommonProjectiles' marker code.
+	-- C06: cyan orb with a trail, 4-point flash; the slow ring lives in Projectiles' marker code.
 	C06 = style(
 		"Chill",
 		150,

@@ -1,4 +1,4 @@
--- Daily login calendar (docs/MVP.md, claim id "LOGIN"). Days[n] is paid on the
+-- Daily login calendar (docs/_archive/MVP.md, claim id "LOGIN"). Days[n] is paid on the
 -- n-th consecutive UTC day; a missed day or the day after Day 7 pays Day 1 again.
 -- Rewards are Rules/Rewards bundles *tune*; Chest marks the big day for display.
 local function day(n: number, reward, chest: boolean?)

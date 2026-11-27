@@ -1,5 +1,5 @@
 -- Play menu sprite asset ids (only the sprites the Play menu adds; everything else reuses Bag / Quest Log / lobby sprites).
--- Source PNGs: Assets/UI/play menu/export/Play_<Name>.png, cut from the sheets by tools/slice_play.py (Size, Ink and the Rects below
+-- Source PNGs: Assets/UI/new/play menu/export/Play_<Name>.png, cut from the sheets by tools/slice_play.py (Size, Ink and the Rects below
 -- are copied from its export/manifest.json; all are export pixels). Same entry format as QuestSprites.
 -- Images must be owned by the experience's group (33284082). An empty id renders blank; never guess an id.
 -- Slice = SliceCenter for 9-slice sprites only; no Slice = ornate art, draw unsliced by its aspect (PurpleBox is the only 9-slice).

@@ -1,4 +1,4 @@
--- The BagAction rule (docs/MVP.md "Remotes"): sell, use, lock and unlock Materials and Items; equip and
+-- The BagAction rule (docs/_archive/MVP.md "Remotes"): sell, use, lock and unlock Materials and Items; equip and
 -- unequip Cosmetics. Pure, no yields. Each action validates fully, then makes ONE change (Sell and Use:
 -- one Rewards.Apply bundle), so a rejection leaves the profile untouched. Prices and Use bundles come
 -- from Config/Inventory: the client sends only an action, an id and a quantity.

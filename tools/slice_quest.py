@@ -1,6 +1,6 @@
 """Cut the Quest Log sprites out of the source sheets into clean, upload-ready PNGs.
 
-Usage: python tools/slice_quest.py [Name ...]   cut all (or only the named) sprites -> Assets/UI/quest menu/export/Quest_<Name>.png + manifest.json
+Usage: python tools/slice_quest.py [Name ...]   cut all (or only the named) sprites -> Assets/UI/old/quest menu/export/Quest_<Name>.png + manifest.json
        python tools/slice_quest.py --luau        write src/client/Controllers/QuestLog/QuestSprites.luau from manifest.json (needs "asset" ids in it)
 Reuses slice_bag's cleaning/slicing helpers (bleed, dematte, measure, seamproof, ink_box). Needs Pillow + numpy.
 
@@ -48,9 +48,9 @@ from PIL import Image, ImageFilter
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import slice_bag as sb  # noqa: E402  (plain helpers, no import side effects)
+from slice_common import ROOT, dilate, label8  # noqa: E402
 
-ROOT = Path(__file__).resolve().parent.parent
-SRC = ROOT / "Assets" / "UI" / "quest menu"
+SRC = ROOT / "Assets" / "UI" / "old" / "quest menu"
 OUT = SRC / "export"
 LUAU = ROOT / "src" / "client" / "Controllers" / "QuestLog" / "QuestSprites.luau"
 PAD = 10  # transparent px around the alpha>0 extent
@@ -136,42 +136,6 @@ add("GlowDie", "MR", (0, 0, 556, 598), "region", fade={"r": 44})
 add("Halo", "MR", (556, 96, 984, 282), "region", fade={"l": 44, "b": 16, "r": 16})
 add("Rays", "MR", (556, 282, 956, 598), "region", fade={"l": 44, "t": 16, "r": 16})
 add("CrownPlain", "MD", (1415, 322, 1595, 416), "region", fade={"b": 4})  # the plain gold crown above SkinSun (Lv.20 milestone tile)
-
-
-def label8(m: np.ndarray):
-    """8-connected labelling by flood fill (same as the sheet analysis)."""
-    H, W = m.shape
-    pad = np.zeros((H + 2, W + 2), np.uint8)
-    pad[1:-1, 1:-1] = m
-    flat = pad.ravel().tolist()
-    lab = [0] * len(flat)
-    st = W + 2
-    offs = (-st - 1, -st, -st + 1, -1, 1, st - 1, st, st + 1)
-    cur = 0
-    for s in np.flatnonzero(pad.ravel()).tolist():
-        if lab[s]:
-            continue
-        cur += 1
-        lab[s] = cur
-        stack = [s]
-        while stack:
-            p = stack.pop()
-            for o in offs:
-                q = p + o
-                if flat[q] and not lab[q]:
-                    lab[q] = cur
-                    stack.append(q)
-    return np.array(lab, np.int32).reshape(H + 2, W + 2)[1:-1, 1:-1]
-
-
-def dilate(m: np.ndarray, r: int) -> np.ndarray:
-    H, W = m.shape
-    p = np.pad(m, r)
-    out = np.zeros_like(m)
-    for dy in range(2 * r + 1):
-        for dx in range(2 * r + 1):
-            out |= p[dy : dy + H, dx : dx + W]
-    return out
 
 
 def component_mask(arr: np.ndarray, seeds: list[tuple]) -> np.ndarray:
@@ -377,7 +341,7 @@ def banner_quill() -> tuple[np.ndarray, list[float]]:
     px, x, y = to_scrollbase(src, (x0, y0))
     px = np.pad(px, ((EM_PAD, EM_PAD), (EM_PAD, EM_PAD), (0, 0)))
     x, y = x - EM_PAD, y - EM_PAD
-    base = np.array(Image.open(ROOT / "Assets" / "UI" / "play menu" / "export" / "Play_ScrollBase.png").convert("RGBA"))[..., 3]
+    base = np.array(Image.open(ROOT / "Assets" / "UI" / "old" / "play menu" / "export" / "Play_ScrollBase.png").convert("RGBA"))[..., 3]
     cover = np.zeros(px.shape[:2], np.float32)
     ys, xs = np.mgrid[0 : px.shape[0], 0 : px.shape[1]]
     ok = (ys + y >= 0) & (ys + y < base.shape[0]) & (xs + x >= 0) & (xs + x < base.shape[1])

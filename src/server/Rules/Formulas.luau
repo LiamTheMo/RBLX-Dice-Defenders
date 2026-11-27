@@ -1,4 +1,4 @@
--- Formulas from docs/MVP.md. Random rolls use a caller-supplied server RNG.
+-- Formulas from docs/_archive/MVP.md. Random rolls use a caller-supplied server RNG.
 local Balance = require(script.Parent.Parent.Config.Balance)
 local Dice = require(script.Parent.Parent.Config.Dice)
 local Enemies = require(script.Parent.Parent.Config.Enemies)

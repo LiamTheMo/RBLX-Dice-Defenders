@@ -1,4 +1,4 @@
--- Redeem codes (docs/MVP.md). Server-only: lives under ServerScriptService and is
+-- Redeem codes (docs/_archive/MVP.md). Server-only: lives under ServerScriptService and is
 -- never replicated, so clients cannot read the list.
 --
 -- To add a code, append an entry:

@@ -1,4 +1,4 @@
--- The Roll rule (docs/MVP.md "Remotes"): paid random dice from a Config/Roll pool. Pure, no yields. The client sends
+-- The Roll rule (docs/_archive/MVP.md "Remotes"): paid random dice from a Config/Roll pool. Pure, no yields. The client sends
 -- only (pool, count); odds, prices, pity and the Random stay on the server. Buy validates fully, pays ONE Rewards.Apply
 -- bundle (the Gems cost and the dice), and writes the pity counter and Stats.Rolls only after it landed.
 local RollConfig = require(script.Parent.Parent.Config.Roll)

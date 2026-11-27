@@ -26,6 +26,10 @@ function UiKit.screenSize(container: GuiObject): Vector2
 	return if typeof(emulated) == "Vector2" then emulated else container.AbsoluteSize
 end
 
+function UiKit.round(n: number): number
+	return math.floor(n + 0.5)
+end
+
 function UiKit.make(class: string, props: { [string]: any }, parent: Instance?): any
 	local inst = Instance.new(class)
 	for key, value in props do

@@ -57,9 +57,7 @@ local BUTTON = {
 local DISABLED = { rgb(91, 90, 104), rgb(54, 52, 63), rgb(151, 150, 167), rgb(30, 30, 34) }
 local GEM_YELLOW = Color3.fromRGB(254, 229, 1)
 
-local function round(n: number): number
-	return math.floor(n + 0.5)
-end
+local round = UiKit.round
 
 local function aspect(rec): number
 	return rec.Ink.Width / rec.Ink.Height

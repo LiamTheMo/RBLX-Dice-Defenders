@@ -45,7 +45,7 @@ end
 
 -- `base` is this wave's b. Returns the wave's queue and the next wave's b (this wave's last regular monster's Base HP).
 -- `plain` (1v1 Duel): ten mobs every wave, no Co-op boss or brute; the Duel boss is added by Match at wave end
--- (docs/DUEL_SCALING.md). Runners grow with the wave instead.
+-- (docs/_archive/DUEL_SCALING.md). Runners grow with the wave instead.
 function CoopWaves.Next(wave: number, base: number, plain: boolean?)
 	local d = CoopWaves.Step(wave)
 	local boss, brute = CoopWaves.IsBoss(wave), CoopWaves.HasBrute(wave)

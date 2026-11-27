@@ -7,18 +7,13 @@ Every cut is a whole asset at native size: the crop is the icon's own sheet rect
 1 px antialias ring are kept (the sheet's soft glow drips are dropped), partly transparent pixels take the nearest solid colour, tight bbox.
 """
 
-import json
 import sys
 from pathlib import Path
 
-import numpy as np
-from PIL import Image
-
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import slice_shared as ss  # noqa: E402
+import slice_common as sc  # noqa: E402
 
-ROOT = Path(__file__).resolve().parent.parent
-SRC = ROOT / "Assets" / "UI" / "new" / "quests menu"
+SRC = sc.UI / "quests menu"
 OUT = SRC / "export"
 SHEET = SRC / "sheets" / "quest-and-mastery-icons.png"
 PAD = 6  # sheet px read around the icon's bbox
@@ -33,15 +28,15 @@ ICONS = {
 
 def main() -> None:
     OUT.mkdir(exist_ok=True)
-    sheet = np.array(Image.open(SHEET).convert("RGBA"))
+    sheet = sc.load_rgba(SHEET)
     manifest = {}
     for name, (x0, y0, x1, y1) in ICONS.items():
         r = (x0 - PAD, y0 - PAD, x1 + PAD, y1 + PAD)
-        px = ss.clean(sheet[r[1] : r[3], r[0] : r[2]], 0)
-        (OUT / f"Quests_{name}.png").write_bytes(ss.png_bytes(px))
-        manifest[name] = {"w": int(px.shape[1]), "h": int(px.shape[0]), "sheet": "quest-and-mastery-icons", "rect": list(r), "slice": False}
+        px = sc.clean(sheet[r[1] : r[3], r[0] : r[2]], 0)
+        sc.save_png(OUT / f"Quests_{name}.png", px)
+        manifest[name] = sc.entry(px, "quest-and-mastery-icons", r)
         print(name, px.shape[1], px.shape[0])
-    (OUT / "manifest.json").write_text(json.dumps(manifest, indent=1))
+    sc.write_manifest(OUT, manifest)
 
 
 if __name__ == "__main__":

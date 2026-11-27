@@ -1,6 +1,6 @@
 -- Rare / Epic / Legendary / Mythic dice effects, built from pooled MeshParts, Trails and Beams (FxLib).
 -- No textures, SurfaceGui, Decal or ParticleEmitter. Layer data lives in RarityStyles (sizes at D = 5,
--- scaled here by k = dieSize / 5). CommonProjectiles drives the per-frame poses (Travel / Impact) and
+-- scaled here by k = dieSize / 5). Projectiles drives the per-frame poses (Travel / Impact) and
 -- EnemyView the status loops; parts are borrowed lazily on the first call and every one of them goes back
 -- to its pool in Release (or when the shared loop cancels the effect).
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -13,7 +13,7 @@ local RarityStyles = require(script.Parent.RarityStyles)
 local RarityEffects = {}
 RarityEffects.Styles = RarityStyles.Styles
 
-local MAX_SHOTS = 40 -- per style (CommonProjectiles pools the same number of shots)
+local MAX_SHOTS = 40 -- per style (Projectiles pools the same number of shots)
 local LOOP_CAP = 8 -- status loops + support auras alive at once
 local NEON = Enum.Material.Neon
 local TAU = math.pi * 2

@@ -1,4 +1,4 @@
--- Quest catalog (docs/MVP.md). Ids are never reused: they key saved claim flags.
+-- Quest catalog (docs/_archive/MVP.md). Ids are never reused: they key saved claim flags.
 --   Stat   = profile stat that drives progress (RunsPlayed, BestWave, TrialCleared)
 --   Daily  = true: progress is today's kill count (Daily.Kills) and resets each UTC day
 --   Weekly = "Kills" | "Runs": progress is this week's Weekly[counter]; resets each Monday 00:00 UTC

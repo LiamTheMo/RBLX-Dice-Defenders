@@ -8,26 +8,6 @@ local Server = game:GetService("ServerScriptService").Server
 local ProfileSchema = require(Server.Rules.ProfileSchema)
 local Settings = require(Server.Rules.Settings)
 
-local NAN, INF = 0 / 0, math.huge
-
-local function snap(value)
-	if type(value) ~= "table" then
-		return tostring(value)
-	end
-	local keys = {}
-	for k in value do
-		table.insert(keys, k)
-	end
-	table.sort(keys, function(a, b)
-		return tostring(a) < tostring(b)
-	end)
-	local parts = {}
-	for _, k in keys do
-		table.insert(parts, tostring(k) .. "=" .. snap(value[k]))
-	end
-	return "{" .. table.concat(parts, ",") .. "}"
-end
-
 local function fresh()
 	return ProfileSchema.Default()
 end

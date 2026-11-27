@@ -57,9 +57,7 @@ local ASP = 413 / 173 -- world banner aspect (w / h)
 local START_ASP = 458 / 120
 local MIN_CARD = 76 -- smallest card height before the list scrolls
 
-local function round(n: number): number
-	return math.floor(n + 0.5)
-end
+local round = UiKit.round
 
 local K = 1 -- real px per design px under the shell's UIScales (set per build): text is measured at its real size
 
@@ -575,7 +573,6 @@ function View:_buildRight(pnl)
 	local pad = 12
 	local aw = rw - 2 * pad
 	local startH = math.clamp(math.max(round(L.h * 0.157), math.ceil(46 / K)), 56, 80) -- >= 44 real px tall
-	local startW = math.min(aw, startH * START_ASP)
 	local wd
 	for _, w in self._worlds do
 		if w.Id == self._selected then

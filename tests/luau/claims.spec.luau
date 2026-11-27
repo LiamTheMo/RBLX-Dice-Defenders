@@ -15,32 +15,12 @@ local Achievements = require(Server.Config.Achievements)
 local Progression = require(Server.Config.Progression)
 local Dice = require(Server.Config.Dice)
 
-local NAN, INF = 0 / 0, math.huge
 local DAY = 86400
 local D = 20000 -- a UTC day number
 local N = D * DAY + 3600 -- 01:00 on day D
 
 local function fresh()
 	return ProfileSchema.Default()
-end
-
--- Deterministic dump of a profile (sorted keys) for before/after comparison.
-local function snap(value)
-	if type(value) ~= "table" then
-		return tostring(value)
-	end
-	local keys = {}
-	for k in value do
-		table.insert(keys, k)
-	end
-	table.sort(keys, function(a, b)
-		return tostring(a) < tostring(b)
-	end)
-	local parts = {}
-	for _, k in keys do
-		table.insert(parts, tostring(k) .. "=" .. snap(value[k]))
-	end
-	return "{" .. table.concat(parts, ",") .. "}"
 end
 
 -- A refused claim must return `code` and leave the profile deep-equal to before.
@@ -103,7 +83,11 @@ test("id spaces are disjoint, fit the ClaimQuest remote and route to their own k
 		expectEq(seen[id], "Achievement", "achievement " .. id)
 	end
 	expectEq(seen["C01:5"], "Mastery", "mastery C01:5")
-	expectEq(n, 6 + 1 + 6 + 5 + 29 * 4, "every id counted once")
+	local dice = 0
+	for _ in Dice.Types do
+		dice += 1
+	end
+	expectEq(n, 6 + 1 + 6 + 5 + dice * #Progression.Mastery.Milestones, "every id counted once")
 end)
 
 test("quest ids claim through the router: paid once, then AlreadyClaimed", function()

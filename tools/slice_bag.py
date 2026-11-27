@@ -1,7 +1,7 @@
 """Cut the Bag menu sprites out of the source sheets into clean, upload-ready PNGs.
 
 Usage: python tools/slice_bag.py
-Reads Assets/UI/bag menu/<Folder>/<sheet>.png, writes Assets/UI/bag menu/export/Bag_<Name>.png
+Reads Assets/UI/old/bag menu/<Folder>/<sheet>.png, writes Assets/UI/old/bag menu/export/Bag_<Name>.png
 plus export/manifest.json (name, w, h, slice) -> copy into src/client/Controllers/Bag/BagSprites.luau.
 Rects are alpha>=160 bounding boxes measured from the sheets (x, y, w, h). Needs Pillow + numpy.
 Usage: python tools/slice_bag.py [Name ...] cuts only the named sprites (and merges into manifest.json). Every entry gets "ink" = [l, t, r, b], the alpha>=160 box.
@@ -18,7 +18,10 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageFilter
 
-SRC = Path(__file__).resolve().parent.parent / "Assets" / "UI" / "bag menu"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from slice_common import ROOT, bleed  # noqa: E402,F401  (bleed is also used by slice_quest)
+
+SRC = ROOT / "Assets" / "UI" / "old" / "bag menu"
 OUT = SRC / "export"
 SHEET_MARGIN = 4  # source px kept around each bbox for the soft edge
 GLOW_MARGIN = 20  # bursts fade far past their alpha>=160 bbox
@@ -156,25 +159,6 @@ def tint_glow(rgba: np.ndarray, hexcol: str | None) -> np.ndarray:
         t = np.clip((lum - lo) / (hi - lo), 0, 1)[..., None]
         deep, light = tint * DEEP, tint + (1 - tint) * LIGHT  # same hue throughout, never pure white
         rgba[..., :3] = np.clip((deep + (light - deep) * t) * 255, 0, 255).astype(np.uint8)
-    return rgba
-
-
-def bleed(rgba: np.ndarray) -> np.ndarray:
-    """Spread edge colour into transparent pixels so Roblox's bilinear sampling has no dark halo."""
-    a = rgba[..., 3]
-    rgb = rgba[..., :3].astype(np.float32)
-    known = a > 0
-    for _ in range(8):
-        acc = np.zeros_like(rgb)
-        cnt = np.zeros(a.shape, np.float32)
-        for dy, dx in ((-1, 0), (1, 0), (0, -1), (0, 1)):
-            k = np.roll(known, (dy, dx), (0, 1))
-            acc += np.roll(rgb, (dy, dx), (0, 1)) * k[..., None]
-            cnt += k
-        grow = ~known & (cnt > 0)
-        rgb[grow] = acc[grow] / cnt[grow, None]
-        known |= grow
-    rgba[..., :3] = rgb.astype(np.uint8)
     return rgba
 
 

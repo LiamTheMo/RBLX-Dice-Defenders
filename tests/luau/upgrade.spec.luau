@@ -8,27 +8,7 @@ local Catalog = require(Server.Rules.Catalog)
 local ProfileSchema = require(Server.Rules.ProfileSchema)
 local Progression = require(Server.Config.Progression)
 
-local NAN, INF = 0 / 0, math.huge
 local DL = Progression.DieLevel
-
--- Deterministic dump (sorted keys) for deep-equality checks.
-local function snap(value)
-	if type(value) ~= "table" then
-		return tostring(value)
-	end
-	local keys = {}
-	for k in value do
-		table.insert(keys, k)
-	end
-	table.sort(keys, function(a, b)
-		return tostring(a) < tostring(b)
-	end)
-	local parts = {}
-	for _, k in keys do
-		table.insert(parts, type(k) .. ":" .. tostring(k) .. "=" .. snap(value[k]))
-	end
-	return "{" .. table.concat(parts, ",") .. "}"
-end
 
 local function profile(level, copies, gold)
 	local p = ProfileSchema.Default()

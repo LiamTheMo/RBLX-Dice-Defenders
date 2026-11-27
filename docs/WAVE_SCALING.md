@@ -16,13 +16,13 @@ This follows the Random Dice Defense scaling model as community data-mining desc
 
 Wave 1 example: slots 1 to 10 have HP 110, 120 ... 200. Wave 2 starts at b = 200 (b: 100, 200, 400, 700, 1100, 1600, 2200, 2900, 3700, 4600, 5600, 6800 for waves 1-12).
 
-Balance numbers are *tune*. Dice, pips, damage and summon costs are balanced separately ([MVP.md](MVP.md), [DICE_CATALOG.md](DICE_CATALOG.md)).
+Balance numbers are *tune*. Dice, pips, damage and summon costs are balanced separately ([BALANCING.md](BALANCING.md), [DICE_CATALOG.md](DICE_CATALOG.md)).
 
 ## Schedule
 
 - **Bosses:** every 5th wave up to wave 35, then every odd wave from 37.
 - **Mini-bosses (owner's spec):** waves ending in 4 or 9 up to wave 35 (4, 9 ... 34); waves ending in 3 or 8 from 36 (38, 48 ...). A boss wave wins a clash (43, 53 ... are boss waves), and the k of the mini-boss formula counts only waves that really spawn one. The spec gives no mini-boss cadence after wave 50: the 36-50 rule continues. A boss wave is always one boss (never doubled).
-- **Spawn count and speed:** `Formulas.WaveCount`, `SpawnInterval` and `SpeedMul` in `src/server/Rules/Formulas.luau`. Spawn timing uses these local formulas.
+- **Spawn timing and speed:** the number of enemies per wave comes from the queue above (10, or 1 on a boss wave). `Formulas.SpawnInterval` (1.6 s - 0.007 s x wave, clamped to 0.35-1.6 s) and `Formulas.SpeedMul` (1 + 0.006 x (wave - 1), capped at 1.6) in `src/server/Rules/Formulas.luau` set the gap between spawns and the speed multiplier. Base speeds: Grunt 6, Runner 9, Brute 16/3, Boss 3 studs/s (`Config/Enemies`). Cadence: first wave 4 s after Start, each later wave 4 s after the previous one is cleared. At most 90 enemies are alive at once (`Balance.MaxAlive`).
 
 ## Challenge Tiers and gems
 
@@ -30,7 +30,7 @@ Waves 112-499 are Challenge Tier 1, 500-1000 Tier 2, 1001-1500 Tier 3 and 1501+ 
 
 ## Duel (1v1)
 
-Duel mobs use the same HP model with no boss or mini-boss in the wave queue; Runners grow with the wave instead (up to 5). Each wave also ends in a Duel boss. See [DUEL_SCALING.md](DUEL_SCALING.md).
+Duel mobs use the same HP model with no boss or mini-boss in the wave queue; Runners grow with the wave instead (`min(5, wave // 3)`). Each wave also ends in a Duel boss. See [DICE_RATING.md](DICE_RATING.md).
 
 ## Tutorial and first gifts
 

@@ -69,20 +69,11 @@ Fx.Lerp = FxCore.lerp
 
 -- Quality -----------------------------------------------------------------------------------------------
 
-local tierOverride: Tier? = nil
-
-function Fx.SetTier(tier: Tier?)
-	tierOverride = tier
-end
-
 local function isPhone(): boolean
 	return UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled and not UserInputService.MouseEnabled
 end
 
 function Fx.Tier(reducedMotion: boolean): Tier
-	if tierOverride then
-		return tierOverride
-	end
 	return FxCore.tier(reducedMotion, isPhone())
 end
 

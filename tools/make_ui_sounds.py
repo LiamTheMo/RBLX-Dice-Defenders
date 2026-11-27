@@ -1,11 +1,17 @@
-"""Generates the round, cartoony two-note menu sounds into Assets/SFX/ui:
-UiOpen.ogg (up-beat, rising), UiClose.ogg (down-beat, falling) and
-UiClick.ogg (a tiny dice-tumble of plinks for plain button presses)."""
+"""Generate the round, cartoony two-note menu sounds into Assets/SFX/ui (or the directory given as argv[1]):
+UiOpen.ogg (up-beat, rising), UiClose.ogg (down-beat, falling), UiClickSingle.ogg and
+UiClick.ogg (a tiny dice-tumble of plinks for plain button presses).
+
+Usage: python tools/make_ui_sounds.py [out_dir]   Needs numpy + soundfile.
+"""
 import os
-import numpy as np, soundfile as sf
+import sys
+
+import numpy as np
+import soundfile as sf
 
 SR = 44100
-OUT = os.path.join(os.path.dirname(__file__), '..', 'Assets', 'SFX', 'ui')
+OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'Assets', 'SFX', 'ui')
 rng = np.random.default_rng(7)
 
 def note(y, start, f, dur, amp, bloop, decay=30):

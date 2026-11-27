@@ -11,7 +11,7 @@ local Layout = require(ReplicatedStorage.Shared.Layout)
 local EnemyRig = require(script.Parent.EnemyRig)
 local BossAbilityPlayer = require(script.Parent.BossAbilityPlayer)
 local NetClient = require(script.Parent.NetClient)
-local CommonProjectiles = require(script.Parent.Effects.CommonProjectiles)
+local Projectiles = require(script.Parent.Effects.Projectiles)
 local RarityEffects = require(script.Parent.Effects.RarityEffects)
 local DamageText = require(script.Parent.Effects.DamageText)
 local SettingsLogic = require(script.Parent.Settings.SettingsLogic)
@@ -198,7 +198,7 @@ local function fire(record)
 	local handled, hasImpact
 	if effectsEnabled then
 		handled, hasImpact =
-			CommonProjectiles.Fire(tracerFolder, e, record, SettingsLogic.get("reducedMotion"), playHitSound)
+			Projectiles.Fire(tracerFolder, e, record, SettingsLogic.get("reducedMotion"), playHitSound)
 	end
 	if not hasImpact then
 		playHitSound()
@@ -271,7 +271,7 @@ local function onFrame(dt: number)
 		end
 	end
 	local reducedMotion = SettingsLogic.get("reducedMotion")
-	CommonProjectiles.Step(dt, reducedMotion)
+	Projectiles.Step(dt, reducedMotion)
 	RarityEffects.StepStatus(now, reducedMotion)
 	DamageText.Step(dt, reducedMotion)
 	if chronoCells then
@@ -280,7 +280,7 @@ local function onFrame(dt: number)
 end
 
 local function clearEffects()
-	CommonProjectiles.Clear()
+	Projectiles.Clear()
 	RarityEffects.ClearStatus()
 	DamageText.Clear()
 	for _, t in tracers do
@@ -345,7 +345,7 @@ function EnemyView.Start()
 				clearEffects()
 			end
 		elseif id == "reducedMotion" and value then
-			CommonProjectiles.Clear(true)
+			Projectiles.Clear(true)
 		end
 	end)
 	RunService.RenderStepped:Connect(onFrame)

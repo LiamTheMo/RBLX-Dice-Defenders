@@ -8,13 +8,16 @@ the edge alpha, so the caller can judge. Asset ids are preserved from an existin
 """
 
 import json
+import sys
 from pathlib import Path
 
 import numpy as np
 from PIL import Image
 
-ROOT = Path(__file__).resolve().parent.parent
-HUD = ROOT / "Assets" / "UI" / "new" / "game hud"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import slice_common as sc  # noqa: E402
+
+HUD = sc.UI / "game hud"
 OUT = HUD / "export"
 SHEET = HUD / "game-hud-without-text.png"
 

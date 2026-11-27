@@ -462,7 +462,7 @@ test("dice upgrade: UPGRADE gates on copies, cap and Catalog; copies show on car
 	local _, dg = die(4, 2, catalog, nil, 49) -- level 4 costs 50 gold
 	expect(not button(dg, "Upgrade").Enabled and button(dg, "Upgrade").Hint == "Need 50 gold", "gold - 1 off")
 	expectEq(dg.UpgradeCost.Amount, 50, "gold price on the tag")
-	expectEq(dg.UpgradeCost.Crit, 3, "crit the level adds on the tag")
+	expectEq(dg.Preview, "+3%", "crit the level adds, shown on the toolbar preview")
 	expect(not dg.UpgradeCost.Afford, "unaffordable price flagged")
 	local _, dr = die(2, 9, catalog, "R01") -- a Rare starts at class 3
 	expectEq(dr.UpgradeCost.Amount, 50, "Rare level 2 is class 4: its gold")

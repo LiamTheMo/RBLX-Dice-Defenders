@@ -75,7 +75,6 @@ local function key(kind: string, variant: string?): string
 end
 
 local store: Instance?
-local heights = {}
 
 local function template(kind: string): Model?
 	if store == nil then

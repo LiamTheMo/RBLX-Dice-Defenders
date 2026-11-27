@@ -7,13 +7,17 @@ sit in it), kill the faint alpha haze (alpha <= HAZE -> 0, rescale), rebuild edg
 fringe), trim to alpha > 0, never upscale. The ribbon is desaturated to a near-white neutral so ImageColor3 multiply-tints it.
 """
 import json
+import sys
 from pathlib import Path
 
 import numpy as np
 from PIL import Image
 from scipy import ndimage as ndi
 
-ROOT = Path(__file__).resolve().parent.parent / "Assets" / "UI" / "new" / "result menus"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import slice_common as sc  # noqa: E402
+
+ROOT = sc.UI / "result menus"
 OUT = ROOT / "export"
 MARGIN, HAZE = 8, 24
 

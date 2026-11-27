@@ -1,4 +1,4 @@
--- Shop offers (docs/MVP.md "Shop"; *tune*). Server-only: clients see the Catalog projection (ProductId included, it is no secret).
+-- Shop offers (docs/_archive/MVP.md "Shop"; *tune*). Server-only: clients see the Catalog projection (ProductId included, it is no secret).
 --   Id        1..16 ASCII bytes, never reused (keys Purchases)
 --   Tab       "Featured" | "Gems" (the Shop tab that lists it)
 --   Currency  "Gold" | "Gems" (Remote Buy pays it) | "Robux" (only Marketplace receipts grant it; Price is display only)

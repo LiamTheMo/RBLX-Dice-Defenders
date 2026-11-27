@@ -1,5 +1,5 @@
 -- Bag menu sprite asset ids: the one place to swap Bag art.
--- Source PNGs: Assets/UI/bag menu/export/Bag_<Name>.png, cut from the sheets by tools/slice_bag.py (sizes and
+-- Source PNGs: Assets/UI/old/bag menu/export/Bag_<Name>.png (old cutter tools/slice_bag.py; new-art ids come from Assets/UI/new/bag menu/export via tools/slice_bag_new.py) (sizes and
 -- Slice values below are copied from its export/manifest.json; Size and Slice are export pixels).
 -- Images must be owned by the experience's group (33284082): a user-owned image fails in-game with
 -- "Requester does not have permission". An empty id renders blank; never guess an id.

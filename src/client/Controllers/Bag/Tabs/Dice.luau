@@ -34,28 +34,6 @@ local function inDeck(meta, id: string): boolean
 	return meta ~= nil and meta.Deck ~= nil and table.find(meta.Deck, id) ~= nil
 end
 
--- Unowned card: the locked look, no EQUIP. `footer` doubles as the button hint; `note` is the detail text;
--- `s` is the die's Catalog entry (nil for the unreleased catalogue).
-local function lockedItem(id: string, name: string, rarity: string, footer: string, note: string, s)
-	return {
-		Id = id,
-		Name = name,
-		Rarity = rarity,
-		Damage = s and s.Damage,
-		AttackSpeed = s and s.AttackSpeed,
-		ExtraStats = s and s.Stats,
-		Ability = s and s.Description,
-		Level = 0,
-		Locked = true,
-		Equipped = false,
-		Icon = art(id),
-		CornerBadge = "Lock",
-		SubTag = string.upper(rarity),
-		Footer = footer,
-		Note = note,
-	}
-end
-
 -- The account's total crit damage, shown beside the inventory's sort box: the starter 100% (a crit hits for 2x) plus the
 -- crit every die level-up has earned (the server sums the same curve). Nil until the catalogue's curve has loaded.
 local BASE_CRIT = 100

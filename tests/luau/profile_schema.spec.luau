@@ -5,8 +5,6 @@ local Server = game:GetService("ServerScriptService").Server
 local ProfileSchema = require(Server.Rules.ProfileSchema)
 local Dice = require(Server.Config.Dice)
 
-local NAN, INF = 0 / 0, math.huge
-
 test("default profile has the v13 fields", function()
 	local p = ProfileSchema.Default()
 	expectEq(p.Version, 15, "version")
@@ -418,25 +416,6 @@ test("a 10,000-entry junk Materials table loads fast and clean", function()
 	expect(next(p.Items) == nil, "no junk items")
 end)
 
--- Deterministic dump (sorted keys) for deep-equality checks.
-local function snap(value)
-	if type(value) ~= "table" then
-		return tostring(value)
-	end
-	local keys = {}
-	for k in value do
-		table.insert(keys, k)
-	end
-	table.sort(keys, function(a, b)
-		return tostring(a) < tostring(b)
-	end)
-	local parts = {}
-	for _, k in keys do
-		table.insert(parts, type(k) .. ":" .. tostring(k) .. "=" .. snap(value[k]))
-	end
-	return "{" .. table.concat(parts, ",") .. "}"
-end
-
 test("default profile starts every v5 progress field empty", function()
 	local p = ProfileSchema.Default()
 	expect(p.Stats.Kills == 0 and p.Stats.Wins == 0, "stats")
@@ -641,6 +620,7 @@ test("v5 -> v8 keeps every v5 value and drops a stray Settings; frozen input unt
 	for key in ProfileSchema.Default() do
 		expect(
 			key == "Settings"
+				or key == "Teams"
 				or key == "Locked"
 				or key == "RollPity"
 				or key == "Purchases"
@@ -756,7 +736,7 @@ test("v6 -> v8 keeps every v6 value and drops stray Locked and Equipped; frozen 
 	end
 	for key in ProfileSchema.Default() do
 		expect(
-			key == "RollPity" or key == "Purchases" or key == "Receipts" or key == "Rating" or fields[key] ~= nil,
+			key == "Teams" or key == "RollPity" or key == "Purchases" or key == "Receipts" or key == "Rating" or fields[key] ~= nil,
 			"the v6 sample covers " .. key
 		)
 	end
@@ -868,7 +848,7 @@ test("v7 -> v8 keeps every v7 value, starts RollPity and Stats.Rolls empty; froz
 	end
 	for key in ProfileSchema.Default() do
 		expect(
-			key == "Purchases" or key == "Receipts" or key == "Rating" or fields[key] ~= nil,
+			key == "Teams" or key == "Purchases" or key == "Receipts" or key == "Rating" or fields[key] ~= nil,
 			"the v7 sample covers " .. key
 		)
 	end

@@ -7,8 +7,6 @@ local Formulas = require(Server.Rules.Formulas)
 local Dice = require(Server.Config.Dice)
 local Balance = require(Server.Config.Balance)
 
-local NAN, INF = 0 / 0, math.huge
-
 local function ser(v)
 	if type(v) ~= "table" then
 		return tostring(v)

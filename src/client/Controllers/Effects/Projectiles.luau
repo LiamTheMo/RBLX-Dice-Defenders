@@ -3,12 +3,12 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Display = require(ReplicatedStorage.Shared.Display)
 local Layout = require(ReplicatedStorage.Shared.Layout)
 local DiceVisuals = require(script.Parent.Parent.Dice.Visuals)
-local CommonStyles = require(script.Parent.CommonStyles)
+local ProjectileStyles = require(script.Parent.ProjectileStyles)
 local Fx = require(script.Parent.FxLib)
 local ProjectileScale = require(script.Parent.ProjectileScale)
 local RarityEffects = require(script.Parent.RarityEffects)
 
-local CommonProjectiles = {}
+local Projectiles = {}
 
 local MAX_SHOTS = 40
 local SIZE_SCALE = ProjectileScale.Flight
@@ -22,7 +22,7 @@ local SLOW_FALLBACK = 0.40 -- slow marker lifetime when the record carries no Sl
 local styles = table.clone(RarityEffects.Styles)
 
 for id, die in Display.Dice do
-	if not styles[id] and not CommonStyles[id] then
+	if not styles[id] and not ProjectileStyles[id] then
 		styles[id] = {
 			name = die.Name:gsub("%s", ""),
 			color = die.Color,
@@ -495,14 +495,14 @@ local function fireCommon(
 	return true, true
 end
 
-function CommonProjectiles.Fire(
+function Projectiles.Fire(
 	parent: Folder,
 	enemy,
 	attack,
 	reducedMotion: boolean,
 	onImpact: () -> ()
 ): (boolean, boolean)
-	local common = CommonStyles[attack.Type]
+	local common = ProjectileStyles[attack.Type]
 	if common then
 		if attack.Distance == nil then
 			return false, false
@@ -579,7 +579,7 @@ local function advance(shot, dt: number, camera: Camera)
 	shot.flash.Parent = shot.parent
 end
 
-function CommonProjectiles.Step(dt: number, reducedMotion: boolean?)
+function Projectiles.Step(dt: number, reducedMotion: boolean?)
 	local camera = workspace.CurrentCamera
 	if camera then
 		for _, style in styles do
@@ -601,7 +601,7 @@ function CommonProjectiles.Step(dt: number, reducedMotion: boolean?)
 	end
 end
 
-function CommonProjectiles.Clear(keepSlowMarkers: boolean?)
+function Projectiles.Clear(keepSlowMarkers: boolean?)
 	for _, handle in activeShots do
 		handle.cancel()
 	end
@@ -617,4 +617,4 @@ function CommonProjectiles.Clear(keepSlowMarkers: boolean?)
 	end
 end
 
-return CommonProjectiles
+return Projectiles

@@ -1,4 +1,4 @@
--- Pure match simulation (docs/MVP.md "Tick"). No Roblox services: the caller passes
+-- Pure match simulation (docs/_archive/MVP.md "Tick"). No Roblox services: the caller passes
 -- the clock (`now`) and a Random. Intents (TrySummon/TryMerge) validate fully before
 -- mutating. All MP changes go through Economy.
 --

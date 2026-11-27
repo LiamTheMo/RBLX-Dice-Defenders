@@ -1,5 +1,5 @@
 -- Balance sim: which wave does a deck reach? Run: python tools/balance_sim.py [seeds]  (bots summon and merge; real Match/Formulas/Balance)
--- Targets (docs/MVP.md "Waves"): "starter eager" clears wave 10 (the tutorial), "starter full" ends at 15, the "only C0x" ceilings by ~18.
+-- Targets (docs/_archive/MVP.md "Waves"): "starter eager" clears wave 10 (the tutorial), "starter full" ends at 15, the "only C0x" ceilings by ~18.
 -- Both bots also buy in-match power-ups (Match.TryPowerUp) when the board is full and no merge is wanted.
 local Server = game:GetService("ServerScriptService").Server
 local Match = require(Server.Rules.Match)

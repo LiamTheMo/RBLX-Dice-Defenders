@@ -1,4 +1,4 @@
--- Die level-up (docs/MVP.md "Remotes", UpgradeDie): spend spare copies AND gold of a die for +1 level.
+-- Die level-up (docs/_archive/MVP.md "Remotes", UpgradeDie): spend spare copies AND gold of a die for +1 level.
 -- Pure, no yields. Costs are Progression.DieLevel (server config; clients only get a read-only Catalog copy for display).
 -- Codes also include NoGold (Gold below the step's cost).
 local Dice = require(script.Parent.Parent.Config.Dice)

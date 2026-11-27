@@ -10,15 +10,18 @@ and dividers are code-drawn, so RowFrame / ValuePill / Rule / Diamond / GearPair
 
 import json
 import shutil
+import sys
 from pathlib import Path
 
 import numpy as np
 from PIL import Image
 
-ROOT = Path(__file__).resolve().parent.parent
-SRC = ROOT / "Assets" / "UI" / "new" / "settings menu"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import slice_common as sc  # noqa: E402
+
+SRC = sc.UI / "settings menu"
 OUT = SRC / "export"
-OLD = ROOT / "Assets" / "UI" / "old" / "settings menu" / "export" / "manifest.json"
+OLD = sc.UI.parent / "old" / "settings menu" / "export" / "manifest.json"
 USED = [
     "ToggleOn", "ToggleOff", "Knob", "ArrowLeft", "ArrowRight", "RefreshWhite",
     "MasterVolume", "Music", "SoundEffects", "InterfaceSounds", "Ambience",

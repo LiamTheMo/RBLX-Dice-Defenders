@@ -184,7 +184,7 @@ test("layout: duel arena (two boards, two U routes, 124-stud scaling, pads match
 		expectNear((b - a).Magnitude, real / Layout.PathLength, 1e-6, "constant speed on the first leg")
 	end
 	-- Numbers measured from ReplicatedStorage.Maps.Duel (centre x 5400): route corners and pad centres.
-	expectNear((Layout.Path(1, "Duel")[1] - O).X, -18.65, 1e-6, "seat 1 start x")
+	expectNear((Layout.Path(1, "Duel")[1] - O).X, 18.65, 1e-6, "seat 1 start x (seat 1 runs east to west)")
 	expectNear((Layout.Path(1, "Duel")[1] - O).Z, -20.55, 1e-6, "seat 1 start z")
 	expectNear((Layout.Path(1, "Duel")[2] - O).Z, -2.9, 1e-6, "seat 1 bottom z")
 	expectNear((Layout.Path(2, "Duel")[4] - O).X, 18.65, 1e-6, "seat 2 end x")

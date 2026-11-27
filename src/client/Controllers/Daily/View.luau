@@ -56,9 +56,7 @@ local COIN, GEM = Shared.Coin, Shared.Gem -- the HUD currency icons (owner rule)
 local ROLL = { Image = Sprites.Icon.Roll, Size = Vector2.new(256, 185) } -- dice without art, tinted
 local DIE = Vector2.new(202, 213) -- the 10 elemental die icons are 200-205 x 211-215 (lobby hud/export/manifest.json); drawn with Fit
 
-local function round(n: number): number
-	return math.floor(n + 0.5)
-end
+local round = UiKit.round
 
 local K = 1 -- real px per design px under the shell's UIScales (set per build)
 

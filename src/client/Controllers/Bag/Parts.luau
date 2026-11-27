@@ -273,14 +273,6 @@ function Parts.setButton(btn, o)
 	refreshers[btn]()
 end
 
-function Parts.refresherCount(): number -- debug: live button refreshers (leak check)
-	local n = 0
-	for _ in refreshers do
-		n += 1
-	end
-	return n
-end
-
 function Parts.button(parent, o)
 	local btn = img(parent, {
 		Name = o.Name or "Button",

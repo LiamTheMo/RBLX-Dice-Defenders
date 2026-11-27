@@ -3,19 +3,12 @@
 -- ProfileService only uses it when RunService:IsStudio(), never in a live server.
 -- `failNext` makes the next N calls error, to exercise retry paths.
 
+local ProfileSchema = require(script.Parent.Parent.Rules.ProfileSchema)
+
 local InMemoryDataStore = {}
 InMemoryDataStore.__index = InMemoryDataStore
 
-local function copy(value)
-	if type(value) ~= "table" then
-		return value
-	end
-	local out = {}
-	for key, inner in value do
-		out[key] = copy(inner)
-	end
-	return out
-end
+local copy = ProfileSchema.DeepCopy
 
 function InMemoryDataStore.new()
 	return setmetatable({ _data = {}, failNext = 0, calls = 0 }, InMemoryDataStore)

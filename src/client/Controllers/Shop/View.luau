@@ -59,9 +59,7 @@ local SPARKS = { -- x / y in art half sizes from its centre, box
 
 local K = 1 -- real px per design px of the current build
 
-local function round(n: number): number
-	return math.floor(n + 0.5)
-end
+local round = UiKit.round
 
 -- A sprite record fitted by aspect into bw x bh centred at (cx, cy), by its ink; a raw id is a Fit image in that box.
 local function pic(parent, rec, cx: number, cy: number, bw: number, bh: number, z: number, name: string?)

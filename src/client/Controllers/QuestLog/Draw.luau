@@ -9,9 +9,7 @@ local make = UiKit.make
 
 local Draw = { Q = Q }
 
-local function round(n: number): number
-	return math.floor(n + 0.5)
-end
+local round = UiKit.round
 
 function Draw.img(parent, props, class)
 	props.BackgroundTransparency = 1
@@ -79,14 +77,6 @@ function Draw.icon(inst, ref, cx: number, cy: number, maxW: number, maxH: number
 	inst.Size = UDim2.fromOffset(round(maxW), round(maxH))
 	inst.Position = UDim2.fromOffset(round(cx), round(cy))
 	return inst
-end
-
--- Title centre y for a DetailRibbon of ink height inkH drawn at cy: the middle of its front band (sprite row 41, above the ink
--- centre because the folded tails hang lower), less the ~0.05 x TextSize that caps sit below their text box's centre.
-local RIBBON_BAND_Y = 41
-function Draw.ribbonTextY(cy: number, inkH: number, textSize: number): number
-	local ink = Q.DetailRibbon.Ink
-	return cy + (RIBBON_BAND_Y - (ink.Min.Y + ink.Max.Y) / 2) / ink.Height * inkH - 0.05 * textSize
 end
 
 return Draw

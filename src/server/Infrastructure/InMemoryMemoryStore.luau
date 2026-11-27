@@ -3,19 +3,12 @@
 -- `failNext` makes the next N calls return (false, reason), to exercise degrade paths. `failClaimRemove` makes the
 -- next N Claims lose their final remove (the claimer still gets the value; the key stays hidden like a marker).
 
+local ProfileSchema = require(script.Parent.Parent.Rules.ProfileSchema)
+
 local InMemoryMemoryStore = {}
 InMemoryMemoryStore.__index = InMemoryMemoryStore
 
-local function copy(value)
-	if type(value) ~= "table" then
-		return value
-	end
-	local out = {}
-	for key, inner in value do
-		out[key] = copy(inner)
-	end
-	return out
-end
+local copy = ProfileSchema.DeepCopy
 
 function InMemoryMemoryStore.new(now: (() -> number)?)
 	return setmetatable(

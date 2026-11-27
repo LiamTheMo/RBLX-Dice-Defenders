@@ -134,7 +134,7 @@ local function mount(player)
 	stack(content)
 	local targetRow = row(content, 40, 1)
 	local target = field(targetRow, "Roblox user ID", UDim2.new(0.63, -6, 1, 0))
-	local online = button(targetRow, "In this server", UDim2.new(0.37, 0, 1, 0))
+	local online = button(targetRow, "In this server", UDim2.fromScale(0.37, 1))
 	local onlineList = row(content, 0, 2)
 	onlineList:FindFirstChildOfClass("UIListLayout"):Destroy()
 	onlineList.Visible = false
@@ -153,7 +153,7 @@ local function mount(player)
 	local editRow = row(content, 40, 4)
 	local item = field(editRow, "Catalog ID", UDim2.new(0.47, -6, 1, 0))
 	local browse = button(editRow, "Browse", UDim2.new(0.29, -6, 1, 0))
-	local amount = field(editRow, "Amount", UDim2.new(1, 0, 1, 0))
+	local amount = field(editRow, "Amount", UDim2.fromScale(1, 1))
 	amount.Text = "1"
 	local items = make("ScrollingFrame", content, {
 		Size = UDim2.new(1, -6, 0, 138),
@@ -172,11 +172,11 @@ local function mount(player)
 	local take = button(controls, "Take", UDim2.new(0.5, -3, 1, 0))
 	local revoke = button(controls, "Revoke die", UDim2.new(1 / 3, -4, 1, 0), DANGER)
 	local resetRow = row(content, 38, 7)
-	local reset = button(resetRow, "Reset profile…", UDim2.new(1, 0, 1, 0), DANGER)
+	local reset = button(resetRow, "Reset profile…", UDim2.fromScale(1, 1), DANGER)
 	local confirmRow = row(content, 38, 8)
 	confirmRow.Visible = false
 	local confirmText = field(confirmRow, "Type RESET", UDim2.new(0.58, -6, 1, 0))
-	local confirm = button(confirmRow, "Confirm reset", UDim2.new(0.42, 0, 1, 0), DANGER)
+	local confirm = button(confirmRow, "Confirm reset", UDim2.fromScale(0.42, 1), DANGER)
 	local status = make("TextLabel", content, {
 		Size = UDim2.new(1, -8, 0, 48),
 		LayoutOrder = 9,
@@ -220,7 +220,7 @@ local function mount(player)
 		items.Visible = false
 		item.Text = ""
 		amount.Visible = kind ~= "Cosmetics"
-		amount.Size = if item.Visible then UDim2.new(0.24, 0, 1, 0) else UDim2.new(1, 0, 1, 0)
+		amount.Size = if item.Visible then UDim2.fromScale(0.24, 1) else UDim2.fromScale(1, 1)
 		disarm()
 		for key, control in selected do
 			control.BackgroundColor3 = if key == kind then ACCENT else SURFACE

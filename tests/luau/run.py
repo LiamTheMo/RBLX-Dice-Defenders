@@ -11,7 +11,8 @@ modules run), then the spec itself.
 Only pure-logic modules are testable this way; anything touching Instances,
 services or the network still needs a Studio playtest.
 
-    python tests/luau/run.py                  # run every *.spec.luau with the `luau` CLI
+    python tests/luau/run.py                  # run every *.spec.luau with the `luau` CLI (failures print in full)
+    python tests/luau/run.py -v               # also print every passing case
     python tests/luau/run.py --bundle NAME    # print one spec's bundle (e.g. to run in Studio)
 
 The `luau` CLI (tested with 0.746, from github.com/luau-lang/luau releases) must be
@@ -87,25 +88,21 @@ def build_bundle(spec: Path) -> str:
 
 
 def main() -> int:
-    specs = sorted(HERE.glob("*.spec.luau"))
-    if len(sys.argv) == 2 and sys.argv[1] == "--studio":
-        # Writes every bundle plus index.txt to build/specs/ for tests/luau/studio_runner.luau.
-        out = ROOT / "build" / "specs"
-        out.mkdir(parents=True, exist_ok=True)
-        for old in out.glob("*.luau"):
-            old.unlink()
-        for spec in specs:
-            (out / (spec.stem + ".bundle.luau")).write_text(build_bundle(spec), encoding="utf-8")
-        (out / "index.txt").write_text("\n".join(s.stem + ".bundle.luau" for s in specs), encoding="utf-8")
-        print(f"Wrote {len(specs)} bundles to {out}")
-        return 0
-    if len(sys.argv) == 3 and sys.argv[1] == "--bundle":
-        matches = [s for s in specs if s.name.startswith(sys.argv[2])]
+    args = sys.argv[1:]
+    verbose = "-v" in args
+    args = [a for a in args if a != "-v"]
+    specs = sorted(HERE.glob("*.spec.luau"))  # tests/_archive/ is outside HERE and never run
+
+    if len(args) == 2 and args[0] == "--bundle":
+        matches = [s for s in specs if s.name.startswith(args[1])]
         if len(matches) != 1:
-            print(f"Expected one spec matching {sys.argv[2]!r}, found {len(matches)}", file=sys.stderr)
+            print(f"Expected one spec matching {args[1]!r}, found {len(matches)}", file=sys.stderr)
             return 1
         sys.stdout.write(build_bundle(matches[0]))
         return 0
+    if args:
+        print(__doc__, file=sys.stderr)
+        return 1
 
     luau = shutil.which("luau")
     if luau is None:
@@ -115,18 +112,25 @@ def main() -> int:
         print("No specs found", file=sys.stderr)
         return 1
 
-    failed = 0
+    failed = []
     with tempfile.TemporaryDirectory() as tmp:
         for spec in specs:
             bundle = Path(tmp) / (spec.stem + ".bundle.luau")
             bundle.write_text(build_bundle(spec), encoding="utf-8")
             result = subprocess.run([luau, str(bundle)], capture_output=True, text=True)
-            sys.stdout.write(result.stdout)
-            sys.stderr.write(result.stderr)
-            if result.returncode != 0 or "SPEC FAILED" in result.stdout:
-                failed += 1
+            bad = result.returncode != 0 or "SPEC FAILED" in result.stdout
+            if bad:
+                failed.append(spec.name)
+            if bad or verbose:
+                sys.stdout.write(result.stdout)
+                sys.stderr.write(result.stderr)
+            else:
+                summary = [l for l in result.stdout.splitlines() if l.startswith(spec.name + ":")]
+                print(summary[-1] if summary else f"{spec.name}: ok")
 
-    print(f"{len(specs) - failed}/{len(specs)} spec files passed")
+    print(f"{len(specs) - len(failed)}/{len(specs)} spec files passed")
+    if failed:
+        print("FAILED: " + ", ".join(failed))
     return 1 if failed else 0
 
 

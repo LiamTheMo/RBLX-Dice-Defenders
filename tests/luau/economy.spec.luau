@@ -4,8 +4,6 @@ local Server = game:GetService("ServerScriptService").Server
 local Economy = require(Server.Rules.Economy)
 local Validate = require(Server.Rules.Validate)
 
-local NAN, INF = 0 / 0, math.huge
-
 local function snapshot(t)
 	local keys = {}
 	for k in t do

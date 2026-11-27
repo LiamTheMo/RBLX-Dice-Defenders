@@ -13,12 +13,13 @@ RatingLogic.RANKS = table.freeze({
 })
 local FALLBACK = RatingLogic.RANKS[1]
 
-local function whole(n: any): number
+function RatingLogic.whole(n: any): number
 	if type(n) ~= "number" or n ~= n or n == math.huge or n == -math.huge then
 		return 0
 	end
 	return math.floor(n)
 end
+local whole = RatingLogic.whole
 
 local function rankRow(rank: any)
 	for _, r in RatingLogic.RANKS do

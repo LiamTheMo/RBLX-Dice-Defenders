@@ -1,140 +1,100 @@
-# Dice Defenders — Game Design Document
-**Repository:** LiamTheMo/RBLX-Dice-Defenders  
-**Design version:** 0.1 (preproduction) · **Status:** Proposed unless marked **Locked**  
-**Platform:** Roblox · **Genre:** Co-operative dice-merging lane defense, collection, progression  
-**Related specifications:** [Dice Catalog](DICE_CATALOG.md), [Balancing & Economy](BALANCING.md), [Art & Production](ART_PIPELINE.md)
+# Dice Defenders: design document
 
-> This document distinguishes the creator's locked product requirements from recommended starting values. All numerical tuning, names, drop probabilities and time targets are provisional until playtests. All dice, cosmetics, names, UI and 3D references must be original rather than copied from Random Dice or other games.
+The code under `src/` is the source of truth. This file describes what is built; anything not built is marked **Proposed** and listed again in [FUTURE_UPDATES.md](FUTURE_UPDATES.md). The older MVP build contract is kept in [_archive/MVP.md](_archive/MVP.md) for history only (profile v10 era, partly wrong now).
 
-## 1. High concept and pillars
+All dice, art, names and UI must be original, not copied from Random Dice or other games. The enemy HP model and the Duel rules follow Random Dice data as the owner supplied it.
 
-Players equip a five-dice deck, enter a themed world, summon randomly selected dice onto a **5-column × 3-row board (15 cells)**, earn **MP** from monster kills, strategically merge dice and survive waves with one to four players. Finish **Wave 100** on the first world to earn its clear rewards; compete on a separately tuned **Infinite** mode with ranked leaderboards. Collect, craft and upgrade dice using persistent Gold, Gems, materials and copies. New worlds, bosses and dice interactions should create genuinely different strategies.
+## 1. Concept
 
-**Locked:** first world with Wave-100 clear, Infinite mode and leaderboards; solo and two-player support; four-player considered with scaling; two persistent currencies (Gold and Gems) plus independent match-only MP; six rarity definitions (Common, Rare, Epic, Legendary, Mythic, Secret); 5 Common, 5 Rare, 5 Epic, 3 Legendary, 1 Mythic dice targeted for first release; 5×3 board; pips 1–7, with 7 displayed as a star; dice obtained from progression, shops, crafting, events and chests; abilities can trigger on hits, merges, timers, positioning, pips and conditions; ChatGPT-generated UI and dice art with 3D breakdowns.
+Players equip a deck of five dice, summon them onto a 5 x 3 board (15 cells), merge them to raise their pips and survive endless waves. Pips run 1 to 7; 7 is drawn as a gold star. A die's attack rate is its base rate times its pip count, so pips raise the rate and not the damage per hit.
 
-**Scope interpretation:** the user's "Common through Legendary initially" and "1 Mythic for release" can both be honored by shipping Mythic as a **single late-game chase reward after initial MVP validation**. Secret is schema-defined but unobtainable at launch. Release target is 19 dice; MVP content gate is 18 if the Mythic's implementation is not ready, with the nineteenth delivered before public 1.0.
+World 1 is the Verdant Trial (a toy-diorama meadow). Its enemies are Grunts, Runners, Brutes (mini-boss) and three bosses (see section 6). Other worlds are shown locked in the Play menu.
 
-### Design pillars
-1. **Readable randomness, decisive choices.** Summon outcomes are random, but deck building, board placement, merge timing and upgrades should matter more than luck.
-2. **Synergy over raw rarity.** Rares and Epics enable strategies; Legendaries are transformative; Mythic is a desirable build-around, not mandatory.
-3. **Short-term strategy and long-term collection.** Match MP is separate from persistent economies.
-4. **Scalable co-op.** Two players is the baseline; solo always viable; four-player joins only after performance and balance gates.
-5. **Replayability without runaway monetization.** No paid-only abilities, no required purchases, transparent chances and earning routes.
-6. **World identity.** Future map geometry, modifiers and bosses make different dice shine.
+## 2. Modes
 
-## 2. Player journey
-**First session:** tutorial explains lane path, summon, dice pips, attacks, merging (same type/same pip), deck, boss telegraphs and MP; free starter deck contains five Common dice. Intro stage plays a short practice encounter, then first-world campaign unlocked.  
-**Early:** earn Gold/materials, unlock first Rare via predictable stage milestone, improve dice levels, experiment with 1–2 synergies.  
-**Mid:** reach Wave 100, craft specific Rare/Epic, unlock repeatable World 1 runs, rotate daily shop, learn bosses.  
-**Late:** maximize efficient decks, chase Legendaries/Mythic through deterministic pity/crafting, compete in Infinite, prepare for future worlds.
+| Mode | Players | Rules |
+|---|---|---|
+| Solo | 1 | One board, one lane. Endless. Clearing wave 10 sets Trial cleared; the run continues. |
+| Co-op | 2 | Each player has a board, deck, MP, summon budget and Power Up tiers. Two mirrored lanes join before the exit. Wave progress and lives are shared; every kill pays MP to both players. Both opt in from the Play menu (`CoopReady`). |
+| Duel (1v1, ranked) | 2 | Each player has their own lane, lives and MP. Both lanes get the same mobs, and each wave ends with a boss per lane. Ends at 0 lives or a surrender; there are no draws. Players are matched by rank (`QueueDuel`), or get a bot after 12 s. See [DICE_RATING.md](DICE_RATING.md). |
 
-### Core session loop
-Choose deck and mode → matchmake (solo, duo default, optional group) → place dice using MP → kill enemies for MP → adapt positioning, merges and match-level upgrades → survive bosses → run ends when lives reach zero (MVP: endless, no win) → receive persistent rewards and progress → craft/upgrade/equip → play again.
+Solo and Co-op run in the lobby place. A Duel runs in a reserved server (a same-server bot Duel in Studio or when teleporting is unavailable).
 
-## 3. World, stage and map
-### World 1: **Verdant Circuit** (working name)
-- **One map at launch**, toy-diorama fantasy meadow with five readable player columns, one unmistakable winding monster path, generous attack readability and two boss staging zones; no path hiding behind panels.
-- **Staged objective:** defeat the Wave 100 boss and eliminate remaining enemies while team lives > 0. Complete only once per profile for first-clear bonus; repeat runs grant smaller farm rewards.
-- **Wave progression:** MVP: endless waves, **boss every 5th wave** (5, 10, 15, …) and a Brute mini-boss on a fixed schedule (MVP.md); full-game target: waves 1–100, boss every 10 waves, escalating boss families; lighter elite/mutator wave every 5 waves without doubling as a boss.
-- **Recommended checkpoints:** waves 1–20 tutorial-friendly; 21–40 status-counter introduction; 41–60 shields/resistances; 61–80 elites and mixed squads; 81–99 high-pressure combinations; 100 world guardian.
-- **Future worlds:** separate reward/material tables, visual themes, path lengths, situational modifiers, local boss roster and stage-specific unlocks. Same dice schema and normalized threat budgeting across worlds. World 2 is NOT required for launch.
+A new profile first plays the tutorial: five free starter rolls (500 tutorial Gems, `Rules/Tutorial`), then a Solo run to wave 10, then a choice to end or keep playing, then a gift of one random Epic die, 500 Gems and 5 Dice Shards. Solo and Co-op need five equipped dice (`Deck.IsReady`).
 
-### Enemy path & breach rule
-Enemies travel toward exit; kill before escape. Team starts with **3 Lives** in the MVP (20 proposed for the full game). Normal breach costs 1; Brute and boss 2 in the MVP (elite 2, boss 5 proposed). At zero lives game over. Server controls all path positions, HP, deaths, MP and lives. Bosses may introduce summons, armor, slow immunity windows or ability-lock mechanics; every counter must be readable.
+## 3. A match
 
-### Wave cadence
-Staged: next wave after prior wave cleared and 4 s preparation (proposed); cap wait when a slow enemy stalls. Infinite: same virtual wave system, but **also count cumulative kills** for escalation and boss trigger thresholds. Fixed-wave and kill-threshold bosses must not duplicate: first qualifying event queues exactly one boss, then advances the boss threshold. See BALANCING.md.
+- **Start:** 100 MP, 3 lives. The first wave starts 4 s after Start and each later wave 4 s after the previous one is cleared (`Balance`).
+- **Summon:** costs 10 + 10 x (summons so far) MP, so 10, 20, 30, 40 ... A pip-1 die of a random deck type lands in a random empty cell.
+- **Merge:** two dice of the same type and the same pip (1 to 6) become one die of pip + 1 at the target cell. The new type is re-rolled from the deck. Two 7-pip dice do not merge.
+- **Attacks:** automatic. The first shot goes to the living enemy furthest along the path, anywhere on it (no range limit). In a Duel a die only sees its own lane; in Co-op both lanes share the stretch past the junction.
+- **Kill MP:** by wave band 10 (waves 1-5), 20 (6-10), 30 (11-15), 40 (16-20), 50 (21+). A Brute pays x5 and a Boss x10 (`Balance.KillMp`). There is no wave stipend. Duel kills pay differently (DICE_RATING.md).
+- **Power Up:** MP buys tiers for a die type, tier 1 to 5, costing 100 / 200 / 400 / 700 MP. Each tier adds 10% of base damage to every die of that type. Tiers last for the match only.
+- **Aura:** Beacon gives its four orthogonal neighbours attack speed (`base 6% + 1% per extra pip + 1% per Power Up tier above 1`), capped at +30% per die.
+- **Lives:** Grunt and Runner breaches cost 1, Brute and Boss cost 2. At 0 the run ends.
+- **Enemy HP and waves:** see [WAVE_SCALING.md](WAVE_SCALING.md).
 
-## 4. Player counts, combat boards and co-op
-- **Solo:** one 15-slot board, one path, 1× enemy threat baseline; 100 waves must be achievable with obtainable Rare/Epic decks.
-- **Duo (primary):** two independent 15-slot boards defend the **same shared path/lives**; enemies scale to team DPS without a strict 2× HP wall. Both players see distinct board ownership, teammate pings, and shared boss warnings.
-- **Trio/quad (experimental):** maximum four independent boards, one shared path, scaled enemies and spawn budget, stronger server-side projectile batching. Restrict to friends/private queue until performance, fairness and clarity gates pass. Never silently mix duo and quad into the same leaderboard.
-- **Separate leaderboards:** Solo, Duo, Trio and Squad if enabled. The default public competitive leaderboard launches Solo and Duo only. Each record stores best completed wave, kills, run duration, loadout checksum, player count, season and verified run ID.
-- **Co-op integrity:** no friendly fire; each player owns their MP, summons, merge actions and in-match upgrades; kills distribute MP to all participating players at a reduced per-player rate. Shared kills are counted once for Infinite threat scaling. Disconnect: allow short reconnection period then keep board attacking temporarily or normalize surviving-player threat between waves (not mid-boss); do not grant duplicate rewards.
+## 4. Dice, levels and rarities
 
-## 5. Dice deck, board and merging
-- Equip exactly **five distinct dice types** from owned collection; sampling is uniformly random among those five initially; odds-changing modifiers must be explicit.
-- Board is a 5×3 grid; click/tap Summon → if an empty slot exists, server consumes MP and places a 1-pip random deck die into a server-selected empty slot. This preserves meaningful placement randomness; specialized dice can reposition or transform.
-- **Pips:** 1,2,3,4,5,6 and **7★**. Pip count increases effective output through a defined nonlinear multiplier (see BALANCING.md). Use 7★ as the cap.
-- **Merge:** two dice with the **same type and same pip**, at pips 1–6, can be dragged together. Remove both, create one die of pip+1 at the target cell, and roll its **new type from equipped deck**. This is deliberate risk: merging does not guarantee preservation of type. Execute on server atomically; never spend both pieces twice. Some dice alter result type through explicit abilities.
-- Two 7★ dice cannot merge under baseline rules. Merge-triggered abilities read pre-merge, result and post-merge events deterministically. Distinguish "on merge consumed" from "on merge produced."
-- Fill/lock states are clear. If board full, new summon prohibited until merge/move/clear creates space.
-- Dice have attack target policy (First, Last, Strongest, Closest) where supported; baseline target First. Default auto-attacks; strategic input should emphasize merges and deck choice, not constant clicking.
-- In-match upgrade terminal gives up to 4 tiers for an equipped type (proposed), purchased with MP and reset after run. Persistent level is a separate multiplicative progression system.
-- Pip visuals read at phone scale; 7★ never renders seven tiny dots.
+Rarities, in order: Common, Rare, Epic, Legendary, Mythic, Secret. The roster is 7 Common, 5 Rare, 3 Epic, 2 Legendary, 1 Mythic (Astral) and 1 Secret (Dragon); see [DICE_CATALOG.md](DICE_CATALOG.md). Starter deck: Pebble, Needle, Hammer, Twinshot, Longshot.
 
-## 6. Dice design, rarity and abilities
-Defined rarity enum, in order: **Common → Rare → Epic → Legendary → Mythic → Secret**; Secret reserved for future discoverable mechanics and events. **Exclusive** is not part of the canonical rarity ladder here.
-- Common (5): straightforward attack stat variants, simple predictable minor perks; all five available in tutorial.
-- Rare (5): status effects, chaining, multi-hit, conditional tempo and modest team utility.
-- Epic (5): board layout, timing, DoT, summons or merge-driven strategies that change play.
-- Legendary (3): powerful archetype-enabling dice with trade-offs/counters and diminishing returns.
-- Mythic (1 target by v1.0): star-centric growth / strategic build-around but balanced against strong Epic/Legendary combinations.
-- Secret (0 launch): system and UI enum only; do not make unobtainable Secret seem purchasable.
-- Full **19 individual dice specifications** (stats, effects, triggers, constraints, synergies, unlock routes and balance roles) live in [DICE_CATALOG.md](DICE_CATALOG.md).
+Die levels run 1 to 12 and cost spare copies and Gold (`Config/Progression.DieLevel`). They give no damage. Each level step adds crit damage percent to the whole account, which only the Mythic Astral's crit uses today. In Duels the crit bonus is 0 for both seats.
 
-**Universal ability framework:** support always-on, on-hit (seeded probability), on-crit, on-kill, on-merge-source, on-merge-result, on-summon, timer/interval, start/end wave, boss spawn, ally adjacency, row/column alignment, pip threshold/parity, board-full, HP threshold, enemy tags, map tags, and conditional stance. Ability definitions use server-registered IDs, activation predicates, cooldowns, proc coefficients, stacking categories, caps and event budgets. Never trust remote-supplied damage or probability.
+Mastery: after a run every owned die in the match deck gains Mastery XP equal to the waves completed (curve in `Progression.Mastery`, max level 20; levels 5 / 10 / 15 / 20 pay Gems and an XP Tome once per die).
 
-## 7. Enemy roster and bosses
-Launch enemy tags/classes: Grunt (basic), Runner (fast), Brute (armored), Swarm (many low HP), Bulwark (shield), Wisp (evasion / target retarget), Regenerator, and Elite variants. Introduce tags gradually and telegraph all resistances.
-**Boss progression (10 encounters, reuse 4–5 families with variants):** Thorn Warden at 10/50; Stoneback Colossus at 20/60; Clockwork Swarm Queen at 30/70; Mirror Magus at 40/80; overcharged variants at 90 and Verdant Sovereign at 100. Each boss gets 1–2 signature mechanics: e.g. Stoneback temporary armor, Swarm Queen adds, Mirror Magus decoys, Sovereign rotating vulnerability. Show warning at least 3 s before arrival. No permanent dice theft, no unavoidable random board wipe.
-**Boss rewards:** staged milestone materials and end-run loot; first-clear Wave-100 reward guaranteed. Infinite bosses grant score and materials with daily caps, not exponentially increasing permanent currency.
+## 5. Economy
 
-## 8. Economy, rewards and monetization
-### Currency boundaries
-- **Gold (persistent, earnable):** regular rotating shop dice/copies, lower-tier chests, common materials, standard upgrades and crafting fees.
-- **Gems (persistent, earnable; premium):** targeted premium chest choices, cosmetics, expedited shop reroll with limits; rare dice purchasing only under clearly priced caps. Avoid hard premium lockouts.
-- **MP (match-only):** granted by enemy kills and small wave stipend; buys summons and in-match upgrade tiers; always resets at match end. Never convertible to Gold/Gems.
-- **Materials (persistent):** world-specific fragments and universal dust from enemies/bosses/stage rewards; deterministic craft recipes.
-- **Robux:** optional premium chest bundles and cosmetic offers; visibly disclose odds before opening, local currency price, duplicates and pity rules. No exclusive power tier or deceptive time pressure. Design for Roblox current commerce/policy requirements before release.
+| Resource | Source | Use |
+|---|---|---|
+| Gold | Run reward (5 per wave), daily login, quests, milestones, Duel win streaks, sales | Die level-ups, Shop |
+| Gems | Run reward (Random Dice card schedule x10, see BALANCING.md), quests, achievements, milestones, daily login, codes | Rolls, Shop |
+| Verdant Fragments | 1 per wave cleared, Shop | Materials; sell price 2 each |
+| Dice Shard | Tutorial gift | One shard becomes one spare copy of an owned die |
+| XP / account level | 10 per wave, XP Tomes (100 XP) | Levels 1 to 50 (`Progression.Account`) |
+| MP | Kills | Match only, never saved |
 
-### Acquisition routes
-World milestone first-clears → guaranteed dice/copies; repeat runs → Gold/materials; rotating shop → Gold items + limited Gem premium choices; crafting → deterministic dice; events → conditional dice/skins; chests → publicly documented rarity odds plus duplicate protection/pity. Disallow purchased chests granting unreleased Secret dice. Duplicate dice become copies for levels or dust, never disappear.
-Proposed economy/prices, loot tables, pity protection and upgrade math: [BALANCING.md](BALANCING.md). Seasonal events must not introduce permanent competitive paywalls.
+Claimed through the lobby: Quests (S1-S3, D1, W1, W2), the 7-day login calendar, play milestones (P10 to P100), achievements (A1-A5), mastery rewards and redeem codes. Rewards are `Rules/Rewards` bundles; every write is all-or-nothing and runs once per run id.
 
-## 9. Permanent profile progression
-Account level from XP earned at match end. Character profile owns unlocked worlds, dice inventory/copies, levels, materials, Gold, Gems, upgrade ranks, quest flags, cosmetics and season stats.
-**Proposed permanent upgrade tracks:** Global Dice Damage (5 ranks × +1%, cap +5%); Starting MP (5 × +10, cap +50); Gold Earned (5 × +2%, cap +10%); Profile XP Earned (5 × +3%, cap +15%); Boss Material Yield (3 × +2%, cap +6%); Match MP on Kills (5 × +1%, cap +5%); optional reroll utility purchased only via play. Track price ramps and avoid unbounded compounded damage.
-Permanent upgrades may make campaign faster but ranked Infinite either **normalizes profile power** or uses progression brackets; initial proposal: global damage benefits capped at +5%, leaderboard records display profile level, and seasons offer normalized challenge presets.
+Roll (Standard pool): 100 Gems per roll, 1000 for ten; Legendary pity at 80 rolls. Shop: Gold and Gem offers, Robux Starter Pack and Gem packs (Robux offers stay unavailable until real developer product ids are set), and the VIP game pass (every roll 10% cheaper). Numbers are in BALANCING.md.
 
-## 10. Infinite mode
-Unlocked after World 1 Wave 100 clear (recommended); uses same core wave and enemy-HP functions as campaign extended beyond 100, but adds a **cumulative kill-pressure factor** and periodic boss triggers. Score prioritizes deepest fully completed wave; ties: enemies defeated, then shortest run duration, then timestamp. Record best score, not sum. Run ends on zero lives, voluntary surrender or validated disconnect.
-To prevent kill-farming abuse: only server-spawned hostile enemies count once; summoned adds from bosses are explicitly tagged non-scoring unless intended; no player-created kill loops. Kill-pressure is monotonic, bounded per wave to avoid accidental spikes, and independent of extra players' duplicated kill credits.
-Leaderboard categories are per player-count and per season, with separate All-Time displays. Store only validated best runs; use Roblox OrderedDataStore sparingly with batched updates and rate-limit/backoff. Anticheat verifies run trace summary, claimed wave/kill totals and session identity.
+## 6. Enemies and bosses
 
-## 11. UX and information architecture
-**Lobby:** Play (World 1 / Infinite), Deck, Collection, Dice Upgrade, Craft, Shop, Chests, Profile, Leaderboards, Settings. Show locked worlds/rarities without false promises.
-**Match HUD:** path unobstructed; top wave + progress + boss countdown; team lives and teammate status; bottom center 5×3 player board with non-overlapping dice detail popup; Summon button, MP balance, next summon price, compact in-match dice upgrade row; boss warning and ability cues; merged 7★ star indicator.
-**Dice detail:** name, rarity, level, pips, base stats, triggers/proc conditions, stacking limits and targets; compare at next level. **Shop:** clearly separate Gold/Gem/Robux offers and show odds. **Leaderboards:** season, player count, wave, kills, time, verified status.
-**Accessibility:** readable on phone landscape, 44 px minimum interactive targets, contrast and non-color rarity cues, reduced FX, scalable text with overflow handling, haptics optional. No UI assets assembled from unrelated stock sprites; see art contract.
+| Kind | Speed (studs/s) | HP | Breach |
+|---|---:|---|---:|
+| Grunt | 6 | Base HP | 1 |
+| Runner | 9 | Base HP x 0.5 | 1 |
+| Brute (mini-boss) | 5.33 | Base HP x (5 + 1.5 per earlier Brute) | 2 |
+| Boss | 3 | Base HP x (10 + 1.5 per earlier Boss) | 2 |
 
-## 12. Technical system specification (proposed)
-**Server-authoritative modules:** MatchService, QueueService, WaveDirector, EnemyService, DiceService, MergeService, AbilityRuntime, DamageResolver, EconomyService, RewardsService, ProfileService, ShopRotationService, CraftingService, LeaderboardService, AntiExploitService.  
-**Shared data definitions:** DiceDefinition, AbilityDefinition, EnemyDefinition, BossDefinition, WorldDefinition, RewardTable, ShopOffer, ProfileSchema, VersionedBalanceConfig.  
-**Client:** camera/board rendering, drag/tap placement requests, combat VFX pooling, readable hit feedback, menus, controller/touch support.  
-**Persistence:** DataStore profile versioning and reconciliation; session-lock to prevent concurrent overwrites, idempotent reward grants, transactional purchase receipt handling, retry/backoff. Never persist a match as a source of arbitrary client currency.  
-**Combat performance:** deterministic tick/batched update; cap attack proc recursion depth and chain jumps; projectiles may be visual client-side but hit truth stays server-side; pool enemies, effects and floating numbers. Favor <100 simultaneous enemies for initial phone target; load test 4-player mode before public enabling.  
-**Anti-exploit:** validate deck ownership, occupied cell state, merge type/pip/coordinates, MP/price, rate limits, trusted RNG, kills, wave, shop purchases, developer product receipts, and reward claims.  
-**Analytics:** wave reached per match, failure wave/boss, queue time, deck diversity, pick/win rates by rarity, acquisition funnels, Gold/Gem balance, conversion, crash/performance counters, reconnects.
+Three boss variants are rolled per run, never the same one twice in a row. Each has one ability:
 
-## 13. Production milestones and acceptance
-**P0 systems:** core map, enemy path, waves 1–100, solo+duo, 15 cells, star pips, merge, 18 Common–Legendary dice, economy, progression, bosses, UX, save safety.
-**P1 launch content:** nineteenth Mythic if ready, Infinite (solo+duo) with verified leaderboards, Gold/Gem shop/chest loop, crafting, permanent upgrades, tutorial, first-clear rewards, accessible mobile UX, original art sheets.
-**P2:** quad private test, new worlds, events, Secret content (only once implemented), seasonal progression and cosmetics.
+| Boss | Ability | First cast / interval |
+|---|---|---|
+| Goblin King | Portal Summon: 3 Grunts and 1 Runner | 8 s / 14 s |
+| Cursed King | Hammer Lock: locks 3 dice (up to 6 at once) | 9 s / 16 s |
+| Court Jester | Dice Shuffle: re-rolls the pips of 5 dice | 7 s / 12 s |
 
-### Release gates
-- Wave 100 can be cleared solo and duo using achievable non-premium decks; no mandatory Legendary.
-- Every dice type works with 1–7 pips, persistence levels, tooltip, correct merge outcomes, expected triggers and no infinite proc loops.
-- Match MP cannot persist between sessions; persistent purchases, duplicate conversion and receipt replay tests pass.
-- 100-wave campaign and high-wave Infinite complete without memory leak, runaway enemy count, unreadable FX or client-authoritative wins.
-- Solo/Duo rankings exclude suspicious/unverified results; restart/reconnect never duplicates rewards.
-- All UI and dice visuals meet [ART_PIPELINE.md](ART_PIPELINE.md); assets are original and legible on desktop/phone.
-- CI/tests applicable to the repository pass; deployment/publishing only from main.
+The boss stands still while it casts. A boss wave is announced 4 s ahead.
 
-## 14. Decisions to test, not assume
-1. A campaign of 100 waves may be too long: benchmark playtime, offer break/save checkpoints only if exploit-safe.
-2. Deck sampling and random-pip merge results can be punishing: playtest rescue mechanisms, especially for 7★.
-3. Quad scaling must be gated by device and teamwork clarity; do not promise balancing without empirical tests.
-4. Define whether Infinite power is normalized or progression-weighted for fair leaderboards.
-5. Public odds, monetization, eligibility and UI must be checked against current Roblox requirements before publishing.
-6. Exact values in companion documents are hypotheses and should be A/B tuned from observed outcomes.
+## 7. Lobby and menus
+
+Sprite HUD: Shop, Roll, Bag, Play, Codes, Daily, Quests and Settings, plus Gold, Gems, level and XP, and a five-slot deck bar. Bag has Dice, Materials, Items and Cosmetics tabs (sell, use, lock, equip, five saved teams, die upgrade). Settings are a registry in `src/shared/SettingsDefs.luau`, saved in the profile; settings the game does not use yet are labelled "coming soon". `Controllers/Preload` loads every `*Sprites` asset behind a loading message before the lobby opens.
+
+## 8. Server structure and remotes
+
+Boot goes through `src/shared/Core/Loader`. Pure rules in `src/server/Rules/` are spec-tested headless; `Services/` hold the Roblox glue (`MatchService`, `QueueService`, `ProfileService`, `ShopService`, `RedeemService`, `TutorialService`, `PlayerPolicy`, `VipService`, `AdminService`); `Infrastructure/` has the profile store, teleport and MemoryStore gateways with in-memory fakes, and the rate-limited guarded remotes. Profile schema is version 15 (`Rules/ProfileSchema`, with migrations). Balance numbers live in `src/server/Config/` and never reach the client.
+
+Remotes (`src/shared/Net/Remotes.luau`), client to server, all with a sequence number and a `(ok, code)` reply: `Start`, `Summon`, `Merge`, `EquipDeck`, `TeamAction`, `ClaimQuest`, `RedeemCode`, `SaveSettings`, `BagAction`, `Roll`, `Buy`, `UpgradeDie`, `PowerUp`, `AdminAction`, `CoopReady`, `QueueDuel`, `Surrender`, `LeaveDuel`, `TutorialAction`. Server to client: `State`, `Enemies`, `Meta`, `Catalog`, `RollResult`.
+
+Server-authoritative rules: deck ownership, cell state, merge type and pip, MP and prices, receipts (granted exactly once per PurchaseId), rewards (once per run id), rate limits per remote (`Balance.Remotes`) with a kick threshold, and paid random items are blocked where Roblox policy restricts them (`PlayerPolicy`, fail closed).
+
+## 9. Proposed, not built
+
+- World 2 and beyond, the Wave-100 staged clear and an Infinite mode with leaderboards.
+- Chests, crafting, Universal Dust, profile upgrade tracks (Global Damage, Starting MP and so on) and a rotating shop. Of the crafting resources only Verdant Fragments exist.
+- A rotating Event tab in Roll (it shows "No event right now").
+- Ability implementations for Rare, Epic and Legendary dice (they are stat-only today).
+- Trio and quad co-op, extra enemy classes (Swarm, Shield, Regenerator, Elite), kill-responsive scaling.
+- Challenge Tier HP, speed and boss cooldown factors (owner has not supplied numbers).
+
+See [FUTURE_UPDATES.md](FUTURE_UPDATES.md).

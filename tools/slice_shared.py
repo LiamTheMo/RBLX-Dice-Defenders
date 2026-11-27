@@ -13,8 +13,6 @@ The caps end where every column is within TOL of that column, so stretching the 
 Manifest: w, h, sheet, rect (source px), slice, sliceCenter = [x0, y0, x1, y1] (y = the middle row: with box height = h x SliceScale nothing stretches vertically).
 """
 
-import io
-import json
 import sys
 import tempfile
 from pathlib import Path
@@ -23,14 +21,12 @@ import numpy as np
 from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import slice_bag as sb  # noqa: E402
-import slice_quest as sq  # noqa: E402
+import slice_common as sc  # noqa: E402
+from slice_common import OPEN, clean  # noqa: E402
 
-ROOT = Path(__file__).resolve().parent.parent
-SRC = ROOT / "Assets" / "UI" / "new" / "shared"
+SRC = sc.UI / "shared"
 OUT = SRC / "export"
 SHEET = SRC / "sheets" / "buttons-and-tabs.png"
-OPEN = 5  # radius of the morphological opening in clean()
 MID = 4  # width of the repeated centre column
 CAP_MARGIN = 4  # extra cap px past the last column that differs
 RAMP = 40  # cap columns that fade into the centre column
@@ -63,36 +59,6 @@ BADGES = {
 CURRENCY = {"Coin": SRC / "currency" / "Coin.png", "Gem": SRC / "currency" / "Gem.png"}
 
 
-def clean(arr: np.ndarray, opening: int = OPEN) -> np.ndarray:
-    """Keep the solid blobs + 1 px ring, recolour partly transparent pixels from the solid outline, trim to the bbox."""
-    a = arr[..., 3]
-    lab = sq.label8(a >= 128)
-    sizes = np.bincount(lab.ravel())
-    sizes[0] = 0
-    keep = np.isin(lab, [i for i in range(1, len(sizes)) if sizes[i] >= 0.02 * sizes.max()])
-    keep = (sq.dilate(~sq.dilate(~keep, opening), opening) & keep if opening else keep)  # opening: drops thin protrusions (glow drips, specks) narrower than 2 x OPEN + 1 px
-    keep = sq.dilate(keep, 1) & (a > 0)
-    out = arr.copy()
-    out[..., 3] = np.where(keep, a, 0)
-    out[..., 3][out[..., 3] < 8] = 0
-    out[..., 3][out[..., 3] >= 248] = 255
-    h, w = out.shape[:2]
-    todo = (out[..., 3] > 0) & (out[..., 3] < 250)
-    pad = 4
-    rgb = np.pad(out[..., :3], ((pad, pad), (pad, pad), (0, 0)))
-    srcp = np.pad(out[..., 3] >= 250, pad)
-    res = out[..., :3].copy()
-    offs = sorted(((dy, dx) for dy in range(-pad, pad + 1) for dx in range(-pad, pad + 1) if dy or dx), key=lambda o: o[0] ** 2 + o[1] ** 2)
-    for dy, dx in offs:
-        ok = todo & srcp[pad + dy : pad + dy + h, pad + dx : pad + dx + w]
-        res[ok] = rgb[pad + dy : pad + dy + h, pad + dx : pad + dx + w][ok]
-        todo &= ~ok
-    out[..., :3] = res
-    ys, xs = np.where(out[..., 3] > 0)
-    out = out[ys.min() : ys.max() + 1, xs.min() : xs.max() + 1]
-    return sb.bleed(out)
-
-
 def slice3(px: np.ndarray, spec):
     """Left cap | MID identical columns | right cap. The hard caps end past the last column that differs from the centre column by more
     than spec (rows 2..h-3: the ragged outer rows would otherwise stretch the caps); then each cap's inner RAMP columns fade smoothly into
@@ -120,12 +86,6 @@ def slice3(px: np.ndarray, spec):
     return np.clip(out.round(), 0, 255).astype(np.uint8), [lc, h // 2 - 1, lc + MID, h // 2]  # 1 px of vertical centre: edge-hugging vertical caps draw wrongly in engine
 
 
-def png_bytes(px):
-    buf = io.BytesIO()
-    Image.fromarray(px).save(buf, format="PNG", optimize=True)
-    return buf.getvalue()
-
-
 def seam_test(name: str, px: np.ndarray, sl: list):
     """Render the sprite at 7 widths (box height 54 design px, SliceScale = 54 / h) at 1672 and 2560 scale; max column diff across each slice line."""
     h, w = px.shape[:2]
@@ -150,21 +110,21 @@ def seam_test(name: str, px: np.ndarray, sl: list):
 
 def main() -> None:
     OUT.mkdir(exist_ok=True)
-    sheet = np.array(Image.open(SHEET).convert("RGBA"))
+    sheet = sc.load_rgba(SHEET)
     manifest = {}
     jobs = [(n, "buttons-and-tabs", r, t, sheet[r[1] : r[3], r[0] : r[2]]) for n, (r, t) in SHEET_COMP.items()]
     for n, p in CURRENCY.items():
-        im = np.array(Image.open(p).convert("RGBA"))
+        im = sc.load_rgba(p)
         jobs.append((n, p.name, (0, 0, im.shape[1], im.shape[0]), None, im))
     for n, (rel, (sx, sy)) in BADGES.items():
-        im = np.array(Image.open(SRC.parent / rel).convert("RGBA"))
-        lab = sq.label8(im[..., 3] >= 128)
+        im = sc.load_rgba(SRC.parent / rel)
+        lab = sc.label8(im[..., 3] >= 128)
         comp = lab == lab[sy, sx]
         assert lab[sy, sx] > 0, n
         ys, xs = np.where(comp)
         x0, y0, x1, y1 = max(xs.min() - 20, 0), max(ys.min() - 20, 0), xs.max() + 21, ys.max() + 21
         crop = im[y0:y1, x0:x1].copy()
-        crop[..., 3] = np.where(sq.dilate(comp, 8)[y0:y1, x0:x1], crop[..., 3], 0)
+        crop[..., 3] = np.where(sc.dilate(comp, 8)[y0:y1, x0:x1], crop[..., 3], 0)
         jobs.append((n, rel, (int(x0), int(y0), int(x1), int(y1)), None, crop))
     seam = "--seam" in sys.argv
     for name, sh, rect, tol, crop in jobs:
@@ -177,13 +137,10 @@ def main() -> None:
                 for r in seam_test(name, px, sl):
                     print(f"seam {name} {r[0]} box{r[1]}: width {r[2]} line {r[3]}")
         entry["w"], entry["h"] = int(px.shape[1]), int(px.shape[0])
-        png = OUT / f"Shared_{name}.png"
-        data = png_bytes(px)
-        if not png.exists() or png.read_bytes() != data:
-            png.write_bytes(data)
+        sc.save_png(OUT / f"Shared_{name}.png", px)
         manifest[name] = entry
         print(name, entry["w"], entry["h"], entry.get("sliceCenter", ""))
-    (OUT / "manifest.json").write_text(json.dumps(manifest, indent=1))
+    sc.write_manifest(OUT, manifest)
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
--- The ClaimQuest router (docs/MVP.md "Other claims" and Remotes) and the small claim domains: the
+-- The ClaimQuest router (docs/_archive/MVP.md "Other claims" and Remotes) and the small claim domains: the
 -- LOGIN calendar, play milestones, achievements and die mastery. Pure: callers pass
 -- `now` (os.time() seconds). Each claim validates fully, then pays one Rewards.Apply
 -- bundle and writes its own once-only flag, with no yield between and the flag only

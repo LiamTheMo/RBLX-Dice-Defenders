@@ -1,4 +1,4 @@
--- Paid random items policy per player (docs/MVP.md "Roll"): PolicyService's ArePaidRandomItemsRestricted, fetched once
+-- Paid random items policy per player (docs/_archive/MVP.md "Roll"): PolicyService's ArePaidRandomItemsRestricted, fetched once
 -- per join in its own thread (pcall, up to 3 tries with backoff) and cached. FAIL CLOSED: unknown (not answered yet) or
 -- failed = not allowed, except in Studio, where a failed call counts as allowed so the flow can be tested. Readers
 -- (the Roll handler) only read the cache and never yield. Changed(player) fires once the answer is cached.

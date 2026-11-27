@@ -7,8 +7,6 @@ local Validate = require(Server.Rules.Validate)
 local Inventory = require(Server.Config.Inventory)
 local Dice = require(Server.Config.Dice)
 
-local NAN, INF = 0 / 0, math.huge
-
 -- Deep, order-independent text form of a value, for "unchanged" checks.
 local function dump(v)
 	if type(v) ~= "table" then

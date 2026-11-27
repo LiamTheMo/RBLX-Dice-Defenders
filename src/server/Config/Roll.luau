@@ -1,4 +1,4 @@
--- Roll pools (docs/MVP.md "Roll"; *tune*). Server-only: clients see the Catalog projection, never this module.
+-- Roll pools (docs/_archive/MVP.md "Roll"; *tune*). Server-only: clients see the Catalog projection, never this module.
 -- Odds are basis points per rarity for one roll (they sum to 10000); the dice of a rarity are every Config/Dice entry
 -- of that rarity, drawn uniformly. Pity: a roll after Pity.Max - 1 in a row without a Pity.Rarity die is one of them
 -- (the counter resets on any). Featured lists grantable ids only.
