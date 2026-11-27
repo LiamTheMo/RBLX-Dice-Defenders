@@ -98,6 +98,7 @@ function Board.Merge(board: { any }, from: any, to: any, newType: any): (boolean
 	die.pip += 1
 	die.type = newType
 	die.hits = 0
+	die.mirror, die.nextAt, die.rifts = nil, nil, nil -- a new type starts with fresh ability state
 	board[from] = false
 	return true, nil
 end

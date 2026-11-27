@@ -75,10 +75,10 @@ test("tier multiplier and damage: 1 + DamagePerTier x (tier - 1), floored, never
 		expectEq(Formulas.HitDamage("C03", "Grunt", nil, tier), expected, "hammer tier " .. tier)
 	end
 	expect(Formulas.HitDamage("C03", "Grunt", nil, PU.Max) > Formulas.HitDamage("C03", "Grunt", nil, 1), "grows")
-	expectEq(Formulas.HitDamage("C02", "Grunt", 8, 1), 17, "flat proc added after")
+	expectEq(Formulas.HitDamage("C02", "Grunt", 150, 1), 320, "flat proc added after")
 	expectEq(
-		Formulas.HitDamage("C02", "Grunt", 8, PU.Max) - Formulas.HitDamage("C02", "Grunt", nil, PU.Max),
-		8,
+		Formulas.HitDamage("C02", "Grunt", 150, PU.Max) - Formulas.HitDamage("C02", "Grunt", nil, PU.Max),
+		150,
 		"tier leaves the proc alone"
 	)
 	expectEq(Formulas.HitDamage("C04", "Grunt", nil, nil), Formulas.HitDamage("C04", "Grunt", nil, 1), "nil tier is 1")
@@ -253,11 +253,23 @@ test("Singularity applies only to the sole Astral on a board", function()
 	expect(not Formulas.HasSingularity({ false, { type = "C01" } }), "zero Astral")
 	expect(Formulas.HasSingularity({ false, astral, { type = "C01" } }), "one Astral at any pip count")
 	expect(not Formulas.HasSingularity({ astral, false, { type = "M01" } }), "two Astrals disable it")
-	expectEq(Formulas.HitDamage("M01", "Grunt"), 140, "unbuffed")
-	expectEq(Formulas.HitDamage("M01", "Grunt", nil, 1, true, false), 700, "exactly five times base")
-	expectEq(Formulas.HitDamage("M01", "Grunt", nil, 1, true, true), 1400, "crit doubles the buffed hit")
-	expectEq(Formulas.HitDamage("M01", "Grunt", nil, 2, true, true), 1540, "crit stacks with Power Up")
-	expectEq(Formulas.HitDamage("C01", "Grunt", nil, 1, true, true), 16, "other dice keep their own damage")
+	expectEq(Formulas.HitDamage("M01", "Grunt"), Dice.Types.M01.base, "unbuffed")
+	expectEq(
+		Formulas.HitDamage("M01", "Grunt", nil, 1, true, false),
+		Dice.Types.M01.base * 5,
+		"exactly five times base"
+	)
+	expectEq(
+		Formulas.HitDamage("M01", "Grunt", nil, 1, true, true),
+		Dice.Types.M01.base * 10,
+		"crit doubles the buffed hit"
+	)
+	expectEq(
+		Formulas.HitDamage("M01", "Grunt", nil, 2, true, true),
+		math.floor(Dice.Types.M01.base * 10 * 1.1),
+		"crit stacks with Power Up"
+	)
+	expectEq(Formulas.HitDamage("C01", "Grunt", nil, 1, true, true), 315, "other dice keep their own damage")
 end)
 
 test("Singularity crits on ten of one hundred tickets and skips the RNG when inactive", function()

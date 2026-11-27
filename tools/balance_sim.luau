@@ -1,5 +1,5 @@
 -- Balance sim: which wave does a deck reach? Run: python tools/balance_sim.py [seeds]  (bots summon and merge; real Match/Formulas/Balance)
--- Targets (docs/_archive/MVP.md "Waves"): "starter eager" clears wave 10 (the tutorial), "starter full" ends at 15, the "only C0x" ceilings by ~18.
+-- Targets (docs/DICE_REBALANCE_PROPOSAL.md): full Common ~20, Rare ~30, Epic ~40, Legendary ~80 (eager = new player, full = careful).
 -- Both bots also buy in-match power-ups (Match.TryPowerUp) when the board is full and no merge is wanted.
 local Server = game:GetService("ServerScriptService").Server
 local Match = require(Server.Rules.Match)
@@ -8,7 +8,7 @@ local Formulas = require(Server.Rules.Formulas)
 local CoopWaves = require(Server.Config.CoopWaves)
 local Layout = require(game:GetService("ReplicatedStorage").Shared.Layout)
 
-local P = { seeds = __SEEDS or 40, dt = 0.25, maxWave = 200 } -- dt = Balance.MaxStep; the live tick is 0.1
+local P = { seeds = __SEEDS or 40, dt = 0.25, maxWave = 130 } -- dt = Balance.MaxStep; the live tick is 0.1
 
 -- Bots. "eager": summon, then merge any lowest-pip pair at once. "full": a careful player: summon until
 -- the board is full, then merge the pair that loses the least DPS, only when the next summon is affordable.
@@ -228,12 +228,14 @@ local function batch(name, deck, bot, quiet)
 end
 
 test("sim", function()
-	batch("starter eager", Dice.Deck, eager)
-	batch("starter full", Dice.Deck, full)
-	for _, id in Dice.Deck do -- ceiling: every summon and merge result is the same Common
-		batch("only " .. id, { id }, full, id ~= "C02")
-	end
-	batch("strong full", { "L01", "L02", "M01", "S01", "E03" }, full, true)
-	batch("epics and rares full", { "E01", "E02", "E03", "R01", "R04" }, full, true)
+	batch("starter eager", Dice.Deck, eager, true)
+	batch("starter full", Dice.Deck, full, true)
+	batch("rares eager", { "R01", "R02", "R03", "R04", "R05" }, eager, true)
 	batch("rares full", { "R01", "R02", "R03", "R04", "R05" }, full, true)
+	batch("epics eager", { "E01", "E02", "E03" }, eager, true)
+	batch("epics full", { "E01", "E02", "E03" }, full, true)
+	batch("legendaries eager", { "L01", "L02" }, eager, true)
+	batch("legendaries full", { "L01", "L02" }, full, true)
+	batch("legendary mix eager", { "L01", "L02", "M01", "S01", "E03" }, eager, true)
+	batch("legendary mix full", { "L01", "L02", "M01", "S01", "E03" }, full, true)
 end)

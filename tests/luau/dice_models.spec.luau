@@ -7,6 +7,7 @@ test("wired L/M dice carry complete model data", function()
 	local rarities = {
 		LegendaryModelData = { "L01", "L02" },
 		MythicModelData = { "M01" },
+		SecretModelData = { "S01" },
 	}
 	for module, ids in rarities do
 		local data = require(Dice[module])

@@ -60,10 +60,10 @@ Balance.BossMpMul = 10
 -- 1v1 Duel (docs/DICE_RATING.md sections 4 and 9): no wave cap and no draws; it ends at 0 lives or a surrender/forfeit.
 -- Scaling from Random Dice PvP (docs/_archive/DUEL_SCALING.md): a boss ends every wave with HP BossPerRound x wave + AbsorbShare x the
 -- lane's remaining mob HP (the boss absorbs them); from DeathWave mobs get tougher and faster; from BerserkWave a kill pays a
--- fixed BerserkMp and the boss is faster. (25000 x round and the 40 s floor are the owner's Random Dice spec).
+-- fixed BerserkMp and the boss is faster. (25000 x round was the owner's Random Dice spec; 40000 since docs/DICE_REBALANCE_PROPOSAL.md; the 40 s floor is the spec).
 Balance.Duel = table.freeze({
 	MinWavesForRewards = 3,
-	BossPerRound = 25000,
+	BossPerRound = 40000,
 	AbsorbShare = 0.5,
 	-- Round timer (randomdice.gg): 90 s, 10 s shorter each wave, floor 40 s. The boss comes once the mobs have spawned and
 	-- the timer has run out, or earlier when both lanes are clear.

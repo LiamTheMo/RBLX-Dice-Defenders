@@ -19,6 +19,7 @@ local Formulas = require(script.Parent.Formulas)
 local Layout = require(game:GetService("ReplicatedStorage").Shared.Layout)
 local Bosses = require(game:GetService("ReplicatedStorage").Shared.Bosses)
 local BossAbilities = require(script.Parent.BossAbilities)
+local Abilities = require(script.Parent.Abilities)
 
 local Match = {}
 
@@ -200,6 +201,7 @@ function Match.TrySummon(state, index: number?): (boolean, string?)
 	seat.board[cell].cd = state.lastNow -- ready now, no catch-up hits from time 0
 	seat.nextDieId += 1
 	seat.summons += 1
+	Abilities.Copy(seat.board, cell, state.lastNow)
 	state.out.dirty = true
 	return true, nil
 end
@@ -296,10 +298,36 @@ function Match.TryMerge(state, from: any, to: any, index: number?): (boolean, st
 	if not legal then
 		return false, code
 	end
-	local typeId = seat.deck[state.rng:NextInteger(1, #seat.deck)]
-	local ok, mergeCode = Board.Merge(seat.board, from, to, typeId)
+	local board = seat.board
+	-- Forge: a merge next to one keeps the merged type (no re-roll) and every `every`th also pays out a free pip-1 die.
+	local forge
+	for _, cell in { to, from } do
+		for _, n in Board.Neighbours(cell) do
+			local near = board[n]
+			if n ~= to and n ~= from and near and Dice.Types[near.type].forge then
+				forge = near
+			end
+		end
+	end
+	local typeId = if forge then board[from].type else seat.deck[state.rng:NextInteger(1, #seat.deck)]
+	local ok, mergeCode = Board.Merge(board, from, to, typeId)
 	if not ok then
 		return false, mergeCode
+	end
+	local now = state.lastNow
+	Abilities.Copy(board, to, now)
+	if forge then
+		local cfg = Dice.Types[forge.type].forge
+		forge.merges = (forge.merges or 0) + 1
+		local empty = Board.EmptyCells(board)
+		if forge.merges % cfg.every == 0 and #empty > 0 and now >= (forge.freeAt or -math.huge) + cfg.gap then
+			forge.freeAt = now
+			local cell = empty[state.rng:NextInteger(1, #empty)]
+			Board.Summon(board, cell, typeId, seat.nextDieId)
+			board[cell].cd = now
+			seat.nextDieId += 1
+			Abilities.Copy(board, cell, now)
+		end
 	end
 	state.out.dirty = true
 	return true, nil
@@ -515,10 +543,10 @@ local HOLD_SPEED = 1e-4
 -- One speed from every modifier: base x slow, or HOLD_SPEED while a boss ability keeps it still.
 -- baseSpeed exists only while a modifier is active, so a hand-set enemy.speed is never shadowed.
 local function refreshSpeed(state, enemy, now: number)
-	if enemy.slowMul or enemy.held then
+	if enemy.slowMul or enemy.held or enemy.frozen then
 		local base = enemy.baseSpeed or enemy.speed
 		enemy.baseSpeed = base
-		setSpeed(state, enemy, if enemy.held then HOLD_SPEED else base * (enemy.slowMul or 1), now)
+		setSpeed(state, enemy, if enemy.held or enemy.frozen then HOLD_SPEED else base * (enemy.slowMul or 1), now)
 	else
 		setSpeed(state, enemy, enemy.baseSpeed or enemy.speed, now)
 		enemy.baseSpeed = nil
@@ -732,6 +760,13 @@ local function bossEvent(state, boss, event)
 	end
 end
 
+local abilityEnv = {
+	damage = damage,
+	refreshSpeed = refreshSpeed,
+	updateEnemy = updateEnemy,
+	pathLength = pathLengthOf,
+}
+
 local function attack(state, seat, index: number, now: number)
 	local enemies = state.enemies
 	local auras = Match.Auras(seat)
@@ -749,6 +784,8 @@ local function attack(state, seat, index: number, now: number)
 			die.cd = math.max(die.cd, now) -- a locked die neither fires nor banks shots
 		elseif die then
 			local cfg = Dice.Types[die.type]
+			local ab = Abilities.Of(die, now)
+			Abilities.Timers(abilityEnv, state, die, ab, now, reachable)
 			local tier = seat.tiers[die.type] or 1 -- a die off the deck (only a spec places one) is tier 1
 			local period = Formulas.Period(die.type, die.pip, auras[cell])
 			local twinshot = die.type == "C04"
@@ -760,7 +797,10 @@ local function attack(state, seat, index: number, now: number)
 				for _, enemy in enemies do
 					if reachable(enemy) then
 						alive += 1
-						if first == nil or enemy.dist > first.dist then
+						if
+							first == nil
+							or (if cfg.targeting == "Strongest" then enemy.hp > first.hp else enemy.dist > first.dist)
+						then
 							first = enemy
 						end
 					end
@@ -769,25 +809,37 @@ local function attack(state, seat, index: number, now: number)
 					die.cd = now -- idle cooldown does not bank
 					break
 				end
-				-- Both targets are chosen before either shot deals damage.
-				local second = first
-				if twinshot and alive > 1 then
-					local pick = state.rng:NextInteger(1, alive)
+				-- Every target is chosen before any shot deals damage.
+				local shots = cfg.shots or 1
+				local targets = { first }
+				if shots > 1 and alive > 1 then
+					local pool = {}
 					for _, enemy in enemies do
-						if reachable(enemy) then
-							pick -= 1
-							if pick == 0 then
-								second = enemy
-								break
+						if reachable(enemy) and (not cfg.spread or enemy ~= first) then
+							table.insert(pool, enemy)
+						end
+					end
+					for shot = 2, shots do
+						if cfg.spread then
+							if #pool > 0 then
+								local at = state.rng:NextInteger(1, #pool)
+								targets[shot] = pool[at]
+								pool[at] = pool[#pool]
+								pool[#pool] = nil
+							else
+								targets[shot] = first
 							end
+						else
+							targets[shot] = pool[state.rng:NextInteger(1, #pool)] -- may repeat the first (Twinshot)
 						end
 					end
 				end
 				die.hits += 1
 				local flat = if cfg.procEvery and die.hits % cfg.procEvery == 0 then cfg.procFlat else 0
 				local supportCells = if die.type == "R05" then Match.SupportCells(seat, die.type, cell) else nil
-				for shot = 1, cfg.shots or 1 do
-					local target = if shot == 1 then first else second
+				local lastAmount = 0
+				for shot = 1, shots do
+					local target = targets[shot] or first
 					local critical = Formulas.SingularityCrit(die.type, singularity, state.rng)
 					local amount = Formulas.HitDamage(
 						die.type,
@@ -798,14 +850,9 @@ local function attack(state, seat, index: number, now: number)
 						critical,
 						seat.critBonus
 					)
+					lastAmount = amount
 					damage(state, target, amount)
-					if cfg.slow and target.hp > 0 then
-						if not target.slowUntil then
-							target.slowMul = 1 - cfg.slow
-							refreshSpeed(state, target, now)
-						end
-						target.slowUntil = now + cfg.slowDuration
-					end
+					local slowed = Abilities.OnHit(abilityEnv, state, die, ab, target, now)
 					table.insert(state.out.F, {
 						Cell = cell,
 						Seat = index,
@@ -817,13 +864,15 @@ local function attack(state, seat, index: number, now: number)
 						Boosted = if showProjectile and flat > 0 then true else nil,
 						Critical = if critical then true else nil,
 						Damage = amount, -- floating damage number (display only)
-						Slowed = if showProjectile and cfg.slow and target.hp > 0 then true else nil,
-						SlowUntil = if cfg.slow and target.hp > 0 then target.slowUntil else nil,
+						Slowed = if showProjectile and slowed then true else nil,
+						SlowUntil = if slowed then target.slowUntil else nil,
+						PoisonUntil = if ab.poison and target.hp > 0 then now + ab.poison.duration else nil,
 						SupportCells = supportCells,
 						Lane = if twinshot then (if shot == 1 then 1 else -1) else nil,
-						SharedTarget = if twinshot and first == second then true else nil,
+						SharedTarget = if twinshot and first == (targets[2] or first) then true else nil,
 					})
 				end
+				Abilities.OnAttack(abilityEnv, state, die, ab, first, lastAmount, reachable)
 				attacks += 1
 				die.cd += period
 			end
@@ -876,6 +925,11 @@ function Match.Step(state, now: number)
 			enemy.slowUntil, enemy.slowMul = nil, nil
 			refreshSpeed(state, enemy, at)
 		end
+		if enemy.frozenUntil and now >= enemy.frozenUntil then
+			local at = enemy.frozenUntil
+			enemy.frozenUntil, enemy.frozen = nil, nil
+			refreshSpeed(state, enemy, at)
+		end
 		enemy.dist = math.max(0, enemy.speed * (now - enemy.spawnAt))
 		-- Duel lanes are the same 124-stud balance length as Co-op (docs/DICE_RATING.md section 5).
 		local pathLength = pathLengthOf(state)
@@ -915,8 +969,11 @@ function Match.Step(state, now: number)
 		attack(state, state.partner, 2, now)
 	end
 
+	Abilities.Tick(abilityEnv, state, now, dt)
+
 	-- Deaths + kill MP.
 	local alive = {}
+	local poisoned = {}
 	for _, enemy in survivors do
 		if enemy.hp <= 0 then
 			local gain = Formulas.KillMp(enemy.kind, state.wave)
@@ -938,9 +995,15 @@ function Match.Step(state, now: number)
 			end
 			table.insert(state.out.R, { Id = enemy.id, Why = "Kill", Arena = state.mode, Seat = enemy.seat })
 			state.out.dirty = true
+			if enemy.dots then
+				table.insert(poisoned, enemy)
+			end
 		else
 			table.insert(alive, enemy)
 		end
+	end
+	for _, dead in poisoned do
+		Abilities.SpreadPoison(dead, alive, now)
 	end
 	state.enemies = alive
 	releaseLocks(state)

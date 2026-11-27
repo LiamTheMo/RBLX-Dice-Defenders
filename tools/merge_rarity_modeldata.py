@@ -15,6 +15,7 @@ RARITIES = {
         ("L02", DICE / "Legendary/Variants/L02_Forge/ForgeModelData.luau"),
     ],
     "MythicModelData.luau": [("M01", DICE / "Mythic/Variants/M01_Astral/AstralModelData.luau")],
+    "SecretModelData.luau": [("S01", DICE / "Secret/Variants/S01_Secret/SecretModelData.luau")],
 }
 
 

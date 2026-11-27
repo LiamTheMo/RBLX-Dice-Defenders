@@ -8,7 +8,7 @@ Source for the Random Dice shape: NamuWiki "Random Dice: PvP Defense". It publis
 
 - Two seats, each with its own lane, lives (3), MP, board and deck. Both lanes get the same waves. A die only targets its own lane. The opponent's board stays visible.
 - Mobs: 10 per wave from the Co-op HP model ([WAVE_SCALING.md](WAVE_SCALING.md)), no boss or mini-boss in the queue. Runners (half HP, speed 9) grow with the wave, `min(5, wave // 3)`.
-- Boss: each wave ends with one boss per lane once the 10 mobs have spawned and the round timer has run out, or earlier when both lanes are clear. Boss HP = 25000 x wave + 0.5 x the lane's remaining mob HP (the boss absorbs those mobs). Boss counts as a Boss (2 lives).
+- Boss: each wave ends with one boss per lane once the 10 mobs have spawned and the round timer has run out, or earlier when both lanes are clear. Boss HP = 40000 x wave + 0.5 x the lane's remaining mob HP (the boss absorbs those mobs). Boss counts as a Boss (2 lives).
 - Round timer: 90 s, 10 s shorter each wave, floor 40 s.
 - Death wave (from wave 7): mobs get +8% HP and +3% speed per wave from then on. This is the game's own tuning, not the spec's.
 - Berserk (from wave 11): kills pay a fixed 110 SP and the boss moves x1.25.

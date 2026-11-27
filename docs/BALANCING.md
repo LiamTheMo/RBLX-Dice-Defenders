@@ -6,14 +6,14 @@ The source of truth is `src/server/Config/` (mainly `Balance.luau`, `Progression
 
 Enemy HP follows the Random Dice model (`Config/CoopWaves`); the full rules, schedule and checkpoints are in [WAVE_SCALING.md](WAVE_SCALING.md). Speeds are Grunt 6, Runner 9, Brute 16/3, Boss 3 studs/s, multiplied by `min(1.6, 1 + 0.006 x (wave - 1))`. At most 90 enemies are alive (`Balance.MaxAlive`). Lives: 3; a Grunt or Runner breach costs 1, a Brute or Boss 2.
 
-Owner targets used by the simulator (`python tools/balance_sim.py [seeds]`, three bot skill levels): a starter deck of Commons ends around wave 15; the tutorial run clears wave 10; gems per wave equal the Random Dice co-op card schedule. Re-run the simulator after changing any balance number.
+Owner targets used by the simulator (`python tools/balance_sim.py [seeds]`, three bot skill levels): a full Common deck ends around wave 20, Rares 30, Epics 40, Legendaries 80 (the tutorial run clears wave 10); gems per wave equal the Random Dice co-op card schedule. Re-run the simulator after changing any balance number.
 
 ## 2. Dice damage
 
 - Attacks per second = `rate x pip`; no pip term in damage. Hit damage = `max(1, floor(base x perk x tier multiplier))` plus a flat proc.
 - Power Up (in match, per die type): tier 1 to 5, tier multiplier `1 + 0.10 x (tier - 1)`, buying the next tier costs 100 / 200 / 400 / 700 MP. Never saved, never bought with Gems or Robux.
 - Aura: per-die total attack-speed bonus capped at 30% (`Balance.AuraCap`).
-- Rare, Epic and Legendary dice are stat-only and sized to about 19 / 21 / 25 damage per second; Commons vary by perk (see [DICE_CATALOG.md](DICE_CATALOG.md)).
+- Per-pip DPS is about 300 Common / 800 Rare / 3300 Epic / 23000 Legendary, with the abilities in [DICE_CATALOG.md](DICE_CATALOG.md); derivation and targets in [DICE_REBALANCE_PROPOSAL.md](DICE_REBALANCE_PROPOSAL.md).
 - Die levels give no damage today. Each step adds account crit damage only (used by Astral). **Proposed, owner decision pending:** a small damage bonus per level. Stronger decks otherwise stall around wave 25 because boss HP grows linearly with the wave.
 
 ## 3. Match MP

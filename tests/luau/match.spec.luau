@@ -106,16 +106,16 @@ test("wave formulas", function()
 end)
 
 test("perk damage: hitDamage = max(1, floor(base * perk * tierMul)) plus flat, no pip term", function()
-	expectEq(Formulas.HitDamage("C01", "Grunt"), 16, "pebble vs grunt (x1.05)")
-	expectEq(Formulas.HitDamage("C01", "Runner"), 16, "pebble vs runner (no perk)")
-	expectEq(Formulas.HitDamage("C03", "Brute"), 33, "hammer vs armored x1.12")
-	expectEq(Formulas.HitDamage("C03", "Grunt"), 30, "hammer vs grunt")
-	expectEq(Formulas.HitDamage("C03", "Boss"), 30, "boss is not armored")
-	expectEq(Formulas.HitDamage("C05", "Boss"), 19, "longshot x0.9 vs boss")
-	expectEq(Formulas.HitDamage("C05", "Grunt"), 22, "longshot vs grunt")
-	expectEq(Formulas.HitDamage("C04", "Grunt"), 6, "Twinshot base damage per projectile")
-	expectEq(Formulas.HitDamage("C02", "Grunt"), 9, "needle plain")
-	expectEq(Formulas.HitDamage("C02", "Grunt", 8), 17, "needle with proc")
+	expectEq(Formulas.HitDamage("C01", "Grunt"), 315, "pebble vs grunt (x1.05)")
+	expectEq(Formulas.HitDamage("C01", "Runner"), 300, "pebble vs runner (no perk)")
+	expectEq(Formulas.HitDamage("C03", "Brute"), 638, "hammer vs armored x1.12")
+	expectEq(Formulas.HitDamage("C03", "Grunt"), 570, "hammer vs grunt")
+	expectEq(Formulas.HitDamage("C03", "Boss"), 570, "boss is not armored")
+	expectEq(Formulas.HitDamage("C05", "Boss"), 420, "longshot has no boss penalty")
+	expectEq(Formulas.HitDamage("C05", "Grunt"), 420, "longshot vs grunt")
+	expectEq(Formulas.HitDamage("C04", "Grunt"), 130, "Twinshot base damage per projectile")
+	expectEq(Formulas.HitDamage("C02", "Grunt"), 170, "needle plain")
+	expectEq(Formulas.HitDamage("C02", "Grunt", 150), 320, "needle with proc")
 	expectEq(Formulas.HitDamage("C04", "Grunt") >= 1, true, "never below 1")
 end)
 
@@ -350,7 +350,7 @@ test("Global First: the alive enemy closest to the exit is hit, wherever it is",
 	expect(#batch.H >= 1 and batch.H[1].Id == front.id, "hp record")
 end)
 
-test("Needle: every 6th hit of that die adds 8 flat damage", function()
+test("Needle: every 6th hit of that die adds 150 flat damage", function()
 	local state = newState()
 	openWave(state)
 	place(state, 5, "C02", 1)
@@ -374,7 +374,7 @@ test("Needle: every 6th hit of that die adds 8 flat damage", function()
 	end
 	expect(#deltas >= 12, "enough hits: " .. #deltas)
 	for i, d in deltas do
-		expectEq(d, if i % 6 == 0 then 17 else 9, "hit " .. i)
+		expectEq(d, if i % 6 == 0 then 320 else 170, "hit " .. i)
 	end
 end)
 
@@ -418,7 +418,11 @@ test("Twinshot targets the front and uniformly samples the living enemies", func
 		expectEq(fired[2].Distance, candidates[roll].dist, "random target impact distance")
 		expectEq(fired[2].SharedTarget, if roll == 2 then true else nil, "only shared targets offset their impacts")
 		for i, enemy in candidates do
-			expectEq(enemy.maxHp - enemy.hp, (if enemy == front then 6 else 0) + (if i == roll then 6 else 0), "damage")
+			expectEq(
+				enemy.maxHp - enemy.hp,
+				(if enemy == front then 130 else 0) + (if i == roll then 130 else 0),
+				"damage"
+			)
 		end
 	end
 end)
@@ -431,7 +435,7 @@ test("cooldown does not bank while idle, and a die fires at most twice per tick"
 	local target = addEnemy(state, "Brute", 100000, 56)
 	local hp0 = target.hp
 	Match.Step(state, state.lastNow + DT)
-	expect(hp0 - target.hp <= 17, "idle time did not bank a burst")
+	expect(hp0 - target.hp <= 320, "idle time did not bank a burst")
 end)
 
 test("a summoned die lands exactly one hit in its first tick", function()
@@ -601,13 +605,13 @@ end)
 
 test("stat-only dice: one pip-1 hit deals exactly base, with no perk", function()
 	for id, cfg in Dice.Types do
-		if cfg.rarity ~= "Common" and not cfg.singularity then
+		if cfg.rarity ~= "Common" and not cfg.singularity and not (cfg.poison or cfg.burn or cfg.rift or cfg.pull) then
 			local state = newState()
 			openWave(state)
 			place(state, 5, id, 1)
 			local brute = addEnemy(state, "Brute", 5000, 56)
 			runFor(state, 0.1)
-			expectEq(brute.maxHp - brute.hp, cfg.base, id .. " first hit")
+			expectEq(brute.maxHp - brute.hp, cfg.base * (cfg.shots or 1), id .. " first hit")
 		end
 	end
 end)

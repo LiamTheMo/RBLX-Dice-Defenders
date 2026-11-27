@@ -12,60 +12,45 @@ The source of truth is `src/server/Config/Dice.luau`. Display names, colours and
 - Perks in code: `vsKind` (damage multiplier against one enemy kind), `vsArmored` (against armored enemies; only Brutes are armored), `shots`, `procEvery` and `procFlat` (every Nth hit of a die instance adds flat damage), `slow` and `slowDuration`, `aura` and `singularity`.
 - Merge: same type, same pip 1 to 6, new type re-rolled from the deck.
 - Die levels (1 to 12) cost copies and Gold and add account crit damage only; see GDD.md. They do not raise damage.
-- Rare, Epic and Legendary dice are stat-only: base x rate is set to about 19 / 21 / 25 damage per second per rarity tier, so rarity is a modest power step. Their named effects in the old design notes are not built and are listed under Proposed below.
+- Per-pip DPS (base x shots x rate) is about 300 Common, 800 Rare, 3300 Epic, 23000 Legendary (Mythic and Secret higher). With the abilities below, `python tools/balance_sim.py` puts full-rarity decks at about wave 19-24 (Common), 25-38 (Rare), 38-49 (Epic) and 77-79 (Legendary, careful play). Reasoning and the full derivation: [DICE_REBALANCE_PROPOSAL.md](DICE_REBALANCE_PROPOSAL.md).
+- Abilities live in `src/server/Rules/Abilities.luau` and are data-driven from `Config/Dice` (field list at the top of that file). Guardrails: slow cap 60% (bosses 50%), bosses never freeze or rewind, one enemy rewinds at most 3 times, procs never trigger procs.
 
 ## Common
 
-| ID | Name | Base damage | Attacks/s | Perk |
-|---|---|---:|---:|---|
-| C01 | Pebble | 16 | 1.00 | +5% damage against Grunts |
-| C02 | Needle | 9 | 1.75 | Every 6th hit of that die adds 8 flat damage |
-| C03 | Hammer | 30 | 0.55 | +12% against armored enemies |
-| C04 | Twinshot | 6 per shot | 0.95 | Two shots: one at the front enemy, one at a random living enemy (may be the same) |
-| C05 | Longshot | 22 | 0.72 | -10% against bosses. Its old +25% range perk is moot because every die can hit anywhere; replacement perk undecided |
-| C06 | Chill | 14 | 1.00 | Hits slow the enemy by 15% for 1.5 s; repeats refresh |
-| C07 | Spark | 12 | 1.15 | Every 4th hit adds 5 flat damage |
+| ID | Name | Base | Attacks/s | DPS/pip | Perk |
+|---|---|---:|---:|---:|---|
+| C01 | Pebble | 300 | 1.00 | 300 | +5% damage against Grunts |
+| C02 | Needle | 170 | 1.75 | 298 + 44 | Every 6th hit of that die adds 150 flat damage |
+| C03 | Hammer | 570 | 0.55 | 314 | +12% against armored enemies |
+| C04 | Twinshot | 130 per shot | 0.95 | 247 | Two shots: one at the front enemy, one at a random living enemy (may be the same) |
+| C05 | Longshot | 420 | 0.72 | 302 | Sniper: always aims at the highest-HP enemy |
+| C06 | Chill | 270 | 1.00 | 270 | Hits slow the enemy by 15% for 1.5 s; repeats refresh |
+| C07 | Spark | 230 | 1.15 | 265 + 27 | Every 4th hit adds 95 flat damage |
 
 ## Rare, Epic, Legendary, Mythic, Secret
 
-| ID | Name | Rarity | Base damage | Attacks/s | Effect |
-|---|---|---|---:|---:|---|
-| R01 | Frost | Rare | 19 | 1.00 | none yet |
-| R02 | Arc | Rare | 21 | 0.90 | none yet |
-| R03 | Volley | Rare | 17 | 1.15 | none yet |
-| R04 | Venom | Rare | 23 | 0.85 | none yet |
-| R05 | Beacon | Rare | 23 | 0.85 | Aura: +6% attack speed to the four orthogonal neighbours, +1% per extra pip and +1% per Power Up tier above 1; each die's total capped at +30% (`Balance.AuraCap`) |
-| E01 | Emberstorm | Epic | 28 | 0.75 | none yet |
-| E02 | Mirror | Epic | 21 | 1.00 | none yet |
-| E03 | Gravity | Epic | 30 | 0.70 | none yet |
-| L01 | Chrono | Legendary | 30 | 0.85 | none yet |
-| L02 | Forge | Legendary | 34 | 0.75 | none yet |
-| M01 | Astral | Mythic | 140 | 0.80 | Singularity: with exactly one Astral on your board it deals 5x damage, and 10% of its hits crit for 10x (plus the account crit bonus from die levels) |
-| S01 | Dragon | Secret | 36 | 0.80 | none yet |
+| ID | Name | Rarity | Base | Attacks/s | DPS/pip | Ability |
+|---|---|---|---:|---:|---:|---|
+| R01 | Frost | Rare | 750 | 1.00 | 750 | 20% per hit: slow 25% for 2.5 s. Every 8th hit freezes a non-boss for 0.6 s |
+| R02 | Arc | Rare | 750 | 0.90 | 675 | Every 4th attack chains to 2 more enemies for 60% damage |
+| R03 | Volley | Rare | 225 x 3 | 1.15 | 776 | Three bolts per attack, each at a different enemy when possible |
+| R04 | Venom | Rare | 675 | 0.85 | 574 | Hits stack poison (90/s for 4 s, up to 4 stacks per die); a poisoned enemy that dies passes it to the nearest enemy |
+| R05 | Beacon | Rare | 855 | 0.85 | 727 | Aura: +6% attack speed to the four orthogonal neighbours, +1% per extra pip and per Power Up tier above 1; capped at +30% (`Balance.AuraCap`) |
+| E01 | Emberstorm | Epic | 4200 | 0.75 | 3150 | Hits burn (400/s for 3 s). Every 6 s all burning enemies take their remaining burn at once and ignite enemies within 10 studs |
+| E02 | Mirror | Epic | 3300 | 1.00 | 3300 | On summon or merge copies the ability of the best adjacent die for 10 s (not Mirror, Astral, Beacon or Forge) |
+| E03 | Gravity | Epic | 4900 | 0.70 | 3430 | Every 7 s pulls up to 5 non-boss enemies back 12% of the lane; bosses are slowed 35% for 1.5 s |
+| L01 | Chrono | Legendary | 27500 | 0.85 | 23375 | Every 10 s a Time Rift on the lead enemy slows enemies within 18 studs 60% for 4 s (bosses 30%); every 3rd rift also rewinds non-bosses 15% of the lane (max 3 per enemy) |
+| L02 | Forge | Legendary | 31200 | 0.75 | 23400 | A merge next to Forge keeps the merged type (no re-roll); every 4th such merge adds a free pip-1 die (one per 5 s) |
+| M01 | Astral | Mythic | 34900 | 0.80 | 27920 (x5.5 expected with Singularity) | Singularity: with exactly one Astral on the board it deals 5x damage, and 10% of its hits deal 10x (plus the account crit bonus from die levels) |
+| S01 | Dragon | Secret | 40500 | 0.80 | 32400 | Shots pierce the next 3 enemies behind the target at full damage. Every 12 s Wyrmfire burns the whole lane for 6 s at 0.4% max HP per second (bosses 0.1%) |
 
 The Roll menu features Chrono, Astral and Forge. Standard roll odds are in BALANCING.md (Astral 0.1%, Dragon 0.01%, before pity).
 
 Retired ids: profile v12 retired ten earlier dice and moved saved copies, levels and mastery to same-rarity replacements; v13 moved Mirror to E02 and Gravity to E03. Saves follow the die, not the number.
 
-## Proposed: planned abilities (not built)
+## Proposed: new dice (not built; need art)
 
-These were the original design notes for the stat-only dice. Treat them as ideas.
-
-| Die | Idea |
-|---|---|
-| Frost | 22% chance per attack to slow 18% for 2.5 s |
-| Arc | Every 4th attack chains lightning to 2 more enemies |
-| Volley | Three bolts at three distinct enemies at reduced damage |
-| Venom | 30% chance to poison (5 damage/s for 5 s, up to 3 stacks) |
-| Emberstorm | Applies Burn; every 6 s detonates burning enemies nearby |
-| Mirror | On summon or merge into it, copies part of the strongest neighbour's damage for 8 s |
-| Gravity | Every 7 s pulls up to 5 normal enemies back; bosses immune |
-| Chrono | Shortens nearby same-row dice ability cooldowns; low own damage |
-| Forge | On the 3rd merge consumed, transforms a low-pip die for a short boost |
-
-Design guardrails for any of these: status caps (slow 45%, vulnerability 25%, armor shred 30%), internal cooldowns on every proc, a cap on nested procs, and no rarity being unconditionally better than a well-built deck. The Mythic should not beat the best Legendary-centred decks by more than 10 to 15% on comparable investment.
-
-Synergy ideas: slow plus pull plus burn detonation; Beacon next to fast shooters (the aura cap prevents stacking); keep one Astral and fill the rest of the board with other dice.
+Tether (Epic: mark 3 enemies, damage shared 30%), Mint (Epic: timed MP income), Nexus (Legendary: link enemies, damage shared in full), Prism (Legendary: re-fires neighbours' abilities), Vault (Legendary: MP interest, cheaper Power Up). Full stats and rules are in DICE_REBALANCE_PROPOSAL.md. They need fresh ids (E04, E05, L03, L04, L05 are retired profile ids, so use E11+ and L07+) plus models, sprites and effects before they enter `Config/Dice`; a rolled die without art breaks the client.
 
 ## Asset deliverables
 
